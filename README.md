@@ -27,3 +27,4 @@ Dies ist ein statisches Website-Design für einen Automobil-Club mit folgenden F
 ## Hinweis
 
 Diese Version läuft vollständig im Browser und verwendet `localStorage` für die Speicherung der Daten. Für eine echte Produktion müsste die Discord-Authentifizierung durch OAuth und eine serverseitige Datenbank ergänzt werden.
+"# acls-website2" 
