@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ACLS – Automobil-Club</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Icons + Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ===== LOGIN SCREEN ===== -->
+  <div id="loginScreen" class="login-screen hidden">
+    <div class="login-card">
+      <div class="login-logo">AC</div>
+      <h2>ACLS Automobil-Club</h2>
+      <p id="loginMsg">Melde dich mit deinem Discord-Konto an.<br>Mitarbeiter erhalten Zugriff auf alle Funktionen. Alle anderen können für den Mitarbeiter der Woche abstimmen.</p>
+      <a href="/auth/discord" class="btn btn-discord">
+        <i class="fab fa-discord"></i> Mit Discord anmelden
+      </a>
+      <div id="loginError" class="login-error hidden"></div>
+    </div>
+  </div>
+
+  <!-- ===== VOTER SCREEN ===== -->
+  <div id="voterScreen" class="login-screen hidden"></div>
+
+  <!-- ===== APP ===== -->
+  <div id="app" class="app hidden">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-label">Navigation</span>
+      </div>
+      <nav class="sidebar-nav" id="sidebarNav">
+        <a class="nav-item active" data-page="dashboard"><i class="fas fa-th-large"></i><span>Dashboard</span></a>
+        <a class="nav-item" data-page="activity"><i class="fas fa-chart-line"></i><span>Aktivität</span></a>
+        <a class="nav-item" data-page="eow"><i class="fas fa-trophy"></i><span>Mitarbeiter der Woche</span></a>
+        <a class="nav-item" data-page="exams"><i class="fas fa-play-circle"></i><span>Prüfung starten</span></a>
+        <a class="nav-item" data-page="registry"><i class="fas fa-id-card"></i><span>Bürger Register</span></a>
+        <a class="nav-item" data-page="factions"><i class="fas fa-palette"></i><span>Fraktionsfarben</span></a>
+        <a class="nav-item" data-page="map"><i class="fas fa-map-marked-alt"></i><span>Abschlepphofe</span></a>
+        <a class="nav-item" data-page="iczeit"><i class="fas fa-clock"></i><span>IC-Zeit</span></a>
+      </nav>
+      <div class="sidebar-bottom">
+        <a class="nav-item" data-page="admin" id="adminNavItem" style="display:none">
+          <i class="fas fa-shield-alt"></i><span>Admin</span>
+        </a>
+        <a class="nav-item" data-page="bans"><i class="fas fa-ban"></i><span>Aktive Sperren</span></a>
+        <div class="theme-switcher">
+          <span class="theme-switcher-label">Design</span>
+          <div class="theme-dots">
+            <button class="theme-dot" id="tdunkel" onclick="setTheme('dunkel')" title="Dunkel"
+              style="background:#0f0f0f;border-color:#2a2a2a"></button>
+            <button class="theme-dot" id="thell"   onclick="setTheme('hell')"   title="Hell"
+              style="background:#f0f4f8;border-color:#d1d9e2"></button>
+            <button class="theme-dot" id="tmodern" onclick="setTheme('modern')" title="Modern"
+              style="background:#050a14;border-color:#163055"></button>
+            <button class="theme-dot" id="talt"    onclick="setTheme('alt')"    title="Alt"
+              style="background:#180e04;border-color:#3d2910"></button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Dashboard</h1>
+          <p id="pageSubtitle">Willkommen zurück</p>
+        </div>
+        <div class="user-widget" id="userWidget"></div>
+      </header>
+      <main id="pageContent"><div class="loader-wrap"><div class="loader"></div></div></main>
+    </div>
+  </div>
+
+  <!-- Modal overlay -->
+  <div id="modalOverlay" class="modal-overlay hidden">
+    <div id="modalBox" class="modal-box"></div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>

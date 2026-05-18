@@ -1,0 +1,709 @@
+require('dotenv').config();
+const express  = require('express');
+const session  = require('express-session');
+const path     = require('path');
+const cron     = require('node-cron');
+const fetch    = require('node-fetch');
+const { initDb } = require('./database');
+
+const app  = express();
+const db   = initDb();
+const PORT = process.env.PORT || 3000;
+
+// ── Middleware ──────────────────────────────────────────────────
+app.set('trust proxy', 1);
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'acls-dev-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge:   3 * 60 * 60 * 1000,
+    sameSite: 'lax',
+    secure:   process.env.NODE_ENV === 'production',
+  },
+}));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ── Auth helpers ────────────────────────────────────────────────
+function getUser(req) {
+  if (!req.session.userId) return null;
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.userId) || null;
+}
+
+function requireAuth(req, res, next) {
+  if (!getUser(req)) return res.status(401).json({ error: 'Nicht angemeldet' });
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  const u = getUser(req);
+  if (!u) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (u.role !== 'admin') return res.status(403).json({ error: 'Kein Zugriff' });
+  req.adminUser = u;
+  next();
+}
+
+// ── Helpers ─────────────────────────────────────────────────────
+function weekKey() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 1);
+  const week = Math.ceil((((now - start) / 86400000) + start.getDay() + 1) / 7);
+  return `${now.getFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+const DISCORD_API      = 'https://discord.com/api/v10';
+const DISCORD_AUTH_URL = 'https://discord.com/api/oauth2/authorize';
+const DISCORD_TOK_URL  = 'https://discord.com/api/oauth2/token';
+
+// ════════════════════════════════════════════════════════════════
+//  DISCORD OAUTH
+// ════════════════════════════════════════════════════════════════
+app.get('/auth/discord', (req, res) => {
+  const params = new URLSearchParams({
+    client_id:     process.env.DISCORD_CLIENT_ID,
+    redirect_uri:  process.env.DISCORD_REDIRECT_URI,
+    response_type: 'code',
+    scope:         'identify',
+  });
+  res.redirect(`${DISCORD_AUTH_URL}?${params}`);
+});
+
+app.get('/auth/callback', async (req, res) => {
+  const { code } = req.query;
+  if (!code) return res.redirect('/?error=no_code');
+
+  try {
+    // Exchange code → token
+    const tokRes = await fetch(DISCORD_TOK_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    new URLSearchParams({
+        client_id:     process.env.DISCORD_CLIENT_ID,
+        client_secret: process.env.DISCORD_CLIENT_SECRET,
+        grant_type:    'authorization_code',
+        code,
+        redirect_uri:  process.env.DISCORD_REDIRECT_URI,
+      }),
+    });
+    const tok = await tokRes.json();
+    if (!tok.access_token) return res.redirect('/?error=token_failed');
+
+    // Fetch Discord user
+    const userRes = await fetch(`${DISCORD_API}/users/@me`, {
+      headers: { Authorization: `Bearer ${tok.access_token}` },
+    });
+    const dUser = await userRes.json();
+
+    // Check whitelist
+    const dbUser = db.prepare('SELECT * FROM users WHERE discord_id = ? AND is_active = 1').get(dUser.id);
+    if (!dbUser) {
+      // Non-whitelisted user → voter-only session
+      req.session.voterDiscordId  = dUser.id;
+      req.session.voterUsername   = dUser.username;
+      req.session.voterAvatar     = dUser.avatar;
+      return res.redirect('/?mode=vote');
+    }
+
+    // Sync name + avatar
+    db.prepare('UPDATE users SET username = ?, avatar = ? WHERE id = ?')
+      .run(dUser.username, dUser.avatar, dbUser.id);
+
+    req.session.userId = dbUser.id;
+    res.redirect('/');
+  } catch (err) {
+    console.error('[OAuth]', err.message);
+    res.redirect('/?error=oauth_failed');
+  }
+});
+
+app.post('/auth/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/auth/me', (req, res) => {
+  const u = getUser(req);
+  if (u) return res.json({ id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, role: u.role });
+  if (req.session.voterDiscordId) return res.json({
+    voter: true,
+    discord_id: req.session.voterDiscordId,
+    username:   req.session.voterUsername,
+    avatar:     req.session.voterAvatar,
+  });
+  res.json(null);
+});
+
+// ════════════════════════════════════════════════════════════════
+//  USERS
+// ════════════════════════════════════════════════════════════════
+app.get('/api/users', requireAuth, (req, res) => {
+  res.json(db.prepare('SELECT id, discord_id, username, avatar, role, is_active, created_at FROM users ORDER BY username').all());
+});
+
+app.post('/api/users', (req, res) => {
+  const requester  = getUser(req);
+  const totalUsers = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  if (totalUsers > 0 && (!requester || requester.role !== 'admin')) {
+    return res.status(403).json({ error: 'Nur Admins können Nutzer anlegen' });
+  }
+  const { discord_id, username, role } = req.body;
+  if (!discord_id || !username) return res.status(400).json({ error: 'Fehlende Felder' });
+  try {
+    const r = db.prepare('INSERT INTO users (discord_id, username, role, added_by) VALUES (?, ?, ?, ?)')
+      .run(discord_id, username, role || 'member', requester?.id || null);
+    res.json({ id: r.lastInsertRowid });
+  } catch (e) {
+    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Discord-ID bereits vorhanden' });
+    res.status(500).json({ error: 'Datenbankfehler' });
+  }
+});
+
+app.patch('/api/users/:id', requireAdmin, (req, res) => {
+  const { role, is_active } = req.body;
+  if (role !== undefined)      db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, req.params.id);
+  if (is_active !== undefined) db.prepare('UPDATE users SET is_active = ? WHERE id = ?').run(is_active ? 1 : 0, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/users/:id', requireAdmin, (req, res) => {
+  db.prepare('UPDATE users SET is_active = 0 WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  EMPLOYEE OF THE WEEK
+// ════════════════════════════════════════════════════════════════
+app.get('/api/eow', requireAuth, (req, res) => {
+  const wk   = weekKey();
+  const user = getUser(req);
+
+  const winner = db.prepare(`
+    SELECT w.*, u.username, u.avatar FROM eow_winners w
+    JOIN users u ON u.id = w.user_id WHERE w.week = ?
+  `).get(wk);
+
+  const lastWinner = winner || db.prepare(`
+    SELECT w.*, u.username, u.avatar FROM eow_winners w
+    JOIN users u ON u.id = w.user_id ORDER BY w.announced_at DESC LIMIT 1
+  `).get();
+
+  const standings = db.prepare(`
+    SELECT u.id, u.username, u.avatar, u.discord_id, COUNT(*) as votes
+    FROM eow_votes v JOIN users u ON u.id = v.nominee_id
+    WHERE v.week = ? GROUP BY v.nominee_id ORDER BY votes DESC
+  `).all(wk);
+
+  const history = db.prepare(`
+    SELECT w.week, w.vote_count, u.username, u.avatar, u.discord_id FROM eow_winners w
+    JOIN users u ON u.id = w.user_id ORDER BY w.announced_at DESC LIMIT 10
+  `).all();
+
+  const myVote = db.prepare('SELECT nominee_id FROM eow_votes WHERE voter_id = ? AND week = ?').get(user.id, wk);
+
+  const citizenVotes = db.prepare(`
+    SELECT nominee_id, COUNT(*) as votes FROM citizen_votes WHERE week = ? GROUP BY nominee_id
+  `).all(wk);
+
+  res.json({ week: wk, currentWinner: winner, displayWinner: lastWinner, standings, history, myVoteFor: myVote?.nominee_id || null, citizenVotes });
+});
+
+app.post('/api/eow/vote', requireAuth, (req, res) => {
+  const wk   = weekKey();
+  const user = getUser(req);
+  const { nominee_id } = req.body;
+  if (+nominee_id === user.id) return res.status(400).json({ error: 'Keine Selbstnominierung' });
+  try {
+    db.prepare('INSERT INTO eow_votes (voter_id, nominee_id, week) VALUES (?, ?, ?)').run(user.id, nominee_id, wk);
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Diese Woche bereits abgestimmt' });
+    res.status(500).json({ error: 'Fehler' });
+  }
+});
+
+app.post('/api/eow/count', requireAdmin, (req, res) => {
+  const wk     = weekKey();
+  const winner = db.prepare(`
+    SELECT nominee_id, COUNT(*) as votes FROM eow_votes
+    WHERE week = ? GROUP BY nominee_id ORDER BY votes DESC LIMIT 1
+  `).get(wk);
+  if (!winner) return res.json({ message: 'Keine Stimmen diese Woche' });
+  db.prepare('INSERT OR REPLACE INTO eow_winners (user_id, week, vote_count) VALUES (?, ?, ?)')
+    .run(winner.nominee_id, wk, winner.votes);
+  res.json({ ok: true, winner_id: winner.nominee_id, votes: winner.votes });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  EXAMS
+// ════════════════════════════════════════════════════════════════
+app.get('/api/exam-categories', requireAuth, (req, res) => {
+  res.json(db.prepare(`
+    SELECT ec.*, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count
+    FROM exam_categories ec
+  `).all());
+});
+
+app.get('/api/exam-questions/:catId', requireAdmin, (req, res) => {
+  res.json(db.prepare('SELECT * FROM exam_questions WHERE category_id = ? AND is_active = 1 ORDER BY id DESC').all(req.params.catId));
+});
+
+app.post('/api/exam-questions', requireAdmin, (req, res) => {
+  const { category_id, question, option_a, option_b, option_c, option_d, correct_answer } = req.body;
+  if (!question || !option_a || !option_b || !option_c || !option_d) return res.status(400).json({ error: 'Fehlende Felder' });
+  const r = db.prepare(`
+    INSERT INTO exam_questions (category_id, question, option_a, option_b, option_c, option_d, correct_answer, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(category_id, question, option_a, option_b, option_c, option_d, +correct_answer, req.adminUser.id);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.delete('/api/exam-questions/:id', requireAdmin, (req, res) => {
+  db.prepare('UPDATE exam_questions SET is_active = 0 WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+app.get('/api/bans/check', requireAuth, (req, res) => {
+  const { name, id } = req.query;
+  if (!name) return res.json({ banned: false });
+  const nameLower = name.trim().toLowerCase();
+  const ban = db.prepare(`
+    SELECT b.*, u.username as issued_by_name FROM bans b
+    JOIN users u ON u.id = b.issued_by
+    WHERE b.is_active = 1
+    AND (lower(b.person_name) = ? ${id ? 'OR (b.person_id IS NOT NULL AND b.person_id = ?)' : ''})
+    ORDER BY b.issued_at DESC LIMIT 1
+  `).get(...(id ? [nameLower, id] : [nameLower]));
+  res.json(ban ? { banned: true, ban } : { banned: false });
+});
+
+app.post('/api/exams/start', requireAuth, (req, res) => {
+  const { category_id, mode, citizen_name, citizen_id } = req.body;
+  const limit = mode === 'flash' ? 5 : 10;
+  const qSql = `SELECT id, question, option_a, option_b, option_c, option_d, correct_answer, COALESCE(is_ko,0) as is_ko
+    FROM exam_questions WHERE category_id = ? AND is_active = 1 AND is_ko = ? ORDER BY RANDOM() LIMIT ?`;
+  const koQ  = db.prepare(qSql).all(category_id, 1, 1);
+  const regQ = db.prepare(qSql).all(category_id, 0, limit - koQ.length);
+  const total = koQ.length + regQ.length;
+  if (total < limit) return res.status(400).json({ error: `Nicht genug Fragen (${total}/${limit})` });
+  const questions = [...koQ, ...regQ].sort(() => Math.random() - 0.5);
+  req.session.activeExam = { category_id: +category_id, mode, question_ids: questions.map(q => q.id), citizenName: citizen_name || null, citizenId: citizen_id || null };
+  res.json(questions);
+});
+
+app.post('/api/exams/submit', requireAuth, (req, res) => {
+  const { answers } = req.body;
+  const exam = req.session.activeExam;
+  const user = getUser(req);
+  if (!exam) return res.status(400).json({ error: 'Kein aktiver Test' });
+
+  const placeholders = exam.question_ids.map(() => '?').join(',');
+  const questions = db.prepare(`SELECT id, correct_answer FROM exam_questions WHERE id IN (${placeholders})`).all(...exam.question_ids);
+
+  let score = 0;
+  const results = questions.map(q => {
+    const ua = parseInt(answers[q.id]);
+    const ok = ua === q.correct_answer;
+    if (ok) score++;
+    return { id: q.id, correct_answer: q.correct_answer, user_answer: ua, correct: ok };
+  });
+  const total  = questions.length;
+  const passed = score >= Math.ceil(total * 0.7);
+  db.prepare('INSERT INTO exam_sessions (user_id, category_id, mode, score, total, passed) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(user.id, exam.category_id, exam.mode, score, total, passed ? 1 : 0);
+
+  let registryId = null;
+  const category = db.prepare('SELECT name FROM exam_categories WHERE id = ?').get(exam.category_id);
+  if (passed && exam.citizenName) {
+    const r = db.prepare(`INSERT INTO registry (citizen_name, citizen_id, category_id, examiner_id, exam_type, passed)
+      VALUES (?, ?, ?, ?, 'Theorie', 1)`)
+      .run(exam.citizenName, exam.citizenId || null, exam.category_id, user.id);
+    registryId = r.lastInsertRowid;
+  }
+
+  let banId = null;
+  if (!passed && exam.citizenName) {
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const b = db.prepare(`INSERT INTO bans (person_name, person_id, reason, issued_by, duration_days, expires_at, is_active)
+      VALUES (?, ?, ?, ?, 1, ?, 1)`)
+      .run(exam.citizenName, exam.citizenId || null, `Prüfung nicht bestanden – ${category?.name || 'Unbekannt'}`, user.id, expiresAt);
+    banId = b.lastInsertRowid;
+  }
+
+  delete req.session.activeExam;
+  res.json({ score, total, passed, percentage: Math.round((score / total) * 100), results, registryId, banId });
+});
+
+function createBan(db, personName, personId, reason, issuedById) {
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  return db.prepare(`INSERT INTO bans (person_name, person_id, reason, issued_by, duration_days, expires_at, is_active)
+    VALUES (?, ?, ?, ?, 1, ?, 1)`)
+    .run(personName, personId || null, reason, issuedById, expiresAt).lastInsertRowid;
+}
+
+// K.O.-Frage falsch → sofort ban + registry-Eintrag
+app.post('/api/exams/ko-fail', requireAuth, (req, res) => {
+  const { citizen_name, citizen_id, category_id } = req.body;
+  const user = getUser(req);
+  const category = db.prepare('SELECT name FROM exam_categories WHERE id = ?').get(+category_id);
+  let banId = null;
+  if (citizen_name) {
+    db.prepare(`INSERT INTO registry (citizen_name, citizen_id, category_id, examiner_id, exam_type, passed) VALUES (?, ?, ?, ?, 'Theorie', 0)`)
+      .run(citizen_name, citizen_id || null, +category_id, user.id);
+    banId = createBan(db, citizen_name, citizen_id, `K.O.-Frage falsch – ${category?.name || ''}`, user.id);
+  }
+  delete req.session.activeExam;
+  res.json({ banId });
+});
+
+// Praxis-Prüfung auswerten
+app.post('/api/exams/practical', requireAuth, (req, res) => {
+  const { citizen_name, citizen_id, category_id, errors } = req.body;
+  const user = getUser(req);
+  const passed = !errors || errors.length === 0;
+  const r = db.prepare(`INSERT INTO registry (citizen_name, citizen_id, category_id, examiner_id, exam_type, passed) VALUES (?, ?, ?, ?, 'Praxis', ?)`)
+    .run(citizen_name, citizen_id || null, +category_id, user.id, passed ? 1 : 0);
+  let banId = null;
+  if (!passed && citizen_name) {
+    banId = createBan(db, citizen_name, citizen_id, `Praxisprüfung nicht bestanden – ${errors.join(', ')}`, user.id);
+  }
+  res.json({ passed, registryId: r.lastInsertRowid, banId });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  REGISTRY
+// ════════════════════════════════════════════════════════════════
+app.get('/api/registry', requireAuth, (req, res) => {
+  const { search, category } = req.query;
+  let sql = `
+    SELECT r.*, ec.name as category_name, ec.icon, u.username as examiner_name
+    FROM registry r JOIN exam_categories ec ON ec.id = r.category_id JOIN users u ON u.id = r.examiner_id WHERE 1=1`;
+  const params = [];
+  if (search)   { sql += ' AND (r.citizen_name LIKE ? OR r.citizen_id LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+  if (category) { sql += ' AND r.category_id = ?'; params.push(+category); }
+  sql += ' ORDER BY r.registered_at DESC';
+  res.json(db.prepare(sql).all(...params));
+});
+
+app.post('/api/registry', requireAuth, (req, res) => {
+  const { citizen_name, citizen_id, category_id, exam_type, passed, notes } = req.body;
+  const user = getUser(req);
+  if (!citizen_name || !category_id) return res.status(400).json({ error: 'Fehlende Felder' });
+  const r = db.prepare(`
+    INSERT INTO registry (citizen_name, citizen_id, category_id, examiner_id, exam_type, passed, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(citizen_name, citizen_id, +category_id, user.id, exam_type || 'Theorie', passed !== false ? 1 : 0, notes || null);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.delete('/api/registry/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM registry WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  FACTIONS
+// ════════════════════════════════════════════════════════════════
+app.get('/api/factions', requireAuth, (req, res) => {
+  res.json(db.prepare(`SELECT f.*, u.username as created_by_name FROM factions f JOIN users u ON u.id = f.created_by ORDER BY f.name`).all());
+});
+
+app.post('/api/factions', requireAuth, (req, res) => {
+  const { name, primary_color, secondary_color, pearl_color, notes } = req.body;
+  const user = getUser(req);
+  if (!name) return res.status(400).json({ error: 'Name erforderlich' });
+  const r = db.prepare('INSERT INTO factions (name, primary_color, secondary_color, pearl_color, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(name, primary_color || null, secondary_color || null, pearl_color || null, notes || null, user.id);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.put('/api/factions/:id', requireAuth, (req, res) => {
+  const { name, primary_color, secondary_color, pearl_color, notes } = req.body;
+  db.prepare('UPDATE factions SET name=?, primary_color=?, secondary_color=?, pearl_color=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
+    .run(name, primary_color || null, secondary_color || null, pearl_color || null, notes || null, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/factions/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM factions WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  MAP SPOTS
+// ════════════════════════════════════════════════════════════════
+app.get('/api/map-spots', requireAuth, (req, res) => {
+  res.json(db.prepare(`SELECT s.*, u.username as created_by_name FROM map_spots s JOIN users u ON u.id = s.created_by ORDER BY s.created_at DESC`).all());
+});
+
+app.post('/api/map-spots', requireAuth, (req, res) => {
+  const { name, description, x_pos, y_pos, spot_type } = req.body;
+  const user = getUser(req);
+  if (!name || x_pos === undefined || y_pos === undefined) return res.status(400).json({ error: 'Fehlende Felder' });
+  const r = db.prepare('INSERT INTO map_spots (name, description, x_pos, y_pos, spot_type, created_by) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(name, description || null, +x_pos, +y_pos, spot_type || 'tow', user.id);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.delete('/api/map-spots/:id', requireAuth, (req, res) => {
+  const spot = db.prepare('SELECT * FROM map_spots WHERE id = ?').get(req.params.id);
+  const user = getUser(req);
+  if (!spot) return res.status(404).json({ error: 'Nicht gefunden' });
+  if (spot.created_by !== user.id && user.role !== 'admin') return res.status(403).json({ error: 'Kein Zugriff' });
+  db.prepare('DELETE FROM map_spots WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  BANS
+// ════════════════════════════════════════════════════════════════
+app.get('/api/bans', requireAuth, (req, res) => {
+  res.json(db.prepare(`
+    SELECT b.*, u.username as issued_by_name, lu.username as lifted_by_name
+    FROM bans b JOIN users u ON u.id = b.issued_by LEFT JOIN users lu ON lu.id = b.lifted_by
+    ORDER BY b.issued_at DESC
+  `).all());
+});
+
+app.post('/api/bans', requireAuth, (req, res) => {
+  const { person_name, person_id, reason, duration_days } = req.body;
+  const user = getUser(req);
+  if (!person_name || !reason) return res.status(400).json({ error: 'Fehlende Felder' });
+  let expires_at = null;
+  if (duration_days && +duration_days > 0) {
+    const d = new Date(); d.setDate(d.getDate() + +duration_days);
+    expires_at = d.toISOString();
+  }
+  const r = db.prepare('INSERT INTO bans (person_name, person_id, reason, issued_by, duration_days, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(person_name, person_id || null, reason, user.id, duration_days || null, expires_at);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.patch('/api/bans/:id/lift', requireAuth, (req, res) => {
+  const user = getUser(req);
+  db.prepare('UPDATE bans SET is_active=0, lifted_by=?, lifted_at=CURRENT_TIMESTAMP WHERE id=?').run(user.id, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/bans/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM bans WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  IC LOG
+// ════════════════════════════════════════════════════════════════
+app.get('/api/ic-log', requireAuth, (req, res) => {
+  res.json(db.prepare(`
+    SELECT l.*, u.username as user_name, lu.username as logged_by_name
+    FROM ic_log l JOIN users u ON u.id = l.user_id LEFT JOIN users lu ON lu.id = l.logged_by
+    ORDER BY l.date DESC, l.created_at DESC LIMIT 100
+  `).all());
+});
+
+app.get('/api/ic-stats', requireAuth, (req, res) => {
+  res.json(db.prepare(`
+    SELECT u.id, u.username, u.avatar, u.discord_id,
+      COALESCE(SUM(l.hours), 0) as total,
+      COALESCE(SUM(CASE WHEN l.date >= date('now', 'weekday 0', '-7 days') THEN l.hours ELSE 0 END), 0) as week,
+      COALESCE(SUM(CASE WHEN strftime('%Y-%m', l.date) = strftime('%Y-%m', 'now') THEN l.hours ELSE 0 END), 0) as month
+    FROM users u LEFT JOIN ic_log l ON l.user_id = u.id
+    WHERE u.is_active = 1 GROUP BY u.id ORDER BY week DESC
+  `).all());
+});
+
+app.post('/api/ic-log', requireAdmin, (req, res) => {
+  const { user_id, hours, date, notes } = req.body;
+  const r = db.prepare('INSERT INTO ic_log (user_id, hours, date, notes, logged_by, auto) VALUES (?, ?, ?, ?, ?, 0)')
+    .run(+user_id, +hours, date, notes || null, req.adminUser.id);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.delete('/api/ic-log/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM ic_log WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  CITIZEN VOTES (öffentlich — jeder Discord-Nutzer)
+// ════════════════════════════════════════════════════════════════
+app.get('/api/citizen-votes', (req, res) => {
+  const wk = weekKey();
+  const counts = db.prepare('SELECT nominee_id, COUNT(*) as votes FROM citizen_votes WHERE week = ? GROUP BY nominee_id').all(wk);
+  const discordId = req.session.voterDiscordId || (req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null);
+  const myVote = discordId ? db.prepare('SELECT nominee_id FROM citizen_votes WHERE voter_discord_id = ? AND week = ?').get(discordId, wk) : null;
+  res.json({ counts, myVoteFor: myVote?.nominee_id || null });
+});
+
+app.post('/api/citizen-vote', (req, res) => {
+  const discordId = req.session.voterDiscordId || (req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null);
+  const username  = req.session.voterUsername  || (req.session.userId ? db.prepare('SELECT username FROM users WHERE id = ?').get(req.session.userId)?.username : null);
+  if (!discordId) return res.status(401).json({ error: 'Nicht angemeldet' });
+
+  const { nominee_id } = req.body;
+  if (!nominee_id) return res.status(400).json({ error: 'Fehlende Felder' });
+
+  try {
+    db.prepare('INSERT INTO citizen_votes (voter_discord_id, voter_username, nominee_id, week) VALUES (?, ?, ?, ?)')
+      .run(discordId, username, +nominee_id, weekKey());
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Diese Woche bereits abgestimmt' });
+    res.status(500).json({ error: 'Fehler' });
+  }
+});
+
+app.get('/api/users/public', (req, res) => {
+  res.json(db.prepare('SELECT id, username, avatar, discord_id FROM users WHERE is_active = 1 ORDER BY username').all());
+});
+
+// ════════════════════════════════════════════════════════════════
+//  GTA V MAP PROXY (umgeht imgur-Hotlink-Sperre)
+// ════════════════════════════════════════════════════════════════
+let _gtaMapCache = null;
+let _gtaMapCachedAt = 0;
+app.get('/api/gta-map', async (req, res) => {
+  try {
+    if (_gtaMapCache && Date.now() - _gtaMapCachedAt < 86400000) {
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.end(_gtaMapCache);
+    }
+    const r = await fetch('https://i.imgur.com/IimSBGR.jpeg', {
+      headers: { 'Referer': 'https://imgur.com/', 'User-Agent': 'Mozilla/5.0' },
+    });
+    if (!r.ok) throw new Error(`upstream ${r.status}`);
+    const buf = await r.buffer();
+    _gtaMapCache = buf;
+    _gtaMapCachedAt = Date.now();
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.end(buf);
+  } catch (e) {
+    console.error('[GTA Map]', e.message);
+    res.status(502).end();
+  }
+});
+
+// Active sessions reported by bot
+const activeBotSessions = new Map(); // discord_id → { channelName, joinedAt, username }
+
+app.post('/api/active-session', (req, res) => {
+  const { bot_secret, discord_id, username, channel_name, joined_at } = req.body;
+  if (bot_secret !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(403).end();
+  if (joined_at) {
+    activeBotSessions.set(discord_id, { channelName: channel_name, joinedAt: joined_at, username });
+  } else {
+    activeBotSessions.delete(discord_id);
+  }
+  res.json({ ok: true });
+});
+
+app.get('/api/active-sessions', requireAuth, (req, res) => {
+  const now = Date.now();
+  const result = [];
+  for (const [discord_id, s] of activeBotSessions) {
+    const user = db.prepare('SELECT id, username FROM users WHERE discord_id = ? AND is_active = 1').get(discord_id);
+    const minutesSince = Math.floor((now - new Date(s.joinedAt).getTime()) / 60000);
+    result.push({ discord_id, username: user?.username || s.username, channelName: s.channelName, joinedAt: s.joinedAt, minutesSince });
+  }
+  res.json(result);
+});
+
+// Called by bot.js to store auto-tracked voice sessions
+app.post('/api/voice-session', (req, res) => {
+  const { bot_secret, discord_id, channel_id, channel_name, joined_at, left_at, duration_minutes, hours, date, notes } = req.body;
+  if (bot_secret !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) {
+    return res.status(403).json({ error: 'Ungültiger Bot-Secret' });
+  }
+  db.prepare('INSERT INTO voice_sessions (discord_id, channel_id, channel_name, joined_at, left_at, duration_minutes) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(discord_id, channel_id, channel_name, joined_at, left_at, duration_minutes);
+
+  // Auto-add to ic_log if user exists and >= 1 minute
+  if (duration_minutes >= 1) {
+    const user = db.prepare('SELECT * FROM users WHERE discord_id = ? AND is_active = 1').get(discord_id);
+    if (user) {
+      db.prepare('INSERT INTO ic_log (user_id, hours, date, notes, logged_by, auto) VALUES (?, ?, ?, ?, NULL, 1)')
+        .run(user.id, +hours, date, notes || `Auto: ${channel_name} (${duration_minutes} Min)`);
+    }
+  }
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  DASHBOARD (aggregated)
+// ════════════════════════════════════════════════════════════════
+app.get('/api/dashboard', requireAuth, (req, res) => {
+  const total   = db.prepare('SELECT COUNT(*) as c FROM registry').get().c;
+  const passed  = db.prepare('SELECT COUNT(*) as c FROM registry WHERE passed = 1').get().c;
+  const failed  = total - passed;
+  const rate    = total > 0 ? ((passed / total) * 100).toFixed(1) : '0.0';
+  const today   = new Date().toISOString().split('T')[0];
+
+  const todayCount = db.prepare("SELECT COUNT(*) as c FROM registry WHERE date(registered_at) = ?").get(today).c;
+  const weekCount  = db.prepare("SELECT COUNT(*) as c FROM registry WHERE registered_at >= date('now','-6 days')").get().c;
+  const monthCount = db.prepare("SELECT COUNT(*) as c FROM registry WHERE strftime('%Y-%m',registered_at)=strftime('%Y-%m','now')").get().c;
+
+  const top5 = db.prepare(`
+    SELECT u.id, u.username, u.avatar, u.discord_id, COUNT(*) as count FROM registry r
+    JOIN users u ON u.id = r.examiner_id GROUP BY r.examiner_id ORDER BY count DESC LIMIT 5
+  `).all();
+
+  // Last 5 registry entries with full detail (prüfer + prüfling)
+  const lastExams = db.prepare(`
+    SELECT r.*, ec.name as category_name, ec.icon, u.username as examiner_name
+    FROM registry r JOIN exam_categories ec ON ec.id = r.category_id JOIN users u ON u.id = r.examiner_id
+    ORDER BY r.registered_at DESC LIMIT 5
+  `).all();
+
+  const wk         = weekKey();
+  const eowWinner  = db.prepare(`SELECT w.*, u.username, u.avatar, u.discord_id FROM eow_winners w JOIN users u ON u.id=w.user_id WHERE w.week=?`).get(wk);
+  const lastWinner = eowWinner || db.prepare(`SELECT w.*, u.username, u.avatar, u.discord_id FROM eow_winners w JOIN users u ON u.id=w.user_id ORDER BY w.announced_at DESC LIMIT 1`).get();
+
+  const icWeekTop = db.prepare(`
+    SELECT u.id, u.username, u.avatar, u.discord_id, COALESCE(SUM(l.hours),0) as hours FROM users u
+    LEFT JOIN ic_log l ON l.user_id=u.id AND l.date >= date('now','-6 days')
+    WHERE u.is_active=1 GROUP BY u.id ORDER BY hours DESC LIMIT 3
+  `).all();
+
+  res.json({ total, passed, failed, rate, todayCount, weekCount, monthCount, top5, lastExams, eowWinner: lastWinner, icWeekTop });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  PROFILE
+// ════════════════════════════════════════════════════════════════
+app.get('/api/profile/:id', requireAuth, (req, res) => {
+  const u = db.prepare('SELECT id, discord_id, username, avatar, role, created_at FROM users WHERE id = ?').get(req.params.id);
+  if (!u) return res.status(404).json({ error: 'Nicht gefunden' });
+  const examStats   = db.prepare('SELECT COUNT(*) as total, COALESCE(SUM(passed),0) as passed FROM exam_sessions WHERE user_id=?').get(u.id);
+  const conducted   = db.prepare('SELECT COUNT(*) as c FROM registry WHERE examiner_id=?').get(u.id).c;
+  const eowWins     = db.prepare('SELECT COUNT(*) as c FROM eow_winners WHERE user_id=?').get(u.id).c;
+  const icTotal     = db.prepare('SELECT COALESCE(SUM(hours),0) as h FROM ic_log WHERE user_id=?').get(u.id)?.h || 0;
+  const icWeek      = db.prepare("SELECT COALESCE(SUM(hours),0) as h FROM ic_log WHERE user_id=? AND date>=date('now','-7 days')").get(u.id)?.h || 0;
+  const recentExams = db.prepare(`SELECT s.*, ec.name as category_name FROM exam_sessions s JOIN exam_categories ec ON ec.id=s.category_id WHERE s.user_id=? ORDER BY s.taken_at DESC LIMIT 5`).all(u.id);
+  res.json({ user: u, stats: { total_exams: examStats.total, passed_exams: examStats.passed, conducted, eow_wins: eowWins, ic_total: +icTotal.toFixed(2), ic_week: +icWeek.toFixed(2) }, recentExams });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  CRON: Sunday 20:00 — auto-count EoW
+// ════════════════════════════════════════════════════════════════
+// Abgelaufene Sperren stündlich deaktivieren
+cron.schedule('0 * * * *', () => {
+  const r = db.prepare(`UPDATE bans SET is_active=0 WHERE is_active=1 AND expires_at IS NOT NULL AND expires_at <= datetime('now')`).run();
+  if (r.changes > 0) console.log(`[Cron] ${r.changes} abgelaufene Sperre(n) deaktiviert`);
+});
+
+cron.schedule('0 20 * * 0', () => {
+  const wk     = weekKey();
+  const winner = db.prepare(`SELECT nominee_id, COUNT(*) as votes FROM eow_votes WHERE week=? GROUP BY nominee_id ORDER BY votes DESC LIMIT 1`).get(wk);
+  if (!winner) return;
+  db.prepare('INSERT OR IGNORE INTO eow_winners (user_id, week, vote_count) VALUES (?, ?, ?)').run(winner.nominee_id, wk, winner.votes);
+  console.log(`[Cron] EoW Week ${wk}: user #${winner.nominee_id} (${winner.votes} votes)`);
+});
+
+// ════════════════════════════════════════════════════════════════
+//  SPA fallback
+// ════════════════════════════════════════════════════════════════
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+app.listen(PORT, () => console.log(`[ACLS] Server läuft auf http://localhost:${PORT}`));

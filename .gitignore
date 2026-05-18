@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Secrets
+.env
+
+# Database (lives on persistent disk on Render)
+*.db
+*.db-shm
+*.db-wal
+
+# Claude AI
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,1458 @@
+/* ================================================================
+   ACLS Frontend SPA — communicates with Express backend via fetch
+   ================================================================ */
+
+// ── Theme ────────────────────────────────────────────────────────
+function applyTheme(name) {
+  const t = name || 'dunkel';
+  document.documentElement.dataset.theme = t;
+  document.querySelectorAll('.theme-dot').forEach(b => b.classList.toggle('active', b.id === 't' + t));
+}
+window.setTheme = name => { localStorage.setItem('acls-theme', name); applyTheme(name); };
+applyTheme(localStorage.getItem('acls-theme'));
+
+// ── Globals ─────────────────────────────────────────────────────
+let currentUser = null;
+let leafletMap  = null;   // active Leaflet instance
+let activeQuiz  = null;
+
+const $ = id => document.getElementById(id);
+const PAGES = {
+  dashboard: { title: 'Dashboard',              sub: 'Willkommen zurück' },
+  activity:  { title: 'Aktivität',              sub: 'Letzte Ereignisse' },
+  eow:       { title: 'Mitarbeiter der Woche',  sub: 'Wöchentliche Abstimmung' },
+  exams:     { title: 'Prüfung starten',        sub: 'Theorie & Praxis' },
+  registry:  { title: 'Bürger Register',        sub: 'Alle Führerschein-Inhaber' },
+  factions:  { title: 'Fraktionsfarben',        sub: 'Fahrzeugfarben der Fraktionen' },
+  map:       { title: 'Abschlepphofe',          sub: 'Interaktive GTA V Karte' },
+  iczeit:    { title: 'IC-Zeit Tracking',       sub: 'Discord Voice-Kanal Anwesenheit' },
+  admin:     { title: 'Admin-Panel',            sub: 'Verwaltung & Kontrolle' },
+  bans:      { title: 'Aktive Sperren',         sub: 'Hausverbot-Verwaltung' },
+};
+
+// ── API helper ──────────────────────────────────────────────────
+async function api(url, options = {}) {
+  try {
+    const res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+    if (res.status === 401) { showLogin(); return null; }
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Fehler', 'err'); return null; }
+    return data;
+  } catch (e) {
+    toast('Netzwerkfehler', 'err');
+    return null;
+  }
+}
+
+// ── Toast ────────────────────────────────────────────────────────
+function toast(msg, type = '') {
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  const icon = type === 'ok' ? 'fa-check-circle' : type === 'err' ? 'fa-times-circle' : 'fa-info-circle';
+  t.innerHTML = `<i class="fas ${icon}"></i>${msg}`;
+  $('toastContainer').appendChild(t);
+  setTimeout(() => t.remove(), 3400);
+}
+
+// ── Modal ────────────────────────────────────────────────────────
+function openModal(html) {
+  $('modalBox').innerHTML = html;
+  $('modalOverlay').classList.remove('hidden');
+}
+function closeModal() { $('modalOverlay').classList.add('hidden'); }
+$('modalOverlay').addEventListener('click', e => { if (e.target === $('modalOverlay')) closeModal(); });
+
+// ── Helpers ──────────────────────────────────────────────────────
+const isAdmin = () => currentUser?.role === 'admin';
+const initials = n => (n || '?').split(/[_\s]/).map(p => p[0]).join('').toUpperCase().slice(0, 2);
+const fmt = dt => new Date(dt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const fmtTime = dt => new Date(dt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+const ago = dt => {
+  const s = Math.floor((Date.now() - new Date(dt)) / 1000);
+  if (s < 60)    return 'gerade eben';
+  if (s < 3600)  return `vor ${Math.floor(s / 60)} Min`;
+  if (s < 86400) return `vor ${Math.floor(s / 3600)} Std`;
+  return `vor ${Math.floor(s / 86400)} Tagen`;
+};
+const avatarUrl = u => (u?.avatar && u?.discord_id)
+  ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64`
+  : null;
+function avatarEl(u, size = 36, cls = '') {
+  const url = avatarUrl(u);
+  if (url) return `<img src="${url}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover${cls?';'+cls:''}" onerror="this.style.display='none';this.nextSibling.style.display='flex'"><div style="width:${size}px;height:${size}px;border-radius:50%;background:var(--orange);display:none;align-items:center;justify-content:center;font-weight:700;font-size:${size*0.35}px;flex-shrink:0">${initials(u.username)}</div>`;
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:${size*0.35}px;flex-shrink:0">${initials(u.username)}</div>`;
+}
+const loading = () => '<div class="loader-wrap"><div class="loader"></div></div>';
+
+// ── Init ─────────────────────────────────────────────────────────
+async function init() {
+  // Check URL params
+  const params = new URLSearchParams(location.search);
+  history.replaceState({}, '', '/');
+  const err = params.get('error');
+  if (err) {
+    const msgs = { unauthorized: 'Deine Discord-ID ist nicht registriert. Bitte einen Admin kontaktieren.', oauth_failed: 'Discord-Login fehlgeschlagen.', token_failed: 'Token-Austausch fehlgeschlagen.' };
+    showLogin(msgs[err] || `Fehler: ${err}`);
+    return;
+  }
+
+  currentUser = await api('/auth/me');
+  if (!currentUser) { showLogin(); return; }
+  if (currentUser.voter) { bootVoterApp(); return; }
+  bootApp();
+}
+
+function showLogin(errMsg = '') {
+  $('loginScreen').classList.remove('hidden');
+  $('app').classList.add('hidden');
+  $('voterScreen').classList.add('hidden');
+  if (errMsg) {
+    const el = $('loginError');
+    el.textContent = errMsg;
+    el.classList.remove('hidden');
+  }
+}
+
+async function bootVoterApp() {
+  $('loginScreen').classList.add('hidden');
+  $('app').classList.add('hidden');
+  $('voterScreen').classList.remove('hidden');
+  renderVoterScreen();
+}
+
+async function renderVoterScreen() {
+  const [users, cv] = await Promise.all([
+    fetch('/api/users/public').then(r => r.json()),
+    fetch('/api/citizen-votes').then(r => r.json()),
+  ]);
+  const myVote = cv.myVoteFor;
+  const tally  = {};
+  cv.counts.forEach(c => { tally[c.nominee_id] = c.votes; });
+
+  const url = (currentUser.avatar && currentUser.discord_id)
+    ? `https://cdn.discordapp.com/avatars/${currentUser.discord_id}/${currentUser.avatar}.png?size=64`
+    : null;
+
+  $('voterScreen').innerHTML = `
+    <div class="login-card" style="max-width:520px;width:100%">
+      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem">
+        ${url ? `<img src="${url}" style="width:44px;height:44px;border-radius:50%;object-fit:cover">` : `<div style="width:44px;height:44px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700">${(currentUser.username||'?')[0].toUpperCase()}</div>`}
+        <div>
+          <div style="font-weight:700">${currentUser.username}</div>
+          <div style="font-size:.78rem;color:var(--muted)">Bürgerstimme</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="voterLogout()"><i class="fas fa-sign-out-alt"></i> Abmelden</button>
+      </div>
+      <h2 style="margin-bottom:.25rem">Mitarbeiter der Woche</h2>
+      <p style="color:var(--muted);font-size:.85rem;margin-bottom:1.25rem">
+        ${myVote ? 'Du hast bereits abgestimmt.' : 'Wähle einen ACLS-Mitarbeiter dieser Woche.'}
+      </p>
+      ${(users || []).map(u => {
+        const av = (u.avatar && u.discord_id) ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64` : null;
+        const voted = myVote === u.id;
+        return `<div class="vote-item${voted ? ' voted' : ''}" ${!myVote ? `onclick="castCitizenVote(${u.id})"` : ''} style="cursor:${!myVote ? 'pointer' : 'default'}">
+          ${av ? `<img src="${av}" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">` : `<div style="width:38px;height:38px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">${(u.username||'?')[0].toUpperCase()}</div>`}
+          <div style="flex:1">
+            <div class="vote-name">${u.username}</div>
+            <div class="vote-count">${tally[u.id] || 0} Bürgerstimmen</div>
+          </div>
+          ${voted ? '<i class="fas fa-check-circle" style="color:var(--orange)"></i>' : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+window.castCitizenVote = async nominee_id => {
+  const r = await fetch('/api/citizen-vote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nominee_id }),
+  });
+  const data = await r.json();
+  if (r.ok) { toast('Stimme abgegeben!', 'ok'); renderVoterScreen(); }
+  else toast(data.error || 'Fehler', 'err');
+};
+
+window.voterLogout = async () => {
+  await fetch('/auth/logout', { method: 'POST' });
+  location.reload();
+};
+
+function bootApp() {
+  $('loginScreen').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  renderUserWidget();
+  $('adminNavItem').style.display = isAdmin() ? '' : 'none';
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', e => { e.preventDefault(); navigate(el.dataset.page); });
+  });
+  navigate('dashboard');
+}
+
+function renderUserWidget() {
+  const u = currentUser;
+  const url = avatarUrl(u);
+  $('userWidget').innerHTML = `
+    <div class="u-avatar" style="${url ? 'background:transparent;padding:0' : ''}">
+      ${url ? `<img src="${url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.parentElement.textContent='${initials(u.username)}'">` : initials(u.username)}
+    </div>
+    <div class="u-info">
+      <div class="u-name">${u.username}</div>
+      <div class="u-role">${u.role === 'admin' ? 'Administrator' : 'Mitarbeiter'}</div>
+    </div>
+    <button class="icon-btn" onclick="openProfileModal(${u.id})" title="Profil"><i class="fas fa-chevron-down"></i></button>
+    <button class="icon-btn" onclick="logout()" title="Abmelden"><i class="fas fa-sign-out-alt"></i></button>`;
+}
+
+async function logout() {
+  await api('/auth/logout', { method: 'POST' });
+  location.reload();
+}
+
+// ── Router ────────────────────────────────────────────────────────
+function navigate(page) {
+  if (page === 'admin' && !isAdmin()) { toast('Kein Zugriff', 'err'); return; }
+  // Destroy Leaflet map if leaving map page
+  if (leafletMap && page !== 'map') { leafletMap.remove(); leafletMap = null; }
+
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
+  const p = PAGES[page] || PAGES.dashboard;
+  $('pageTitle').textContent  = p.title;
+  $('pageSubtitle').textContent = p.sub;
+  $('pageContent').innerHTML  = loading();
+
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, admin, bans };
+  (renders[page] || dashboard)();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  DASHBOARD
+// ════════════════════════════════════════════════════════════════
+async function dashboard() {
+  const d = await api('/api/dashboard');
+  if (!d) return;
+
+  const eow = d.eowWinner;
+  const rankBadge = i => `<div class="rank-badge${i === 1 ? '' : i === 2 ? ' r2' : ' r3'}"${i > 3 ? ' style="background:#2a2a2a;color:var(--muted)"' : ''}>${i}</div>`;
+
+  $('pageContent').innerHTML = `
+    <!-- EoW Banner -->
+    <div class="eow-banner">
+      <div class="eow-av">${eow ? (avatarUrl(eow) ? `<img src="${avatarUrl(eow)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(eow.username)) : '?'}</div>
+      <div class="eow-info">
+        <div class="eow-label">Mitarbeiter der Woche</div>
+        <div class="eow-name">${eow?.username || 'Noch kein Gewinner'}</div>
+      </div>
+      <div class="eow-ml">
+        <button class="btn btn-primary" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Jetzt abstimmen</button>
+      </div>
+    </div>
+
+    <!-- 4 Stat cards -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-info"><div class="stat-lbl">Gesamt Prüfungen</div><div class="stat-val">${d.total}</div></div>
+        <div class="stat-ico o"><i class="fas fa-clipboard-list"></i></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info"><div class="stat-lbl">Bestanden</div><div class="stat-val g">${d.passed}</div></div>
+        <div class="stat-ico g"><i class="fas fa-check-circle"></i></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info"><div class="stat-lbl">Durchgefallen</div><div class="stat-val r">${d.failed}</div></div>
+        <div class="stat-ico r"><i class="fas fa-times-circle"></i></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info"><div class="stat-lbl">Erfolgsquote</div><div class="stat-val o">${d.rate}%</div></div>
+        <div class="stat-ico b"><i class="fas fa-chart-line"></i></div>
+      </div>
+    </div>
+
+    <!-- Time cards -->
+    <div class="time-row">
+      <div class="time-card"><div class="time-lbl">Heute</div><div class="time-val">${d.todayCount}</div></div>
+      <div class="time-card"><div class="time-lbl">Diese Woche</div><div class="time-val">${d.weekCount}</div></div>
+      <div class="time-card"><div class="time-lbl">Dieser Monat</div><div class="time-val">${d.monthCount}</div></div>
+    </div>
+
+    <!-- Letzte 3 Prüfungen — prominent -->
+    ${d.lastExams.length ? `
+    <div class="card last-exam-card">
+      <div class="card-head">
+        <div class="card-head-icon orange"><i class="fas fa-clipboard-check"></i></div>
+        <div><div class="card-title">Zuletzt abgenommene Prüfungen</div><div class="card-sub">Die letzten 3 Prüfungen</div></div>
+      </div>
+      ${d.lastExams.slice(0,3).map(ex => `
+      <div style="display:flex;align-items:center;gap:1rem;padding:.75rem 0;border-bottom:1px solid var(--border);last-child:border-bottom:none">
+        <span class="badge ${ex.passed ? 'badge-g' : 'badge-r'}" style="min-width:100px;text-align:center">${ex.passed ? '✓ Bestanden' : '✗ Nicht bestanden'}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ex.citizen_name}${ex.citizen_id ? ` <span style="font-size:.75rem;color:var(--muted);font-weight:400">${ex.citizen_id}</span>` : ''}</div>
+          <div style="font-size:.78rem;color:var(--muted);margin-top:.1rem"><i class="fas ${ex.icon}" style="margin-right:.3rem"></i>${ex.category_name} – ${ex.exam_type} · Prüfer: ${ex.examiner_name}</div>
+        </div>
+        <div style="font-size:.78rem;color:var(--muted);white-space:nowrap">${ago(ex.registered_at)}</div>
+      </div>`).join('')}
+    </div>` : ''}
+
+    <!-- Bottom grid -->
+    <div class="dash-bottom">
+      <!-- Top 5 -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-icon green"><i class="fas fa-trophy"></i></div>
+          <div><div class="card-title">Top 5 Mitarbeiter</div><div class="card-sub">Meiste Prüfungen</div></div>
+        </div>
+        ${d.top5.length ? d.top5.map((e, i) => `
+          <div class="lb-item">
+            ${rankBadge(i + 1)}
+            <div style="display:flex;align-items:center;gap:.6rem;flex:1">
+              <div style="width:30px;height:30px;flex-shrink:0">${avatarEl(e, 30)}</div>
+              <div><div class="lb-name">${e.username}</div><div class="lb-sub">${e.count} Prüfungen</div></div>
+            </div>
+            <div class="lb-score"><i class="fas fa-fire"></i>${e.count}</div>
+          </div>`).join('') : '<div class="empty"><i class="fas fa-trophy"></i><p>Keine Einträge</p></div>'}
+      </div>
+
+      <!-- Letzte Prüfungen Liste -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-icon blue"><i class="fas fa-history"></i></div>
+          <div><div class="card-title">Letzte Prüfungen</div><div class="card-sub">Aktuelle Aktivität</div></div>
+        </div>
+        ${d.lastExams.map(r => `
+          <div class="re-item">
+            <div class="re-ico ${r.passed ? 'pass' : 'fail'}"><i class="fas ${r.passed ? 'fa-check' : 'fa-times'}"></i></div>
+            <div class="re-info">
+              <div class="re-name">${r.citizen_name}</div>
+              <div class="re-meta">
+                <i class="fas ${r.icon}" style="font-size:.65rem"></i> ${r.exam_type}
+                <span class="sep"></span>${r.category_name}
+                <span class="sep"></span>${r.examiner_name}
+              </div>
+            </div>
+            <div class="re-time">${ago(r.registered_at)}</div>
+          </div>`).join('') || '<div class="empty"><i class="fas fa-history"></i><p>Keine Einträge</p></div>'}
+      </div>
+    </div>
+
+    <!-- IC-Zeit Widget -->
+    ${d.icWeekTop?.some(u => u.hours > 0) ? `
+    <div class="card" style="margin-top:1.1rem">
+      <div class="card-head">
+        <div class="card-head-icon orange"><i class="fas fa-clock"></i></div>
+        <div><div class="card-title">IC-Zeit diese Woche</div><div class="card-sub">Top Mitarbeiter</div></div>
+        <button class="btn btn-ghost btn-sm" onclick="navigate('iczeit')" style="margin-left:auto">Alle anzeigen</button>
+      </div>
+      ${d.icWeekTop.filter(u => u.hours > 0).map((u, i) => `
+        <div class="lb-item">
+          <div class="rank-badge${i === 0 ? '' : i === 1 ? ' r2' : ' r3'}">${i + 1}</div>
+          <div style="display:flex;align-items:center;gap:.6rem;flex:1">
+            <div style="width:30px;height:30px;flex-shrink:0">${avatarEl(u, 30)}</div>
+            <div class="lb-name">${u.username}</div>
+          </div>
+          <div class="lb-score"><i class="fas fa-clock"></i>${(+u.hours).toFixed(1)}h</div>
+        </div>`).join('')}
+    </div>` : ''}`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  ACTIVITY
+// ════════════════════════════════════════════════════════════════
+async function activity() {
+  const [reg, bansData, ic] = await Promise.all([
+    api('/api/registry'), api('/api/bans'), api('/api/ic-log'),
+  ]);
+  if (!reg) return;
+
+  const events = [
+    ...(reg || []).map(r => ({ date: r.registered_at, dot: r.passed ? 'g' : 'r', text: `<b>${r.citizen_name}</b> – ${r.category_name} ${r.exam_type} (${r.passed ? 'Bestanden' : 'Nicht bestanden'}) | Prüfer: ${r.examiner_name}` })),
+    ...(bansData || []).map(b => ({ date: b.issued_at, dot: 'r', text: `Hausverbot: <b>${b.person_name}</b> – ${b.reason}` })),
+    ...(ic || []).filter(e => e.auto).map(e => ({ date: e.created_at, dot: 'o', text: `IC-Zeit: <b>${e.user_name}</b> – ${(+e.hours).toFixed(1)}h ${e.notes ? '(' + e.notes + ')' : ''}` })),
+  ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 60);
+
+  $('pageContent').innerHTML = `
+    <div class="pg-header"><div class="pg-header-left"><h2>Aktivitätslog</h2><p>${events.length} Einträge</p></div></div>
+    <div class="card">
+      ${events.length ? events.map(ev => `
+        <div class="act-item">
+          <div class="act-dot ${ev.dot}"></div>
+          <div class="act-text">${ev.text}</div>
+          <div class="act-time">${ago(ev.date)}</div>
+        </div>`).join('') : '<div class="empty"><i class="fas fa-stream"></i><p>Keine Aktivitäten</p></div>'}
+    </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  EMPLOYEE OF THE WEEK
+// ════════════════════════════════════════════════════════════════
+async function eow() {
+  const [data, users] = await Promise.all([api('/api/eow'), api('/api/users')]);
+  if (!data) return;
+
+  const candidates = (users || []).filter(u => u.id !== currentUser.id && u.is_active);
+  const myVote     = data.myVoteFor;
+  const tally      = {};
+  data.standings.forEach(s => { tally[s.id] = s.votes; });
+  const citTally   = {};
+  (data.citizenVotes || []).forEach(c => { citTally[c.nominee_id] = c.votes; });
+
+  $('pageContent').innerHTML = `
+    <div class="eow-grid">
+      <div>
+        <div class="card" style="margin-bottom:1rem">
+          <div class="card-head">
+            <div class="card-head-icon orange"><i class="fas fa-vote-yea"></i></div>
+            <div><div class="card-title">Abstimmung – KW ${data.week.split('-W')[1]}</div>
+            <div class="card-sub">${myVote ? 'Du hast bereits abgestimmt' : 'Wähle einen Mitarbeiter'}</div></div>
+          </div>
+          ${candidates.map(u => `
+            <div class="vote-item${myVote === u.id ? ' voted' : ''}" ${!myVote ? `onclick="castVote(${u.id})"` : ''}>
+              <div style="flex-shrink:0">${avatarEl(u, 38)}</div>
+              <div style="flex:1">
+                <div class="vote-name">${u.username}</div>
+                <div class="vote-count">${tally[u.id] || 0} Mitarbeiterstimmen · ${citTally[u.id] || 0} Bürgerstimmen</div>
+              </div>
+              ${myVote === u.id ? '<i class="fas fa-check-circle" style="color:var(--orange)"></i>' : ''}
+            </div>`).join('')}
+          ${isAdmin() ? `<div style="margin-top:1rem"><button class="btn btn-primary btn-sm" onclick="countEow()"><i class="fas fa-calculator"></i> Jetzt auszählen</button></div>` : ''}
+        </div>
+
+        <div class="card">
+          <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-chart-bar"></i></div>
+          <div><div class="card-title">Stimmenstand</div></div></div>
+          ${data.standings.length ? data.standings.map(s => `
+            <div class="lb-item">
+              <div style="flex-shrink:0">${avatarEl(s, 30)}</div>
+              <div class="lb-name">${s.username}</div>
+              <div class="lb-score"><i class="fas fa-fire"></i>${s.votes}</div>
+            </div>`).join('') : '<div class="empty" style="padding:1rem"><p>Noch keine Stimmen</p></div>'}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-trophy"></i></div>
+        <div><div class="card-title">Hall of Fame</div><div class="card-sub">Vergangene Gewinner</div></div></div>
+        ${data.history.length ? data.history.map(w => `
+          <div class="history-item">
+            <div style="display:flex;align-items:center;gap:.65rem">
+              ${avatarEl(w, 32)}
+              <div><div style="font-size:.88rem;font-weight:600">${w.username}</div>
+              <div style="font-size:.72rem;color:var(--muted)">${w.week}</div></div>
+            </div>
+            <div class="badge badge-o">${w.vote_count} Stimmen</div>
+          </div>`).join('') : '<div class="empty"><i class="fas fa-trophy"></i><p>Noch keine Gewinner</p></div>'}
+      </div>
+    </div>`;
+}
+
+window.castVote = async nominee_id => {
+  const r = await api('/api/eow/vote', { method: 'POST', body: { nominee_id } });
+  if (r) { toast('Stimme abgegeben!', 'ok'); eow(); }
+};
+window.countEow = async () => {
+  const r = await api('/api/eow/count', { method: 'POST' });
+  if (r?.ok) { toast('Ausgezählt!', 'ok'); eow(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  EXAMS
+// ════════════════════════════════════════════════════════════════
+async function exams() {
+  const cats = await api('/api/exam-categories');
+  if (!cats) return;
+
+  $('pageContent').innerHTML = `
+    <div class="pg-header"><div class="pg-header-left"><h2>Prüfung wählen</h2></div></div>
+    <div class="exam-grid">
+      ${cats.map(cat => `
+        <div class="exam-card">
+          <div class="exam-icon"><i class="fas ${cat.icon}"></i></div>
+          <div>
+            <div class="exam-name">${cat.name}</div>
+            <div class="exam-desc">${cat.description || ''}</div>
+            <div class="exam-q-count" style="margin-top:.3rem">${cat.question_count} Fragen verfügbar</div>
+          </div>
+          <div class="exam-btns">
+            <button class="btn btn-primary" onclick="startExam(${cat.id},'full')"><i class="fas fa-play"></i> Volltest (10)</button>
+            <button class="btn btn-ghost btn-sm" onclick="startExam(${cat.id},'flash')"><i class="fas fa-bolt"></i> Blitz (5)</button>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+window.startExam = (category_id, mode) => {
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-user" style="color:var(--orange);margin-right:.5rem"></i>Prüfling</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:1rem">
+      Fülle die Daten des Prüflings aus. Die Person wird nach Bestehen automatisch ins Bürgerregister eingetragen.
+    </p>
+    <form onsubmit="launchExam(event,${category_id},'${mode}')">
+      <div class="form-row">
+        <div class="form-group"><label>Prüfling Name <span style="color:var(--red)">*</span></label>
+          <input class="form-control" id="citName" placeholder="Vorname Nachname" required></div>
+        <div class="form-group"><label>Ausweis-ID</label>
+          <input class="form-control" id="citId" placeholder="CF-0000"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-play"></i> Prüfung starten</button>
+      </div>
+    </form>`);
+};
+
+window.launchExam = async (e, category_id, mode) => {
+  e.preventDefault();
+  const citizen_name = $('citName').value.trim();
+  const citizen_id   = $('citId').value.trim();
+
+  if (citizen_name) {
+    const params = new URLSearchParams({ name: citizen_name });
+    if (citizen_id) params.set('id', citizen_id);
+    const check = await api(`/api/bans/check?${params}`);
+    if (check?.banned) {
+      const b = check.ban;
+      const until = b.expires_at ? `bis ${fmt(b.expires_at)} um ${fmtTime(b.expires_at)}` : 'unbefristet';
+      openModal(`
+        <div class="modal-head">
+          <div class="modal-title" style="color:#ef4444"><i class="fas fa-ban" style="margin-right:.5rem"></i>Bürger gesperrt</div>
+          <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <div style="padding:.5rem 0">
+          <div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:var(--r);padding:.9rem 1rem;margin-bottom:1rem">
+            <div style="font-size:1rem;font-weight:700;margin-bottom:.35rem">${citizen_name}</div>
+            <div style="font-size:.85rem;color:#ef4444"><i class="fas fa-lock" style="margin-right:.4rem"></i>Gesperrt ${until}</div>
+          </div>
+          <div style="font-size:.85rem"><span style="color:var(--muted)">Grund:</span> ${b.reason}</div>
+          <div style="font-size:.82rem;color:var(--muted);margin-top:.4rem">Gesperrt von: ${b.issued_by_name}</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        </div>`);
+      return;
+    }
+  }
+
+  closeModal();
+  const questions = await api('/api/exams/start', { method: 'POST', body: { category_id, mode, citizen_name, citizen_id } });
+  if (!questions) return;
+  const cats = await api('/api/exam-categories');
+  const cat  = cats?.find(c => c.id === category_id);
+  activeQuiz = { category_id, mode, questions, current: 0, answers: {}, cat, citizenName: citizen_name, citizenId: citizen_id };
+  renderQuiz(cat);
+};
+
+function renderQuiz(cat) {
+  const q   = activeQuiz;
+  const qst = q.questions[q.current];
+  const koBadge = qst.is_ko ? `<div class="ko-badge"><i class="fas fa-skull"></i> K.O.-Frage – Falsche Antwort = Sofort durchgefallen!</div>` : '';
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas ${cat?.icon || 'fa-car'}" style="color:var(--orange);margin-right:.5rem"></i>${cat?.name} – ${q.mode === 'flash' ? 'Blitztest' : 'Volltest'}</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="${qst.is_ko ? 'quiz-wrap ko-mode' : 'quiz-wrap'}">
+      <div class="quiz-progress"><div class="quiz-progress-bar" style="width:${(q.current / q.questions.length) * 100}%"></div></div>
+      <div class="quiz-counter">Frage ${q.current + 1} von ${q.questions.length}</div>
+      ${koBadge}
+      <div class="quiz-q">${qst.question}</div>
+      ${[qst.option_a, qst.option_b, qst.option_c, qst.option_d].map((opt, i) => `
+        <div class="quiz-option${q.answers[qst.id] === i ? ' selected' : ''}" onclick="selectOpt(${i})">
+          <div class="opt-letter">${'ABCD'[i]}</div><div>${opt}</div>
+        </div>`).join('')}
+    </div>
+    <div class="modal-footer">
+      ${q.current > 0 ? '<button class="btn btn-ghost" onclick="quizNav(-1)"><i class="fas fa-arrow-left"></i> Zurück</button>' : '<span></span>'}
+      ${q.current < q.questions.length - 1
+        ? '<button class="btn btn-primary" onclick="quizNav(1)">Weiter <i class="fas fa-arrow-right"></i></button>'
+        : '<button class="btn btn-primary" onclick="submitExam()"><i class="fas fa-check"></i> Abschicken</button>'}
+    </div>`);
+}
+
+window.selectOpt = function(i) {
+  const qst = activeQuiz.questions[activeQuiz.current];
+  activeQuiz.answers[qst.id] = i;
+  if (qst.is_ko && i !== qst.correct_answer) {
+    api('/api/exams/ko-fail', { method: 'POST', body: { citizen_name: activeQuiz.citizenName, citizen_id: activeQuiz.citizenId, category_id: activeQuiz.category_id } })
+      .then(r => {
+        const banNote = (r?.banId && activeQuiz.citizenName)
+          ? `<div style="margin-top:.75rem;padding:.6rem .9rem;background:rgba(239,68,68,.1);border-radius:var(--r);border:1px solid rgba(239,68,68,.25);font-size:.82rem;color:#ef4444"><i class="fas fa-ban" style="margin-right:.4rem"></i><b>${activeQuiz.citizenName}</b> wurde automatisch für 24 Stunden gesperrt.</div>` : '';
+        openModal(`
+          <div class="modal-head">
+            <div class="modal-title" style="color:var(--red)"><i class="fas fa-skull" style="margin-right:.5rem"></i>K.O. – Sofort durchgefallen!</div>
+            <button class="modal-close" onclick="closeModal();exams()"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="quiz-result">
+            <div class="quiz-score-big quiz-failed">K.O.</div>
+            <div style="font-size:1.1rem;margin:.75rem 0;font-weight:700;color:var(--red)">Nicht bestanden</div>
+            <div style="font-size:.88rem;color:var(--muted);padding:.65rem;background:rgba(239,68,68,.1);border-radius:var(--r);border:1px solid rgba(239,68,68,.3);margin-top:.5rem">
+              <b>K.O.-Frage:</b> ${qst.question}<br><br>
+              <b>Richtige Antwort:</b> ${{ 0: qst.option_a, 1: qst.option_b, 2: qst.option_c, 3: qst.option_d }[qst.correct_answer]}
+            </div>
+            ${banNote}
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeModal();exams()">Schließen</button>
+            <button class="btn btn-primary" onclick="startExam(${activeQuiz.category_id},'${activeQuiz.mode}')"><i class="fas fa-redo"></i> Nochmal</button>
+          </div>`);
+      });
+    return;
+  }
+  renderQuiz(activeQuiz.cat);
+};
+window.quizNav   = dir => { activeQuiz.current += dir; renderQuiz(activeQuiz.cat); };
+const PRAXIS_ERRORS = [
+  'Geschwindigkeit überschritten',
+  'Stoppschild missachtet',
+  'Anweisungen ignoriert',
+  'Falscher Fahrstreifen',
+  'Zu geringer Abstand',
+  'Verkehrszeichen missachtet',
+  'Aggressives Fahrverhalten',
+  'Handy am Steuer',
+  'Falsche Vorfahrt',
+  'Gefährliche Überholung',
+];
+
+window.submitExam = async () => {
+  const cat    = activeQuiz.cat;
+  const result = await api('/api/exams/submit', { method: 'POST', body: { answers: activeQuiz.answers } });
+  if (!result) return;
+  const citizenName = activeQuiz.citizenName;
+
+  if (!result.passed) {
+    const autoBan = result.banId
+      ? `<div style="margin-top:.75rem;padding:.6rem .9rem;background:rgba(239,68,68,.1);border-radius:var(--r);border:1px solid rgba(239,68,68,.25);font-size:.82rem;color:#ef4444"><i class="fas fa-ban" style="margin-right:.4rem"></i><b>${citizenName}</b> wurde automatisch für 24 Stunden gesperrt.</div>` : '';
+    openModal(`
+      <div class="modal-head"><div class="modal-title">Ergebnis${citizenName ? ` – ${citizenName}` : ''}</div>
+      <button class="modal-close" onclick="closeModal();exams()"><i class="fas fa-times"></i></button></div>
+      <div class="quiz-result">
+        <div class="quiz-score-big quiz-failed">${result.score}/${result.total}</div>
+        <div style="font-size:1.1rem;font-weight:700;margin:.75rem 0">✗ Nicht bestanden</div>
+        <div style="font-size:.9rem;color:var(--muted)">${result.percentage}% richtig – ${cat?.name || ''} Theorie</div>
+        ${autoBan}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal();exams()">Schließen</button>
+        <button class="btn btn-primary" onclick="startExam(${activeQuiz.category_id},'${activeQuiz.mode}')"><i class="fas fa-redo"></i> Nochmal</button>
+      </div>`);
+    return;
+  }
+
+  // Theorie bestanden + Bürger-Name → weiter zur Praxis
+  if (citizenName) {
+    openPraktischeExam(result, cat);
+    return;
+  }
+
+  // Bestanden ohne Bürger (eigener Test / Blitztest)
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Ergebnis</div>
+    <button class="modal-close" onclick="closeModal();exams()"><i class="fas fa-times"></i></button></div>
+    <div class="quiz-result">
+      <div class="quiz-score-big quiz-passed">${result.score}/${result.total}</div>
+      <div style="font-size:1.1rem;font-weight:700;margin:.75rem 0">✓ Bestanden</div>
+      <div style="font-size:.9rem;color:var(--muted)">${result.percentage}% richtig – ${cat?.name || ''} Theorie</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal();exams()">Schließen</button>
+    </div>`);
+};
+
+function openPraktischeExam(theorieResult, cat) {
+  const citizenName = activeQuiz.citizenName;
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-car" style="color:var(--orange);margin-right:.5rem"></i>Praxisprüfung – ${citizenName}</div>
+      <button class="modal-close" onclick="closeModal();exams()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="padding:.25rem 0">
+      <div style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);border-radius:var(--r);padding:.6rem .9rem;font-size:.83rem;color:var(--green);margin-bottom:1rem">
+        <i class="fas fa-check-circle" style="margin-right:.4rem"></i>Theorie bestanden (${theorieResult.percentage}%) – Praxisprüfung läuft
+      </div>
+      <p style="font-size:.88rem;color:var(--muted);margin-bottom:.9rem">Fehler des Fahrers anhaken. Bei einem Fehler sofort durchgefallen.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem .75rem">
+        ${PRAXIS_ERRORS.map((err, i) => `
+          <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;padding:.35rem .5rem;border-radius:6px;transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.05)'" onmouseout="this.style.background='none'">
+            <input type="checkbox" id="perr_${i}" style="accent-color:#ef4444;width:15px;height:15px">
+            <span style="font-size:.84rem">${err}</span>
+          </label>`).join('')}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal();exams()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="submitPraxis()"><i class="fas fa-check"></i> Prüfung abschließen</button>
+    </div>`);
+}
+
+window.submitPraxis = async () => {
+  const citizenName = activeQuiz.citizenName;
+  const citizenId   = activeQuiz.citizenId || null;
+  const categoryId  = activeQuiz.category_id;
+  const errors = PRAXIS_ERRORS.filter((_, i) => document.getElementById(`perr_${i}`)?.checked);
+  const result = await api('/api/exams/practical', { method: 'POST', body: { citizen_name: citizenName, citizen_id: citizenId, category_id: categoryId, errors } });
+  if (!result) return;
+  const banNote = result.banId
+    ? `<div style="margin-top:.75rem;padding:.6rem .9rem;background:rgba(239,68,68,.1);border-radius:var(--r);border:1px solid rgba(239,68,68,.25);font-size:.82rem;color:#ef4444"><i class="fas fa-ban" style="margin-right:.4rem"></i><b>${citizenName}</b> wurde für 24 Stunden gesperrt.<br><span style="opacity:.8">Fehler: ${errors.join(', ')}</span></div>` : '';
+  const regNote = result.passed
+    ? `<div style="margin-top:.75rem;padding:.6rem .9rem;background:rgba(34,197,94,.12);border-radius:var(--r);border:1px solid rgba(34,197,94,.25);font-size:.82rem;color:var(--green)"><i class="fas fa-check-circle" style="margin-right:.4rem"></i><b>${citizenName}</b> wurde ins Bürgerregister eingetragen.</div>` : '';
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Praxisprüfung – Ergebnis</div>
+    <button class="modal-close" onclick="closeModal();exams()"><i class="fas fa-times"></i></button></div>
+    <div class="quiz-result">
+      <div class="quiz-score-big ${result.passed ? 'quiz-passed' : 'quiz-failed'}">${result.passed ? '✓' : '✗'}</div>
+      <div style="font-size:1.1rem;font-weight:700;margin:.75rem 0">${result.passed ? 'Praxis bestanden!' : 'Praxis nicht bestanden'}</div>
+      ${regNote}${banNote}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal();exams()">Schließen</button>
+    </div>`);
+};
+
+// ════════════════════════════════════════════════════════════════
+//  REGISTRY
+// ════════════════════════════════════════════════════════════════
+let regSearch = '';
+async function registry() {
+  const [rows, cats] = await Promise.all([api(`/api/registry?search=${encodeURIComponent(regSearch)}`), api('/api/exam-categories')]);
+  if (!rows) return;
+
+  $('pageContent').innerHTML = `
+    <div class="pg-header">
+      <div class="pg-header-left"><h2>Bürgerregister</h2><p>${rows.length} Einträge</p></div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+        <div class="search-bar"><i class="fas fa-search"></i>
+          <input id="regSearch" placeholder="Suchen..." value="${regSearch}" oninput="regSearch=this.value;clearTimeout(window._rst);window._rst=setTimeout(registry,250)">
+        </div>
+        <button class="btn btn-primary" onclick="openAddRegistry()"><i class="fas fa-plus"></i> Eintrag hinzufügen</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="data-tbl">
+        <thead><tr><th>Prüfling</th><th>Ausweis-ID</th><th>Prüfung</th><th>Typ</th><th>Prüfer</th><th>Datum</th><th>Status</th>${isAdmin() ? '<th></th>' : ''}</tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(r => `<tr>
+            <td style="font-weight:600;color:var(--text)">${r.citizen_name}</td>
+            <td>${r.citizen_id || '—'}</td>
+            <td><i class="fas ${r.icon}" style="color:var(--orange);margin-right:.4rem"></i>${r.category_name}</td>
+            <td><span class="badge ${r.exam_type === 'Praxis' ? 'badge-b' : 'badge-m'}">${r.exam_type}</span></td>
+            <td>${r.examiner_name}</td>
+            <td>${fmt(r.registered_at)}</td>
+            <td><span class="badge ${r.passed ? 'badge-g' : 'badge-r'}">${r.passed ? 'Bestanden' : 'Nicht bestanden'}</span></td>
+            ${isAdmin() ? `<td><button class="btn btn-danger btn-sm" onclick="deleteRegistry(${r.id})"><i class="fas fa-trash"></i></button></td>` : ''}
+          </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">Keine Einträge</td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
+  window._regCats = cats;
+  const si = $('regSearch');
+  if (si && document.activeElement !== si) { si.focus(); si.setSelectionRange(si.value.length, si.value.length); }
+}
+
+window.openAddRegistry = () => {
+  const cats = window._regCats || [];
+  openModal(`
+    <div class="modal-head"><div class="modal-title"><i class="fas fa-id-card" style="color:var(--orange);margin-right:.5rem"></i>Eintrag hinzufügen</div>
+    <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+    <form onsubmit="submitRegistry(event)">
+      <div class="form-row">
+        <div class="form-group"><label>Bürger-Name</label><input class="form-control" id="rName" placeholder="Vorname Nachname" required></div>
+        <div class="form-group"><label>Ausweis-ID</label><input class="form-control" id="rId" placeholder="CF-0000"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Prüfung</label>
+          <select class="form-control" id="rCat">${cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}</select>
+        </div>
+        <div class="form-group"><label>Typ</label>
+          <select class="form-control" id="rType"><option>Praxis</option><option>Theorie</option></select>
+        </div>
+      </div>
+      <div class="form-group"><label>Status</label>
+        <select class="form-control" id="rPassed"><option value="1">Bestanden</option><option value="0">Nicht bestanden</option></select>
+      </div>
+      <div class="form-group"><label>Notizen (optional)</label><input class="form-control" id="rNotes"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
+      </div>
+    </form>`);
+};
+
+window.submitRegistry = async e => {
+  e.preventDefault();
+  const r = await api('/api/registry', { method: 'POST', body: {
+    citizen_name: $('rName').value.trim(),
+    citizen_id:   $('rId').value.trim(),
+    category_id:  +$('rCat').value,
+    exam_type:    $('rType').value,
+    passed:       $('rPassed').value === '1',
+    notes:        $('rNotes').value.trim(),
+  }});
+  if (r) { closeModal(); toast('Gespeichert!', 'ok'); registry(); }
+};
+
+window.deleteRegistry = async id => {
+  if (!confirm('Eintrag löschen?')) return;
+  const r = await api(`/api/registry/${id}`, { method: 'DELETE' });
+  if (r) { toast('Gelöscht.', 'ok'); registry(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  FACTIONS
+// ════════════════════════════════════════════════════════════════
+async function factions() {
+  const rows = await api('/api/factions');
+  if (!rows) return;
+
+  $('pageContent').innerHTML = `
+    <div class="pg-header">
+      <div class="pg-header-left"><h2>Fraktionsfarben</h2><p>${rows.length} Fraktionen</p></div>
+      <button class="btn btn-primary" onclick="openEditFaction()"><i class="fas fa-plus"></i> Fraktion hinzufügen</button>
+    </div>
+    <div class="tbl-wrap">
+      <table class="data-tbl">
+        <thead><tr><th>Fraktion</th><th>Primär</th><th>Sekundär</th><th>Pearl</th><th>Notizen</th><th></th></tr></thead>
+        <tbody>
+          ${rows.map(f => `<tr>
+            <td style="font-weight:600;color:var(--text)">${f.name}</td>
+            <td><div style="display:flex;align-items:center;gap:.4rem"><span class="swatch" style="background:${f.primary_color || '#333'}"></span>${f.primary_color || '—'}</div></td>
+            <td><div style="display:flex;align-items:center;gap:.4rem"><span class="swatch" style="background:${f.secondary_color || '#333'}"></span>${f.secondary_color || '—'}</div></td>
+            <td><div style="display:flex;align-items:center;gap:.4rem"><span class="swatch" style="background:${f.pearl_color || '#333'}"></span>${f.pearl_color || '—'}</div></td>
+            <td style="color:var(--muted)">${f.notes || '—'}</td>
+            <td><div style="display:flex;gap:.4rem">
+              <button class="btn btn-ghost btn-sm" onclick="openEditFaction(${f.id})"><i class="fas fa-pen"></i></button>
+              ${isAdmin() ? `<button class="btn btn-danger btn-sm" onclick="deleteFaction(${f.id})"><i class="fas fa-trash"></i></button>` : ''}
+            </div></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+window.openEditFaction = async (id = null) => {
+  let f = null;
+  if (id) { const rows = await api('/api/factions'); f = rows?.find(x => x.id === id); }
+  openModal(`
+    <div class="modal-head"><div class="modal-title">${f ? 'Fraktion bearbeiten' : 'Fraktion erstellen'}</div>
+    <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+    <form onsubmit="submitFaction(event,${id || 0})">
+      <div class="form-group"><label>Name</label><input class="form-control" id="fName" value="${f?.name || ''}" required></div>
+      <div class="form-row">
+        <div class="form-group"><label>Primärfarbe</label>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <input type="color" id="fPC" value="${f?.primary_color || '#f97316'}" style="width:42px;height:38px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--input)">
+            <input class="form-control" id="fPrim" value="${f?.primary_color || '#f97316'}">
+          </div>
+        </div>
+        <div class="form-group"><label>Sekundärfarbe</label>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <input type="color" id="fSC" value="${f?.secondary_color || '#1c1c1c'}" style="width:42px;height:38px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--input)">
+            <input class="form-control" id="fSec" value="${f?.secondary_color || '#1c1c1c'}">
+          </div>
+        </div>
+      </div>
+      <div class="form-group"><label>Pearl-Farbe</label>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <input type="color" id="fLC" value="${f?.pearl_color || '#ffffff'}" style="width:42px;height:38px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--input)">
+          <input class="form-control" id="fPrl" value="${f?.pearl_color || '#ffffff'}">
+        </div>
+      </div>
+      <div class="form-group"><label>Notizen</label><input class="form-control" id="fNotes" value="${f?.notes || ''}"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
+      </div>
+    </form>`);
+  [['fPC','fPrim'],['fSC','fSec'],['fLC','fPrl']].forEach(([pick,inp]) => {
+    $(pick).addEventListener('input', e => { $(inp).value = e.target.value; });
+    $(inp).addEventListener('input', e => { try { $(pick).value = e.target.value; } catch {} });
+  });
+};
+
+window.submitFaction = async (e, id) => {
+  e.preventDefault();
+  const body = { name:$('fName').value.trim(), primary_color:$('fPrim').value, secondary_color:$('fSec').value, pearl_color:$('fPrl').value, notes:$('fNotes').value.trim() };
+  const r = id
+    ? await api(`/api/factions/${id}`, { method: 'PUT', body })
+    : await api('/api/factions', { method: 'POST', body });
+  if (r) { closeModal(); toast('Gespeichert!', 'ok'); factions(); }
+};
+
+window.deleteFaction = async id => {
+  if (!confirm('Fraktion löschen?')) return;
+  const r = await api(`/api/factions/${id}`, { method: 'DELETE' });
+  if (r) { toast('Gelöscht.', 'ok'); factions(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  MAP — echte GTA V Karte mit Leaflet
+// ════════════════════════════════════════════════════════════════
+async function map() {
+  const spots = await api('/api/map-spots');
+  if (!spots) return;
+
+  $('pageContent').innerHTML = `
+    <div class="pg-header">
+      <div class="pg-header-left"><h2>Abschlepphofe</h2><p>${spots.length} Spots eingetragen</p></div>
+      <div style="display:flex;gap:.65rem;align-items:center">
+        <span id="mapMode" style="font-size:.8rem;color:var(--muted)"></span>
+        <button class="btn btn-primary" id="addSpotToggle" onclick="toggleMapAdd()"><i class="fas fa-map-marker-alt"></i> Spot hinzufügen</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:start">
+      <div class="map-outer">
+        <div id="mapContainer" style="height:650px;border-radius:var(--rl)"></div>
+      </div>
+      <div class="card" style="min-width:140px;padding:.9rem">
+        <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">Legende</div>
+        ${[['tow','#f97316','Abschlepphof'],['exam','#22c55e','Prüfungsort'],['Felder','#3b82f6','Felder'],['Hotspot','#ec4899','Hotspot'],['other','#6b7280','Sonstiges']].map(([type,color,label])=>`
+        <div style="display:flex;align-items:center;gap:.55rem;margin-bottom:.55rem">
+          <div style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 6px ${color}88;flex-shrink:0"></div>
+          <span style="font-size:.82rem">${label}</span>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-list"></i></div>
+      <div><div class="card-title">Alle Abschlepphöfe</div></div></div>
+      <div class="tbl-wrap">
+        <table class="data-tbl">
+          <thead><tr><th>Name</th><th>Beschreibung</th><th>Typ</th><th>Eingetragen von</th><th></th></tr></thead>
+          <tbody>
+            ${spots.map(s => `<tr>
+              <td style="font-weight:600;color:var(--text)">${s.name}</td>
+              <td>${s.description || '—'}</td>
+              <td><span style="font-size:.75rem;padding:.15rem .55rem;border-radius:6px;font-weight:600;background:${({'tow':'#f9731622','exam':'#22c55e22','Felder':'#3b82f622','Hotspot':'#ec4b9922'}[s.spot_type]||'#6b728022')};color:${({'tow':'#f97316','exam':'#22c55e','Felder':'#3b82f6','Hotspot':'#ec4899'}[s.spot_type]||'#6b7280')}">${s.spot_type}</span></td>
+              <td>${s.created_by_name || '—'}</td>
+              <td><button class="btn btn-danger btn-sm" onclick="deleteSpot(${s.id})"><i class="fas fa-trash"></i></button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  initLeafletMap(spots);
+}
+
+window._addingSpot = false;
+window.toggleMapAdd = () => {
+  window._addingSpot = !window._addingSpot;
+  $('addSpotToggle').textContent = window._addingSpot ? '✕ Abbrechen' : '+ Spot hinzufügen';
+  const hint = $('mapMode');
+  if (hint) hint.textContent = window._addingSpot ? 'Klicke auf die Karte um einen Spot zu platzieren' : '';
+  if (leafletMap) leafletMap.getContainer().style.cursor = window._addingSpot ? 'crosshair' : '';
+};
+
+// GTA V coordinate helpers — CRS.Simple with 0–1000 unit space
+const GTA_SIZE = 1000;
+const pctToLatLng = (xPct, yPct) => [
+  GTA_SIZE - (yPct / 100) * GTA_SIZE,
+  (xPct / 100) * GTA_SIZE,
+];
+const latLngToPct = (lat, lng) => [
+  +((lng / GTA_SIZE) * 100).toFixed(2),
+  +(((GTA_SIZE - lat) / GTA_SIZE) * 100).toFixed(2),
+];
+
+function initLeafletMap(spots) {
+  if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+
+  leafletMap = L.map('mapContainer', {
+    crs: L.CRS.Simple,
+    minZoom: -2,
+    maxZoom: 2,
+    attributionControl: false,
+    zoomSnap: 0.1,
+    zoomDelta: 0.5,
+    scrollWheelZoom: true,
+  });
+
+  // GTA V Karte als Image-Overlay
+  const bounds = [[0, 0], [GTA_SIZE, GTA_SIZE]];
+  L.imageOverlay('/gta-map.png', bounds, { opacity: 1, zIndex: 1, className: 'gta-map-img' }).addTo(leafletMap);
+
+  leafletMap.fitBounds(bounds, { padding: [4, 4] });
+
+  const spotColor = t => ({ tow:'#f97316', exam:'#22c55e', Felder:'#3b82f6', Hotspot:'#ec4899' }[t] || '#6b7280');
+
+  const makePin = color => L.divIcon({
+    className: '',
+    html: `<div style="width:14px;height:14px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 0 8px ${color}99"></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    popupAnchor: [0, -10],
+  });
+
+  // Add existing spots
+  spots.forEach(s => {
+    const color = spotColor(s.spot_type);
+    const [lat, lng] = pctToLatLng(s.x_pos, s.y_pos);
+    L.marker([lat, lng], { icon: makePin(color) })
+      .addTo(leafletMap)
+      .bindPopup(`<div style="font-family:Inter,sans-serif;min-width:140px">
+        <div style="font-weight:700;margin-bottom:.25rem">${s.name}</div>
+        ${s.description ? `<div style="font-size:.8rem;color:#888;margin-bottom:.35rem">${s.description}</div>` : ''}
+        <span style="font-size:.75rem;background:${color}22;color:${color};border-radius:4px;padding:.1rem .4rem;border:1px solid ${color}44">${s.spot_type}</span>
+      </div>`, { closeButton: false });
+  });
+
+  // Click to add spot
+  leafletMap.on('click', e => {
+    if (!window._addingSpot) return;
+    const [xPct, yPct] = latLngToPct(e.latlng.lat, e.latlng.lng);
+    openAddSpotModal(xPct, yPct);
+  });
+}
+
+function openAddSpotModal(x, y) {
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Spot hinzufügen</div>
+    <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+    <form onsubmit="submitSpot(event,${x},${y})">
+      <div class="form-group"><label>Name</label><input class="form-control" id="spName" placeholder="z. B. ACLS Hauptgarage" required></div>
+      <div class="form-group"><label>Beschreibung</label><input class="form-control" id="spDesc" placeholder="Kurze Beschreibung"></div>
+      <div class="form-group"><label>Typ</label>
+        <select class="form-control" id="spType"><option>tow</option><option>exam</option><option>Felder</option><option>Hotspot</option><option>other</option></select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
+      </div>
+    </form>`);
+}
+
+window.submitSpot = async (e, x, y) => {
+  e.preventDefault();
+  const r = await api('/api/map-spots', { method: 'POST', body: { name: $('spName').value.trim(), description: $('spDesc').value.trim(), x_pos: x, y_pos: y, spot_type: $('spType').value }});
+  if (r) { window._addingSpot = false; closeModal(); toast('Spot gespeichert!', 'ok'); map(); }
+};
+
+window.deleteSpot = async id => {
+  const r = await api(`/api/map-spots/${id}`, { method: 'DELETE' });
+  if (r) { toast('Spot gelöscht.', 'ok'); map(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  IC-ZEIT
+// ════════════════════════════════════════════════════════════════
+async function iczeit() {
+  const [stats, log, active] = await Promise.all([api('/api/ic-stats'), api('/api/ic-log'), api('/api/active-sessions')]);
+  if (!stats) return;
+
+  const maxWeek = Math.max(...stats.map(s => +s.week), 0.01);
+  const totalH  = stats.reduce((s, u) => s + +u.week, 0);
+
+  $('pageContent').innerHTML = `
+    <div class="pg-header">
+      <div class="pg-header-left"><h2>IC-Zeit Tracking</h2><p>Discord Voice-Kanal Anwesenheit – automatisch via Bot</p></div>
+      ${isAdmin() ? '<button class="btn btn-primary" onclick="openLogTime()"><i class="fas fa-plus"></i> Manuell eintragen</button>' : ''}
+    </div>
+
+    ${(active && active.length > 0) ? `
+    <div class="card" style="margin-bottom:1.1rem;border:1px solid rgba(34,197,94,.25);background:rgba(34,197,94,.05)">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(34,197,94,.15)"><i class="fas fa-circle" style="color:#22c55e;font-size:.6rem;animation:pulse 1.5s infinite"></i></div>
+        <div><div class="card-title">Jetzt aktiv im Voice</div><div class="card-sub">${active.length} Mitarbeiter werden gerade getrackt</div></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:.6rem;padding:.25rem 0">
+        ${active.map(s => `
+          <div style="display:flex;align-items:center;gap:.5rem;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:8px;padding:.35rem .75rem;font-size:.85rem">
+            <i class="fas fa-microphone" style="color:#22c55e;font-size:.75rem"></i>
+            <span style="font-weight:600">${s.username}</span>
+            <span style="color:var(--muted)">${s.channelName}</span>
+            <span style="color:#22c55e;font-weight:700">${s.minutesSince} Min</span>
+          </div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    <div class="stats-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:1.1rem">
+      <div class="stat-card">
+        <div class="stat-info"><div class="stat-lbl">Gesamt IC-Stunden (Woche)</div><div class="stat-val o">${totalH.toFixed(1)}h</div></div>
+        <div class="stat-ico o"><i class="fas fa-clock"></i></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info"><div class="stat-lbl">Aktive Mitarbeiter</div><div class="stat-val">${stats.length}</div></div>
+        <div class="stat-ico g"><i class="fas fa-users"></i></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info"><div class="stat-lbl">Auto-Einträge</div><div class="stat-val b">${(log || []).filter(e => e.auto).length}</div></div>
+        <div class="stat-ico b"><i class="fab fa-discord"></i></div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.1rem">
+      <div class="card">
+        <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-trophy"></i></div>
+        <div><div class="card-title">Wochenrangliste</div><div class="card-sub">IC-Stunden diese Woche</div></div></div>
+        ${stats.map((u, i) => {
+          const pct = maxWeek > 0 ? Math.min((+u.week / maxWeek) * 100, 100) : 0;
+          return `<div style="margin-bottom:.85rem">
+            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.35rem">
+              <div class="rank-badge${i === 0 ? '' : i === 1 ? ' r2' : ' r3'}"${i > 2 ? ' style="background:#2a2a2a;color:var(--muted)"' : ''}>${i + 1}</div>
+              <div style="flex-shrink:0">${avatarEl(u, 28)}</div>
+              <div style="flex:1;font-size:.87rem;font-weight:600">${u.username}</div>
+              <div style="font-size:.87rem;font-weight:700;color:var(--orange)">${(+u.week).toFixed(1)}h</div>
+            </div>
+            <div style="height:4px;background:#2a2a2a;border-radius:2px"><div style="height:100%;width:${pct}%;background:var(--orange);border-radius:2px;transition:width .4s"></div></div>
+          </div>`;
+        }).join('')}
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-head-icon blue"><i class="fas fa-table"></i></div>
+        <div><div class="card-title">Übersicht</div><div class="card-sub">Woche / Monat / Gesamt</div></div></div>
+        <div class="tbl-wrap">
+          <table class="data-tbl">
+            <thead><tr><th>Mitarbeiter</th><th>Woche</th><th>Monat</th><th>Gesamt</th></tr></thead>
+            <tbody>
+              ${stats.map(u => `<tr>
+                <td style="font-weight:600;color:var(--text)">${u.username}</td>
+                <td style="color:var(--orange)">${(+u.week).toFixed(1)}h</td>
+                <td>${(+u.month).toFixed(1)}h</td>
+                <td style="color:var(--muted)">${(+u.total).toFixed(1)}h</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1.1rem">
+      <div class="card-head"><div class="card-head-icon green"><i class="fas fa-list-ul"></i></div>
+      <div><div class="card-title">IC-Zeit Log</div><div class="card-sub">Letzte Einträge — <i class="fab fa-discord" style="color:#5865f2"></i> = automatisch via Bot</div></div></div>
+      <div class="tbl-wrap">
+        <table class="data-tbl">
+          <thead><tr><th>Datum</th><th>Mitarbeiter</th><th>Stunden</th><th>Notizen</th><th>Quelle</th>${isAdmin() ? '<th></th>' : ''}</tr></thead>
+          <tbody>
+            ${(log || []).length ? log.map(e => `<tr>
+              <td>${fmt(e.date)}</td>
+              <td style="font-weight:600;color:var(--text)">${e.user_name}</td>
+              <td style="color:var(--orange);font-weight:700">${(+e.hours).toFixed(1)}h</td>
+              <td style="color:var(--muted)">${e.notes || '—'}</td>
+              <td>${e.auto ? '<span class="badge badge-b"><i class="fab fa-discord"></i> Bot</span>' : `<span class="badge badge-m">${e.logged_by_name || 'Manuell'}</span>`}</td>
+              ${isAdmin() ? `<td><button class="btn btn-danger btn-sm" onclick="deleteIcEntry(${e.id})"><i class="fas fa-trash"></i></button></td>` : ''}
+            </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem">Keine Einträge – Bot läuft noch nicht?</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+window.openLogTime = async () => {
+  const users = await api('/api/users');
+  openModal(`
+    <div class="modal-head"><div class="modal-title"><i class="fas fa-clock" style="color:var(--orange);margin-right:.5rem"></i>IC-Zeit manuell eintragen</div>
+    <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+    <form onsubmit="submitIcTime(event)">
+      <div class="form-group"><label>Mitarbeiter</label>
+        <select class="form-control" id="icUser">${(users || []).map(u => `<option value="${u.id}">${u.username}</option>`).join('')}</select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Stunden</label><input type="number" class="form-control" id="icHours" step="0.5" min="0.5" max="24" value="2" required></div>
+        <div class="form-group"><label>Datum</label><input type="date" class="form-control" id="icDate" value="${new Date().toISOString().split('T')[0]}" required></div>
+      </div>
+      <div class="form-group"><label>Session / Notizen</label><input class="form-control" id="icNotes" placeholder="z. B. PKW-Prüfungsschicht"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
+      </div>
+    </form>`);
+};
+
+window.submitIcTime = async e => {
+  e.preventDefault();
+  const r = await api('/api/ic-log', { method: 'POST', body: { user_id: +$('icUser').value, hours: +$('icHours').value, date: $('icDate').value, notes: $('icNotes').value.trim() }});
+  if (r) { closeModal(); toast('Gespeichert!', 'ok'); iczeit(); }
+};
+
+window.deleteIcEntry = async id => {
+  const r = await api(`/api/ic-log/${id}`, { method: 'DELETE' });
+  if (r) { toast('Gelöscht.', 'ok'); iczeit(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  BANS
+// ════════════════════════════════════════════════════════════════
+async function bans() {
+  const rows = await api('/api/bans');
+  if (!rows) return;
+  const active = rows.filter(b => b.is_active);
+
+  $('pageContent').innerHTML = `
+    <div class="pg-header">
+      <div class="pg-header-left"><h2>Aktive Sperren</h2><p>${active.length} aktive Hausverbote</p></div>
+      <button class="btn btn-primary" onclick="openAddBan()"><i class="fas fa-plus"></i> Sperre eintragen</button>
+    </div>
+    <div class="tbl-wrap">
+      <table class="data-tbl">
+        <thead><tr><th>Person</th><th>ID</th><th>Grund</th><th>Ausgestellt von</th><th>Dauer</th><th>Datum</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${rows.map(b => `<tr>
+            <td style="font-weight:600;color:var(--text)">${b.person_name}</td>
+            <td>${b.person_id || '—'}</td>
+            <td>${b.reason}</td>
+            <td>${b.issued_by_name}</td>
+            <td>${b.duration_days ? b.duration_days + ' Tage' : 'Permanent'}</td>
+            <td>${fmt(b.issued_at)}</td>
+            <td><span class="badge ${b.is_active ? 'badge-r' : 'badge-m'}">${b.is_active ? 'Aktiv' : 'Aufgehoben'}</span></td>
+            <td><div style="display:flex;gap:.4rem">
+              ${b.is_active ? `<button class="btn btn-success btn-sm" onclick="liftBan(${b.id})"><i class="fas fa-unlock"></i></button>` : ''}
+              ${isAdmin() ? `<button class="btn btn-danger btn-sm" onclick="deleteBan(${b.id})"><i class="fas fa-trash"></i></button>` : ''}
+            </div></td>
+          </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">Keine Sperren</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+window.openAddBan = () => openModal(`
+  <div class="modal-head"><div class="modal-title"><i class="fas fa-ban" style="color:var(--red);margin-right:.5rem"></i>Sperre eintragen</div>
+  <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+  <form onsubmit="submitBan(event)">
+    <div class="form-row">
+      <div class="form-group"><label>Name</label><input class="form-control" id="bName" required></div>
+      <div class="form-group"><label>Spieler-ID</label><input class="form-control" id="bId" placeholder="CF-0000"></div>
+    </div>
+    <div class="form-group"><label>Grund</label><input class="form-control" id="bReason" required></div>
+    <div class="form-group"><label>Dauer in Tagen (0 = permanent)</label><input type="number" class="form-control" id="bDays" value="30" min="0"></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button type="submit" class="btn btn-danger"><i class="fas fa-ban"></i> Sperren</button>
+    </div>
+  </form>`);
+
+window.submitBan = async e => {
+  e.preventDefault();
+  const r = await api('/api/bans', { method: 'POST', body: { person_name: $('bName').value.trim(), person_id: $('bId').value.trim(), reason: $('bReason').value.trim(), duration_days: +$('bDays').value }});
+  if (r) { closeModal(); toast('Sperre eingetragen.', 'ok'); bans(); }
+};
+
+window.liftBan = async id => {
+  const r = await api(`/api/bans/${id}/lift`, { method: 'PATCH' });
+  if (r) { toast('Sperre aufgehoben.', 'ok'); bans(); }
+};
+
+window.deleteBan = async id => {
+  const r = await api(`/api/bans/${id}`, { method: 'DELETE' });
+  if (r) { toast('Gelöscht.', 'ok'); bans(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  ADMIN
+// ════════════════════════════════════════════════════════════════
+async function admin() {
+  if (!isAdmin()) { $('pageContent').innerHTML = '<div class="empty"><i class="fas fa-lock"></i><p>Kein Zugriff</p></div>'; return; }
+  const [users, cats] = await Promise.all([api('/api/users'), api('/api/exam-categories')]);
+  if (!users) return;
+  window._adminCats = cats;
+
+  $('pageContent').innerHTML = `
+    <div class="admin-grid">
+      <div class="card">
+        <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-users"></i></div>
+        <div><div class="card-title">Benutzerverwaltung</div><div class="card-sub">${users.length} Nutzer</div></div></div>
+        <button class="btn btn-primary btn-sm" onclick="openAddUser()" style="margin-bottom:.85rem"><i class="fas fa-user-plus"></i> Nutzer hinzufügen</button>
+        <div class="tbl-wrap">
+          <table class="data-tbl">
+            <thead><tr><th>Name</th><th>Discord-ID</th><th>Rolle</th><th>Statistiken</th><th></th></tr></thead>
+            <tbody>
+              ${users.map(u => `<tr>
+                <td>
+                  <div style="display:flex;align-items:center;gap:.6rem">
+                    ${avatarEl(u, 28)}
+                    <span style="font-weight:600">${u.username}</span>
+                  </div>
+                </td>
+                <td style="font-size:.78rem;color:var(--muted)">${u.discord_id}</td>
+                <td>
+                  <select class="form-control" style="padding:.25rem .5rem;height:auto;font-size:.82rem;width:auto"
+                    onchange="setRole(${u.id}, this.value)">
+                    <option value="member" ${u.role === 'member' ? 'selected' : ''}>Mitarbeiter</option>
+                    <option value="admin"  ${u.role === 'admin'  ? 'selected' : ''}>Admin</option>
+                  </select>
+                </td>
+                <td>
+                  <button class="btn btn-ghost btn-sm" onclick="openProfileModal(${u.id})">
+                    <i class="fas fa-chart-bar"></i> Statistiken
+                  </button>
+                </td>
+                <td>
+                  <button class="btn btn-danger btn-sm" onclick="removeUser(${u.id})"><i class="fas fa-trash"></i></button>
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-head-icon blue"><i class="fas fa-question-circle"></i></div>
+        <div><div class="card-title">Fragenverwaltung</div><div class="card-sub">${cats?.reduce((s,c)=>s+c.question_count,0)||0} Fragen total</div></div></div>
+        <button class="btn btn-primary btn-sm" onclick="openAddQuestion()" style="margin-bottom:.85rem"><i class="fas fa-plus"></i> Frage hinzufügen</button>
+        ${(cats || []).map(cat => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:.55rem .75rem;background:var(--input);border-radius:var(--r);margin-bottom:.4rem">
+            <div style="display:flex;align-items:center;gap:.6rem">
+              <i class="fas ${cat.icon}" style="color:var(--orange);width:16px;text-align:center"></i>
+              <span style="font-size:.88rem;font-weight:600">${cat.name}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <span class="badge badge-m">${cat.question_count} Fragen</span>
+              <button class="btn btn-ghost btn-sm" onclick="manageQuestions(${cat.id},'${cat.name}','${cat.icon}')"><i class="fas fa-cog"></i></button>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+window.openAddUser = () => openModal(`
+  <div class="modal-head"><div class="modal-title">Nutzer hinzufügen</div>
+  <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+  <form onsubmit="submitUser(event)">
+    <div class="form-group"><label>Benutzername</label><input class="form-control" id="uName" required></div>
+    <div class="form-group"><label>Discord-ID (18-stellig)</label><input class="form-control" id="uDid" placeholder="102938475610293847" required></div>
+    <div class="form-group"><label>Rolle</label>
+      <select class="form-control" id="uRole"><option value="member">Mitarbeiter</option><option value="admin">Admin</option></select>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Hinzufügen</button>
+    </div>
+  </form>`);
+
+window.submitUser = async e => {
+  e.preventDefault();
+  const r = await api('/api/users', { method: 'POST', body: { discord_id: $('uDid').value.trim(), username: $('uName').value.trim(), role: $('uRole').value }});
+  if (r) { closeModal(); toast('Nutzer hinzugefügt!', 'ok'); admin(); }
+};
+
+window.toggleRole = async (id, role) => {
+  const r = await api(`/api/users/${id}`, { method: 'PATCH', body: { role: role === 'admin' ? 'member' : 'admin' }});
+  if (r) { toast('Rolle geändert.', 'ok'); admin(); }
+};
+
+window.setRole = async (id, role) => {
+  if (id === currentUser.id && role !== 'admin') {
+    toast('Du kannst dich nicht selbst herabstufen.', 'err');
+    admin();
+    return;
+  }
+  const r = await api(`/api/users/${id}`, { method: 'PATCH', body: { role } });
+  if (r) toast('Rolle gespeichert.', 'ok');
+};
+
+window.removeUser = async id => {
+  if (!confirm('Nutzer entfernen?')) return;
+  const r = await api(`/api/users/${id}`, { method: 'DELETE' });
+  if (r) { toast('Entfernt.', 'ok'); admin(); }
+};
+
+window.openAddQuestion = (cid = '', catName = '') => openModal(`
+  <div class="modal-head"><div class="modal-title">Frage hinzufügen</div>
+  <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+  <form onsubmit="submitQuestion(event)">
+    <div class="form-group"><label>Kategorie</label>
+      <select class="form-control" id="qCat" id="qCat">
+        ${(window._adminCats || []).map(c => `<option value="${c.id}"${c.id==cid?' selected':''}>${c.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>Frage</label><textarea class="form-control" id="qText" rows="3" required></textarea></div>
+    <div class="form-group"><label>Antwort A</label><input class="form-control" id="qA" required></div>
+    <div class="form-group"><label>Antwort B</label><input class="form-control" id="qB" required></div>
+    <div class="form-group"><label>Antwort C</label><input class="form-control" id="qC" required></div>
+    <div class="form-group"><label>Antwort D</label><input class="form-control" id="qD" required></div>
+    <div class="form-group"><label>Richtige Antwort</label>
+      <select class="form-control" id="qAns"><option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option></select>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
+    </div>
+  </form>`);
+
+window.submitQuestion = async e => {
+  e.preventDefault();
+  const r = await api('/api/exam-questions', { method: 'POST', body: { category_id: +$('qCat').value, question: $('qText').value.trim(), option_a: $('qA').value.trim(), option_b: $('qB').value.trim(), option_c: $('qC').value.trim(), option_d: $('qD').value.trim(), correct_answer: +$('qAns').value }});
+  if (r) { closeModal(); toast('Frage gespeichert!', 'ok'); admin(); }
+};
+
+window.manageQuestions = async (cid, name, icon) => {
+  const qs = await api(`/api/exam-questions/${cid}`);
+  openModal(`
+    <div class="modal-head"><div class="modal-title"><i class="fas ${icon}" style="color:var(--orange);margin-right:.5rem"></i>${name} – Fragen (${qs?.length || 0})</div>
+    <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+    <button class="btn btn-primary btn-sm" onclick="openAddQuestion(${cid})" style="margin-bottom:1rem"><i class="fas fa-plus"></i> Neue Frage</button>
+    <div style="max-height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:.5rem">
+      ${(qs || []).map(q => `<div style="background:var(--input);border-radius:var(--r);padding:.75rem">
+        <div style="font-size:.85rem;font-weight:600;margin-bottom:.4rem">${q.question}</div>
+        <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.5rem">
+          ${[q.option_a,q.option_b,q.option_c,q.option_d].map((o,i)=>`<span class="badge ${i===q.correct_answer?'badge-g':'badge-m'}">${'ABCD'[i]}: ${o}</span>`).join('')}
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="deleteQuestion(${q.id})"><i class="fas fa-trash"></i></button>
+      </div>`).join('') || '<div class="empty"><i class="fas fa-question-circle"></i><p>Keine Fragen</p></div>'}
+    </div>`);
+  window._adminCats = await api('/api/exam-categories');
+};
+
+window.deleteQuestion = async id => {
+  const r = await api(`/api/exam-questions/${id}`, { method: 'DELETE' });
+  if (r) { toast('Gelöscht.', 'ok'); closeModal(); admin(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  PROFILE MODAL
+// ════════════════════════════════════════════════════════════════
+window.openProfileModal = async id => {
+  const d = await api(`/api/profile/${id}`);
+  if (!d) return;
+  const { user: u, stats: st, recentExams } = d;
+  const url = avatarUrl(u);
+
+  openModal(`
+    <div class="modal-head"><div class="modal-title">Profil</div>
+    <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+    <div class="profile-header">
+      <div class="profile-av" style="${url ? 'background:transparent;padding:0;overflow:hidden' : ''}">
+        ${url ? `<img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='${initials(u.username)}'">` : initials(u.username)}
+      </div>
+      <div>
+        <div class="profile-name">${u.username}</div>
+        <div class="profile-role">${u.role === 'admin' ? 'Administrator' : 'Mitarbeiter'}</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:.2rem"><i class="fab fa-discord"></i> ${u.discord_id}</div>
+      </div>
+    </div>
+    <div class="profile-stats">
+      <div class="pstat"><div class="pstat-val">${st.conducted}</div><div class="pstat-lbl">Prüfungen abgenommen</div></div>
+      <div class="pstat"><div class="pstat-val o" style="color:var(--orange)">${st.eow_wins}</div><div class="pstat-lbl">MA der Woche</div></div>
+      <div class="pstat"><div class="pstat-val" style="color:var(--blue)">${(+st.ic_total||0).toFixed(2)}h</div><div class="pstat-lbl">IC-Stunden gesamt</div></div>
+    </div>
+    <div style="display:flex;gap:.5rem;margin-bottom:.85rem">
+      <div style="flex:1;background:var(--input);border-radius:var(--r);padding:.65rem;text-align:center">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--orange)">${(+st.ic_week||0).toFixed(2)}h</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:.1rem">IC-Zeit diese Woche</div>
+      </div>
+      <div style="flex:1;background:var(--input);border-radius:var(--r);padding:.65rem;text-align:center">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--green)">${st.total_exams}</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:.1rem">Online-Tests gemacht</div>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.65rem">Letzte Tests</div>
+    ${recentExams.length ? recentExams.map(s => `
+      <div class="re-item">
+        <div class="re-ico ${s.passed ? 'pass' : 'fail'}"><i class="fas ${s.passed ? 'fa-check' : 'fa-times'}"></i></div>
+        <div class="re-info">
+          <div class="re-name">${s.category_name} ${s.mode === 'flash' ? 'Blitz' : 'Volltest'}</div>
+          <div class="re-meta">${s.score}/${s.total} richtig</div>
+        </div>
+        <div class="re-time">${ago(s.taken_at)}</div>
+      </div>`).join('') : '<div class="empty" style="padding:.5rem"><p>Keine Tests absolviert</p></div>'}
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Schließen</button></div>`);
+};
+
+// ── Start ─────────────────────────────────────────────────────────
+init();
