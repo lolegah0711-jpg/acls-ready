@@ -4,7 +4,8 @@
   "description": "ACLS Automobil-Club Portal",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node start.js",
+    "server": "node server.js",
     "bot": "node bot.js",
     "dev": "nodemon server.js"
   },
