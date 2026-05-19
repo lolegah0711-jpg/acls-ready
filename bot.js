@@ -106,6 +106,27 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   }
 });
 
+// Server-Nickname geändert → Namen auf der Website synchronisieren
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+  if (GUILD_ID && newMember.guild.id !== GUILD_ID) return;
+  const oldName = oldMember.nickname || oldMember.user.globalName || oldMember.user.username;
+  const newName = newMember.nickname || newMember.user.globalName || newMember.user.username;
+  if (oldName === newName && oldMember.user.avatar === newMember.user.avatar) return;
+  try {
+    await fetch(`${SERVER_URL}/api/sync-member`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bot_secret:  BOT_SECRET,
+        discord_id:  newMember.id,
+        username:    newName,
+        avatar:      newMember.user.avatar,
+      }),
+    });
+    console.log(`[Bot] Namen synchronisiert: ${newMember.id} → ${newName}`);
+  } catch (e) { /* Server nicht erreichbar, ignorieren */ }
+});
+
 // Beim Bot-Shutdown offene Sessions speichern
 async function gracefulShutdown() {
   console.log('[Bot] Shutdown – speichere offene Sessions...');

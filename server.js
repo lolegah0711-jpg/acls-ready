@@ -57,6 +57,45 @@ const DISCORD_API      = 'https://discord.com/api/v10';
 const DISCORD_AUTH_URL = 'https://discord.com/api/oauth2/authorize';
 const DISCORD_TOK_URL  = 'https://discord.com/api/oauth2/token';
 
+// Syncs guild nickname + avatar for all active users via Bot token
+async function syncGuildMembers() {
+  if (!process.env.DISCORD_GUILD_ID || !process.env.DISCORD_BOT_TOKEN) return 0;
+  const users = db.prepare('SELECT id, discord_id FROM users WHERE is_active = 1').all();
+  let synced = 0;
+  for (const user of users) {
+    try {
+      const r = await fetch(`${DISCORD_API}/guilds/${process.env.DISCORD_GUILD_ID}/members/${user.discord_id}`, {
+        headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
+      });
+      if (!r.ok) continue;
+      const member = await r.json();
+      const name   = member.nick || member.user?.global_name || member.user?.username;
+      const avatar = member.user?.avatar;
+      if (name)             db.prepare('UPDATE users SET username = ? WHERE id = ?').run(name, user.id);
+      if (avatar !== undefined) db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(avatar, user.id);
+      synced++;
+    } catch (e) { /* einzelne Fehler überspringen */ }
+  }
+  return synced;
+}
+
+// EOW auswerten (Mitarbeiter- + Bürgerstimmen kombiniert)
+function runEowEvaluation() {
+  const wk = weekKey();
+  const winner = db.prepare(`
+    SELECT nominee_id, COUNT(*) as votes FROM (
+      SELECT nominee_id FROM eow_votes WHERE week = ?
+      UNION ALL
+      SELECT nominee_id FROM citizen_votes WHERE week = ?
+    ) GROUP BY nominee_id ORDER BY votes DESC LIMIT 1
+  `).get(wk, wk);
+  if (!winner) { console.log(`[EoW] ${wk}: keine Stimmen`); return null; }
+  db.prepare('INSERT OR REPLACE INTO eow_winners (user_id, week, vote_count) VALUES (?, ?, ?)')
+    .run(winner.nominee_id, wk, winner.votes);
+  console.log(`[EoW] ${wk}: user #${winner.nominee_id} (${winner.votes} Stimmen)`);
+  return winner;
+}
+
 // ════════════════════════════════════════════════════════════════
 //  DISCORD OAUTH
 // ════════════════════════════════════════════════════════════════
@@ -106,9 +145,22 @@ app.get('/auth/callback', async (req, res) => {
       return res.redirect('/?mode=vote');
     }
 
-    // Sync name + avatar
-    db.prepare('UPDATE users SET username = ?, avatar = ? WHERE id = ?')
-      .run(dUser.username, dUser.avatar, dbUser.id);
+    // Sync name + avatar — bevorzuge Server-Nickname falls Bot-Token vorhanden
+    let displayName = dUser.global_name || dUser.username;
+    let avatarHash  = dUser.avatar;
+    if (process.env.DISCORD_GUILD_ID && process.env.DISCORD_BOT_TOKEN) {
+      try {
+        const mRes = await fetch(`${DISCORD_API}/guilds/${process.env.DISCORD_GUILD_ID}/members/${dUser.id}`, {
+          headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
+        });
+        if (mRes.ok) {
+          const member = await mRes.json();
+          displayName = member.nick || member.user?.global_name || member.user?.username || displayName;
+          avatarHash  = member.user?.avatar ?? avatarHash;
+        }
+      } catch (_) { /* Fallback auf globalen Namen */ }
+    }
+    db.prepare('UPDATE users SET username = ?, avatar = ? WHERE id = ?').run(displayName, avatarHash, dbUser.id);
 
     req.session.userId = dbUser.id;
     res.redirect('/');
@@ -223,14 +275,8 @@ app.post('/api/eow/vote', requireAuth, (req, res) => {
 });
 
 app.post('/api/eow/count', requireAdmin, (req, res) => {
-  const wk     = weekKey();
-  const winner = db.prepare(`
-    SELECT nominee_id, COUNT(*) as votes FROM eow_votes
-    WHERE week = ? GROUP BY nominee_id ORDER BY votes DESC LIMIT 1
-  `).get(wk);
+  const winner = runEowEvaluation();
   if (!winner) return res.json({ message: 'Keine Stimmen diese Woche' });
-  db.prepare('INSERT OR REPLACE INTO eow_winners (user_id, week, vote_count) VALUES (?, ?, ?)')
-    .run(winner.nominee_id, wk, winner.votes);
   res.json({ ok: true, winner_id: winner.nominee_id, votes: winner.votes });
 });
 
@@ -557,6 +603,28 @@ app.get('/api/users/public', (req, res) => {
   res.json(db.prepare('SELECT id, username, avatar, discord_id FROM users WHERE is_active = 1 ORDER BY username').all());
 });
 
+// Vom Bot aufgerufen wenn Server-Nickname sich ändert
+app.post('/api/sync-member', (req, res) => {
+  const { bot_secret, discord_id, username, avatar } = req.body;
+  if (bot_secret !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(403).end();
+  const user = db.prepare('SELECT id FROM users WHERE discord_id = ? AND is_active = 1').get(discord_id);
+  if (user) {
+    if (username) db.prepare('UPDATE users SET username = ? WHERE id = ?').run(username, user.id);
+    if (avatar !== undefined) db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(avatar, user.id);
+  }
+  res.json({ ok: true });
+});
+
+// Admin: alle Guild-Mitglieder manuell synchronisieren
+app.post('/api/sync-members', requireAdmin, async (req, res) => {
+  try {
+    const synced = await syncGuildMembers();
+    res.json({ ok: true, synced });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ════════════════════════════════════════════════════════════════
 //  GTA V MAP PROXY (umgeht imgur-Hotlink-Sperre)
 // ════════════════════════════════════════════════════════════════
@@ -660,13 +728,25 @@ app.get('/api/dashboard', requireAuth, (req, res) => {
   const eowWinner  = db.prepare(`SELECT w.*, u.username, u.avatar, u.discord_id FROM eow_winners w JOIN users u ON u.id=w.user_id WHERE w.week=?`).get(wk);
   const lastWinner = eowWinner || db.prepare(`SELECT w.*, u.username, u.avatar, u.discord_id FROM eow_winners w JOIN users u ON u.id=w.user_id ORDER BY w.announced_at DESC LIMIT 1`).get();
 
+  // Aktuelle Stimmen (Mitarbeiter + Bürger kombiniert) für Dashboard-Anzeige
+  const eowStandings = db.prepare(`
+    SELECT u.id, u.username, u.avatar, u.discord_id, COUNT(*) as votes
+    FROM (
+      SELECT nominee_id FROM eow_votes WHERE week = ?
+      UNION ALL
+      SELECT nominee_id FROM citizen_votes WHERE week = ?
+    ) v JOIN users u ON u.id = v.nominee_id
+    GROUP BY v.nominee_id ORDER BY votes DESC LIMIT 3
+  `).all(wk, wk);
+
   const icWeekTop = db.prepare(`
     SELECT u.id, u.username, u.avatar, u.discord_id, COALESCE(SUM(l.hours),0) as hours FROM users u
     LEFT JOIN ic_log l ON l.user_id=u.id AND l.date >= date('now','-6 days')
     WHERE u.is_active=1 GROUP BY u.id ORDER BY hours DESC LIMIT 3
   `).all();
 
-  res.json({ total, passed, failed, rate, todayCount, weekCount, monthCount, top5, lastExams, eowWinner: lastWinner, icWeekTop });
+  res.json({ total, passed, failed, rate, todayCount, weekCount, monthCount, top5, lastExams,
+    eowWinner: lastWinner, isCurrentWeekWinner: !!eowWinner, eowStandings, currentWeek: wk, icWeekTop });
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -693,13 +773,16 @@ cron.schedule('0 * * * *', () => {
   if (r.changes > 0) console.log(`[Cron] ${r.changes} abgelaufene Sperre(n) deaktiviert`);
 });
 
-cron.schedule('0 20 * * 0', () => {
-  const wk     = weekKey();
-  const winner = db.prepare(`SELECT nominee_id, COUNT(*) as votes FROM eow_votes WHERE week=? GROUP BY nominee_id ORDER BY votes DESC LIMIT 1`).get(wk);
-  if (!winner) return;
-  db.prepare('INSERT OR IGNORE INTO eow_winners (user_id, week, vote_count) VALUES (?, ?, ?)').run(winner.nominee_id, wk, winner.votes);
-  console.log(`[Cron] EoW Week ${wk}: user #${winner.nominee_id} (${winner.votes} votes)`);
-});
+// Sonntag 18:00 Berliner Zeit — Mitarbeiter der Woche automatisch auswerten
+cron.schedule('0 18 * * 0', () => {
+  runEowEvaluation();
+}, { timezone: 'Europe/Berlin' });
+
+// Täglich 03:00 Berliner Zeit — Server-Nicknamen aller Mitglieder synchronisieren
+cron.schedule('0 3 * * *', async () => {
+  const n = await syncGuildMembers();
+  if (n > 0) console.log(`[Cron] ${n} Mitglieder-Namen synchronisiert`);
+}, { timezone: 'Europe/Berlin' });
 
 // ════════════════════════════════════════════════════════════════
 //  SPA fallback

@@ -236,20 +236,41 @@ async function dashboard() {
   const d = await api('/api/dashboard');
   if (!d) return;
 
-  const eow = d.eowWinner;
+  const eow      = d.eowWinner;
+  const isCurWk  = d.isCurrentWeekWinner;
+  const curWk    = d.currentWeek ? `KW ${d.currentWeek.split('-W')[1]}` : '';
+  const top      = d.eowStandings?.[0];
   const rankBadge = i => `<div class="rank-badge${i === 1 ? '' : i === 2 ? ' r2' : ' r3'}"${i > 3 ? ' style="background:#2a2a2a;color:var(--muted)"' : ''}>${i}</div>`;
+
+  // Banner: aktueller Gewinner oder laufende Abstimmung mit Führendem
+  const bannerContent = isCurWk
+    ? `<div class="eow-av">${avatarUrl(eow) ? `<img src="${avatarUrl(eow)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(eow.username)}</div>
+       <div class="eow-info">
+         <div class="eow-label"><i class="fas fa-trophy" style="margin-right:.3rem"></i>Mitarbeiter der Woche · ${curWk}</div>
+         <div class="eow-name">${eow.username}</div>
+         <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">${eow.vote_count} Stimmen · ${eow.week}</div>
+       </div>
+       <div class="eow-ml"><button class="btn btn-ghost btn-sm" onclick="navigate('eow')"><i class="fas fa-list"></i> Details</button></div>`
+    : top
+      ? `<div class="eow-av" style="border-color:rgba(249,115,22,.25)">${avatarUrl(top) ? `<img src="${avatarUrl(top)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(top.username)}</div>
+         <div class="eow-info">
+           <div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>Abstimmung läuft · ${curWk}</div>
+           <div class="eow-name">${top.username} führt mit ${top.votes} Stimmen</div>
+           <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">Auszählung: Sonntag 18:00 Uhr</div>
+         </div>
+         <div class="eow-ml"><button class="btn btn-primary btn-sm" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Abstimmen</button></div>`
+      : `<div class="eow-av" style="background:var(--surface2);color:var(--muted);font-size:1.4rem"><i class="fas fa-question"></i></div>
+         <div class="eow-info">
+           <div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>Abstimmung · ${curWk}</div>
+           <div class="eow-name">Noch keine Stimmen</div>
+           <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">Auszählung: Sonntag 18:00 Uhr</div>
+         </div>
+         <div class="eow-ml"><button class="btn btn-primary btn-sm" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Jetzt abstimmen</button></div>`;
 
   $('pageContent').innerHTML = `
     <!-- EoW Banner -->
     <div class="eow-banner">
-      <div class="eow-av">${eow ? (avatarUrl(eow) ? `<img src="${avatarUrl(eow)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(eow.username)) : '?'}</div>
-      <div class="eow-info">
-        <div class="eow-label">Mitarbeiter der Woche</div>
-        <div class="eow-name">${eow?.username || 'Noch kein Gewinner'}</div>
-      </div>
-      <div class="eow-ml">
-        <button class="btn btn-primary" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Jetzt abstimmen</button>
-      </div>
+      ${bannerContent}
     </div>
 
     <!-- 4 Stat cards -->
@@ -392,12 +413,19 @@ async function eow() {
   const [data, users] = await Promise.all([api('/api/eow'), api('/api/users')]);
   if (!data) return;
 
-  const candidates = (users || []).filter(u => u.id !== currentUser.id && u.is_active);
+  // Alle aktiven Mitarbeiter zeigen (inkl. sich selbst — aber nicht wählbar)
+  const candidates = (users || []).filter(u => u.is_active);
   const myVote     = data.myVoteFor;
   const tally      = {};
   data.standings.forEach(s => { tally[s.id] = s.votes; });
   const citTally   = {};
   (data.citizenVotes || []).forEach(c => { citTally[c.nominee_id] = c.votes; });
+
+  // Gesamtstimmen (Mitarbeiter + Bürger) pro Kandidat für Anzeige
+  const totalTally = {};
+  candidates.forEach(u => {
+    totalTally[u.id] = (tally[u.id] || 0) + (citTally[u.id] || 0);
+  });
 
   $('pageContent').innerHTML = `
     <div class="eow-grid">
@@ -406,28 +434,38 @@ async function eow() {
           <div class="card-head">
             <div class="card-head-icon orange"><i class="fas fa-vote-yea"></i></div>
             <div><div class="card-title">Abstimmung – KW ${data.week.split('-W')[1]}</div>
-            <div class="card-sub">${myVote ? 'Du hast bereits abgestimmt' : 'Wähle einen Mitarbeiter'}</div></div>
+            <div class="card-sub">${myVote ? 'Du hast bereits abgestimmt' : 'Wähle einen Mitarbeiter'} · Auszählung: Sonntag 18:00 Uhr</div></div>
           </div>
-          ${candidates.map(u => `
-            <div class="vote-item${myVote === u.id ? ' voted' : ''}" ${!myVote ? `onclick="castVote(${u.id})"` : ''}>
+          ${candidates.map(u => {
+            const isSelf    = u.id === currentUser.id;
+            const isVoted   = myVote === u.id;
+            const canVote   = !myVote && !isSelf;
+            return `
+            <div class="vote-item${isVoted ? ' voted' : ''}${isSelf ? ' self-item' : ''}"
+                 ${canVote ? `onclick="castVote(${u.id})"` : ''}>
               <div style="flex-shrink:0">${avatarEl(u, 38)}</div>
               <div style="flex:1">
-                <div class="vote-name">${u.username}</div>
+                <div class="vote-name">${u.username}${isSelf ? ' <span style="font-size:.7rem;color:var(--muted)">(Du)</span>' : ''}</div>
                 <div class="vote-count">${tally[u.id] || 0} Mitarbeiterstimmen · ${citTally[u.id] || 0} Bürgerstimmen</div>
               </div>
-              ${myVote === u.id ? '<i class="fas fa-check-circle" style="color:var(--orange)"></i>' : ''}
-            </div>`).join('')}
-          ${isAdmin() ? `<div style="margin-top:1rem"><button class="btn btn-primary btn-sm" onclick="countEow()"><i class="fas fa-calculator"></i> Jetzt auszählen</button></div>` : ''}
+              ${isVoted ? '<i class="fas fa-check-circle" style="color:var(--orange)"></i>' : ''}
+              ${isSelf && !isVoted ? '<i class="fas fa-minus-circle" style="color:var(--muted);opacity:.5" title="Keine Selbstnominierung"></i>' : ''}
+            </div>`;
+          }).join('')}
+          ${isAdmin() ? `<div style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" onclick="countEow()"><i class="fas fa-calculator"></i> Jetzt auszählen</button>
+            <button class="btn btn-ghost btn-sm" onclick="syncMembers()"><i class="fas fa-sync"></i> Discord-Namen sync</button>
+          </div>` : ''}
         </div>
 
         <div class="card">
           <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-chart-bar"></i></div>
-          <div><div class="card-title">Stimmenstand</div></div></div>
+          <div><div class="card-title">Stimmenstand</div><div class="card-sub">Mitarbeiter- + Bürgerstimmen</div></div></div>
           ${data.standings.length ? data.standings.map(s => `
             <div class="lb-item">
               <div style="flex-shrink:0">${avatarEl(s, 30)}</div>
               <div class="lb-name">${s.username}</div>
-              <div class="lb-score"><i class="fas fa-fire"></i>${s.votes}</div>
+              <div class="lb-score"><i class="fas fa-fire"></i>${(tally[s.id] || 0) + (citTally[s.id] || 0)}</div>
             </div>`).join('') : '<div class="empty" style="padding:1rem"><p>Noch keine Stimmen</p></div>'}
         </div>
       </div>
@@ -455,6 +493,11 @@ window.castVote = async nominee_id => {
 window.countEow = async () => {
   const r = await api('/api/eow/count', { method: 'POST' });
   if (r?.ok) { toast('Ausgezählt!', 'ok'); eow(); }
+};
+window.syncMembers = async () => {
+  toast('Synchronisiere Discord-Namen …', '');
+  const r = await api('/api/sync-members', { method: 'POST' });
+  if (r?.ok) { toast(`${r.synced} Namen synchronisiert`, 'ok'); eow(); }
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -561,7 +604,10 @@ function renderQuiz(cat) {
       <div class="quiz-counter">Frage ${q.current + 1} von ${q.questions.length}</div>
       ${koBadge}
       <div class="quiz-q">${qst.question}</div>
-      ${[qst.option_a, qst.option_b, qst.option_c, qst.option_d].map((opt, i) => `
+      ${[qst.option_a, qst.option_b, qst.option_c, qst.option_d]
+        .map((opt, i) => ({ opt, i }))
+        .filter(({ opt }) => opt && opt.trim())
+        .map(({ opt, i }) => `
         <div class="quiz-option${q.answers[qst.id] === i ? ' selected' : ''}" onclick="selectOpt(${i})">
           <div class="opt-letter">${'ABCD'[i]}</div><div>${opt}</div>
         </div>`).join('')}
@@ -1364,7 +1410,7 @@ window.openAddQuestion = (cid = '', catName = '') => openModal(`
     <div class="form-group"><label>Antwort A</label><input class="form-control" id="qA" required></div>
     <div class="form-group"><label>Antwort B</label><input class="form-control" id="qB" required></div>
     <div class="form-group"><label>Antwort C</label><input class="form-control" id="qC" required></div>
-    <div class="form-group"><label>Antwort D</label><input class="form-control" id="qD" required></div>
+    <div class="form-group"><label>Antwort D <span style="color:var(--muted);font-size:.8rem">(optional)</span></label><input class="form-control" id="qD"></div>
     <div class="form-group"><label>Richtige Antwort</label>
       <select class="form-control" id="qAns"><option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option></select>
     </div>
@@ -1390,7 +1436,7 @@ window.manageQuestions = async (cid, name, icon) => {
       ${(qs || []).map(q => `<div style="background:var(--input);border-radius:var(--r);padding:.75rem">
         <div style="font-size:.85rem;font-weight:600;margin-bottom:.4rem">${q.question}</div>
         <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.5rem">
-          ${[q.option_a,q.option_b,q.option_c,q.option_d].map((o,i)=>`<span class="badge ${i===q.correct_answer?'badge-g':'badge-m'}">${'ABCD'[i]}: ${o}</span>`).join('')}
+          ${[q.option_a,q.option_b,q.option_c,q.option_d].map((o,i)=>({o,i})).filter(({o})=>o&&o.trim()).map(({o,i})=>`<span class="badge ${i===q.correct_answer?'badge-g':'badge-m'}">${'ABCD'[i]}: ${o}</span>`).join('')}
         </div>
         <button class="btn btn-danger btn-sm" onclick="deleteQuestion(${q.id})"><i class="fas fa-trash"></i></button>
       </div>`).join('') || '<div class="empty"><i class="fas fa-question-circle"></i><p>Keine Fragen</p></div>'}
