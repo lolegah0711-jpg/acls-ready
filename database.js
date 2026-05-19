@@ -148,6 +148,21 @@ function initDb() {
     );
   `);
 
+  // Seed admin users from env vars on first start (Railway: set ADMIN_DISCORD_IDS and ADMIN_USERNAMES)
+  const adminIds  = (process.env.ADMIN_DISCORD_IDS  || '').split(',').map(s => s.trim()).filter(Boolean);
+  const adminNames = (process.env.ADMIN_USERNAMES   || '').split(',').map(s => s.trim()).filter(Boolean);
+  adminIds.forEach((discordId, i) => {
+    const username = adminNames[i] || discordId;
+    const existing = db.prepare('SELECT id FROM users WHERE discord_id = ?').get(discordId);
+    if (!existing) {
+      db.prepare('INSERT INTO users (discord_id, username, role, is_active) VALUES (?, ?, ?, 1)')
+        .run(discordId, username, 'admin');
+      console.log(`[seed] Admin user created: ${username} (${discordId})`);
+    } else {
+      db.prepare('UPDATE users SET role = ?, is_active = 1 WHERE discord_id = ?').run('admin', discordId);
+    }
+  });
+
   if (db.prepare('SELECT COUNT(*) as c FROM exam_categories').get().c === 0) {
     const ins = db.prepare('INSERT INTO exam_categories (name, icon, description) VALUES (?, ?, ?)');
     ins.run('PKW',        'fa-car',        'Führerschein Klasse B');
