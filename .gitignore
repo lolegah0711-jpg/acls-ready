@@ -4,8 +4,8 @@ node_modules/
 # Secrets
 .env
 
-# Database (lives on persistent disk on Render)
-*.db
+# Database — keep in Git for initial seed data
+# *.db
 *.db-shm
 *.db-wal
 
