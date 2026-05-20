@@ -2,12 +2,22 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Events } = require('discord.js');
 const fetch = require('node-fetch');
 
-const SERVER_URL   = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`;
-const BOT_SECRET   = process.env.BOT_API_SECRET || 'acls-bot-secret';
-const GUILD_ID     = process.env.DISCORD_GUILD_ID;
-const TRACK_ALL    = process.env.TRACK_ALL_CHANNELS === 'true';
-const IC_KEYWORDS  = (process.env.IC_CHANNEL_KEYWORDS || 'IC,Dienst,Fahrstunde,Prüfung,Service,Einsatz')
+const SERVER_URL      = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`;
+const BOT_SECRET      = process.env.BOT_API_SECRET || 'acls-bot-secret';
+const GUILD_ID        = process.env.DISCORD_GUILD_ID;
+const TRACK_ALL       = process.env.TRACK_ALL_CHANNELS === 'true';
+const IC_KEYWORDS     = (process.env.IC_CHANNEL_KEYWORDS || 'IC,Dienst,Fahrstunde,Prüfung,Service,Einsatz')
   .split(',').map(s => s.trim().toLowerCase());
+const BADGE_CHANNEL_ID = process.env.BADGE_CHANNEL_ID || '';
+const EOW_CHANNEL_ID   = process.env.EOW_CHANNEL_ID   || '';
+
+const BADGE_LABELS = {
+  ic_10: '10h IC-Zeit', ic_50: '50h IC-Zeit', ic_100: '100h IC-Zeit',
+  ic_250: '250h IC-Zeit', ic_500: '500h IC-Zeit',
+  exams_10: '10 Prüfungen abgenommen', exams_50: '50 Prüfungen abgenommen', exams_100: '100 Prüfungen abgenommen',
+  eow_1: '1x Mitarbeiter der Woche', eow_3: '3x Mitarbeiter der Woche', eow_5: '5x Mitarbeiter der Woche',
+  cat_pkw: 'PKW-Prüfer', cat_lkw: 'LKW-Prüfer', cat_motorrad: 'Motorrad-Prüfer', cat_flugschein: 'Flugschein-Prüfer',
+};
 
 // Laufende Sessions: discord_id → { channelId, channelName, joinedAt, sessionStart }
 const activeSessions = new Map();
@@ -72,10 +82,61 @@ const client = new Client({
   ],
 });
 
+async function pollNotifications() {
+  try {
+    const res = await fetch(`${SERVER_URL}/api/bot-notifications`, {
+      headers: { 'x-bot-secret': BOT_SECRET },
+    });
+    if (!res.ok) return;
+    const list = await res.json();
+    for (const n of list) {
+      try {
+        const p = JSON.parse(n.payload);
+        if (n.type === 'badge') {
+          const label = BADGE_LABELS[p.badgeType] || p.badgeType;
+          if (n.discord_id) {
+            try {
+              const u = await client.users.fetch(n.discord_id);
+              await u.send(`🏆 Glückwunsch, **${p.username}**! Du hast das Abzeichen **${label}** verdient!`);
+            } catch (_) {}
+          }
+          if (BADGE_CHANNEL_ID) {
+            try {
+              const ch = await client.channels.fetch(BADGE_CHANNEL_ID);
+              await ch.send(`🏆 **${p.username}** hat das Abzeichen **${label}** verdient!`);
+            } catch (e) { console.error('[Bot] Badge-Kanal Fehler:', e.message); }
+          }
+        }
+        if (n.type === 'eow') {
+          const msg = `🌟 **Mitarbeiter der Woche – KW ${p.week}**\n🥇 **${p.username}** gewinnt mit **${p.votes} Stimmen** – Herzlichen Glückwunsch! 🎉`;
+          if (n.discord_id) {
+            try {
+              const u = await client.users.fetch(n.discord_id);
+              await u.send(`🌟 Glückwunsch! Du bist der **Mitarbeiter der Woche** (KW ${p.week}) mit ${p.votes} Stimmen!`);
+            } catch (_) {}
+          }
+          if (EOW_CHANNEL_ID) {
+            try {
+              const ch = await client.channels.fetch(EOW_CHANNEL_ID);
+              await ch.send(msg);
+            } catch (e) { console.error('[Bot] EoW-Kanal Fehler:', e.message); }
+          }
+        }
+        await fetch(`${SERVER_URL}/api/bot-notifications/${n.id}/sent`, {
+          method: 'POST', headers: { 'x-bot-secret': BOT_SECRET },
+        });
+      } catch (e) { console.error('[Bot] Benachrichtigung fehlgeschlagen:', e.message); }
+    }
+  } catch (e) { console.error('[Bot] Poll-Fehler:', e.message); }
+}
+
 client.once(Events.ClientReady, c => {
   console.log(`[Bot] Eingeloggt als ${c.user.tag}`);
   console.log(`[Bot] IC-Schlüsselwörter: ${IC_KEYWORDS.join(', ')}`);
   console.log(`[Bot] Alle Kanäle tracken: ${TRACK_ALL}`);
+  console.log(`[Bot] Badge-Kanal: ${BADGE_CHANNEL_ID || 'nicht konfiguriert'}`);
+  console.log(`[Bot] EoW-Kanal:   ${EOW_CHANNEL_ID   || 'nicht konfiguriert'}`);
+  setInterval(pollNotifications, 30_000);
 });
 
 client.on(Events.VoiceStateUpdate, async (oldState, newState) => {

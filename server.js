@@ -96,6 +96,8 @@ function runEowEvaluation() {
     .run(winner.nominee_id, wk, winner.votes);
   checkAndAwardBadges(winner.nominee_id);
   console.log(`[EoW] ${wk}: user #${winner.nominee_id} (${winner.votes} Stimmen)`);
+  const winnerUser = db.prepare('SELECT discord_id, username FROM users WHERE id = ?').get(winner.nominee_id);
+  if (winnerUser) queueNotification('eow', winnerUser.discord_id, { username: winnerUser.username, votes: winner.votes, week: wk });
   return winner;
 }
 
@@ -826,8 +828,19 @@ app.patch('/api/users/:id/rank', requireAdmin, (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  BADGES
 // ════════════════════════════════════════════════════════════════
+function queueNotification(type, discordId, payload) {
+  try {
+    db.prepare('INSERT INTO bot_notifications (type, discord_id, payload) VALUES (?, ?, ?)')
+      .run(type, discordId || null, JSON.stringify(payload));
+  } catch(e) {}
+}
+
 function awardBadge(userId, badgeType) {
-  try { db.prepare('INSERT INTO user_badges (user_id, badge_type) VALUES (?, ?)').run(userId, badgeType); } catch(e) {}
+  try {
+    db.prepare('INSERT INTO user_badges (user_id, badge_type) VALUES (?, ?)').run(userId, badgeType);
+    const user = db.prepare('SELECT discord_id, username FROM users WHERE id = ?').get(userId);
+    if (user) queueNotification('badge', user.discord_id, { badgeType, username: user.username });
+  } catch(e) {}
 }
 
 function checkAndAwardBadges(userId) {
@@ -929,6 +942,20 @@ cron.schedule('0 3 * * *', async () => {
   const n = await syncGuildMembers();
   if (n > 0) console.log(`[Cron] ${n} Mitglieder-Namen synchronisiert`);
 }, { timezone: 'Europe/Berlin' });
+
+// ════════════════════════════════════════════════════════════════
+//  BOT NOTIFICATIONS
+// ════════════════════════════════════════════════════════════════
+app.get('/api/bot-notifications', (req, res) => {
+  if (req.headers['x-bot-secret'] !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(401).end();
+  res.json(db.prepare('SELECT * FROM bot_notifications WHERE sent = 0 ORDER BY created_at ASC').all());
+});
+
+app.post('/api/bot-notifications/:id/sent', (req, res) => {
+  if (req.headers['x-bot-secret'] !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(401).end();
+  db.prepare('UPDATE bot_notifications SET sent = 1 WHERE id = ?').run(+req.params.id);
+  res.json({ ok: true });
+});
 
 // ════════════════════════════════════════════════════════════════
 //  SPA fallback

@@ -173,6 +173,15 @@ function initDb() {
       status              TEXT DEFAULT 'offen',
       created_at          DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS bot_notifications (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      type        TEXT NOT NULL,
+      discord_id  TEXT,
+      payload     TEXT NOT NULL,
+      sent        INTEGER DEFAULT 0,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Seed admin users from env vars on first start (Railway: set ADMIN_DISCORD_IDS and ADMIN_USERNAMES)
