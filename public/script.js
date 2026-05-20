@@ -320,6 +320,23 @@ async function dashboard() {
        </div>`;
 
   $('pageContent').innerHTML = `
+    <!-- Ankündigungen -->
+    ${announcements?.length ? announcements.slice(0,3).map(a => `
+    <div style="display:flex;align-items:flex-start;gap:1rem;padding:1rem 1.1rem;border-radius:var(--r);margin-bottom:.6rem;background:linear-gradient(135deg,rgba(249,115,22,.12),rgba(249,115,22,.04));border:1px solid rgba(249,115,22,.3);border-left:4px solid var(--orange)">
+      <div style="width:36px;height:36px;border-radius:50%;background:rgba(249,115,22,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:.1rem">
+        <i class="fas ${a.is_pinned ? 'fa-thumbtack' : 'fa-bullhorn'}" style="color:var(--orange);font-size:.85rem"></i>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem">
+          <span style="font-weight:700;font-size:.95rem">${a.title}</span>
+          ${a.is_pinned ? '<span style="font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:20px;background:rgba(249,115,22,.2);color:var(--orange);text-transform:uppercase;letter-spacing:.05em">Angeheftet</span>' : ''}
+          <span style="font-size:.72rem;color:var(--muted);margin-left:auto">${a.author} · ${new Date(a.created_at).toLocaleDateString('de-DE')}</span>
+        </div>
+        <div style="font-size:.85rem;color:var(--fg);opacity:.85;white-space:pre-wrap;line-height:1.5">${a.content}</div>
+      </div>
+      ${isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="navigate('admin')" title="Verwalten" style="flex-shrink:0"><i class="fas fa-cog"></i></button>` : ''}
+    </div>`).join('') : ''}
+
     <!-- EoW Banner (zwei Karten) -->
     <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0">
       ${winnerCard}
@@ -345,25 +362,6 @@ async function dashboard() {
         <div class="stat-ico b"><i class="fas fa-chart-line"></i></div>
       </div>
     </div>
-
-    <!-- Ankündigungen -->
-    ${announcements?.length ? `
-    <div class="card" style="margin-bottom:0">
-      <div class="card-head">
-        <div class="card-head-icon orange"><i class="fas fa-bullhorn"></i></div>
-        <div><div class="card-title">Schwarzes Brett</div><div class="card-sub">${announcements.length} Ankündigung${announcements.length !== 1 ? 'en' : ''}</div></div>
-        ${isAdmin() ? `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="navigate('admin')"><i class="fas fa-cog"></i></button>` : ''}
-      </div>
-      ${announcements.slice(0,3).map(a => `
-        <div style="padding:.75rem 0;border-bottom:1px solid var(--border)">
-          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">
-            ${a.is_pinned ? '<i class="fas fa-thumbtack" style="color:var(--orange);font-size:.75rem"></i>' : ''}
-            <div style="font-weight:700;font-size:.9rem">${a.title}</div>
-            <span style="font-size:.72rem;color:var(--muted);margin-left:auto">${a.author} · ${new Date(a.created_at).toLocaleDateString('de-DE')}</span>
-          </div>
-          <div style="font-size:.85rem;color:var(--muted);white-space:pre-wrap">${a.content}</div>
-        </div>`).join('')}
-    </div>` : ''}
 
     <!-- Time cards -->
     <div class="time-row">
