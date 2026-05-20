@@ -140,26 +140,26 @@
   --blue-dim:   rgba(56,189,248,.12);
   --red:        #ef4444;
   --red-dim:    rgba(239,68,68,.12);
-  --card-blur:  18px;
-  --card-bg:    rgba(8,6,14,.74);
+  --card-blur:  10px;
+  --card-bg:    rgba(8,6,14,.42);
 }
 /* Sidebar + Topbar semi-transparent so city shows through */
 [data-theme="losantos"] .sidebar {
-  background: rgba(6,4,12,.88);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-right-color: rgba(255,185,60,.1);
+  background: rgba(6,4,12,.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right-color: rgba(255,185,60,.12);
 }
 [data-theme="losantos"] .topbar {
-  background: rgba(8,6,14,.82);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom-color: rgba(255,185,60,.1);
+  background: rgba(8,6,14,.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom-color: rgba(255,185,60,.12);
 }
 /* City photo background */
 [data-theme="losantos"] body {
   background:
-    linear-gradient(rgba(3,2,8,.48), rgba(3,2,8,.48)),
+    linear-gradient(rgba(3,2,8,.28), rgba(3,2,8,.28)),
     url('/losantos-bg.jpg') center / cover no-repeat fixed;
 }
 [data-theme="losantos"] .leaflet-container          { background: #06050a !important; }
