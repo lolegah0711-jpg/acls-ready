@@ -92,6 +92,7 @@ function runEowEvaluation() {
   if (!winner) { console.log(`[EoW] ${wk}: keine Stimmen`); return null; }
   db.prepare('INSERT OR REPLACE INTO eow_winners (user_id, week, vote_count) VALUES (?, ?, ?)')
     .run(winner.nominee_id, wk, winner.votes);
+  checkAndAwardBadges(winner.nominee_id);
   console.log(`[EoW] ${wk}: user #${winner.nominee_id} (${winner.votes} Stimmen)`);
   return winner;
 }
@@ -388,6 +389,7 @@ app.post('/api/exams/submit', requireAuth, (req, res) => {
   }
 
   delete req.session.activeExam;
+  checkAndAwardBadges(user.id);
   res.json({ score, total, passed, percentage: Math.round((score / total) * 100), results, registryId, banId });
 });
 
@@ -761,10 +763,93 @@ app.get('/api/dashboard', requireAuth, (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════
+//  ANNOUNCEMENTS
+// ════════════════════════════════════════════════════════════════
+app.get('/api/announcements', requireAuth, (req, res) => {
+  res.json(db.prepare(`
+    SELECT a.*, u.username as author FROM announcements a
+    JOIN users u ON u.id = a.created_by
+    ORDER BY a.is_pinned DESC, a.created_at DESC LIMIT 20
+  `).all());
+});
+
+app.post('/api/announcements', requireAdmin, (req, res) => {
+  const { title, content } = req.body;
+  if (!title?.trim() || !content?.trim()) return res.status(400).json({ error: 'Titel und Inhalt erforderlich' });
+  const r = db.prepare('INSERT INTO announcements (title, content, created_by) VALUES (?, ?, ?)').run(title.trim(), content.trim(), req.adminUser.id);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.delete('/api/announcements/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM announcements WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+app.patch('/api/announcements/:id/pin', requireAdmin, (req, res) => {
+  const a = db.prepare('SELECT is_pinned FROM announcements WHERE id = ?').get(req.params.id);
+  if (!a) return res.status(404).json({ error: 'Nicht gefunden' });
+  db.prepare('UPDATE announcements SET is_pinned = ? WHERE id = ?').run(a.is_pinned ? 0 : 1, req.params.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  RANKS
+// ════════════════════════════════════════════════════════════════
+app.patch('/api/users/:id/rank', requireAdmin, (req, res) => {
+  const { rank } = req.body;
+  const valid = ['Azubi', 'Mitarbeiter', 'Senior', 'Führungskraft'];
+  if (!valid.includes(rank)) return res.status(400).json({ error: 'Ungültiger Rang' });
+  db.prepare('UPDATE users SET rank = ? WHERE id = ?').run(rank, req.params.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  BADGES
+// ════════════════════════════════════════════════════════════════
+function awardBadge(userId, badgeType) {
+  try { db.prepare('INSERT INTO user_badges (user_id, badge_type) VALUES (?, ?)').run(userId, badgeType); } catch(e) {}
+}
+
+function checkAndAwardBadges(userId) {
+  const conducted = db.prepare('SELECT COUNT(*) as c FROM registry WHERE examiner_id = ?').get(userId).c;
+  if (conducted >= 10)  awardBadge(userId, 'exams_10');
+  if (conducted >= 50)  awardBadge(userId, 'exams_50');
+  if (conducted >= 100) awardBadge(userId, 'exams_100');
+  const eowWins = db.prepare('SELECT COUNT(*) as c FROM eow_winners WHERE user_id = ?').get(userId).c;
+  if (eowWins >= 1) awardBadge(userId, 'eow_1');
+  if (eowWins >= 3) awardBadge(userId, 'eow_3');
+  if (eowWins >= 5) awardBadge(userId, 'eow_5');
+}
+
+app.get('/api/badges/:userId', requireAuth, (req, res) => {
+  res.json(db.prepare('SELECT badge_type, earned_at FROM user_badges WHERE user_id = ? ORDER BY earned_at ASC').all(req.params.userId));
+});
+
+// ════════════════════════════════════════════════════════════════
+//  COMPLAINTS
+// ════════════════════════════════════════════════════════════════
+app.post('/api/complaints', (req, res) => {
+  const { citizen_name, citizen_discord_id, subject, message } = req.body;
+  if (!citizen_name?.trim() || !subject?.trim() || !message?.trim()) return res.status(400).json({ error: 'Pflichtfelder fehlen' });
+  db.prepare('INSERT INTO complaints (citizen_name, citizen_discord_id, subject, message) VALUES (?, ?, ?, ?)').run(citizen_name.trim(), citizen_discord_id || null, subject.trim(), message.trim());
+  res.json({ ok: true });
+});
+
+app.get('/api/complaints', requireAdmin, (req, res) => {
+  res.json(db.prepare('SELECT * FROM complaints ORDER BY created_at DESC').all());
+});
+
+app.patch('/api/complaints/:id', requireAdmin, (req, res) => {
+  const { status } = req.body;
+  db.prepare('UPDATE complaints SET status = ? WHERE id = ?').run(status, req.params.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
 //  PROFILE
 // ════════════════════════════════════════════════════════════════
 app.get('/api/profile/:id', requireAuth, (req, res) => {
-  const u = db.prepare('SELECT id, discord_id, username, avatar, role, created_at FROM users WHERE id = ?').get(req.params.id);
+  const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!u) return res.status(404).json({ error: 'Nicht gefunden' });
   const examStats   = db.prepare('SELECT COUNT(*) as total, COALESCE(SUM(passed),0) as passed FROM exam_sessions WHERE user_id=?').get(u.id);
   const conducted   = db.prepare('SELECT COUNT(*) as c FROM registry WHERE examiner_id=?').get(u.id).c;
@@ -772,7 +857,8 @@ app.get('/api/profile/:id', requireAuth, (req, res) => {
   const icTotal     = db.prepare('SELECT COALESCE(SUM(hours),0) as h FROM ic_log WHERE user_id=?').get(u.id)?.h || 0;
   const icWeek      = db.prepare("SELECT COALESCE(SUM(hours),0) as h FROM ic_log WHERE user_id=? AND date>=date('now','-7 days')").get(u.id)?.h || 0;
   const recentExams = db.prepare(`SELECT s.*, ec.name as category_name FROM exam_sessions s JOIN exam_categories ec ON ec.id=s.category_id WHERE s.user_id=? ORDER BY s.taken_at DESC LIMIT 5`).all(u.id);
-  res.json({ user: u, stats: { total_exams: examStats.total, passed_exams: examStats.passed, conducted, eow_wins: eowWins, ic_total: +icTotal.toFixed(2), ic_week: +icWeek.toFixed(2) }, recentExams });
+  const badges      = db.prepare('SELECT badge_type, earned_at FROM user_badges WHERE user_id = ? ORDER BY earned_at ASC').all(u.id);
+  res.json({ user: u, stats: { total_exams: examStats.total, passed_exams: examStats.passed, conducted, eow_wins: eowWins, ic_total: +icTotal.toFixed(2), ic_week: +icWeek.toFixed(2) }, recentExams, badges });
 });
 
 // ════════════════════════════════════════════════════════════════

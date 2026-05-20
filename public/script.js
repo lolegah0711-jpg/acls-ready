@@ -147,6 +147,12 @@ async function renderVoterScreen() {
         </div>
         <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="voterLogout()"><i class="fas fa-sign-out-alt"></i> Abmelden</button>
       </div>
+      <div style="display:flex;gap:.5rem;margin-bottom:1.25rem">
+        <button class="btn btn-primary btn-sm" id="tabVote" onclick="voterTab('vote')" style="flex:1"><i class="fas fa-vote-yea"></i> Abstimmung</button>
+        <button class="btn btn-ghost btn-sm" id="tabComplaint" onclick="voterTab('complaint')" style="flex:1"><i class="fas fa-comment-alt"></i> Beschwerde</button>
+      </div>
+      <div id="voterTabContent">
+      <div id="voteSection">
       <h2 style="margin-bottom:.25rem">Mitarbeiter der Woche</h2>
       <p style="color:var(--muted);font-size:.85rem;margin-bottom:1.25rem">
         ${myVote ? 'Du hast bereits abgestimmt.' : 'Wähle einen ACLS-Mitarbeiter dieser Woche.'}
@@ -163,8 +169,39 @@ async function renderVoterScreen() {
           ${voted ? '<i class="fas fa-check-circle" style="color:var(--orange)"></i>' : ''}
         </div>`;
       }).join('')}
+      </div>
+      <div id="complaintSection" style="display:none">
+        <h2 style="margin-bottom:.25rem">Beschwerde einreichen</h2>
+        <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem">Schildere dein Anliegen — ein Admin wird sich darum kümmern.</p>
+        <form onsubmit="submitComplaintForm(event)">
+          <div class="form-group"><label>Dein Name (IC)</label><input class="form-control" id="cName" value="${currentUser.username||''}" required></div>
+          <div class="form-group"><label>Betreff</label><input class="form-control" id="cSubject" placeholder="Kurze Zusammenfassung" required></div>
+          <div class="form-group"><label>Nachricht</label><textarea class="form-control" id="cMessage" rows="4" placeholder="Beschreibe dein Anliegen..." required style="resize:vertical"></textarea></div>
+          <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-paper-plane"></i> Absenden</button>
+        </form>
+      </div>
+      </div>
     </div>`;
 }
+
+window.voterTab = tab => {
+  const isVote = tab === 'vote';
+  document.getElementById('voteSection').style.display = isVote ? '' : 'none';
+  document.getElementById('complaintSection').style.display = isVote ? 'none' : '';
+  document.getElementById('tabVote').className = `btn btn-sm ${isVote ? 'btn-primary' : 'btn-ghost'}`;
+  document.getElementById('tabComplaint').className = `btn btn-sm ${!isVote ? 'btn-primary' : 'btn-ghost'}`;
+};
+
+window.submitComplaintForm = async e => {
+  e.preventDefault();
+  const r = await fetch('/api/complaints', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ citizen_name: $('cName').value.trim(), citizen_discord_id: currentUser.discord_id, subject: $('cSubject').value.trim(), message: $('cMessage').value.trim() }),
+  });
+  if (r.ok) { toast('Beschwerde eingereicht!', 'ok'); $('cSubject').value = ''; $('cMessage').value = ''; voterTab('vote'); }
+  else toast('Fehler beim Senden', 'err');
+};
 
 window.castCitizenVote = async nominee_id => {
   const r = await fetch('/api/citizen-vote', {
@@ -233,7 +270,7 @@ function navigate(page) {
 //  DASHBOARD
 // ════════════════════════════════════════════════════════════════
 async function dashboard() {
-  const d = await api('/api/dashboard');
+  const [d, announcements] = await Promise.all([api('/api/dashboard'), api('/api/announcements')]);
   if (!d) return;
 
   const eow      = d.eowWinner;
@@ -308,6 +345,25 @@ async function dashboard() {
         <div class="stat-ico b"><i class="fas fa-chart-line"></i></div>
       </div>
     </div>
+
+    <!-- Ankündigungen -->
+    ${announcements?.length ? `
+    <div class="card" style="margin-bottom:0">
+      <div class="card-head">
+        <div class="card-head-icon orange"><i class="fas fa-bullhorn"></i></div>
+        <div><div class="card-title">Schwarzes Brett</div><div class="card-sub">${announcements.length} Ankündigung${announcements.length !== 1 ? 'en' : ''}</div></div>
+        ${isAdmin() ? `<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="navigate('admin')"><i class="fas fa-cog"></i></button>` : ''}
+      </div>
+      ${announcements.slice(0,3).map(a => `
+        <div style="padding:.75rem 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">
+            ${a.is_pinned ? '<i class="fas fa-thumbtack" style="color:var(--orange);font-size:.75rem"></i>' : ''}
+            <div style="font-weight:700;font-size:.9rem">${a.title}</div>
+            <span style="font-size:.72rem;color:var(--muted);margin-left:auto">${a.author} · ${new Date(a.created_at).toLocaleDateString('de-DE')}</span>
+          </div>
+          <div style="font-size:.85rem;color:var(--muted);white-space:pre-wrap">${a.content}</div>
+        </div>`).join('')}
+    </div>` : ''}
 
     <!-- Time cards -->
     <div class="time-row">
@@ -1335,7 +1391,7 @@ window.deleteBan = async id => {
 // ════════════════════════════════════════════════════════════════
 async function admin() {
   if (!isAdmin()) { $('pageContent').innerHTML = '<div class="empty"><i class="fas fa-lock"></i><p>Kein Zugriff</p></div>'; return; }
-  const [users, cats] = await Promise.all([api('/api/users'), api('/api/exam-categories')]);
+  const [users, cats, announcements, complaints] = await Promise.all([api('/api/users'), api('/api/exam-categories'), api('/api/announcements'), api('/api/complaints')]);
   if (!users) return;
   window._adminCats = cats;
 
@@ -1358,11 +1414,17 @@ async function admin() {
                 </td>
                 <td style="font-size:.78rem;color:var(--muted)">${u.discord_id}</td>
                 <td>
-                  <select class="form-control" style="padding:.25rem .5rem;height:auto;font-size:.82rem;width:auto"
-                    onchange="setRole(${u.id}, this.value)">
-                    <option value="member" ${u.role === 'member' ? 'selected' : ''}>Mitarbeiter</option>
-                    <option value="admin"  ${u.role === 'admin'  ? 'selected' : ''}>Admin</option>
-                  </select>
+                  <div style="display:flex;flex-direction:column;gap:.3rem">
+                    <select class="form-control" style="padding:.25rem .5rem;height:auto;font-size:.82rem;width:auto"
+                      onchange="setRole(${u.id}, this.value)">
+                      <option value="member" ${u.role === 'member' ? 'selected' : ''}>Mitarbeiter</option>
+                      <option value="admin"  ${u.role === 'admin'  ? 'selected' : ''}>Admin</option>
+                    </select>
+                    <select class="form-control" style="padding:.25rem .5rem;height:auto;font-size:.82rem;width:auto"
+                      onchange="setRank(${u.id}, this.value)">
+                      ${['Azubi','Mitarbeiter','Senior','Führungskraft'].map(r => `<option ${(u.rank||'Mitarbeiter')===r?'selected':''}>${r}</option>`).join('')}
+                    </select>
+                  </div>
                 </td>
                 <td>
                   <button class="btn btn-ghost btn-sm" onclick="openProfileModal(${u.id})">
@@ -1393,6 +1455,41 @@ async function admin() {
               <button class="btn btn-ghost btn-sm" onclick="manageQuestions(${cat.id},'${cat.name}','${cat.icon}')"><i class="fas fa-cog"></i></button>
             </div>
           </div>`).join('')}
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-bullhorn"></i></div>
+        <div><div class="card-title">Schwarzes Brett</div><div class="card-sub">${announcements?.length || 0} Ankündigungen</div></div></div>
+        <button class="btn btn-primary btn-sm" onclick="openAnnouncementModal()" style="margin-bottom:.85rem"><i class="fas fa-plus"></i> Ankündigung erstellen</button>
+        ${(announcements || []).length ? (announcements || []).map(a => `
+          <div style="padding:.6rem .75rem;background:var(--input);border-radius:var(--r);margin-bottom:.4rem${a.is_pinned ? ';border-left:3px solid var(--orange)' : ''}">
+            <div style="display:flex;align-items:center;gap:.5rem">
+              ${a.is_pinned ? '<i class="fas fa-thumbtack" style="color:var(--orange);font-size:.72rem"></i>' : ''}
+              <div style="font-weight:600;font-size:.88rem;flex:1">${a.title}</div>
+              <button class="btn btn-ghost btn-sm" onclick="pinAnnouncement(${a.id})" title="${a.is_pinned ? 'Loslösen' : 'Anheften'}"><i class="fas fa-thumbtack"></i></button>
+              <button class="btn btn-danger btn-sm" onclick="deleteAnnouncement(${a.id})"><i class="fas fa-trash"></i></button>
+            </div>
+            <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">${a.content.slice(0,80)}${a.content.length>80?'…':''}</div>
+          </div>`).join('') : '<div class="empty" style="padding:1rem"><p>Keine Ankündigungen</p></div>'}
+      </div>
+
+      <div class="card" style="grid-column:1/-1">
+        <div class="card-head"><div class="card-head-icon" style="background:rgba(239,68,68,.15)"><i class="fas fa-comment-alt" style="color:#ef4444"></i></div>
+        <div><div class="card-title">Beschwerden</div><div class="card-sub">${(complaints||[]).filter(c=>c.status==='offen').length} offen</div></div></div>
+        ${(complaints || []).length ? `
+        <div class="tbl-wrap"><table class="data-tbl">
+          <thead><tr><th>Bürger</th><th>Betreff</th><th>Nachricht</th><th>Datum</th><th>Status</th><th></th></tr></thead>
+          <tbody>${complaints.map(c => `<tr>
+            <td style="font-weight:600">${c.citizen_name}</td>
+            <td>${c.subject}</td>
+            <td style="font-size:.8rem;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.message}</td>
+            <td style="font-size:.78rem;color:var(--muted)">${new Date(c.created_at).toLocaleDateString('de-DE')}</td>
+            <td><span style="font-size:.75rem;padding:.15rem .5rem;border-radius:6px;font-weight:600;background:${c.status==='offen'?'rgba(239,68,68,.15)':'rgba(34,197,94,.15)'};color:${c.status==='offen'?'#ef4444':'#22c55e'}">${c.status}</span></td>
+            <td style="display:flex;gap:.3rem">
+              ${c.status==='offen'?`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'erledigt')"><i class="fas fa-check"></i></button>`:`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'offen')"><i class="fas fa-undo"></i></button>`}
+            </td>
+          </tr>`).join('')}</tbody>
+        </table></div>` : '<div class="empty" style="padding:1rem"><p>Keine Beschwerden eingereicht</p></div>'}
       </div>
     </div>`;
 }
@@ -1437,6 +1534,45 @@ window.removeUser = async id => {
   if (!confirm('Nutzer entfernen?')) return;
   const r = await api(`/api/users/${id}`, { method: 'DELETE' });
   if (r) { toast('Entfernt.', 'ok'); admin(); }
+};
+
+window.setRank = async (id, rank) => {
+  const r = await api(`/api/users/${id}/rank`, { method: 'PATCH', body: { rank } });
+  if (r) toast('Rang gespeichert.', 'ok');
+};
+
+window.openAnnouncementModal = () => openModal(`
+  <div class="modal-head"><div class="modal-title"><i class="fas fa-bullhorn" style="color:var(--orange);margin-right:.5rem"></i>Ankündigung erstellen</div>
+  <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+  <form onsubmit="submitAnnouncement(event)">
+    <div class="form-group"><label>Titel</label><input class="form-control" id="annTitle" placeholder="Titel der Ankündigung" required></div>
+    <div class="form-group"><label>Inhalt</label><textarea class="form-control" id="annContent" rows="4" placeholder="Text der Ankündigung..." required style="resize:vertical"></textarea></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Veröffentlichen</button>
+    </div>
+  </form>`);
+
+window.submitAnnouncement = async e => {
+  e.preventDefault();
+  const r = await api('/api/announcements', { method: 'POST', body: { title: $('annTitle').value.trim(), content: $('annContent').value.trim() } });
+  if (r) { toast('Ankündigung veröffentlicht!', 'ok'); closeModal(); admin(); }
+};
+
+window.deleteAnnouncement = async id => {
+  if (!confirm('Ankündigung löschen?')) return;
+  const r = await api(`/api/announcements/${id}`, { method: 'DELETE' });
+  if (r) { toast('Gelöscht.', 'ok'); admin(); }
+};
+
+window.pinAnnouncement = async id => {
+  const r = await api(`/api/announcements/${id}/pin`, { method: 'PATCH' });
+  if (r) { toast('Gespeichert.', 'ok'); admin(); }
+};
+
+window.resolveComplaint = async (id, status) => {
+  const r = await api(`/api/complaints/${id}`, { method: 'PATCH', body: { status } });
+  if (r) { toast('Status aktualisiert.', 'ok'); admin(); }
 };
 
 window.openAddQuestion = (cid = '', catName = '') => openModal(`
@@ -1494,11 +1630,23 @@ window.deleteQuestion = async id => {
 // ════════════════════════════════════════════════════════════════
 //  PROFILE MODAL
 // ════════════════════════════════════════════════════════════════
+const BADGE_META = {
+  exams_10:  { icon: 'fa-star',   color: '#eab308', label: '10 Prüfungen abgenommen' },
+  exams_50:  { icon: 'fa-medal',  color: '#f97316', label: '50 Prüfungen abgenommen' },
+  exams_100: { icon: 'fa-trophy', color: '#f59e0b', label: '100 Prüfungen abgenommen' },
+  eow_1:     { icon: 'fa-crown',  color: '#f97316', label: '1x Mitarbeiter der Woche' },
+  eow_3:     { icon: 'fa-gem',    color: '#a855f7', label: '3x Mitarbeiter der Woche' },
+  eow_5:     { icon: 'fa-award',  color: '#f59e0b', label: '5x Mitarbeiter der Woche' },
+};
+const RANK_COLOR = { Azubi: '#6b7280', Mitarbeiter: '#3b82f6', Senior: '#f97316', Führungskraft: '#a855f7' };
+
 window.openProfileModal = async id => {
   const d = await api(`/api/profile/${id}`);
   if (!d) return;
-  const { user: u, stats: st, recentExams } = d;
+  const { user: u, stats: st, recentExams, badges } = d;
   const url = avatarUrl(u);
+  const rank = u.rank || 'Mitarbeiter';
+  const rankColor = RANK_COLOR[rank] || '#6b7280';
 
   openModal(`
     <div class="modal-head"><div class="modal-title">Profil</div>
@@ -1509,10 +1657,17 @@ window.openProfileModal = async id => {
       </div>
       <div>
         <div class="profile-name">${u.username}</div>
-        <div class="profile-role">${u.role === 'admin' ? 'Administrator' : 'Mitarbeiter'}</div>
+        <div style="display:flex;align-items:center;gap:.4rem;margin-top:.2rem">
+          <span style="font-size:.78rem;font-weight:700;padding:.15rem .55rem;border-radius:20px;background:${rankColor}22;color:${rankColor};border:1px solid ${rankColor}44">${rank}</span>
+          ${u.role === 'admin' ? '<span style="font-size:.72rem;font-weight:600;padding:.1rem .45rem;border-radius:20px;background:rgba(249,115,22,.15);color:var(--orange)">Admin</span>' : ''}
+        </div>
         <div style="font-size:.72rem;color:var(--muted);margin-top:.2rem"><i class="fab fa-discord"></i> ${u.discord_id}</div>
       </div>
     </div>
+    ${badges?.length ? `
+    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.85rem">
+      ${badges.map(b => { const m = BADGE_META[b.badge_type]; return m ? `<div title="${m.label}" style="display:flex;align-items:center;gap:.35rem;padding:.25rem .6rem;border-radius:20px;background:${m.color}22;border:1px solid ${m.color}44;font-size:.78rem;font-weight:600;color:${m.color}"><i class="fas ${m.icon}"></i>${m.label}</div>` : ''; }).join('')}
+    </div>` : ''}
     <div class="profile-stats">
       <div class="pstat"><div class="pstat-val">${st.conducted}</div><div class="pstat-lbl">Prüfungen abgenommen</div></div>
       <div class="pstat"><div class="pstat-val o" style="color:var(--orange)">${st.eow_wins}</div><div class="pstat-lbl">MA der Woche</div></div>

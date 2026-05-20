@@ -146,6 +146,33 @@ function initDb() {
       created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(voter_discord_id, week)
     );
+
+    CREATE TABLE IF NOT EXISTS announcements (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      title       TEXT NOT NULL,
+      content     TEXT NOT NULL,
+      created_by  INTEGER NOT NULL REFERENCES users(id),
+      is_pinned   INTEGER DEFAULT 0,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS user_badges (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL REFERENCES users(id),
+      badge_type  TEXT NOT NULL,
+      earned_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, badge_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS complaints (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      citizen_name        TEXT NOT NULL,
+      citizen_discord_id  TEXT,
+      subject             TEXT NOT NULL,
+      message             TEXT NOT NULL,
+      status              TEXT DEFAULT 'offen',
+      created_at          DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Seed admin users from env vars on first start (Railway: set ADMIN_DISCORD_IDS and ADMIN_USERNAMES)
@@ -172,8 +199,9 @@ function initDb() {
     ins.run('Flugschein', 'fa-plane',      'Pilotenlizenz');
   }
 
-  // Migration: is_ko Spalte
+  // Migrations
   try { db.exec('ALTER TABLE exam_questions ADD COLUMN is_ko INTEGER DEFAULT 0'); } catch(e) {}
+  try { db.exec("ALTER TABLE users ADD COLUMN rank TEXT DEFAULT 'Mitarbeiter'"); } catch(e) {}
 
   // Always re-seed questions so law changes take effect on restart
   db.prepare('DELETE FROM exam_questions').run();
