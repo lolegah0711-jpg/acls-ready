@@ -325,40 +325,50 @@
 [data-theme="fendt"] .quiz-score-big.quiz-passed { color: #4ade80; }
 [data-theme="fendt"] .modal-overlay              { background: rgba(0,0,0,.75); }
 
-/* ── Theme: Carbon (Dunkel & Gold) ──────────────────────────────── */
+/* ── Theme: Carbon (Audi RS6 ABT – Burnt Orange & Carbon) ───────── */
 [data-theme="carbon"] {
-  --bg:         #080808;
-  --surface:    #111111;
-  --surface2:   #1a1a1a;
-  --border:     rgba(245,158,11,.14);
-  --input:      #161616;
-  --text:       #e8e8e8;
-  --muted:      #666;
-  --orange:     #f59e0b;
-  --orange-dim: rgba(245,158,11,.13);
+  --bg:         #0a0602;
+  --surface:    #150c04;
+  --surface2:   #1e1208;
+  --border:     rgba(234,88,12,.2);
+  --input:      #1a0e05;
+  --text:       #f5ede6;
+  --muted:      #7a5a48;
+  --orange:     #ea580c;
+  --orange-dim: rgba(234,88,12,.15);
   --green:      #22c55e;
   --green-dim:  rgba(34,197,94,.12);
-  --blue:       #f59e0b;
-  --blue-dim:   rgba(245,158,11,.1);
+  --blue:       #fb923c;
+  --blue-dim:   rgba(251,146,60,.1);
   --red:        #ef4444;
   --red-dim:    rgba(239,68,68,.15);
-  --card-blur:  10px;
-  --card-bg:    rgba(12,12,12,.88);
+  --card-blur:  12px;
+  --card-bg:    rgba(10,6,2,.52);
 }
 [data-theme="carbon"] body {
   background:
-    repeating-linear-gradient(45deg,  transparent, transparent 3px, rgba(255,255,255,.018) 3px, rgba(255,255,255,.018) 4px),
-    repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(255,255,255,.018) 3px, rgba(255,255,255,.018) 4px),
-    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(245,158,11,.07) 0%, transparent 60%),
-    #080808;
+    linear-gradient(rgba(10,6,2,.62), rgba(10,6,2,.62)),
+    url('/audi-carbon.jpg') center / cover no-repeat fixed;
 }
-[data-theme="carbon"] .btn-primary                { background: linear-gradient(135deg,#f59e0b,#d97706); color: #080808; box-shadow: 0 0 14px rgba(245,158,11,.4); }
-[data-theme="carbon"] .btn-primary:hover          { background: linear-gradient(135deg,#fbbf24,#f59e0b); box-shadow: 0 0 22px rgba(245,158,11,.6); }
-[data-theme="carbon"] .nav-item.active            { background: rgba(245,158,11,.1); box-shadow: inset 3px 0 0 #f59e0b; }
-[data-theme="carbon"] .card                       { box-shadow: 0 0 0 1px rgba(245,158,11,.07), 0 4px 24px rgba(0,0,0,.5); }
-[data-theme="carbon"] .sidebar                    { border-right-color: rgba(245,158,11,.12); }
-[data-theme="carbon"] .leaflet-container          { background: #080808 !important; }
-[data-theme="carbon"] .quiz-score-big.quiz-passed { color: #f59e0b; }
+[data-theme="carbon"] .sidebar {
+  background: rgba(8,4,1,.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right-color: rgba(234,88,12,.18);
+}
+[data-theme="carbon"] .topbar {
+  background: rgba(10,6,2,.6);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom-color: rgba(234,88,12,.14);
+}
+[data-theme="carbon"] .btn-primary                { background: linear-gradient(135deg,#ea580c,#c2440a); color: #fff; box-shadow: 0 0 14px rgba(234,88,12,.45); }
+[data-theme="carbon"] .btn-primary:hover          { background: linear-gradient(135deg,#f97316,#ea580c); box-shadow: 0 0 24px rgba(234,88,12,.65); }
+[data-theme="carbon"] .nav-item.active            { background: rgba(234,88,12,.12); box-shadow: inset 3px 0 0 #ea580c; }
+[data-theme="carbon"] .card                       { box-shadow: 0 0 0 1px rgba(234,88,12,.08), 0 4px 28px rgba(0,0,0,.5); }
+[data-theme="carbon"] .leaflet-container          { background: #0a0602 !important; }
+[data-theme="carbon"] .quiz-score-big.quiz-passed { color: #f97316; }
+[data-theme="carbon"] .modal-overlay              { background: rgba(0,0,0,.82); }
 
 /* ── Theme: Asphalt (Nacht & Gelb) ──────────────────────────────── */
 [data-theme="asphalt"] {
