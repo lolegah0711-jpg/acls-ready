@@ -242,35 +242,51 @@ async function dashboard() {
   const top      = d.eowStandings?.[0];
   const rankBadge = i => `<div class="rank-badge${i === 1 ? '' : i === 2 ? ' r2' : ' r3'}"${i > 3 ? ' style="background:#2a2a2a;color:var(--muted)"' : ''}>${i}</div>`;
 
-  // Banner: aktueller Gewinner oder laufende Abstimmung mit Führendem
-  const bannerContent = isCurWk
-    ? `<div class="eow-av">${avatarUrl(eow) ? `<img src="${avatarUrl(eow)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(eow.username)}</div>
-       <div class="eow-info">
-         <div class="eow-label"><i class="fas fa-trophy" style="margin-right:.3rem"></i>Mitarbeiter der Woche · ${curWk}</div>
-         <div class="eow-name">${eow.username}</div>
-         <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">${eow.vote_count} Stimmen · ${eow.week}</div>
-       </div>
-       <div class="eow-ml"><button class="btn btn-ghost btn-sm" onclick="navigate('eow')"><i class="fas fa-list"></i> Details</button></div>`
-    : top
-      ? `<div class="eow-av" style="border-color:rgba(249,115,22,.25)">${avatarUrl(top) ? `<img src="${avatarUrl(top)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(top.username)}</div>
+  // Karte 1: letzter/aktueller Gewinner
+  const winnerCard = eow
+    ? `<div class="eow-banner" style="flex:1">
+         <div class="eow-av">${avatarUrl(eow) ? `<img src="${avatarUrl(eow)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(eow.username)}</div>
+         <div class="eow-info">
+           <div class="eow-label"><i class="fas fa-trophy" style="margin-right:.3rem"></i>Mitarbeiter der Woche · KW ${eow.week?.split('-W')[1] || ''}</div>
+           <div class="eow-name">${eow.username}</div>
+           <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">${eow.vote_count} Stimmen${isCurWk ? ' · Diese Woche' : ' · Letzte Woche'}</div>
+         </div>
+         <div class="eow-ml"><button class="btn btn-ghost btn-sm" onclick="navigate('eow')"><i class="fas fa-list"></i> Details</button></div>
+       </div>`
+    : `<div class="eow-banner" style="flex:1">
+         <div class="eow-av" style="background:var(--surface2);color:var(--muted);font-size:1.4rem"><i class="fas fa-trophy"></i></div>
+         <div class="eow-info">
+           <div class="eow-label"><i class="fas fa-trophy" style="margin-right:.3rem"></i>Mitarbeiter der Woche</div>
+           <div class="eow-name" style="color:var(--muted)">Noch kein Gewinner</div>
+         </div>
+       </div>`;
+
+  // Karte 2: laufende Abstimmung
+  const voteCard = top
+    ? `<div class="eow-banner" style="flex:1;border-color:rgba(249,115,22,.25)">
+         <div class="eow-av" style="border-color:rgba(249,115,22,.4)">${avatarUrl(top) ? `<img src="${avatarUrl(top)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(top.username)}</div>
          <div class="eow-info">
            <div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>Abstimmung läuft · ${curWk}</div>
-           <div class="eow-name">${top.username} führt mit ${top.votes} Stimmen</div>
-           <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">Auszählung: Sonntag 18:00 Uhr</div>
+           <div class="eow-name">${top.username} führt</div>
+           <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">${top.votes} Stimmen · Auszählung Sonntag 18:00</div>
          </div>
-         <div class="eow-ml"><button class="btn btn-primary btn-sm" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Abstimmen</button></div>`
-      : `<div class="eow-av" style="background:var(--surface2);color:var(--muted);font-size:1.4rem"><i class="fas fa-question"></i></div>
+         <div class="eow-ml"><button class="btn btn-primary btn-sm" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Abstimmen</button></div>
+       </div>`
+    : `<div class="eow-banner" style="flex:1">
+         <div class="eow-av" style="background:var(--surface2);color:var(--muted);font-size:1.4rem"><i class="fas fa-vote-yea"></i></div>
          <div class="eow-info">
            <div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>Abstimmung · ${curWk}</div>
-           <div class="eow-name">Noch keine Stimmen</div>
+           <div class="eow-name" style="color:var(--muted)">Noch keine Stimmen</div>
            <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">Auszählung: Sonntag 18:00 Uhr</div>
          </div>
-         <div class="eow-ml"><button class="btn btn-primary btn-sm" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Jetzt abstimmen</button></div>`;
+         <div class="eow-ml"><button class="btn btn-primary btn-sm" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Jetzt abstimmen</button></div>
+       </div>`;
 
   $('pageContent').innerHTML = `
-    <!-- EoW Banner -->
-    <div class="eow-banner">
-      ${bannerContent}
+    <!-- EoW Banner (zwei Karten) -->
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0">
+      ${winnerCard}
+      ${voteCard}
     </div>
 
     <!-- 4 Stat cards -->
