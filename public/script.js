@@ -420,6 +420,11 @@ async function eow() {
   data.standings.forEach(s => { tally[s.id] = s.votes; });
   const citTally   = {};
   (data.citizenVotes || []).forEach(c => { citTally[c.nominee_id] = c.votes; });
+  const citVoterNames = {};
+  (data.citizenVoterNames || []).forEach(v => {
+    if (!citVoterNames[v.nominee_id]) citVoterNames[v.nominee_id] = [];
+    citVoterNames[v.nominee_id].push(v.voter_username);
+  });
 
   // Gesamtstimmen (Mitarbeiter + Bürger) pro Kandidat für Anzeige
   const totalTally = {};
@@ -447,6 +452,7 @@ async function eow() {
               <div style="flex:1">
                 <div class="vote-name">${u.username}${isSelf ? ' <span style="font-size:.7rem;color:var(--muted)">(Du)</span>' : ''}</div>
                 <div class="vote-count">${tally[u.id] || 0} Mitarbeiterstimmen · ${citTally[u.id] || 0} Bürgerstimmen</div>
+                ${citVoterNames[u.id]?.length ? `<div style="font-size:.72rem;color:var(--muted);margin-top:.2rem"><i class="fas fa-users" style="margin-right:.3rem"></i>${citVoterNames[u.id].join(', ')}</div>` : ''}
               </div>
               ${isVoted ? '<i class="fas fa-check-circle" style="color:var(--orange)"></i>' : ''}
               ${isSelf && !isVoted ? '<i class="fas fa-minus-circle" style="color:var(--muted);opacity:.5" title="Keine Selbstnominierung"></i>' : ''}
@@ -455,6 +461,7 @@ async function eow() {
           ${isAdmin() ? `<div style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
             <button class="btn btn-primary btn-sm" onclick="countEow()"><i class="fas fa-calculator"></i> Jetzt auszählen</button>
             <button class="btn btn-ghost btn-sm" onclick="syncMembers()"><i class="fas fa-sync"></i> Discord-Namen sync</button>
+            <button class="btn btn-ghost btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,.3)" onclick="resetEow()"><i class="fas fa-trash"></i> Abstimmung zurücksetzen</button>
           </div>` : ''}
         </div>
 
@@ -498,6 +505,24 @@ window.syncMembers = async () => {
   toast('Synchronisiere Discord-Namen …', '');
   const r = await api('/api/sync-members', { method: 'POST' });
   if (r?.ok) { toast(`${r.synced} Namen synchronisiert`, 'ok'); eow(); }
+};
+window.resetEow = () => {
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title" style="color:#ef4444"><i class="fas fa-trash" style="margin-right:.5rem"></i>Abstimmung zurücksetzen</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="padding:.5rem 0">
+      <p style="color:var(--muted)">Alle Mitarbeiter- und Bürgerstimmen dieser Woche werden unwiderruflich gelöscht.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" style="background:#ef4444;border-color:#ef4444" onclick="confirmResetEow()"><i class="fas fa-trash"></i> Zurücksetzen</button>
+    </div>`);
+};
+window.confirmResetEow = async () => {
+  const r = await api('/api/eow/reset', { method: 'POST' });
+  if (r?.ok) { toast('Abstimmung zurückgesetzt', 'ok'); closeModal(); eow(); }
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -608,8 +633,9 @@ function renderQuiz(cat) {
         .map((opt, i) => ({ opt, i }))
         .filter(({ opt }) => opt && opt.trim())
         .map(({ opt, i }) => `
-        <div class="quiz-option${q.answers[qst.id] === i ? ' selected' : ''}" onclick="selectOpt(${i})">
+        <div class="quiz-option${q.answers[qst.id] === i ? ' selected' : ''}${i === qst.correct_answer ? ' correct-answer' : ''}" onclick="selectOpt(${i})">
           <div class="opt-letter">${'ABCD'[i]}</div><div>${opt}</div>
+          ${i === qst.correct_answer ? '<i class="fas fa-check-circle" style="margin-left:auto;color:#22c55e;flex-shrink:0" title="Richtige Antwort"></i>' : ''}
         </div>`).join('')}
     </div>
     <div class="modal-footer">

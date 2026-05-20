@@ -257,7 +257,18 @@ app.get('/api/eow', requireAuth, (req, res) => {
     SELECT nominee_id, COUNT(*) as votes FROM citizen_votes WHERE week = ? GROUP BY nominee_id
   `).all(wk);
 
-  res.json({ week: wk, currentWinner: winner, displayWinner: lastWinner, standings, history, myVoteFor: myVote?.nominee_id || null, citizenVotes });
+  const citizenVoterNames = db.prepare(`
+    SELECT nominee_id, voter_username FROM citizen_votes WHERE week = ? ORDER BY rowid ASC
+  `).all(wk);
+
+  res.json({ week: wk, currentWinner: winner, displayWinner: lastWinner, standings, history, myVoteFor: myVote?.nominee_id || null, citizenVotes, citizenVoterNames });
+});
+
+app.post('/api/eow/reset', requireAdmin, (req, res) => {
+  const wk = weekKey();
+  db.prepare('DELETE FROM eow_votes WHERE week = ?').run(wk);
+  db.prepare('DELETE FROM citizen_votes WHERE week = ?').run(wk);
+  res.json({ ok: true });
 });
 
 app.post('/api/eow/vote', requireAuth, (req, res) => {
