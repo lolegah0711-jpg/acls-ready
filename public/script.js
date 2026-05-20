@@ -998,7 +998,7 @@ async function map() {
       </div>
       <div class="card" style="min-width:140px;padding:.9rem">
         <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">Legende</div>
-        ${[['tow','#f97316','Abschlepphof'],['exam','#22c55e','Prüfungsort'],['Felder','#3b82f6','Felder'],['Hotspot','#ec4899','Hotspot'],['other','#6b7280','Sonstiges']].map(([type,color,label])=>`
+        ${[['tow','#f97316','Abschlepphof'],['exam','#22c55e','Prüfungsort'],['Felder','#3b82f6','Felder'],['Hotspot','#ec4899','Hotspot'],['Gangs/Familien','#eab308','Gangs/Familien'],['other','#6b7280','Sonstiges']].map(([type,color,label])=>`
         <div style="display:flex;align-items:center;gap:.55rem;margin-bottom:.55rem">
           <div style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 6px ${color}88;flex-shrink:0"></div>
           <span style="font-size:.82rem">${label}</span>
@@ -1015,7 +1015,7 @@ async function map() {
             ${spots.map(s => `<tr>
               <td style="font-weight:600;color:var(--text)">${s.name}</td>
               <td>${s.description || '—'}</td>
-              <td><span style="font-size:.75rem;padding:.15rem .55rem;border-radius:6px;font-weight:600;background:${({'tow':'#f9731622','exam':'#22c55e22','Felder':'#3b82f622','Hotspot':'#ec4b9922'}[s.spot_type]||'#6b728022')};color:${({'tow':'#f97316','exam':'#22c55e','Felder':'#3b82f6','Hotspot':'#ec4899'}[s.spot_type]||'#6b7280')}">${s.spot_type}</span></td>
+              <td><span style="font-size:.75rem;padding:.15rem .55rem;border-radius:6px;font-weight:600;background:${({'tow':'#f9731622','exam':'#22c55e22','Felder':'#3b82f622','Hotspot':'#ec4b9922','Gangs/Familien':'#eab30822'}[s.spot_type]||'#6b728022')};color:${({'tow':'#f97316','exam':'#22c55e','Felder':'#3b82f6','Hotspot':'#ec4899','Gangs/Familien':'#eab308'}[s.spot_type]||'#6b7280')}">${s.spot_type}</span></td>
               <td>${s.created_by_name || '—'}</td>
               <td><button class="btn btn-danger btn-sm" onclick="deleteSpot(${s.id})"><i class="fas fa-trash"></i></button></td>
             </tr>`).join('')}
@@ -1066,7 +1066,7 @@ function initLeafletMap(spots) {
 
   leafletMap.fitBounds(bounds, { padding: [4, 4] });
 
-  const spotColor = t => ({ tow:'#f97316', exam:'#22c55e', Felder:'#3b82f6', Hotspot:'#ec4899' }[t] || '#6b7280');
+  const spotColor = t => ({ tow:'#f97316', exam:'#22c55e', Felder:'#3b82f6', Hotspot:'#ec4899', 'Gangs/Familien':'#eab308' }[t] || '#6b7280');
 
   const makePin = color => L.divIcon({
     className: '',
@@ -1105,7 +1105,7 @@ function openAddSpotModal(x, y) {
       <div class="form-group"><label>Name</label><input class="form-control" id="spName" placeholder="z. B. ACLS Hauptgarage" required></div>
       <div class="form-group"><label>Beschreibung</label><input class="form-control" id="spDesc" placeholder="Kurze Beschreibung"></div>
       <div class="form-group"><label>Typ</label>
-        <select class="form-control" id="spType"><option>tow</option><option>exam</option><option>Felder</option><option>Hotspot</option><option>other</option></select>
+        <select class="form-control" id="spType"><option>tow</option><option>exam</option><option>Felder</option><option>Hotspot</option><option>Gangs/Familien</option><option>other</option></select>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
