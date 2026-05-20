@@ -1,5 +1,6 @@
 // Startet server.js und (falls DISCORD_BOT_TOKEN gesetzt) bot.js
 // Railway läuft dieses Script als einzigen Prozess
+require('dotenv').config();
 const { spawn } = require('child_process');
 
 function run(label, file) {
