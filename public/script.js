@@ -53,7 +53,7 @@ const PAGES = {
   exams:     { title: 'Prüfung starten',        sub: 'Theorie & Praxis' },
   registry:  { title: 'Bürger Register',        sub: 'Alle Führerschein-Inhaber' },
   factions:  { title: 'Fraktionsfarben',        sub: 'Fahrzeugfarben der Fraktionen' },
-  map:       { title: 'Abschlepphofe',          sub: 'Interaktive GTA V Karte' },
+  map:       { title: 'Abschlepphöfe',          sub: 'Interaktive GTA V Karte' },
   iczeit:    { title: 'IC-Zeit Tracking',       sub: 'Discord Voice-Kanal Anwesenheit' },
   admin:     { title: 'Admin-Panel',            sub: 'Verwaltung & Kontrolle' },
   bans:      { title: 'Aktive Sperren',         sub: 'Hausverbot-Verwaltung' },
@@ -588,6 +588,7 @@ async function eow() {
                 ${isVoted ? '<div style="position:absolute;bottom:-4px;right:-4px;width:20px;height:20px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center"><i class="fas fa-check" style="font-size:.6rem;color:#fff"></i></div>' : ''}
               </div>
               <div style="font-weight:700;font-size:.9rem">${u.username}${isSelf ? ' <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(Du)</span>' : ''}</div>
+              ${u.rank ? `<div style="font-size:.7rem;color:var(--orange);font-weight:600">${u.rank}</div>` : ''}
               <div style="font-size:.72rem;color:var(--muted);line-height:1.4">
                 ${tally[u.id] || 0} Mitarbeiter · ${citTally[u.id] || 0} Bürger
                 ${citVoterNames[u.id]?.length ? `<br><span style="font-size:.68rem;opacity:.8">${citVoterNames[u.id].join(', ')}</span>` : ''}
@@ -1094,7 +1095,7 @@ async function map() {
 
   $('pageContent').innerHTML = `
     <div class="pg-header">
-      <div class="pg-header-left"><h2>Abschlepphofe</h2><p>${spots.length} Spots eingetragen</p></div>
+      <div class="pg-header-left"><h2>Abschlepphöfe</h2><p>${spots.length} Spots eingetragen</p></div>
       <div style="display:flex;gap:.65rem;align-items:center">
         <span id="mapMode" style="font-size:.8rem;color:var(--muted)"></span>
         <button class="btn btn-primary" id="addSpotToggle" onclick="toggleMapAdd()"><i class="fas fa-map-marker-alt"></i> Spot hinzufügen</button>
@@ -1125,7 +1126,7 @@ async function map() {
               <td>${s.description || '—'}</td>
               <td><span style="font-size:.75rem;padding:.15rem .55rem;border-radius:6px;font-weight:600;background:${({'tow':'#f9731622','exam':'#22c55e22','Felder':'#3b82f622','Hotspot':'#ec4b9922','Gangs/Familien':'#eab30822'}[s.spot_type]||'#6b728022')};color:${({'tow':'#f97316','exam':'#22c55e','Felder':'#3b82f6','Hotspot':'#ec4899','Gangs/Familien':'#eab308'}[s.spot_type]||'#6b7280')}">${s.spot_type}</span></td>
               <td>${s.created_by_name || '—'}</td>
-              <td><button class="btn btn-danger btn-sm" onclick="deleteSpot(${s.id})"><i class="fas fa-trash"></i></button></td>
+              <td>${isAdmin() ? `<button class="btn btn-danger btn-sm" onclick="deleteSpot(${s.id})"><i class="fas fa-trash"></i></button>` : ''}</td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -1492,13 +1493,13 @@ async function admin() {
       <div style="display:flex;flex-direction:column;gap:1rem"><!-- col-left -->
       <div class="card">
         <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-users"></i></div>
-        <div><div class="card-title">Benutzerverwaltung</div><div class="card-sub">${users.length} Nutzer</div></div></div>
+        <div><div class="card-title">Benutzerverwaltung</div><div class="card-sub">${users.filter(u => u.is_active).length} Nutzer</div></div></div>
         <button class="btn btn-primary btn-sm" onclick="openAddUser()" style="margin-bottom:.85rem"><i class="fas fa-user-plus"></i> Nutzer hinzufügen</button>
         <div class="tbl-wrap" style="max-height:340px;overflow-y:auto">
           <table class="data-tbl">
             <thead><tr><th>Name</th><th>Rolle / Rang</th><th></th><th></th></tr></thead>
             <tbody>
-              ${users.map(u => `<tr>
+              ${users.filter(u => u.is_active).map(u => `<tr>
                 <td>
                   <div style="display:flex;align-items:center;gap:.6rem">
                     ${avatarEl(u, 26)}
