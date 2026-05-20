@@ -154,12 +154,38 @@ async function pollNotifications() {
   } catch (e) { console.error('[Bot] Poll-Fehler:', e.message); }
 }
 
-client.once(Events.ClientReady, c => {
+client.once(Events.ClientReady, async c => {
   console.log(`[Bot] Eingeloggt als ${c.user.tag}`);
   console.log(`[Bot] IC-Schlüsselwörter: ${IC_KEYWORDS.join(', ')}`);
   console.log(`[Bot] Alle Kanäle tracken: ${TRACK_ALL}`);
   console.log(`[Bot] Badge-Kanal: ${BADGE_CHANNEL_ID || 'nicht konfiguriert'}`);
   console.log(`[Bot] EoW-Kanal:   ${EOW_CHANNEL_ID   || 'nicht konfiguriert'}`);
+
+  // Beim Start alle bereits im Channel sitzenden Mitglieder ins Tracking aufnehmen
+  if (GUILD_ID) {
+    try {
+      const guild = await client.guilds.fetch(GUILD_ID);
+      const channels = await guild.channels.fetch();
+      let found = 0;
+      for (const [, ch] of channels) {
+        if (!ch || ch.type !== 2) continue; // 2 = GUILD_VOICE
+        if (!isIcChannel(ch.name)) continue;
+        for (const [, member] of ch.members) {
+          if (member.id === client.user.id) continue;
+          const joinedAt = new Date();
+          activeSessions.set(member.id, { channelId: ch.id, channelName: ch.name, joinedAt });
+          fetch(`${SERVER_URL}/api/active-session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: member.id, username: member.displayName, channel_name: ch.name, joined_at: joinedAt.toISOString() }),
+          }).catch(() => {});
+          found++;
+        }
+      }
+      if (found > 0) console.log(`[Bot] Startup-Scan: ${found} Mitglied(er) bereits im Dienst-Channel – Tracking gestartet`);
+    } catch (e) { console.error('[Bot] Startup-Scan Fehler:', e.message); }
+  }
+
   setInterval(pollNotifications, 30_000);
 });
 
