@@ -1395,38 +1395,37 @@ async function admin() {
 
   $('pageContent').innerHTML = `
     <div class="admin-grid">
-      <div class="card" style="grid-column:1/-1">
+      <div class="card">
         <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-users"></i></div>
         <div><div class="card-title">Benutzerverwaltung</div><div class="card-sub">${users.length} Nutzer</div></div></div>
         <button class="btn btn-primary btn-sm" onclick="openAddUser()" style="margin-bottom:.85rem"><i class="fas fa-user-plus"></i> Nutzer hinzufügen</button>
-        <div class="tbl-wrap">
+        <div class="tbl-wrap" style="max-height:340px;overflow-y:auto">
           <table class="data-tbl">
-            <thead><tr><th>Name</th><th>Discord-ID</th><th>Rolle</th><th>Statistiken</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Rolle / Rang</th><th></th><th></th></tr></thead>
             <tbody>
               ${users.map(u => `<tr>
                 <td>
                   <div style="display:flex;align-items:center;gap:.6rem">
-                    ${avatarEl(u, 28)}
-                    <span style="font-weight:600">${u.username}</span>
+                    ${avatarEl(u, 26)}
+                    <span style="font-weight:600;font-size:.85rem">${u.username}</span>
                   </div>
                 </td>
-                <td style="font-size:.78rem;color:var(--muted)">${u.discord_id}</td>
                 <td>
                   <div style="display:flex;flex-direction:column;gap:.3rem">
-                    <select class="form-control" style="padding:.25rem .5rem;height:auto;font-size:.82rem;width:auto"
+                    <select class="form-control" style="padding:.2rem .4rem;height:auto;font-size:.8rem;width:auto"
                       onchange="setRole(${u.id}, this.value)">
                       <option value="member" ${u.role === 'member' ? 'selected' : ''}>Mitarbeiter</option>
                       <option value="admin"  ${u.role === 'admin'  ? 'selected' : ''}>Admin</option>
                     </select>
-                    <select class="form-control" style="padding:.25rem .5rem;height:auto;font-size:.82rem;width:auto"
+                    <select class="form-control" style="padding:.2rem .4rem;height:auto;font-size:.8rem;width:auto"
                       onchange="setRank(${u.id}, this.value)">
                       ${['Azubi','Mitarbeiter','Senior','Führungskraft'].map(r => `<option ${(u.rank||'Mitarbeiter')===r?'selected':''}>${r}</option>`).join('')}
                     </select>
                   </div>
                 </td>
                 <td>
-                  <button class="btn btn-ghost btn-sm" onclick="openProfileModal(${u.id})">
-                    <i class="fas fa-chart-bar"></i> Statistiken
+                  <button class="btn btn-ghost btn-sm" onclick="openProfileModal(${u.id})" title="Statistiken">
+                    <i class="fas fa-chart-bar"></i>
                   </button>
                 </td>
                 <td>
@@ -1456,6 +1455,25 @@ async function admin() {
       </div>
 
       <div class="card">
+        <div class="card-head"><div class="card-head-icon" style="background:rgba(239,68,68,.15)"><i class="fas fa-comment-alt" style="color:#ef4444"></i></div>
+        <div><div class="card-title">Beschwerden</div><div class="card-sub">${(complaints||[]).filter(c=>c.status==='offen').length} offen</div></div></div>
+        ${(complaints || []).length ? `
+        <div class="tbl-wrap" style="max-height:340px;overflow-y:auto"><table class="data-tbl">
+          <thead><tr><th>Bürger</th><th>Betreff</th><th>Nachricht</th><th>Datum</th><th>Status</th><th></th></tr></thead>
+          <tbody>${complaints.map(c => `<tr>
+            <td style="font-weight:600">${c.citizen_name}</td>
+            <td>${c.subject}</td>
+            <td style="font-size:.8rem;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.message}</td>
+            <td style="font-size:.78rem;color:var(--muted)">${new Date(c.created_at).toLocaleDateString('de-DE')}</td>
+            <td><span style="font-size:.75rem;padding:.15rem .5rem;border-radius:6px;font-weight:600;background:${c.status==='offen'?'rgba(239,68,68,.15)':'rgba(34,197,94,.15)'};color:${c.status==='offen'?'#ef4444':'#22c55e'}">${c.status}</span></td>
+            <td style="display:flex;gap:.3rem">
+              ${c.status==='offen'?`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'erledigt')"><i class="fas fa-check"></i></button>`:`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'offen')"><i class="fas fa-undo"></i></button>`}
+            </td>
+          </tr>`).join('')}</tbody>
+        </table></div>` : '<div class="empty" style="padding:1rem"><p>Keine Beschwerden eingereicht</p></div>'}
+      </div>
+
+      <div class="card">
         <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-bullhorn"></i></div>
         <div><div class="card-title">Schwarzes Brett</div><div class="card-sub">${announcements?.length || 0} Ankündigungen</div></div></div>
         <button class="btn btn-primary btn-sm" onclick="openAnnouncementModal()" style="margin-bottom:.85rem"><i class="fas fa-plus"></i> Ankündigung erstellen</button>
@@ -1469,25 +1487,6 @@ async function admin() {
             </div>
             <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">${a.content.slice(0,80)}${a.content.length>80?'…':''}</div>
           </div>`).join('') : '<div class="empty" style="padding:1rem"><p>Keine Ankündigungen</p></div>'}
-      </div>
-
-      <div class="card" style="grid-column:1/-1">
-        <div class="card-head"><div class="card-head-icon" style="background:rgba(239,68,68,.15)"><i class="fas fa-comment-alt" style="color:#ef4444"></i></div>
-        <div><div class="card-title">Beschwerden</div><div class="card-sub">${(complaints||[]).filter(c=>c.status==='offen').length} offen</div></div></div>
-        ${(complaints || []).length ? `
-        <div class="tbl-wrap"><table class="data-tbl">
-          <thead><tr><th>Bürger</th><th>Betreff</th><th>Nachricht</th><th>Datum</th><th>Status</th><th></th></tr></thead>
-          <tbody>${complaints.map(c => `<tr>
-            <td style="font-weight:600">${c.citizen_name}</td>
-            <td>${c.subject}</td>
-            <td style="font-size:.8rem;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.message}</td>
-            <td style="font-size:.78rem;color:var(--muted)">${new Date(c.created_at).toLocaleDateString('de-DE')}</td>
-            <td><span style="font-size:.75rem;padding:.15rem .5rem;border-radius:6px;font-weight:600;background:${c.status==='offen'?'rgba(239,68,68,.15)':'rgba(34,197,94,.15)'};color:${c.status==='offen'?'#ef4444':'#22c55e'}">${c.status}</span></td>
-            <td style="display:flex;gap:.3rem">
-              ${c.status==='offen'?`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'erledigt')"><i class="fas fa-check"></i></button>`:`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'offen')"><i class="fas fa-undo"></i></button>`}
-            </td>
-          </tr>`).join('')}</tbody>
-        </table></div>` : '<div class="empty" style="padding:1rem"><p>Keine Beschwerden eingereicht</p></div>'}
       </div>
     </div>`;
 }
