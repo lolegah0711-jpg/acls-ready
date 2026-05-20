@@ -488,6 +488,51 @@
 [data-theme="polareis"] .quiz-score-big.quiz-passed { color: #38bdf8; }
 [data-theme="polareis"] .modal-overlay              { background: rgba(0,0,0,.82); }
 
+/* ── Theme: Katzen 🐱 ───────────────────────────────────────────── */
+[data-theme="katzen"] {
+  --bg:         #12080f;
+  --surface:    #1e0f1a;
+  --surface2:   #281424;
+  --border:     rgba(232,121,249,.18);
+  --input:      #22102e;
+  --text:       #f5e6f8;
+  --muted:      #9a6aaa;
+  --orange:     #e879f9;
+  --orange-dim: rgba(232,121,249,.14);
+  --green:      #c084fc;
+  --green-dim:  rgba(192,132,252,.12);
+  --blue:       #f0abfc;
+  --blue-dim:   rgba(240,171,252,.1);
+  --red:        #f43f5e;
+  --red-dim:    rgba(244,63,94,.15);
+  --card-blur:  14px;
+  --card-bg:    rgba(18,8,15,.45);
+}
+[data-theme="katzen"] body {
+  background:
+    linear-gradient(rgba(18,8,15,.55), rgba(18,8,15,.55)),
+    url('/katzen.webp') center / cover no-repeat fixed;
+}
+[data-theme="katzen"] .sidebar {
+  background: rgba(14,6,12,.68);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right-color: rgba(232,121,249,.15);
+}
+[data-theme="katzen"] .topbar {
+  background: rgba(18,8,15,.58);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom-color: rgba(232,121,249,.12);
+}
+[data-theme="katzen"] .btn-primary                { background: linear-gradient(135deg,#e879f9,#a855f7); color: #fff; box-shadow: 0 0 14px rgba(232,121,249,.4); }
+[data-theme="katzen"] .btn-primary:hover          { background: linear-gradient(135deg,#f0abfc,#c084fc); box-shadow: 0 0 22px rgba(232,121,249,.6); }
+[data-theme="katzen"] .nav-item.active            { background: rgba(232,121,249,.12); box-shadow: inset 3px 0 0 #e879f9; }
+[data-theme="katzen"] .card                       { box-shadow: 0 0 0 1px rgba(232,121,249,.08), 0 4px 28px rgba(0,0,0,.45); }
+[data-theme="katzen"] .leaflet-container          { background: #12080f !important; }
+[data-theme="katzen"] .quiz-score-big.quiz-passed { color: #e879f9; }
+[data-theme="katzen"] .modal-overlay              { background: rgba(0,0,0,.82); }
+
 /* ── Theme Switcher (floating, bottom-right) ─────────────────────── */
 .theme-switcher-float {
   position: fixed;
