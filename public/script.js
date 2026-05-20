@@ -852,10 +852,17 @@ function renderQuiz(cat) {
       ${[qst.option_a, qst.option_b, qst.option_c, qst.option_d]
         .map((opt, i) => ({ opt, i }))
         .filter(({ opt }) => opt && opt.trim())
-        .map(({ opt, i }) => `
-        <div class="quiz-option${q.answers[qst.id] === i ? ' selected' : ''}" onclick="selectOpt(${i})">
-          <div class="opt-letter">${'ABCD'[i]}</div><div>${opt}</div>
-        </div>`).join('')}
+        .map(({ opt, i }) => {
+          const isSelected = q.answers[qst.id] === i;
+          const isCorrect  = qst.correct_answer === i;
+          let cls = 'quiz-option';
+          if (isSelected) cls += ' selected';
+          if (isCorrect)  cls += ' correct-hint';
+          return `<div class="${cls}" onclick="selectOpt(${i})">
+            <div class="opt-letter">${'ABCD'[i]}</div><div>${opt}</div>
+            ${isCorrect ? '<i class="fas fa-check-circle" style="margin-left:auto;color:var(--green);font-size:.85rem;flex-shrink:0"></i>' : ''}
+          </div>`;
+        }).join('')}
     </div>
     <div class="modal-footer">
       ${q.current > 0 ? '<button class="btn btn-ghost" onclick="quizNav(-1)"><i class="fas fa-arrow-left"></i> Zurück</button>' : '<span></span>'}

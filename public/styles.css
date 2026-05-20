@@ -1054,6 +1054,8 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .quiz-option.selected .opt-letter { background: var(--orange); color: #fff; }
 .quiz-option.correct-answer { border-color: rgba(34,197,94,.4); background: rgba(34,197,94,.06); }
 .quiz-option.correct-answer .opt-letter { background: #22c55e; color: #fff; }
+.quiz-option.correct-hint { border-left: 3px solid #22c55e; }
+.quiz-option.correct-hint .opt-letter { color: #22c55e; }
 .quiz-result { text-align: center; padding: 1.5rem 0; }
 .quiz-score-big {
   font-size: 3rem; font-weight: 900; line-height: 1;
