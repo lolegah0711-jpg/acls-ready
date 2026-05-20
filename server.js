@@ -398,6 +398,16 @@ app.post('/api/exams/submit', requireAuth, (req, res) => {
 
   delete req.session.activeExam;
   checkAndAwardBadges(user.id);
+  queueNotification('exam', null, {
+    channelType: 'theory',
+    examType: `${category?.name || 'Unbekannt'} Theorie`,
+    examinerName: user.username,
+    citizenName: exam.citizenName || null,
+    passed,
+    score: `${score}/${total}`,
+    percentage: Math.round((score / total) * 100),
+    date: new Date().toISOString().split('T')[0],
+  });
   res.json({ score, total, passed, percentage: Math.round((score / total) * 100), results, registryId, banId });
 });
 
@@ -434,6 +444,16 @@ app.post('/api/exams/practical', requireAuth, (req, res) => {
   if (!passed && citizen_name) {
     banId = createBan(db, citizen_name, citizen_id, `Praxisprüfung nicht bestanden – ${errors.join(', ')}`, user.id);
   }
+  const practCat = db.prepare('SELECT name FROM exam_categories WHERE id = ?').get(+category_id);
+  queueNotification('exam', null, {
+    channelType: 'practical',
+    examType: `${practCat?.name || 'Unbekannt'} Praxis`,
+    examinerName: user.username,
+    citizenName: citizen_name || null,
+    passed,
+    errors: errors || [],
+    date: new Date().toISOString().split('T')[0],
+  });
   res.json({ passed, registryId: r.lastInsertRowid, banId });
 });
 

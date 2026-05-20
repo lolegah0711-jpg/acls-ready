@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Events } = require('discord.js');
+const { Client, GatewayIntentBits, Events, EmbedBuilder } = require('discord.js');
 const fetch = require('node-fetch');
 
 const SERVER_URL      = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`;
@@ -8,8 +8,10 @@ const GUILD_ID        = process.env.DISCORD_GUILD_ID;
 const TRACK_ALL       = process.env.TRACK_ALL_CHANNELS === 'true';
 const IC_KEYWORDS     = (process.env.IC_CHANNEL_KEYWORDS || 'IC,Dienst,Fahrstunde,Prüfung,Service,Einsatz')
   .split(',').map(s => s.trim().toLowerCase());
-const BADGE_CHANNEL_ID = process.env.BADGE_CHANNEL_ID || '';
-const EOW_CHANNEL_ID   = process.env.EOW_CHANNEL_ID   || '';
+const BADGE_CHANNEL_ID    = process.env.BADGE_CHANNEL_ID    || '';
+const EOW_CHANNEL_ID      = process.env.EOW_CHANNEL_ID      || '';
+const THEORY_CHANNEL_ID   = process.env.THEORY_CHANNEL_ID   || '';
+const PRACTICAL_CHANNEL_ID = process.env.PRACTICAL_CHANNEL_ID || '';
 
 const BADGE_LABELS = {
   ic_10: '10h IC-Zeit', ic_50: '50h IC-Zeit', ic_100: '100h IC-Zeit',
@@ -120,6 +122,28 @@ async function pollNotifications() {
               const ch = await client.channels.fetch(EOW_CHANNEL_ID);
               await ch.send(msg);
             } catch (e) { console.error('[Bot] EoW-Kanal Fehler:', e.message); }
+          }
+        }
+        if (n.type === 'exam') {
+          const channelId = p.channelType === 'theory' ? THEORY_CHANNEL_ID : PRACTICAL_CHANNEL_ID;
+          if (channelId) {
+            const [day, month, year] = p.date.split('-').reverse();
+            const dateStr = `${day}.${month}.${year}`;
+            const embed = new EmbedBuilder()
+              .setColor(p.passed ? 0x22c55e : 0xef4444)
+              .setTitle(p.passed ? '✅ Prüfung bestanden' : '❌ Prüfung nicht bestanden')
+              .addFields(
+                { name: '📋 Prüfungsart', value: p.examType, inline: true },
+                { name: '👮 Prüfer',      value: p.examinerName, inline: true },
+                { name: '📅 Datum',       value: dateStr, inline: true },
+              );
+            if (p.citizenName) embed.addFields({ name: '👤 Bürger', value: p.citizenName, inline: true });
+            if (p.score)       embed.addFields({ name: '📊 Ergebnis', value: `${p.score} (${p.percentage}%)`, inline: true });
+            if (!p.passed && p.errors?.length) embed.addFields({ name: '⚠️ Fehler', value: p.errors.join(', '), inline: false });
+            try {
+              const ch = await client.channels.fetch(channelId);
+              await ch.send({ embeds: [embed] });
+            } catch (e) { console.error('[Bot] Prüfungskanal Fehler:', e.message); }
           }
         }
         await fetch(`${SERVER_URL}/api/bot-notifications/${n.id}/sent`, {
