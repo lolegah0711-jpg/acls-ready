@@ -156,59 +156,11 @@
   -webkit-backdrop-filter: blur(20px);
   border-bottom-color: rgba(255,185,60,.1);
 }
-/* City lights background — point lights + district glows + street grid */
+/* City photo background */
 [data-theme="losantos"] body {
   background:
-    /* ── City lights (3px solid dots with orange glow halo) ── */
-    radial-gradient(circle at  4%  8%, rgba(255,230,100,1) 0, rgba(255,230,100,1) 3px, rgba(255,190,50,.4) 9px, transparent 16px),
-    radial-gradient(circle at 14% 15%, rgba(255,215,85,1)  0, rgba(255,215,85,1)  2px, rgba(255,175,45,.3) 7px, transparent 14px),
-    radial-gradient(circle at 25%  6%, rgba(255,228,95,1)  0, rgba(255,228,95,1)  3px, rgba(255,192,52,.4) 9px, transparent 16px),
-    radial-gradient(circle at 37% 13%, rgba(255,210,80,1)  0, rgba(255,210,80,1)  2px, rgba(255,170,42,.3) 7px, transparent 14px),
-    radial-gradient(circle at 48%  9%, rgba(255,225,90,1)  0, rgba(255,225,90,1)  4px, rgba(255,185,48,.5) 11px,transparent 20px),
-    radial-gradient(circle at 60% 17%, rgba(255,212,82,1)  0, rgba(255,212,82,1)  2px, rgba(255,172,44,.3) 7px, transparent 14px),
-    radial-gradient(circle at 71%  7%, rgba(255,225,90,1)  0, rgba(255,225,90,1)  3px, rgba(255,190,52,.4) 9px, transparent 16px),
-    radial-gradient(circle at 83% 14%, rgba(255,210,80,1)  0, rgba(255,210,80,1)  2px, rgba(255,170,42,.3) 7px, transparent 14px),
-    radial-gradient(circle at 94%  9%, rgba(255,220,88,1)  0, rgba(255,220,88,1)  3px, rgba(255,182,48,.4) 9px, transparent 16px),
-    radial-gradient(circle at  8% 27%, rgba(255,212,82,1)  0, rgba(255,212,82,1)  2px, rgba(255,172,44,.3) 7px, transparent 14px),
-    radial-gradient(circle at 19% 34%, rgba(255,220,86,1)  0, rgba(255,220,86,1)  3px, rgba(255,182,50,.4) 9px, transparent 16px),
-    radial-gradient(circle at 31% 29%, rgba(255,208,78,1)  0, rgba(255,208,78,1)  2px, rgba(255,168,42,.3) 7px, transparent 14px),
-    radial-gradient(circle at 44% 37%, rgba(255,228,92,1)  0, rgba(255,228,92,1)  4px, rgba(255,188,52,.5) 11px,transparent 20px),
-    radial-gradient(circle at 56% 31%, rgba(200,228,255,1) 0, rgba(200,228,255,1) 2px, rgba(160,202,255,.3) 7px, transparent 14px),
-    radial-gradient(circle at 68% 36%, rgba(255,215,82,1)  0, rgba(255,215,82,1)  3px, rgba(255,178,46,.4) 9px, transparent 16px),
-    radial-gradient(circle at 79% 30%, rgba(255,222,88,1)  0, rgba(255,222,88,1)  2px, rgba(255,184,50,.3) 7px, transparent 14px),
-    radial-gradient(circle at 91% 38%, rgba(255,210,80,1)  0, rgba(255,210,80,1)  3px, rgba(255,172,44,.4) 9px, transparent 16px),
-    radial-gradient(circle at  5% 49%, rgba(255,218,84,1)  0, rgba(255,218,84,1)  2px, rgba(255,180,48,.3) 7px, transparent 14px),
-    radial-gradient(circle at 17% 55%, rgba(255,228,90,1)  0, rgba(255,228,90,1)  4px, rgba(255,188,52,.5) 11px,transparent 20px),
-    radial-gradient(circle at 29% 51%, rgba(255,208,78,1)  0, rgba(255,208,78,1)  2px, rgba(255,168,42,.3) 7px, transparent 14px),
-    radial-gradient(circle at 42% 60%, rgba(255,232,96,1)  0, rgba(255,232,96,1)  5px, rgba(255,195,55,.6) 13px,transparent 22px),
-    radial-gradient(circle at 55% 54%, rgba(255,215,82,1)  0, rgba(255,215,82,1)  2px, rgba(255,175,46,.3) 7px, transparent 14px),
-    radial-gradient(circle at 66% 61%, rgba(255,222,88,1)  0, rgba(255,222,88,1)  3px, rgba(255,184,50,.4) 9px, transparent 16px),
-    radial-gradient(circle at 78% 53%, rgba(195,222,255,1) 0, rgba(195,222,255,1) 2px, rgba(155,196,255,.3) 7px, transparent 14px),
-    radial-gradient(circle at 89% 58%, rgba(255,212,80,1)  0, rgba(255,212,80,1)  3px, rgba(255,172,44,.4) 9px, transparent 16px),
-    radial-gradient(circle at  9% 71%, rgba(255,215,82,1)  0, rgba(255,215,82,1)  2px, rgba(255,176,46,.3) 7px, transparent 14px),
-    radial-gradient(circle at 22% 77%, rgba(255,225,88,1)  0, rgba(255,225,88,1)  4px, rgba(255,186,50,.5) 11px,transparent 20px),
-    radial-gradient(circle at 35% 73%, rgba(100,198,255,1) 0, rgba(100,198,255,1) 2px, rgba(60,162,255,.3)  7px, transparent 14px),
-    radial-gradient(circle at 48% 79%, rgba(255,215,82,1)  0, rgba(255,215,82,1)  3px, rgba(255,175,46,.4) 9px, transparent 16px),
-    radial-gradient(circle at 62% 74%, rgba(255,228,90,1)  0, rgba(255,228,90,1)  2px, rgba(255,188,52,.3) 7px, transparent 14px),
-    radial-gradient(circle at 74% 80%, rgba(255,220,86,1)  0, rgba(255,220,86,1)  4px, rgba(255,182,50,.5) 11px,transparent 20px),
-    radial-gradient(circle at 85% 75%, rgba(185,212,255,1) 0, rgba(185,212,255,1) 2px, rgba(148,192,255,.3) 7px, transparent 14px),
-    radial-gradient(circle at 95% 79%, rgba(255,212,80,1)  0, rgba(255,212,80,1)  3px, rgba(255,172,44,.4) 9px, transparent 16px),
-    radial-gradient(circle at 11% 89%, rgba(255,220,86,1)  0, rgba(255,220,86,1)  2px, rgba(255,182,50,.3) 7px, transparent 14px),
-    radial-gradient(circle at 27% 93%, rgba(255,215,82,1)  0, rgba(255,215,82,1)  3px, rgba(255,176,46,.4) 9px, transparent 16px),
-    radial-gradient(circle at 44% 88%, rgba(255,226,90,1)  0, rgba(255,226,90,1)  2px, rgba(255,188,52,.3) 7px, transparent 14px),
-    radial-gradient(circle at 58% 93%, rgba(255,218,84,1)  0, rgba(255,218,84,1)  4px, rgba(255,180,48,.5) 11px,transparent 20px),
-    radial-gradient(circle at 72% 89%, rgba(255,222,88,1)  0, rgba(255,222,88,1)  2px, rgba(255,184,50,.3) 7px, transparent 14px),
-    radial-gradient(circle at 87% 94%, rgba(255,212,80,1)  0, rgba(255,212,80,1)  3px, rgba(255,172,44,.4) 9px, transparent 16px),
-    /* ── Street grid ── */
-    repeating-linear-gradient(  0deg, transparent, transparent 47px, rgba(255,200,70,.055) 47px, rgba(255,200,70,.055) 48px),
-    repeating-linear-gradient( 90deg, transparent, transparent 47px, rgba(255,200,70,.055) 47px, rgba(255,200,70,.055) 48px),
-    /* ── District glows ── */
-    radial-gradient(ellipse 50% 35% at 55% 58%, rgba(255,130,20,.45) 0%, transparent 70%),
-    radial-gradient(ellipse 28% 20% at 12% 85%, rgba(30,110,255,.35)  0%, transparent 70%),
-    radial-gradient(ellipse 20% 14% at 80% 78%, rgba(160,192,255,.26) 0%, transparent 70%),
-    radial-gradient(ellipse 25% 16% at 34% 75%, rgba(255,165,25,.22)  0%, transparent 70%),
-    radial-gradient(ellipse 90% 70% at 50% 68%, rgba(255,110,10,.11)  0%, transparent 80%),
-    #06050a;
+    linear-gradient(rgba(3,2,8,.48), rgba(3,2,8,.48)),
+    url('/losantos-bg.jpg') center / cover no-repeat fixed;
 }
 [data-theme="losantos"] .leaflet-container          { background: #06050a !important; }
 [data-theme="losantos"] .quiz-score-big.quiz-passed { color: #22c55e; }
