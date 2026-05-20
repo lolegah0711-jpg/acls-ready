@@ -580,6 +580,7 @@ app.post('/api/ic-log', requireAdmin, (req, res) => {
   const { user_id, hours, date, notes } = req.body;
   const r = db.prepare('INSERT INTO ic_log (user_id, hours, date, notes, logged_by, auto) VALUES (?, ?, ?, ?, ?, 0)')
     .run(+user_id, +hours, date, notes || null, req.adminUser.id);
+  checkAndAwardBadges(+user_id);
   res.json({ id: r.lastInsertRowid });
 });
 
@@ -723,6 +724,7 @@ app.post('/api/voice-session', (req, res) => {
     if (user) {
       db.prepare('INSERT INTO ic_log (user_id, hours, date, notes, logged_by, auto) VALUES (?, ?, ?, ?, NULL, 1)')
         .run(user.id, +hours, date, notes || `Auto: ${channel_name} (${duration_minutes} Min)`);
+      checkAndAwardBadges(user.id);
     }
   }
   res.json({ ok: true });
@@ -832,11 +834,36 @@ function checkAndAwardBadges(userId) {
   if (conducted >= 10)  awardBadge(userId, 'exams_10');
   if (conducted >= 50)  awardBadge(userId, 'exams_50');
   if (conducted >= 100) awardBadge(userId, 'exams_100');
+
   const eowWins = db.prepare('SELECT COUNT(*) as c FROM eow_winners WHERE user_id = ?').get(userId).c;
   if (eowWins >= 1) awardBadge(userId, 'eow_1');
   if (eowWins >= 3) awardBadge(userId, 'eow_3');
   if (eowWins >= 5) awardBadge(userId, 'eow_5');
+
+  // Kategorie-Abzeichen: mind. 1 bestandene Prüfung pro Kategorie abgenommen
+  const cats = db.prepare(`
+    SELECT ec.name FROM registry r
+    JOIN exam_categories ec ON ec.id = r.category_id
+    WHERE r.examiner_id = ? AND r.passed = 1
+    GROUP BY r.category_id
+  `).all(userId);
+  for (const cat of cats) {
+    awardBadge(userId, 'cat_' + cat.name.toLowerCase().replace(/[^a-z]/g, ''));
+  }
+
+  // IC-Zeit Meilensteine
+  const icTotal = db.prepare('SELECT COALESCE(SUM(hours),0) as h FROM ic_log WHERE user_id = ?').get(userId).h;
+  if (icTotal >= 10)  awardBadge(userId, 'ic_10');
+  if (icTotal >= 50)  awardBadge(userId, 'ic_50');
+  if (icTotal >= 100) awardBadge(userId, 'ic_100');
+  if (icTotal >= 250) awardBadge(userId, 'ic_250');
+  if (icTotal >= 500) awardBadge(userId, 'ic_500');
 }
+
+app.get('/api/my-badges', requireAuth, (req, res) => {
+  const u = getUser(req);
+  res.json(db.prepare('SELECT badge_type, earned_at FROM user_badges WHERE user_id = ? ORDER BY earned_at ASC').all(u.id));
+});
 
 app.get('/api/badges/:userId', requireAuth, (req, res) => {
   res.json(db.prepare('SELECT badge_type, earned_at FROM user_badges WHERE user_id = ? ORDER BY earned_at ASC').all(req.params.userId));

@@ -2,6 +2,26 @@
    ACLS Frontend SPA — communicates with Express backend via fetch
    ================================================================ */
 
+// ── Badge Definitionen ───────────────────────────────────────────
+const BADGE_DEFS = {
+  ic_10:          { icon: 'fa-clock',          color: '#cd7f32', label: '10h IC-Zeit',       desc: '10 Stunden ingame' },
+  ic_50:          { icon: 'fa-hourglass-half', color: '#a8a9ad', label: '50h IC-Zeit',       desc: '50 Stunden ingame' },
+  ic_100:         { icon: 'fa-hourglass-end',  color: '#ffd700', label: '100h IC-Zeit',      desc: '100 Stunden ingame' },
+  ic_250:         { icon: 'fa-star',           color: '#f97316', label: '250h IC-Zeit',      desc: '250 Stunden ingame' },
+  ic_500:         { icon: 'fa-crown',          color: '#00f5ff', label: '500h IC-Zeit',      desc: '500 Stunden ingame' },
+  cat_pkw:        { icon: 'fa-car',            color: '#f97316', label: 'PKW-Prüfer',        desc: 'PKW-Prüfung abgenommen' },
+  cat_motorrad:   { icon: 'fa-motorcycle',     color: '#ef4444', label: 'Motorrad-Prüfer',   desc: 'Motorrad-Prüfung abgenommen' },
+  cat_boot:       { icon: 'fa-ship',           color: '#3b82f6', label: 'Boot-Prüfer',       desc: 'Boot-Prüfung abgenommen' },
+  cat_lkw:        { icon: 'fa-truck',          color: '#22c55e', label: 'LKW-Prüfer',        desc: 'LKW-Prüfung abgenommen' },
+  cat_flugschein: { icon: 'fa-plane',          color: '#a855f7', label: 'Pilot-Prüfer',      desc: 'Flugschein-Prüfung abgenommen' },
+  exams_10:       { icon: 'fa-clipboard-check',color: '#cd7f32', label: '10 Prüfungen',      desc: '10 Prüfungen abgenommen' },
+  exams_50:       { icon: 'fa-clipboard-check',color: '#a8a9ad', label: '50 Prüfungen',      desc: '50 Prüfungen abgenommen' },
+  exams_100:      { icon: 'fa-clipboard-check',color: '#ffd700', label: '100 Prüfungen',     desc: '100 Prüfungen abgenommen' },
+  eow_1:          { icon: 'fa-trophy',         color: '#cd7f32', label: 'MdW-Sieger',        desc: '1× Mitarbeiter der Woche' },
+  eow_3:          { icon: 'fa-trophy',         color: '#a8a9ad', label: 'Dreifach-Sieger',   desc: '3× Mitarbeiter der Woche' },
+  eow_5:          { icon: 'fa-trophy',         color: '#ffd700', label: 'Legende',           desc: '5× Mitarbeiter der Woche' },
+};
+
 // ── Theme ────────────────────────────────────────────────────────
 function applyTheme(name) {
   const t = name || 'dunkel';
@@ -300,8 +320,10 @@ function navigate(page) {
 //  DASHBOARD
 // ════════════════════════════════════════════════════════════════
 async function dashboard() {
-  const [d, announcements] = await Promise.all([api('/api/dashboard'), api('/api/announcements')]);
+  const [d, announcements, myBadges] = await Promise.all([api('/api/dashboard'), api('/api/announcements'), api('/api/my-badges')]);
   if (!d) return;
+  const earnedSet = new Set((myBadges || []).map(b => b.badge_type));
+  const badgeMap  = Object.fromEntries((myBadges || []).map(b => [b.badge_type, b.earned_at]));
 
   const eow      = d.eowWinner;
   const isCurWk  = d.isCurrentWeekWinner;
@@ -456,6 +478,26 @@ async function dashboard() {
             </div>
             <div class="re-time">${ago(r.registered_at)}</div>
           </div>`).join('') || '<div class="empty"><i class="fas fa-history"></i><p>Keine Einträge</p></div>'}
+      </div>
+    </div>
+
+    <!-- Meine Abzeichen -->
+    <div class="card" style="margin-top:1.1rem">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(250,204,21,.15)"><i class="fas fa-medal" style="color:#facc15"></i></div>
+        <div><div class="card-title">Meine Abzeichen</div><div class="card-sub">${earnedSet.size} von ${Object.keys(BADGE_DEFS).length} freigeschaltet</div></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:.75rem;padding:.25rem 0">
+        ${Object.entries(BADGE_DEFS).map(([key, b]) => {
+          const earned = earnedSet.has(key);
+          const date   = badgeMap[key] ? new Date(badgeMap[key]).toLocaleDateString('de-DE') : null;
+          return `<div title="${b.desc}${date ? ' · ' + date : ''}" style="display:flex;flex-direction:column;align-items:center;gap:.35rem;width:74px;opacity:${earned ? '1' : '0.28'};transition:opacity .2s">
+            <div style="width:44px;height:44px;border-radius:50%;background:${earned ? b.color + '22' : 'var(--surface2)'};border:2px solid ${earned ? b.color : 'var(--border)'};display:flex;align-items:center;justify-content:center;${earned ? 'box-shadow:0 0 10px ' + b.color + '55' : ''}">
+              <i class="fas ${b.icon}" style="color:${earned ? b.color : 'var(--muted)'};font-size:.9rem"></i>
+            </div>
+            <span style="font-size:.65rem;text-align:center;line-height:1.2;color:${earned ? 'var(--text)' : 'var(--muted)'};font-weight:${earned ? '600' : '400'}">${b.label}</span>
+          </div>`;
+        }).join('')}
       </div>
     </div>
 
