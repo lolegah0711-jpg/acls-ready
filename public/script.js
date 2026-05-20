@@ -910,13 +910,47 @@ const PRAXIS_ERRORS = [
   'Gefährliche Überholung',
 ];
 
+function buildAnswerReview(questions, results) {
+  const byId = {};
+  for (const r of results) byId[r.id] = r;
+  const rows = questions.map((q, idx) => {
+    const r = byId[q.id];
+    if (!r) return '';
+    const opts = [q.option_a, q.option_b, q.option_c, q.option_d];
+    const optsHtml = opts.map((opt, i) => {
+      if (!opt || !opt.trim()) return '';
+      const isCorrect = i === r.correct_answer;
+      const isUserWrong = i === r.user_answer && !r.correct;
+      let bg = 'transparent', border = 'transparent', color = 'var(--muted)', icon = '';
+      if (isCorrect)   { bg = 'rgba(34,197,94,.12)';  border = 'rgba(34,197,94,.4)';  color = 'var(--green)'; icon = '<i class="fas fa-check" style="font-size:.72rem"></i>'; }
+      if (isUserWrong) { bg = 'rgba(239,68,68,.1)';   border = 'rgba(239,68,68,.35)'; color = '#ef4444';      icon = '<i class="fas fa-times" style="font-size:.72rem"></i>'; }
+      return `<div style="font-size:.79rem;padding:.28rem .5rem;border-radius:4px;background:${bg};border:1px solid ${border};color:${color};display:flex;justify-content:space-between;align-items:center;gap:.4rem">
+        <span><b>${'ABCD'[i]}.</b> ${opt}</span>${icon}</div>`;
+    }).join('');
+    const statusColor = r.correct ? 'var(--green)' : '#ef4444';
+    const statusIcon  = r.correct ? 'fa-check-circle' : 'fa-times-circle';
+    return `<div style="background:var(--input);border-radius:var(--r);padding:.6rem .75rem;border:1px solid var(--border)">
+      <div style="font-size:.81rem;font-weight:600;margin-bottom:.4rem;color:var(--fg);display:flex;align-items:center;gap:.4rem">
+        <i class="fas ${statusIcon}" style="color:${statusColor};flex-shrink:0"></i>${idx + 1}. ${q.question}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:.2rem">${optsHtml}</div>
+    </div>`;
+  }).join('');
+  return `<div style="margin-top:1rem;border-top:1px solid var(--border);padding-top:.9rem">
+    <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.55rem">Auswertung</div>
+    <div style="display:flex;flex-direction:column;gap:.5rem;max-height:310px;overflow-y:auto;padding-right:.2rem">${rows}</div>
+  </div>`;
+}
+
 window.submitExam = async () => {
   const unanswered = activeQuiz.questions.filter(q => activeQuiz.answers[q.id] === undefined).length;
   if (unanswered > 0) { toast(`Noch ${unanswered} Frage${unanswered > 1 ? 'n' : ''} nicht beantwortet`, 'err'); return; }
-  const cat    = activeQuiz.cat;
-  const result = await api('/api/exams/submit', { method: 'POST', body: { answers: activeQuiz.answers } });
+  const cat       = activeQuiz.cat;
+  const questions = activeQuiz.questions;
+  const result    = await api('/api/exams/submit', { method: 'POST', body: { answers: activeQuiz.answers } });
   if (!result) return;
   const citizenName = activeQuiz.citizenName;
+  const review = buildAnswerReview(questions, result.results || []);
 
   if (!result.passed) {
     const autoBan = result.banId
@@ -930,9 +964,10 @@ window.submitExam = async () => {
         <div style="font-size:.9rem;color:var(--muted)">${result.percentage}% richtig – ${cat?.name || ''} Theorie</div>
         ${autoBan}
       </div>
+      ${review}
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeModal();exams()">Schließen</button>
-        <button class="btn btn-primary" onclick="startExam(${activeQuiz.category_id},'${activeQuiz.mode}')"><i class="fas fa-redo"></i> Nochmal</button>
+        <button class="btn btn-primary" onclick="startExam(${cat?.id ?? activeQuiz.category_id},'${activeQuiz.mode}')"><i class="fas fa-redo"></i> Nochmal</button>
       </div>`);
     return;
   }
@@ -952,6 +987,7 @@ window.submitExam = async () => {
       <div style="font-size:1.1rem;font-weight:700;margin:.75rem 0">✓ Bestanden</div>
       <div style="font-size:.9rem;color:var(--muted)">${result.percentage}% richtig – ${cat?.name || ''} Theorie</div>
     </div>
+    ${review}
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal();exams()">Schließen</button>
     </div>`);
