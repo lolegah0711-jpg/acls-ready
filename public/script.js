@@ -1394,7 +1394,8 @@ async function admin() {
   window._adminCats = cats;
 
   $('pageContent').innerHTML = `
-    <div class="admin-grid">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:1rem"><!-- col-left -->
       <div class="card">
         <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-users"></i></div>
         <div><div class="card-title">Benutzerverwaltung</div><div class="card-sub">${users.length} Nutzer</div></div></div>
@@ -1438,23 +1439,6 @@ async function admin() {
       </div>
 
       <div class="card">
-        <div class="card-head"><div class="card-head-icon blue"><i class="fas fa-question-circle"></i></div>
-        <div><div class="card-title">Fragenverwaltung</div><div class="card-sub">${cats?.reduce((s,c)=>s+c.question_count,0)||0} Fragen total</div></div></div>
-        <button class="btn btn-primary btn-sm" onclick="openAddQuestion()" style="margin-bottom:.85rem"><i class="fas fa-plus"></i> Frage hinzufügen</button>
-        ${(cats || []).map(cat => `
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:.55rem .75rem;background:var(--input);border-radius:var(--r);margin-bottom:.4rem">
-            <div style="display:flex;align-items:center;gap:.6rem">
-              <i class="fas ${cat.icon}" style="color:var(--orange);width:16px;text-align:center"></i>
-              <span style="font-size:.88rem;font-weight:600">${cat.name}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:.5rem">
-              <span class="badge badge-m">${cat.question_count} Fragen</span>
-              <button class="btn btn-ghost btn-sm" onclick="manageQuestions(${cat.id},'${cat.name}','${cat.icon}')"><i class="fas fa-cog"></i></button>
-            </div>
-          </div>`).join('')}
-      </div>
-
-      <div class="card">
         <div class="card-head"><div class="card-head-icon" style="background:rgba(239,68,68,.15)"><i class="fas fa-comment-alt" style="color:#ef4444"></i></div>
         <div><div class="card-title">Beschwerden</div><div class="card-sub">${(complaints||[]).filter(c=>c.status==='offen').length} offen</div></div></div>
         ${(complaints || []).length ? `
@@ -1472,6 +1456,25 @@ async function admin() {
           </tr>`).join('')}</tbody>
         </table></div>` : '<div class="empty" style="padding:1rem"><p>Keine Beschwerden eingereicht</p></div>'}
       </div>
+    </div><!-- /col-left -->
+
+    <div style="display:flex;flex-direction:column;gap:1rem"><!-- col-right -->
+      <div class="card">
+        <div class="card-head"><div class="card-head-icon blue"><i class="fas fa-question-circle"></i></div>
+        <div><div class="card-title">Fragenverwaltung</div><div class="card-sub">${cats?.reduce((s,c)=>s+c.question_count,0)||0} Fragen total</div></div></div>
+        <button class="btn btn-primary btn-sm" onclick="openAddQuestion()" style="margin-bottom:.85rem"><i class="fas fa-plus"></i> Frage hinzufügen</button>
+        ${(cats || []).map(cat => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:.55rem .75rem;background:var(--input);border-radius:var(--r);margin-bottom:.4rem">
+            <div style="display:flex;align-items:center;gap:.6rem">
+              <i class="fas ${cat.icon}" style="color:var(--orange);width:16px;text-align:center"></i>
+              <span style="font-size:.88rem;font-weight:600">${cat.name}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <span class="badge badge-m">${cat.question_count} Fragen</span>
+              <button class="btn btn-ghost btn-sm" onclick="manageQuestions(${cat.id},'${cat.name}','${cat.icon}')"><i class="fas fa-cog"></i></button>
+            </div>
+          </div>`).join('')}
+      </div>
 
       <div class="card">
         <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-bullhorn"></i></div>
@@ -1488,6 +1491,7 @@ async function admin() {
             <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">${a.content.slice(0,80)}${a.content.length>80?'…':''}</div>
           </div>`).join('') : '<div class="empty" style="padding:1rem"><p>Keine Ankündigungen</p></div>'}
       </div>
+    </div><!-- /col-right -->
     </div>`;
 }
 
