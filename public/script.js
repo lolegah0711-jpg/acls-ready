@@ -11,6 +11,35 @@ function applyTheme(name) {
 window.setTheme = name => { localStorage.setItem('acls-theme', name); applyTheme(name); };
 applyTheme(localStorage.getItem('acls-theme'));
 
+// ── Count-up animation ───────────────────────────────────────────
+function countUp(el, target, suffix = '', ms = 680) {
+  const isFloat = !Number.isInteger(target);
+  const t0 = performance.now();
+  const tick = t => {
+    const p = Math.min((t - t0) / ms, 1);
+    const ease = 1 - Math.pow(1 - p, 3);
+    el.textContent = (isFloat ? (ease * target).toFixed(1) : Math.round(ease * target)) + suffix;
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+function animateCountUps() {
+  document.querySelectorAll('[data-countup]').forEach(el => {
+    countUp(el, parseFloat(el.dataset.countup), el.dataset.suffix || '');
+  });
+}
+
+// ── Sidebar collapse ─────────────────────────────────────────────
+window.toggleSidebar = () => {
+  const s = document.querySelector('.sidebar');
+  const collapsed = s.classList.toggle('collapsed');
+  localStorage.setItem('acls-sidebar', collapsed ? '1' : '0');
+};
+function initSidebar() {
+  if (localStorage.getItem('acls-sidebar') === '1')
+    document.querySelector('.sidebar').classList.add('collapsed');
+}
+
 // ── Globals ─────────────────────────────────────────────────────
 let currentUser = null;
 let leafletMap  = null;   // active Leaflet instance
@@ -222,6 +251,7 @@ window.voterLogout = async () => {
 function bootApp() {
   $('loginScreen').classList.add('hidden');
   $('app').classList.remove('hidden');
+  initSidebar();
   renderUserWidget();
   $('adminNavItem').style.display = isAdmin() ? '' : 'none';
   document.querySelectorAll('.nav-item').forEach(el => {
@@ -346,28 +376,28 @@ async function dashboard() {
     <!-- 4 Stat cards -->
     <div class="stats-row">
       <div class="stat-card">
-        <div class="stat-info"><div class="stat-lbl">Gesamt Prüfungen</div><div class="stat-val">${d.total}</div></div>
+        <div class="stat-info"><div class="stat-lbl">Gesamt Prüfungen</div><div class="stat-val" data-countup="${d.total}">0</div></div>
         <div class="stat-ico o"><i class="fas fa-clipboard-list"></i></div>
       </div>
       <div class="stat-card">
-        <div class="stat-info"><div class="stat-lbl">Bestanden</div><div class="stat-val g">${d.passed}</div></div>
+        <div class="stat-info"><div class="stat-lbl">Bestanden</div><div class="stat-val g" data-countup="${d.passed}">0</div></div>
         <div class="stat-ico g"><i class="fas fa-check-circle"></i></div>
       </div>
       <div class="stat-card">
-        <div class="stat-info"><div class="stat-lbl">Durchgefallen</div><div class="stat-val r">${d.failed}</div></div>
+        <div class="stat-info"><div class="stat-lbl">Durchgefallen</div><div class="stat-val r" data-countup="${d.failed}">0</div></div>
         <div class="stat-ico r"><i class="fas fa-times-circle"></i></div>
       </div>
       <div class="stat-card">
-        <div class="stat-info"><div class="stat-lbl">Erfolgsquote</div><div class="stat-val o">${d.rate}%</div></div>
+        <div class="stat-info"><div class="stat-lbl">Erfolgsquote</div><div class="stat-val o" data-countup="${d.rate}" data-suffix="%">0%</div></div>
         <div class="stat-ico b"><i class="fas fa-chart-line"></i></div>
       </div>
     </div>
 
     <!-- Time cards -->
     <div class="time-row">
-      <div class="time-card"><div class="time-lbl">Heute</div><div class="time-val">${d.todayCount}</div></div>
-      <div class="time-card"><div class="time-lbl">Diese Woche</div><div class="time-val">${d.weekCount}</div></div>
-      <div class="time-card"><div class="time-lbl">Dieser Monat</div><div class="time-val">${d.monthCount}</div></div>
+      <div class="time-card"><div class="time-lbl">Heute</div><div class="time-val" data-countup="${d.todayCount}">0</div></div>
+      <div class="time-card"><div class="time-lbl">Diese Woche</div><div class="time-val" data-countup="${d.weekCount}">0</div></div>
+      <div class="time-card"><div class="time-lbl">Dieser Monat</div><div class="time-val" data-countup="${d.monthCount}">0</div></div>
     </div>
 
     <!-- Letzte 3 Prüfungen — prominent -->
@@ -447,6 +477,7 @@ async function dashboard() {
           <div class="lb-score"><i class="fas fa-clock"></i>${(+u.hours).toFixed(1)}h</div>
         </div>`).join('')}
     </div>` : ''}`;
+  animateCountUps();
 }
 
 // ════════════════════════════════════════════════════════════════
