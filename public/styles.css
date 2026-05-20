@@ -141,7 +141,7 @@
   --red:        #ef4444;
   --red-dim:    rgba(239,68,68,.12);
   --card-blur:  10px;
-  --card-bg:    rgba(8,6,14,.42);
+  --card-bg:    rgba(8,6,14,.22);
 }
 /* Sidebar + Topbar semi-transparent so city shows through */
 [data-theme="losantos"] .sidebar {
