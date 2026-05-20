@@ -389,8 +389,18 @@ async function dashboard() {
          </div>
        </div>`;
 
-  // Karte 2: laufende Abstimmung
-  const voteCard = top
+  // Karte 2: abgeschlossen wenn Gewinner schon ermittelt, sonst laufende Abstimmung
+  const voteCard = isCurWk
+    ? `<div class="eow-banner" style="flex:1;border-color:rgba(34,197,94,.25)">
+         <div class="eow-av" style="background:rgba(34,197,94,.12);color:var(--green);font-size:1.4rem"><i class="fas fa-check"></i></div>
+         <div class="eow-info">
+           <div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>Abstimmung abgeschlossen · ${curWk}</div>
+           <div class="eow-name" style="color:var(--green)">Gewinner ermittelt</div>
+           <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">Nächste Abstimmung ab Montag</div>
+         </div>
+         <div class="eow-ml"><button class="btn btn-ghost btn-sm" onclick="navigate('eow')"><i class="fas fa-list"></i> Details</button></div>
+       </div>`
+    : top
     ? `<div class="eow-banner" style="flex:1;border-color:rgba(249,115,22,.25)">
          <div class="eow-av" style="border-color:rgba(249,115,22,.4)">${avatarUrl(top) ? `<img src="${avatarUrl(top)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(top.username)}</div>
          <div class="eow-info">
