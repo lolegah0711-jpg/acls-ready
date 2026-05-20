@@ -958,7 +958,7 @@ window.submitExam = async () => {
 
 function openPraktischeExam(theorieResult, cat) {
   const citizenName = activeQuiz.citizenName;
-  const ROUTE_IMGS = { PKW: '/pkw-route.png', LKW: '/lkw-route.png' };
+  const ROUTE_IMGS = { PKW: '/pkw-route.png', LKW: '/lkw-route.png', Motorrad: '/bike-route.png', Flugschein: '/heli-route.png' };
   const routeSrc  = ROUTE_IMGS[cat?.name];
   const routeImg  = routeSrc
     ? `<div style="margin-bottom:1rem">
