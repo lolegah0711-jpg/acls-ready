@@ -742,7 +742,7 @@ input, select, textarea { font-family: inherit; }
 #pageContent {
   flex: 1;
   overflow-y: auto;
-  padding: 1.25rem 1.5rem;
+  padding: 1.25rem 1.5rem 5rem;
 }
 
 /* ── User Widget ─────────────────────────────────────────────────── */
@@ -1393,7 +1393,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   .sidebar { display: none; }
   .stats-row { grid-template-columns: 1fr 1fr; }
   .time-row  { grid-template-columns: 1fr 1fr 1fr; }
-  #pageContent { padding: 1rem; }
+  #pageContent { padding: 1rem 1rem 5rem; }
   .topbar { padding: .75rem 1rem; }
   .last-exam-body { flex-direction: column; align-items: flex-start; }
   .last-exam-arrow { transform: rotate(90deg); align-self: center; }
