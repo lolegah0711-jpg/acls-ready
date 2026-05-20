@@ -483,7 +483,6 @@ async function eow() {
   const [data, users] = await Promise.all([api('/api/eow'), api('/api/users')]);
   if (!data) return;
 
-  // Alle aktiven Mitarbeiter zeigen (inkl. sich selbst — aber nicht wählbar)
   const candidates = (users || []).filter(u => u.is_active);
   const myVote     = data.myVoteFor;
   const tally      = {};
@@ -496,74 +495,98 @@ async function eow() {
     citVoterNames[v.nominee_id].push(v.voter_username);
   });
 
-  // Gesamtstimmen (Mitarbeiter + Bürger) pro Kandidat für Anzeige
-  const totalTally = {};
-  candidates.forEach(u => {
-    totalTally[u.id] = (tally[u.id] || 0) + (citTally[u.id] || 0);
-  });
+  const hofWinners = data.history.slice(0, 5);
 
   $('pageContent').innerHTML = `
-    <div class="eow-grid">
-      <div>
-        <div class="card" style="margin-bottom:1rem">
-          <div class="card-head">
-            <div class="card-head-icon orange"><i class="fas fa-vote-yea"></i></div>
-            <div><div class="card-title">Abstimmung – KW ${data.week.split('-W')[1]}</div>
-            <div class="card-sub">${myVote ? 'Du hast bereits abgestimmt' : 'Wähle einen Mitarbeiter'} · Auszählung: Sonntag 18:00 Uhr</div></div>
-          </div>
-          ${candidates.map(u => {
-            const isSelf    = u.id === currentUser.id;
-            const isVoted   = myVote === u.id;
-            const canVote   = !myVote && !isSelf;
+    <div style="display:flex;flex-direction:column;gap:1rem">
+
+      <!-- Hall of Fame -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-icon orange"><i class="fas fa-trophy"></i></div>
+          <div><div class="card-title">Hall of Fame</div><div class="card-sub">Die letzten 5 Gewinner</div></div>
+        </div>
+        ${hofWinners.length ? `
+        <div style="display:grid;grid-template-columns:repeat(${hofWinners.length},1fr);gap:.75rem">
+          ${hofWinners.map((w, i) => {
+            const medals = ['#f59e0b','#9ca3af','#b45309','var(--orange)','var(--orange)'];
+            const medalIcons = ['fa-trophy','fa-medal','fa-award','fa-star','fa-star'];
             return `
-            <div class="vote-item${isVoted ? ' voted' : ''}${isSelf ? ' self-item' : ''}"
-                 ${canVote ? `onclick="castVote(${u.id})"` : ''}>
-              <div style="flex-shrink:0">${avatarEl(u, 38)}</div>
-              <div style="flex:1">
-                <div class="vote-name">${u.username}${isSelf ? ' <span style="font-size:.7rem;color:var(--muted)">(Du)</span>' : ''}</div>
-                <div class="vote-count">${tally[u.id] || 0} Mitarbeiterstimmen · ${citTally[u.id] || 0} Bürgerstimmen</div>
-                ${citVoterNames[u.id]?.length ? `<div style="font-size:.72rem;color:var(--muted);margin-top:.2rem"><i class="fas fa-users" style="margin-right:.3rem"></i>${citVoterNames[u.id].join(', ')}</div>` : ''}
-              </div>
-              ${isVoted ? '<i class="fas fa-check-circle" style="color:var(--orange)"></i>' : ''}
-              ${isSelf && !isVoted ? '<i class="fas fa-minus-circle" style="color:var(--muted);opacity:.5" title="Keine Selbstnominierung"></i>' : ''}
+            <div style="display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:.9rem .75rem;background:var(--input);border-radius:var(--r);text-align:center;position:relative">
+              <i class="fas ${medalIcons[i]}" style="position:absolute;top:.6rem;right:.6rem;font-size:.75rem;color:${medals[i]};opacity:.7"></i>
+              ${avatarEl(w, 44)}
+              <div style="font-weight:700;font-size:.88rem">${w.username}</div>
+              <div style="font-size:.72rem;color:var(--muted)">KW ${w.week.split('-W')[1]} · ${w.vote_count} Stimmen</div>
             </div>`;
           }).join('')}
-          ${isAdmin() ? `<div style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
-            <button class="btn btn-primary btn-sm" onclick="countEow()"><i class="fas fa-calculator"></i> Jetzt auszählen</button>
-            <button class="btn btn-ghost btn-sm" onclick="syncMembers()"><i class="fas fa-sync"></i> Discord-Namen sync</button>
-            <button class="btn btn-ghost btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,.3)" onclick="resetEow()"><i class="fas fa-trash"></i> Abstimmung zurücksetzen</button>
-          </div>` : ''}
-        </div>
-
-        <div class="card">
-          <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-chart-bar"></i></div>
-          <div><div class="card-title">Stimmenstand</div><div class="card-sub">Mitarbeiter- + Bürgerstimmen</div></div></div>
-          ${data.standings.length ? data.standings.map(s => `
-            <div class="lb-item">
-              <div style="flex-shrink:0">${avatarEl(s, 30)}</div>
-              <div class="lb-name">${s.username}</div>
-              <div class="lb-score"><i class="fas fa-fire"></i>${(tally[s.id] || 0) + (citTally[s.id] || 0)}</div>
-            </div>`).join('') : '<div class="empty" style="padding:1rem"><p>Noch keine Stimmen</p></div>'}
-        </div>
+        </div>` : '<div class="empty"><i class="fas fa-trophy"></i><p>Noch keine Gewinner</p></div>'}
       </div>
 
+      <!-- Abstimmung -->
       <div class="card">
-        <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-trophy"></i></div>
-        <div><div class="card-title">Hall of Fame</div><div class="card-sub">Vergangene Gewinner</div></div></div>
-        ${data.history.length ? data.history.map(w => `
-          <div class="history-item">
-            <div style="display:flex;align-items:center;gap:.65rem">
-              ${avatarEl(w, 32)}
-              <div><div style="font-size:.88rem;font-weight:600">${w.username}</div>
-              <div style="font-size:.72rem;color:var(--muted)">${w.week}</div></div>
-            </div>
-            <div class="badge badge-o">${w.vote_count} Stimmen</div>
-          </div>`).join('') : '<div class="empty"><i class="fas fa-trophy"></i><p>Noch keine Gewinner</p></div>'}
+        <div class="card-head">
+          <div class="card-head-icon orange"><i class="fas fa-vote-yea"></i></div>
+          <div>
+            <div class="card-title">Abstimmung – KW ${data.week.split('-W')[1]}</div>
+            <div class="card-sub">${myVote ? 'Du hast bereits abgestimmt' : 'Klicke auf einen Mitarbeiter um deine Stimme abzugeben'} · Auszählung: Sonntag 18:00 Uhr</div>
+          </div>
+          ${isAdmin() ? `<div style="display:flex;gap:.5rem;margin-left:auto;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" onclick="countEow()"><i class="fas fa-calculator"></i> Auszählen</button>
+            <button class="btn btn-ghost btn-sm" onclick="syncMembers()"><i class="fas fa-sync"></i> Sync</button>
+            <button class="btn btn-ghost btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,.3)" onclick="resetEow()"><i class="fas fa-trash"></i> Zurücksetzen</button>
+          </div>` : ''}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.75rem;margin-top:.25rem">
+          ${candidates.map(u => {
+            const isSelf  = u.id === currentUser.id;
+            const isVoted = myVote === u.id;
+            const canVote = !myVote && !isSelf;
+            const total   = (tally[u.id] || 0) + (citTally[u.id] || 0);
+            return `
+            <div onclick="${canVote ? `confirmVote(${u.id},'${u.username.replace(/'/g,"\\'")}')` : ''}"
+                 style="display:flex;flex-direction:column;align-items:center;gap:.6rem;padding:1.1rem .75rem;
+                        background:${isVoted ? 'var(--orange-dim)' : 'var(--input)'};
+                        border:1px solid ${isVoted ? 'rgba(249,115,22,.4)' : 'var(--border)'};
+                        border-radius:var(--r);text-align:center;
+                        cursor:${canVote ? 'pointer' : 'default'};
+                        opacity:${isSelf ? '.5' : '1'};
+                        transition:background .15s,border-color .15s,transform .1s"
+                 ${canVote ? 'onmouseenter="this.style.transform=\'scale(1.02)\'" onmouseleave="this.style.transform=\'\'"' : ''}>
+              <div style="position:relative">
+                ${avatarEl(u, 52)}
+                ${isVoted ? '<div style="position:absolute;bottom:-4px;right:-4px;width:20px;height:20px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center"><i class="fas fa-check" style="font-size:.6rem;color:#fff"></i></div>' : ''}
+              </div>
+              <div style="font-weight:700;font-size:.9rem">${u.username}${isSelf ? ' <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(Du)</span>' : ''}</div>
+              <div style="font-size:.72rem;color:var(--muted);line-height:1.4">
+                ${tally[u.id] || 0} Mitarbeiter · ${citTally[u.id] || 0} Bürger
+                ${citVoterNames[u.id]?.length ? `<br><span style="font-size:.68rem;opacity:.8">${citVoterNames[u.id].join(', ')}</span>` : ''}
+              </div>
+              ${isVoted ? '<div style="font-size:.75rem;font-weight:600;color:var(--orange)"><i class="fas fa-check-circle"></i> Deine Wahl</div>' : ''}
+            </div>`;
+          }).join('')}
+        </div>
       </div>
     </div>`;
 }
 
+window.confirmVote = (nominee_id, username) => {
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-vote-yea" style="margin-right:.5rem;color:var(--orange)"></i>Stimme abgeben</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="padding:.75rem 0;text-align:center">
+      <p style="font-size:1rem;margin-bottom:.5rem">Möchtest du <strong>${username}</strong> als</p>
+      <p style="font-size:1rem">Mitarbeiter der Woche wählen?</p>
+      <p style="font-size:.8rem;color:var(--muted);margin-top:.75rem">Diese Entscheidung kann nicht rückgängig gemacht werden.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="castVote(${nominee_id})"><i class="fas fa-check"></i> Ja, wählen</button>
+    </div>`);
+};
 window.castVote = async nominee_id => {
+  closeModal();
   const r = await api('/api/eow/vote', { method: 'POST', body: { nominee_id } });
   if (r) { toast('Stimme abgegeben!', 'ok'); eow(); }
 };
