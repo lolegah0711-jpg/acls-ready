@@ -1245,7 +1245,12 @@ async function iczeit() {
 
   $('pageContent').innerHTML = `
     <div class="pg-header">
-      <div class="pg-header-left"><h2>IC-Zeit Tracking</h2><p>Discord Voice-Kanal Anwesenheit – automatisch via Bot</p></div>
+      <div class="pg-header-left"><h2>IC-Zeit Tracking</h2><p>Discord Voice-Kanal Anwesenheit – automatisch via Bot</p></div></div>
+    <div style="display:flex;align-items:center;gap:.6rem;background:rgba(250,204,21,.07);border:1px solid rgba(250,204,21,.25);border-radius:10px;padding:.6rem 1rem;margin-bottom:1.1rem;font-size:.88rem;color:var(--text)">
+      <i class="fas fa-info-circle" style="color:#facc15;font-size:1rem;flex-shrink:0"></i>
+      <span>Damit die IC-Zeit automatisch getrackt wird, müssen Mitarbeiter einem <strong>„Im Dienst"</strong>-Voice-Kanal auf dem Discord-Server beitreten. Die Zeit wird beim Verlassen des Kanals automatisch eingetragen.</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1.25rem">
       ${isAdmin() ? `<div style="display:flex;gap:.5rem">
         <button class="btn btn-primary" onclick="openLogTime()"><i class="fas fa-plus"></i> Manuell eintragen</button>
         <button class="btn btn-ghost" style="color:#ef4444;border-color:rgba(239,68,68,.3)" onclick="openResetIcModal()"><i class="fas fa-trash"></i> Zurücksetzen</button>
