@@ -9,8 +9,23 @@ const TRACK_ALL    = process.env.TRACK_ALL_CHANNELS === 'true';
 const IC_KEYWORDS  = (process.env.IC_CHANNEL_KEYWORDS || 'IC,Dienst,Fahrstunde,Prüfung,Service,Einsatz')
   .split(',').map(s => s.trim().toLowerCase());
 
-// Laufende Sessions: discord_id → { channelId, channelName, joinedAt }
+// Laufende Sessions: discord_id → { channelId, channelName, joinedAt, sessionStart }
 const activeSessions = new Map();
+
+const TICK_INTERVAL_MS = 15 * 60 * 1000; // 15 Minuten
+
+// Alle 15 Minuten IC-Zeit für alle aktiven Sessions buchen
+setInterval(async () => {
+  if (activeSessions.size === 0) return;
+  const now = new Date();
+  console.log(`[Bot] 15-Min-Tick – ${activeSessions.size} aktive Session(s)`);
+  for (const [discordId, session] of activeSessions) {
+    const minutes = Math.round((now - session.joinedAt) / 60000);
+    if (minutes < 1) continue;
+    await postSession(discordId, session, now);
+    session.joinedAt = now; // Reset → nächster Tick/Leave zählt ab jetzt
+  }
+}, TICK_INTERVAL_MS);
 
 function isIcChannel(name = '') {
   if (TRACK_ALL) return true;
