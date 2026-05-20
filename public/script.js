@@ -1246,7 +1246,10 @@ async function iczeit() {
   $('pageContent').innerHTML = `
     <div class="pg-header">
       <div class="pg-header-left"><h2>IC-Zeit Tracking</h2><p>Discord Voice-Kanal Anwesenheit – automatisch via Bot</p></div>
-      ${isAdmin() ? '<button class="btn btn-primary" onclick="openLogTime()"><i class="fas fa-plus"></i> Manuell eintragen</button>' : ''}
+      ${isAdmin() ? `<div style="display:flex;gap:.5rem">
+        <button class="btn btn-primary" onclick="openLogTime()"><i class="fas fa-plus"></i> Manuell eintragen</button>
+        <button class="btn btn-ghost" style="color:#ef4444;border-color:rgba(239,68,68,.3)" onclick="openResetIcModal()"><i class="fas fa-trash"></i> Zurücksetzen</button>
+      </div>` : ''}
     </div>
 
     ${(active && active.length > 0) ? `
@@ -1369,6 +1372,38 @@ window.submitIcTime = async e => {
 window.deleteIcEntry = async id => {
   const r = await api(`/api/ic-log/${id}`, { method: 'DELETE' });
   if (r) { toast('Gelöscht.', 'ok'); iczeit(); }
+};
+
+window.openResetIcModal = () => {
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title" style="color:#ef4444"><i class="fas fa-trash" style="margin-right:.5rem"></i>IC-Zeit zurücksetzen</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <p style="color:var(--muted);font-size:.88rem;margin-bottom:1.25rem">Wähle welcher Zeitraum gelöscht werden soll. Diese Aktion ist unwiderruflich.</p>
+    <div style="display:flex;flex-direction:column;gap:.6rem">
+      <button class="btn btn-ghost" style="justify-content:flex-start;gap:.75rem" onclick="confirmResetIc('week')">
+        <i class="fas fa-calendar-week" style="color:var(--orange);width:18px;text-align:center"></i>
+        <div style="text-align:left"><div style="font-weight:600">Diese Woche</div><div style="font-size:.78rem;color:var(--muted)">Alle Einträge der aktuellen Woche löschen</div></div>
+      </button>
+      <button class="btn btn-ghost" style="justify-content:flex-start;gap:.75rem" onclick="confirmResetIc('month')">
+        <i class="fas fa-calendar-alt" style="color:var(--blue);width:18px;text-align:center"></i>
+        <div style="text-align:left"><div style="font-weight:600">Diesen Monat</div><div style="font-size:.78rem;color:var(--muted)">Alle Einträge des aktuellen Monats löschen</div></div>
+      </button>
+      <button class="btn btn-ghost" style="justify-content:flex-start;gap:.75rem;border-color:rgba(239,68,68,.3)" onclick="confirmResetIc('all')">
+        <i class="fas fa-database" style="color:#ef4444;width:18px;text-align:center"></i>
+        <div style="text-align:left"><div style="font-weight:600;color:#ef4444">Gesamte Historie</div><div style="font-size:.78rem;color:var(--muted)">Alle IC-Zeit Einträge unwiderruflich löschen</div></div>
+      </button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+    </div>`);
+};
+
+window.confirmResetIc = async scope => {
+  const labels = { week: 'Diese Woche', month: 'Diesen Monat', all: 'Gesamte Historie' };
+  const r = await api('/api/ic-log/reset', { method: 'POST', body: { scope } });
+  if (r?.ok) { toast(`IC-Zeit (${labels[scope]}) zurückgesetzt`, 'ok'); closeModal(); iczeit(); }
 };
 
 // ════════════════════════════════════════════════════════════════

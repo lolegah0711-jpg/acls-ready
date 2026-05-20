@@ -583,6 +583,18 @@ app.delete('/api/ic-log/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/ic-log/reset', requireAdmin, (req, res) => {
+  const { scope } = req.body;
+  if (scope === 'week')
+    db.prepare("DELETE FROM ic_log WHERE date >= date('now','weekday 0','-7 days')").run();
+  else if (scope === 'month')
+    db.prepare("DELETE FROM ic_log WHERE strftime('%Y-%m',date)=strftime('%Y-%m','now')").run();
+  else if (scope === 'all')
+    db.prepare('DELETE FROM ic_log').run();
+  else return res.status(400).json({ error: 'Ungültiger Scope' });
+  res.json({ ok: true });
+});
+
 // ════════════════════════════════════════════════════════════════
 //  CITIZEN VOTES (öffentlich — jeder Discord-Nutzer)
 // ════════════════════════════════════════════════════════════════
