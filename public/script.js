@@ -1395,7 +1395,7 @@ async function admin() {
 
   $('pageContent').innerHTML = `
     <div class="admin-grid">
-      <div class="card">
+      <div class="card" style="grid-column:1/-1">
         <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-users"></i></div>
         <div><div class="card-title">Benutzerverwaltung</div><div class="card-sub">${users.length} Nutzer</div></div></div>
         <button class="btn btn-primary btn-sm" onclick="openAddUser()" style="margin-bottom:.85rem"><i class="fas fa-user-plus"></i> Nutzer hinzufügen</button>
