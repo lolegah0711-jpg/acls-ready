@@ -244,6 +244,87 @@
     #0d0815;
 }
 
+/* ── Theme: Rot (Blood) ──────────────────────────────────────────── */
+[data-theme="rot"] {
+  --bg:         #0a0505;
+  --surface:    #160a0a;
+  --surface2:   #200e0e;
+  --sidebar-bg: #0c0606;
+  --border:     #3d1010;
+  --input:      #120808;
+  --text:       #f5e0e0;
+  --muted:      #8a5252;
+  --orange:     #ef4444;
+  --orange-dim: rgba(239,68,68,.15);
+  --green:      #f97316;
+  --green-dim:  rgba(249,115,22,.12);
+  --blue:       #f43f5e;
+  --blue-dim:   rgba(244,63,94,.12);
+  --red:        #ef4444;
+  --red-dim:    rgba(239,68,68,.15);
+  --card-blur:  8px;
+  --card-bg:    rgba(22,10,10,.72);
+}
+[data-theme="rot"] body {
+  background:
+    radial-gradient(ellipse 60% 50% at 5% 95%,  rgba(239,68,68,.18) 0%, transparent 55%),
+    radial-gradient(ellipse 45% 35% at 95% 5%,  rgba(185,28,28,.12) 0%, transparent 50%),
+    radial-gradient(ellipse 30% 25% at 50% 50%, rgba(239,68,68,.05) 0%, transparent 60%),
+    #0a0505;
+}
+[data-theme="rot"] .btn-primary                { background: #ef4444; color: #fff; box-shadow: 0 0 12px rgba(239,68,68,.35); }
+[data-theme="rot"] .btn-primary:hover          { background: #dc2626; box-shadow: 0 0 20px rgba(239,68,68,.55); }
+[data-theme="rot"] .nav-item.active            { background: rgba(239,68,68,.12); box-shadow: inset 3px 0 0 #ef4444; }
+[data-theme="rot"] .card                       { box-shadow: 0 0 0 1px rgba(239,68,68,.07), 0 4px 24px rgba(239,68,68,.04); }
+[data-theme="rot"] .leaflet-container          { background: #0a0505 !important; }
+[data-theme="rot"] .quiz-score-big.quiz-passed { color: #f97316; }
+
+/* ── Theme: Fendt (Grün & Bild) ─────────────────────────────────── */
+[data-theme="fendt"] {
+  --bg:         #020a04;
+  --surface:    #071209;
+  --surface2:   #0c1c0e;
+  --sidebar-bg: #040d06;
+  --border:     rgba(74,222,128,.15);
+  --input:      #081409;
+  --text:       #e8f5e9;
+  --muted:      #5a8a62;
+  --orange:     #4ade80;
+  --orange-dim: rgba(74,222,128,.15);
+  --green:      #86efac;
+  --green-dim:  rgba(134,239,172,.12);
+  --blue:       #34d399;
+  --blue-dim:   rgba(52,211,153,.12);
+  --red:        #f87171;
+  --red-dim:    rgba(248,113,113,.12);
+  --card-blur:  10px;
+  --card-bg:    rgba(4,12,6,.18);
+}
+[data-theme="fendt"] .sidebar {
+  background: rgba(3,9,4,.65);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-right-color: rgba(74,222,128,.15);
+}
+[data-theme="fendt"] .topbar {
+  background: rgba(4,12,6,.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom-color: rgba(74,222,128,.12);
+}
+[data-theme="fendt"] body {
+  background:
+    linear-gradient(rgba(2,10,4,.22), rgba(2,10,4,.22)),
+    url('/Fendt-bild.jpg') center / cover no-repeat fixed;
+}
+[data-theme="fendt"] .btn-primary                { background: #4ade80; color: #020a04; box-shadow: 0 0 12px rgba(74,222,128,.35); }
+[data-theme="fendt"] .btn-primary:hover          { background: #22c55e; box-shadow: 0 0 20px rgba(74,222,128,.55); }
+[data-theme="fendt"] .nav-item.active            { background: rgba(74,222,128,.12); box-shadow: inset 3px 0 0 #4ade80; }
+[data-theme="fendt"] .card                       { box-shadow: 0 0 0 1px rgba(74,222,128,.07), 0 4px 24px rgba(74,222,128,.04); }
+[data-theme="fendt"] .leaflet-container          { background: #020a04 !important; }
+[data-theme="fendt"] .quiz-score-big.quiz-passed { color: #4ade80; }
+[data-theme="fendt"] .modal-overlay              { background: rgba(0,0,0,.75); }
+
 /* ── Theme Switcher (floating, bottom-right) ─────────────────────── */
 .theme-switcher-float {
   position: fixed;
