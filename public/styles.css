@@ -325,6 +325,169 @@
 [data-theme="fendt"] .quiz-score-big.quiz-passed { color: #4ade80; }
 [data-theme="fendt"] .modal-overlay              { background: rgba(0,0,0,.75); }
 
+/* ── Theme: Carbon (Dunkel & Gold) ──────────────────────────────── */
+[data-theme="carbon"] {
+  --bg:         #080808;
+  --surface:    #111111;
+  --surface2:   #1a1a1a;
+  --border:     rgba(245,158,11,.14);
+  --input:      #161616;
+  --text:       #e8e8e8;
+  --muted:      #666;
+  --orange:     #f59e0b;
+  --orange-dim: rgba(245,158,11,.13);
+  --green:      #22c55e;
+  --green-dim:  rgba(34,197,94,.12);
+  --blue:       #f59e0b;
+  --blue-dim:   rgba(245,158,11,.1);
+  --red:        #ef4444;
+  --red-dim:    rgba(239,68,68,.15);
+  --card-blur:  10px;
+  --card-bg:    rgba(12,12,12,.88);
+}
+[data-theme="carbon"] body {
+  background:
+    repeating-linear-gradient(45deg,  transparent, transparent 3px, rgba(255,255,255,.018) 3px, rgba(255,255,255,.018) 4px),
+    repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(255,255,255,.018) 3px, rgba(255,255,255,.018) 4px),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(245,158,11,.07) 0%, transparent 60%),
+    #080808;
+}
+[data-theme="carbon"] .btn-primary                { background: linear-gradient(135deg,#f59e0b,#d97706); color: #080808; box-shadow: 0 0 14px rgba(245,158,11,.4); }
+[data-theme="carbon"] .btn-primary:hover          { background: linear-gradient(135deg,#fbbf24,#f59e0b); box-shadow: 0 0 22px rgba(245,158,11,.6); }
+[data-theme="carbon"] .nav-item.active            { background: rgba(245,158,11,.1); box-shadow: inset 3px 0 0 #f59e0b; }
+[data-theme="carbon"] .card                       { box-shadow: 0 0 0 1px rgba(245,158,11,.07), 0 4px 24px rgba(0,0,0,.5); }
+[data-theme="carbon"] .sidebar                    { border-right-color: rgba(245,158,11,.12); }
+[data-theme="carbon"] .leaflet-container          { background: #080808 !important; }
+[data-theme="carbon"] .quiz-score-big.quiz-passed { color: #f59e0b; }
+
+/* ── Theme: Asphalt (Nacht & Gelb) ──────────────────────────────── */
+[data-theme="asphalt"] {
+  --bg:         #0c0c0c;
+  --surface:    #141414;
+  --surface2:   #1e1e1e;
+  --border:     rgba(255,255,255,.07);
+  --input:      #181818;
+  --text:       #d0d0d0;
+  --muted:      #545454;
+  --orange:     #fbbf24;
+  --orange-dim: rgba(251,191,36,.12);
+  --green:      #22c55e;
+  --green-dim:  rgba(34,197,94,.12);
+  --blue:       #fbbf24;
+  --blue-dim:   rgba(251,191,36,.1);
+  --red:        #ef4444;
+  --red-dim:    rgba(239,68,68,.15);
+  --card-blur:  8px;
+  --card-bg:    rgba(14,14,14,.85);
+}
+[data-theme="asphalt"] body {
+  background:
+    repeating-linear-gradient(-60deg, transparent, transparent 28px, rgba(251,191,36,.022) 28px, rgba(251,191,36,.022) 30px),
+    radial-gradient(ellipse 50% 30% at 50% 110%, rgba(251,191,36,.1) 0%, transparent 55%),
+    #0c0c0c;
+}
+[data-theme="asphalt"] .btn-primary                { background: #fbbf24; color: #0c0c0c; font-weight: 700; box-shadow: 0 0 12px rgba(251,191,36,.35); }
+[data-theme="asphalt"] .btn-primary:hover          { background: #f59e0b; box-shadow: 0 0 22px rgba(251,191,36,.55); }
+[data-theme="asphalt"] .nav-item.active            { background: rgba(251,191,36,.09); box-shadow: inset 3px 0 0 #fbbf24; }
+[data-theme="asphalt"] .card                       { box-shadow: 0 0 0 1px rgba(255,255,255,.04), 0 4px 20px rgba(0,0,0,.55); }
+[data-theme="asphalt"] .leaflet-container          { background: #0c0c0c !important; }
+[data-theme="asphalt"] .quiz-score-big.quiz-passed { color: #fbbf24; }
+
+/* ── Theme: Sunset (Sonnenuntergang) ────────────────────────────── */
+[data-theme="sunset"] {
+  --bg:         #100818;
+  --surface:    #1a0f22;
+  --surface2:   #231429;
+  --border:     rgba(249,115,22,.18);
+  --input:      #1e1026;
+  --text:       #f5e6d8;
+  --muted:      #8a6a7a;
+  --orange:     #f97316;
+  --orange-dim: rgba(249,115,22,.15);
+  --green:      #fb923c;
+  --green-dim:  rgba(251,146,60,.12);
+  --blue:       #e879f9;
+  --blue-dim:   rgba(232,121,249,.1);
+  --red:        #f43f5e;
+  --red-dim:    rgba(244,63,94,.15);
+  --card-blur:  12px;
+  --card-bg:    rgba(20,10,28,.7);
+}
+[data-theme="sunset"] body {
+  background:
+    radial-gradient(ellipse 90% 55% at 50% 105%, rgba(249,115,22,.3)  0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 15% 85%,  rgba(244,63,94,.2)   0%, transparent 50%),
+    radial-gradient(ellipse 45% 35% at 85% 80%,  rgba(251,191,36,.12) 0%, transparent 50%),
+    radial-gradient(ellipse 35% 25% at 50% 20%,  rgba(168,85,247,.1)  0%, transparent 55%),
+    linear-gradient(180deg, #080614 0%, #100818 45%, #1a0a10 100%);
+}
+[data-theme="sunset"] .sidebar {
+  background: rgba(16,8,24,.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right-color: rgba(249,115,22,.15);
+}
+[data-theme="sunset"] .topbar {
+  background: rgba(20,10,28,.6);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom-color: rgba(249,115,22,.12);
+}
+[data-theme="sunset"] .btn-primary                { background: linear-gradient(135deg,#f97316,#e11d48); color: #fff; box-shadow: 0 0 14px rgba(249,115,22,.4); }
+[data-theme="sunset"] .btn-primary:hover          { background: linear-gradient(135deg,#fb923c,#f43f5e); box-shadow: 0 0 22px rgba(249,115,22,.6); }
+[data-theme="sunset"] .nav-item.active            { background: rgba(249,115,22,.12); box-shadow: inset 3px 0 0 #f97316; }
+[data-theme="sunset"] .card                       { box-shadow: 0 0 0 1px rgba(249,115,22,.08), 0 4px 28px rgba(0,0,0,.45); }
+[data-theme="sunset"] .leaflet-container          { background: #100818 !important; }
+[data-theme="sunset"] .quiz-score-big.quiz-passed { color: #fb923c; }
+[data-theme="sunset"] .modal-overlay              { background: rgba(0,0,0,.8); }
+
+/* ── Theme: Polareis (Eis & Cyan) ───────────────────────────────── */
+[data-theme="polareis"] {
+  --bg:         #04101e;
+  --surface:    #071626;
+  --surface2:   #0c1e32;
+  --border:     rgba(56,189,248,.18);
+  --input:      #081828;
+  --text:       #e0f4ff;
+  --muted:      #4a7a9b;
+  --orange:     #38bdf8;
+  --orange-dim: rgba(56,189,248,.13);
+  --green:      #22d3ee;
+  --green-dim:  rgba(34,211,238,.12);
+  --blue:       #7dd3fc;
+  --blue-dim:   rgba(125,211,252,.1);
+  --red:        #f87171;
+  --red-dim:    rgba(248,113,113,.15);
+  --card-blur:  14px;
+  --card-bg:    rgba(4,14,24,.55);
+}
+[data-theme="polareis"] body {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(56,189,248,.2)  0%, transparent 60%),
+    radial-gradient(ellipse 40% 30% at 5%  40%,  rgba(96,165,250,.1)  0%, transparent 50%),
+    radial-gradient(ellipse 35% 25% at 95% 60%,  rgba(34,211,238,.08) 0%, transparent 50%),
+    linear-gradient(180deg, #020c18 0%, #04101e 60%, #060e1c 100%);
+}
+[data-theme="polareis"] .sidebar {
+  background: rgba(4,12,22,.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right-color: rgba(56,189,248,.14);
+}
+[data-theme="polareis"] .topbar {
+  background: rgba(5,14,24,.6);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom-color: rgba(56,189,248,.12);
+}
+[data-theme="polareis"] .btn-primary                { background: #38bdf8; color: #04101e; font-weight: 700; box-shadow: 0 0 14px rgba(56,189,248,.4); }
+[data-theme="polareis"] .btn-primary:hover          { background: #7dd3fc; box-shadow: 0 0 24px rgba(56,189,248,.65); }
+[data-theme="polareis"] .nav-item.active            { background: rgba(56,189,248,.1); box-shadow: inset 3px 0 0 #38bdf8; }
+[data-theme="polareis"] .card                       { box-shadow: 0 0 0 1px rgba(56,189,248,.08), 0 4px 28px rgba(0,0,0,.4); border-color: rgba(56,189,248,.1); }
+[data-theme="polareis"] .leaflet-container          { background: #04101e !important; }
+[data-theme="polareis"] .quiz-score-big.quiz-passed { color: #38bdf8; }
+[data-theme="polareis"] .modal-overlay              { background: rgba(0,0,0,.82); }
+
 /* ── Theme Switcher (floating, bottom-right) ─────────────────────── */
 .theme-switcher-float {
   position: fixed;
