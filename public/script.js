@@ -853,9 +853,8 @@ function renderQuiz(cat) {
         .map((opt, i) => ({ opt, i }))
         .filter(({ opt }) => opt && opt.trim())
         .map(({ opt, i }) => `
-        <div class="quiz-option${q.answers[qst.id] === i ? ' selected' : ''}${i === qst.correct_answer ? ' correct-answer' : ''}" onclick="selectOpt(${i})">
+        <div class="quiz-option${q.answers[qst.id] === i ? ' selected' : ''}" onclick="selectOpt(${i})">
           <div class="opt-letter">${'ABCD'[i]}</div><div>${opt}</div>
-          ${i === qst.correct_answer ? '<i class="fas fa-check-circle" style="margin-left:auto;color:#22c55e;flex-shrink:0" title="Richtige Antwort"></i>' : ''}
         </div>`).join('')}
     </div>
     <div class="modal-footer">
@@ -912,6 +911,8 @@ const PRAXIS_ERRORS = [
 ];
 
 window.submitExam = async () => {
+  const unanswered = activeQuiz.questions.filter(q => activeQuiz.answers[q.id] === undefined).length;
+  if (unanswered > 0) { toast(`Noch ${unanswered} Frage${unanswered > 1 ? 'n' : ''} nicht beantwortet`, 'err'); return; }
   const cat    = activeQuiz.cat;
   const result = await api('/api/exams/submit', { method: 'POST', body: { answers: activeQuiz.answers } });
   if (!result) return;

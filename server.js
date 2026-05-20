@@ -343,7 +343,9 @@ app.get('/api/bans/check', requireAuth, (req, res) => {
 app.post('/api/exams/start', requireAuth, (req, res) => {
   const { category_id, mode, citizen_name, citizen_id } = req.body;
   const limit = mode === 'flash' ? 5 : 10;
-  const qSql = `SELECT id, question, option_a, option_b, option_c, option_d, correct_answer, COALESCE(is_ko,0) as is_ko
+  const qSql = `SELECT id, question, option_a, option_b, option_c, option_d,
+    CASE WHEN is_ko = 1 THEN correct_answer ELSE NULL END as correct_answer,
+    COALESCE(is_ko,0) as is_ko
     FROM exam_questions WHERE category_id = ? AND is_active = 1 AND is_ko = ? ORDER BY RANDOM() LIMIT ?`;
   const koQ  = db.prepare(qSql).all(category_id, 1, 1);
   const regQ = db.prepare(qSql).all(category_id, 0, limit - koQ.length);
