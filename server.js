@@ -196,7 +196,7 @@ app.get('/auth/me', (req, res) => {
 //  USERS
 // ════════════════════════════════════════════════════════════════
 app.get('/api/users', requireAuth, (req, res) => {
-  res.json(db.prepare('SELECT id, discord_id, username, avatar, role, rank, is_active, created_at FROM users ORDER BY username').all());
+  res.json(db.prepare('SELECT id, discord_id, username, avatar, role, rank, is_active, created_at FROM users WHERE is_active = 1 ORDER BY username').all());
 });
 
 app.post('/api/users', (req, res) => {
