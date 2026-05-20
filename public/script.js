@@ -487,18 +487,31 @@ async function dashboard() {
         <div class="card-head-icon" style="background:rgba(250,204,21,.15)"><i class="fas fa-medal" style="color:#facc15"></i></div>
         <div><div class="card-title">Meine Abzeichen</div><div class="card-sub">${earnedSet.size} von ${Object.keys(BADGE_DEFS).length} freigeschaltet</div></div>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:.75rem;padding:.25rem 0">
-        ${Object.entries(BADGE_DEFS).map(([key, b]) => {
-          const earned = earnedSet.has(key);
-          const date   = badgeMap[key] ? new Date(badgeMap[key]).toLocaleDateString('de-DE') : null;
-          return `<div title="${b.desc}${date ? ' · ' + date : ''}" style="display:flex;flex-direction:column;align-items:center;gap:.35rem;width:74px;opacity:${earned ? '1' : '0.28'};transition:opacity .2s">
-            <div style="width:44px;height:44px;border-radius:50%;background:${earned ? b.color + '22' : 'var(--surface2)'};border:2px solid ${earned ? b.color : 'var(--border)'};display:flex;align-items:center;justify-content:center;${earned ? 'box-shadow:0 0 10px ' + b.color + '55' : ''}">
-              <i class="fas ${b.icon}" style="color:${earned ? b.color : 'var(--muted)'};font-size:.9rem"></i>
-            </div>
-            <span style="font-size:.65rem;text-align:center;line-height:1.2;color:${earned ? 'var(--text)' : 'var(--muted)'};font-weight:${earned ? '600' : '400'}">${b.label}</span>
-          </div>`;
-        }).join('')}
-      </div>
+      ${[
+        { label: 'Prüfungen', icon: 'fa-clipboard-check', color: '#f97316', keys: ['cat_pkw','cat_motorrad','cat_boot','cat_lkw','cat_flugschein','exams_10','exams_50','exams_100'] },
+        { label: 'IC-Zeit',   icon: 'fa-clock',           color: '#22c55e', keys: ['ic_10','ic_50','ic_100','ic_250','ic_500'] },
+        { label: 'Mitarbeiter der Woche', icon: 'fa-trophy', color: '#facc15', keys: ['eow_1','eow_3','eow_5'] },
+      ].map(group => `
+        <div style="margin-bottom:1rem">
+          <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.65rem;padding-bottom:.4rem;border-bottom:1px solid var(--border)">
+            <i class="fas ${group.icon}" style="color:${group.color};font-size:.8rem"></i>
+            <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">${group.label}</span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:.75rem">
+            ${group.keys.map(key => {
+              const b      = BADGE_DEFS[key];
+              const earned = earnedSet.has(key);
+              const date   = badgeMap[key] ? new Date(badgeMap[key]).toLocaleDateString('de-DE') : null;
+              return `<div title="${b.desc}${date ? ' · ' + date : ''}" style="display:flex;flex-direction:column;align-items:center;gap:.35rem;width:74px;opacity:${earned ? '1' : '0.28'}">
+                <div style="width:44px;height:44px;border-radius:50%;background:${earned ? b.color + '22' : 'var(--surface2)'};border:2px solid ${earned ? b.color : 'var(--border)'};display:flex;align-items:center;justify-content:center;${earned ? 'box-shadow:0 0 10px ' + b.color + '55' : ''}">
+                  <i class="fas ${b.icon}" style="color:${earned ? b.color : 'var(--muted)'};font-size:.9rem"></i>
+                </div>
+                <span style="font-size:.65rem;text-align:center;line-height:1.2;color:${earned ? 'var(--text)' : 'var(--muted)'};font-weight:${earned ? '600' : '400'}">${b.label}</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      `).join('')}
     </div>
 
     <!-- IC-Zeit Widget -->
