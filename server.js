@@ -861,8 +861,12 @@ function checkAndAwardBadges(userId) {
 }
 
 app.get('/api/my-badges', requireAuth, (req, res) => {
-  const u = getUser(req);
-  res.json(db.prepare('SELECT badge_type, earned_at FROM user_badges WHERE user_id = ? ORDER BY earned_at ASC').all(u.id));
+  const u       = getUser(req);
+  const badges  = db.prepare('SELECT badge_type, earned_at FROM user_badges WHERE user_id = ? ORDER BY earned_at ASC').all(u.id);
+  const conducted = db.prepare('SELECT COUNT(*) as c FROM registry WHERE examiner_id = ?').get(u.id).c;
+  const eowWins   = db.prepare('SELECT COUNT(*) as c FROM eow_winners WHERE user_id = ?').get(u.id).c;
+  const icTotal   = db.prepare('SELECT COALESCE(SUM(hours),0) as h FROM ic_log WHERE user_id = ?').get(u.id).h;
+  res.json({ badges, stats: { conducted, eowWins, icTotal: +icTotal } });
 });
 
 app.get('/api/badges/:userId', requireAuth, (req, res) => {

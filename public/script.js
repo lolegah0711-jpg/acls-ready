@@ -4,23 +4,55 @@
 
 // ── Badge Definitionen ───────────────────────────────────────────
 const BADGE_DEFS = {
-  ic_10:          { icon: 'fa-clock',          color: '#cd7f32', label: '10h IC-Zeit',       desc: '10 Stunden ingame' },
-  ic_50:          { icon: 'fa-hourglass-half', color: '#a8a9ad', label: '50h IC-Zeit',       desc: '50 Stunden ingame' },
-  ic_100:         { icon: 'fa-hourglass-end',  color: '#ffd700', label: '100h IC-Zeit',      desc: '100 Stunden ingame' },
-  ic_250:         { icon: 'fa-star',           color: '#f97316', label: '250h IC-Zeit',      desc: '250 Stunden ingame' },
-  ic_500:         { icon: 'fa-crown',          color: '#00f5ff', label: '500h IC-Zeit',      desc: '500 Stunden ingame' },
-  cat_pkw:        { icon: 'fa-car',            color: '#f97316', label: 'PKW-Prüfer',        desc: 'PKW-Prüfung abgenommen' },
-  cat_motorrad:   { icon: 'fa-motorcycle',     color: '#ef4444', label: 'Motorrad-Prüfer',   desc: 'Motorrad-Prüfung abgenommen' },
-  cat_boot:       { icon: 'fa-ship',           color: '#3b82f6', label: 'Boot-Prüfer',       desc: 'Boot-Prüfung abgenommen' },
-  cat_lkw:        { icon: 'fa-truck',          color: '#22c55e', label: 'LKW-Prüfer',        desc: 'LKW-Prüfung abgenommen' },
-  cat_flugschein: { icon: 'fa-plane',          color: '#a855f7', label: 'Pilot-Prüfer',      desc: 'Flugschein-Prüfung abgenommen' },
-  exams_10:       { icon: 'fa-clipboard-check',color: '#cd7f32', label: '10 Prüfungen',      desc: '10 Prüfungen abgenommen' },
-  exams_50:       { icon: 'fa-clipboard-check',color: '#a8a9ad', label: '50 Prüfungen',      desc: '50 Prüfungen abgenommen' },
-  exams_100:      { icon: 'fa-clipboard-check',color: '#ffd700', label: '100 Prüfungen',     desc: '100 Prüfungen abgenommen' },
-  eow_1:          { icon: 'fa-trophy',         color: '#cd7f32', label: 'MdW-Sieger',        desc: '1× Mitarbeiter der Woche' },
-  eow_3:          { icon: 'fa-trophy',         color: '#a8a9ad', label: 'Dreifach-Sieger',   desc: '3× Mitarbeiter der Woche' },
-  eow_5:          { icon: 'fa-trophy',         color: '#ffd700', label: 'Legende',           desc: '5× Mitarbeiter der Woche' },
+  ic_10:          { icon: 'fa-clock',          color: '#cd7f32', label: '10h IC-Zeit',       desc: '10 Stunden ingame',          progress: s => ({ cur: s.icTotal,    max: 10  }) },
+  ic_50:          { icon: 'fa-hourglass-half', color: '#a8a9ad', label: '50h IC-Zeit',       desc: '50 Stunden ingame',          progress: s => ({ cur: s.icTotal,    max: 50  }) },
+  ic_100:         { icon: 'fa-hourglass-end',  color: '#ffd700', label: '100h IC-Zeit',      desc: '100 Stunden ingame',         progress: s => ({ cur: s.icTotal,    max: 100 }) },
+  ic_250:         { icon: 'fa-star',           color: '#f97316', label: '250h IC-Zeit',      desc: '250 Stunden ingame',         progress: s => ({ cur: s.icTotal,    max: 250 }) },
+  ic_500:         { icon: 'fa-crown',          color: '#00f5ff', label: '500h IC-Zeit',      desc: '500 Stunden ingame',         progress: s => ({ cur: s.icTotal,    max: 500 }) },
+  cat_pkw:        { icon: 'fa-car',            color: '#f97316', label: 'PKW-Prüfer',        desc: 'PKW-Prüfung abgenommen',     progress: null },
+  cat_motorrad:   { icon: 'fa-motorcycle',     color: '#ef4444', label: 'Motorrad-Prüfer',   desc: 'Motorrad-Prüfung abgenommen',progress: null },
+  cat_boot:       { icon: 'fa-ship',           color: '#3b82f6', label: 'Boot-Prüfer',       desc: 'Boot-Prüfung abgenommen',    progress: null },
+  cat_lkw:        { icon: 'fa-truck',          color: '#22c55e', label: 'LKW-Prüfer',        desc: 'LKW-Prüfung abgenommen',     progress: null },
+  cat_flugschein: { icon: 'fa-plane',          color: '#a855f7', label: 'Pilot-Prüfer',      desc: 'Flugschein-Prüfung abgenommen',progress: null },
+  exams_10:       { icon: 'fa-clipboard-check',color: '#cd7f32', label: '10 Prüfungen',      desc: '10 Prüfungen abgenommen',    progress: s => ({ cur: s.conducted,  max: 10  }) },
+  exams_50:       { icon: 'fa-clipboard-check',color: '#a8a9ad', label: '50 Prüfungen',      desc: '50 Prüfungen abgenommen',    progress: s => ({ cur: s.conducted,  max: 50  }) },
+  exams_100:      { icon: 'fa-clipboard-check',color: '#ffd700', label: '100 Prüfungen',     desc: '100 Prüfungen abgenommen',   progress: s => ({ cur: s.conducted,  max: 100 }) },
+  eow_1:          { icon: 'fa-trophy',         color: '#cd7f32', label: 'MdW-Sieger',        desc: '1× Mitarbeiter der Woche',   progress: s => ({ cur: s.eowWins,    max: 1   }) },
+  eow_3:          { icon: 'fa-trophy',         color: '#a8a9ad', label: 'Dreifach-Sieger',   desc: '3× Mitarbeiter der Woche',   progress: s => ({ cur: s.eowWins,    max: 3   }) },
+  eow_5:          { icon: 'fa-trophy',         color: '#ffd700', label: 'Legende',           desc: '5× Mitarbeiter der Woche',   progress: s => ({ cur: s.eowWins,    max: 5   }) },
 };
+
+function renderBadge(key, b, earned, isNext, date, stats) {
+  const circ    = 119.38; // 2π × r19
+  const pData   = b.progress ? b.progress(stats) : null;
+  const pct     = earned ? 1 : pData ? Math.min(pData.cur / pData.max, 1) : (earned ? 1 : 0);
+  const color   = earned ? '#22c55e' : b.color;
+  const opacity = earned ? '1' : isNext ? '0.75' : pct > 0 ? '0.55' : '0.22';
+  const tip     = `${b.desc}${pData && !earned ? ` (${pData.cur % 1 === 0 ? pData.cur : pData.cur.toFixed(1)} / ${pData.max})` : ''}${date ? ' · ' + date : ''}`;
+  return `<div title="${tip}" style="display:flex;flex-direction:column;align-items:center;gap:.3rem;width:74px;opacity:${opacity}">
+    <div style="position:relative;width:48px;height:48px">
+      <svg viewBox="0 0 44 44" style="position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)">
+        <circle cx="22" cy="22" r="19" fill="none" stroke="var(--border)" stroke-width="2.5"/>
+        <circle class="bpr" cx="22" cy="22" r="19" fill="none"
+          stroke="${color}" stroke-width="2.5" stroke-linecap="round"
+          stroke-dasharray="${circ}" stroke-dashoffset="${circ}"
+          data-offset="${(circ * (1 - pct)).toFixed(2)}"
+          style="transition:stroke-dashoffset 1.1s ease"/>
+      </svg>
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:${earned ? '#22c55e18' : pct > 0 ? b.color + '15' : 'var(--surface2)'};border-radius:50%">
+        <i class="fas ${b.icon}" style="color:${color};font-size:.85rem"></i>
+      </div>
+    </div>
+    <span style="font-size:.65rem;text-align:center;line-height:1.2;color:${earned ? 'var(--text)' : 'var(--muted)'};font-weight:${earned ? '600' : '400'}">${b.label}</span>
+    ${pData && !earned ? `<span style="font-size:.58rem;color:${b.color};font-weight:600">${pData.cur % 1 === 0 ? pData.cur : pData.cur.toFixed(1)}/${pData.max}</span>` : ''}
+  </div>`;
+}
+
+function animateBadgeRings() {
+  document.querySelectorAll('.bpr').forEach(el => {
+    el.style.strokeDashoffset = el.dataset.offset;
+  });
+}
 
 // ── Theme ────────────────────────────────────────────────────────
 function applyTheme(name) {
@@ -325,10 +357,12 @@ function navigate(page) {
 //  DASHBOARD
 // ════════════════════════════════════════════════════════════════
 async function dashboard() {
-  const [d, announcements, myBadges] = await Promise.all([api('/api/dashboard'), api('/api/announcements'), api('/api/my-badges')]);
+  const [d, announcements, myBadgesRes] = await Promise.all([api('/api/dashboard'), api('/api/announcements'), api('/api/my-badges')]);
   if (!d) return;
-  const earnedSet = new Set((myBadges || []).map(b => b.badge_type));
-  const badgeMap  = Object.fromEntries((myBadges || []).map(b => [b.badge_type, b.earned_at]));
+  const myBadgesList = myBadgesRes?.badges || [];
+  const badgeStats   = myBadgesRes?.stats  || { conducted: 0, eowWins: 0, icTotal: 0 };
+  const earnedSet    = new Set(myBadgesList.map(b => b.badge_type));
+  const badgeMap     = Object.fromEntries(myBadgesList.map(b => [b.badge_type, b.earned_at]));
 
   const eow      = d.eowWinner;
   const isCurWk  = d.isCurrentWeekWinner;
@@ -508,22 +542,11 @@ async function dashboard() {
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:.75rem">
             ${group.keys.map((key, i) => {
-              const b        = BADGE_DEFS[key];
-              const earned   = earnedSet.has(key);
-              const isNext   = i === nextGoalIdx;
-              const date     = badgeMap[key] ? new Date(badgeMap[key]).toLocaleDateString('de-DE') : null;
-              const opacity  = earned ? '1' : isNext ? '0.6' : '0.22';
-              const border   = earned ? `2px solid ${b.color}` : isNext ? `2px dashed ${b.color}` : '2px solid var(--border)';
-              const glow     = earned ? `box-shadow:0 0 12px ${b.color}66` : isNext ? `box-shadow:0 0 6px ${b.color}33` : '';
-              const iconCol  = earned ? b.color : isNext ? b.color : 'var(--muted)';
-              const label    = isNext ? `<span style="font-size:.6rem;color:${b.color};font-weight:700">Nächstes Ziel</span>` : '';
-              return `<div title="${b.desc}${date ? ' · Erreicht: ' + date : isNext ? ' · Dein nächstes Ziel' : ''}" style="display:flex;flex-direction:column;align-items:center;gap:.3rem;width:74px;opacity:${opacity}">
-                <div style="width:44px;height:44px;border-radius:50%;background:${earned || isNext ? b.color + '18' : 'var(--surface2)'};border:${border};display:flex;align-items:center;justify-content:center;${glow}">
-                  <i class="fas ${b.icon}" style="color:${iconCol};font-size:.9rem"></i>
-                </div>
-                <span style="font-size:.65rem;text-align:center;line-height:1.2;color:${earned ? 'var(--text)' : 'var(--muted)'};font-weight:${earned ? '600' : '400'}">${b.label}</span>
-                ${label}
-              </div>`;
+              const b      = BADGE_DEFS[key];
+              const earned = earnedSet.has(key);
+              const isNext = i === nextGoalIdx;
+              const date   = badgeMap[key] ? new Date(badgeMap[key]).toLocaleDateString('de-DE') : null;
+              return renderBadge(key, b, earned, isNext, date, badgeStats);
             }).join('')}
           </div>
         </div>`;
@@ -549,6 +572,7 @@ async function dashboard() {
         </div>`).join('')}
     </div>` : ''}`;
   animateCountUps();
+  requestAnimationFrame(() => requestAnimationFrame(animateBadgeRings));
 }
 
 // ════════════════════════════════════════════════════════════════
