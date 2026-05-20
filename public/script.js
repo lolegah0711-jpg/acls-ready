@@ -1504,8 +1504,9 @@ async function admin() {
                   <div style="display:flex;flex-direction:column;gap:.3rem">
                     <select class="form-control" style="padding:.2rem .4rem;height:auto;font-size:.8rem;width:auto"
                       onchange="setRole(${u.id}, this.value)">
-                      <option value="member" ${u.role === 'member' ? 'selected' : ''}>Mitarbeiter</option>
-                      <option value="admin"  ${u.role === 'admin'  ? 'selected' : ''}>Admin</option>
+                      <option value="member"  ${u.role === 'member'  ? 'selected' : ''}>Mitarbeiter</option>
+                      <option value="admin"   ${u.role === 'admin'   ? 'selected' : ''}>Admin</option>
+                      <option value="citizen" ${u.role === 'citizen' ? 'selected' : ''}>Bürger</option>
                     </select>
                     <select class="form-control" style="padding:.2rem .4rem;height:auto;font-size:.8rem;width:auto"
                       onchange="setRank(${u.id}, this.value)">

@@ -33,7 +33,9 @@ function getUser(req) {
 }
 
 function requireAuth(req, res, next) {
-  if (!getUser(req)) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const u = getUser(req);
+  if (!u) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (u.role === 'citizen') return res.status(403).json({ error: 'Kein Zugriff' });
   next();
 }
 
@@ -177,7 +179,10 @@ app.post('/auth/logout', (req, res) => {
 
 app.get('/auth/me', (req, res) => {
   const u = getUser(req);
-  if (u) return res.json({ id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, role: u.role });
+  if (u) {
+    if (u.role === 'citizen') return res.json({ voter: true, discord_id: u.discord_id, username: u.username, avatar: u.avatar });
+    return res.json({ id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, role: u.role });
+  }
   if (req.session.voterDiscordId) return res.json({
     voter: true,
     discord_id: req.session.voterDiscordId,
