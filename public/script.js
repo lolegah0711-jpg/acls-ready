@@ -389,14 +389,13 @@ async function dashboard() {
          </div>
        </div>`;
 
-  // Karte 2: Führender für die kommende Abstimmung
-  // Wenn diese Woche schon ausgezählt → Stimmen laufen für nächste Woche (top aus alten Stimmen ausblenden)
-  const voteTop = isCurWk ? null : top;
-  const voteCard = voteTop
+  // Karte 2: immer aktuellen Führenden zeigen; Label je nachdem ob schon ausgezählt
+  const voteLabel = isCurWk ? 'Nächste Abstimmung' : 'Abstimmung läuft';
+  const voteCard = top
     ? `<div class="eow-banner" style="flex:1;border-color:rgba(249,115,22,.25)">
          <div class="eow-av" style="border-color:rgba(249,115,22,.4)">${avatarUrl(top) ? `<img src="${avatarUrl(top)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(top.username)}</div>
          <div class="eow-info">
-           <div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>Abstimmung läuft · ${curWk}</div>
+           <div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>${voteLabel} · ${curWk}</div>
            <div class="eow-name">${top.username} führt</div>
            <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">${top.votes} Stimmen · Auszählung Sonntag 18:00</div>
          </div>
@@ -405,7 +404,7 @@ async function dashboard() {
     : `<div class="eow-banner" style="flex:1">
          <div class="eow-av" style="background:var(--surface2);color:var(--muted);font-size:1.4rem"><i class="fas fa-vote-yea"></i></div>
          <div class="eow-info">
-           <div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>Abstimmung · ${curWk}</div>
+           <div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>${voteLabel} · ${curWk}</div>
            <div class="eow-name" style="color:var(--muted)">Noch keine Stimmen</div>
            <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">Auszählung: Sonntag 18:00 Uhr</div>
          </div>
