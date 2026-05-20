@@ -958,6 +958,14 @@ window.submitExam = async () => {
 
 function openPraktischeExam(theorieResult, cat) {
   const citizenName = activeQuiz.citizenName;
+  const ROUTE_IMGS = { PKW: '/pkw-route.jpg', LKW: '/lkw-route.jpg' };
+  const routeSrc  = ROUTE_IMGS[cat?.name];
+  const routeImg  = routeSrc
+    ? `<div style="margin-bottom:1rem">
+        <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem"><i class="fas fa-route" style="margin-right:.35rem;color:var(--orange)"></i>Prüfungsroute ${cat.name}</div>
+        <img src="${routeSrc}" alt="${cat.name} Prüfungsroute" style="width:100%;border-radius:var(--r);border:1px solid var(--border);display:block">
+       </div>`
+    : '';
   openModal(`
     <div class="modal-head">
       <div class="modal-title"><i class="fas fa-car" style="color:var(--orange);margin-right:.5rem"></i>Praxisprüfung – ${citizenName}</div>
@@ -967,6 +975,7 @@ function openPraktischeExam(theorieResult, cat) {
       <div style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);border-radius:var(--r);padding:.6rem .9rem;font-size:.83rem;color:var(--green);margin-bottom:1rem">
         <i class="fas fa-check-circle" style="margin-right:.4rem"></i>Theorie bestanden (${theorieResult.percentage}%) – Praxisprüfung läuft
       </div>
+      ${routeImg}
       <p style="font-size:.88rem;color:var(--muted);margin-bottom:.9rem">Fehler des Fahrers anhaken. Bei einem Fehler sofort durchgefallen.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem .75rem">
         ${PRAXIS_ERRORS.map((err, i) => `
