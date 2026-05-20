@@ -1023,33 +1023,67 @@ async function registry() {
   const [rows, cats] = await Promise.all([api(`/api/registry?search=${encodeURIComponent(regSearch)}`), api('/api/exam-categories')]);
   if (!rows) return;
 
+  // Gruppierung nach Bürger-Name (case-insensitive)
+  const grouped = {};
+  rows.forEach(r => {
+    const key = r.citizen_name.trim().toLowerCase();
+    if (!grouped[key]) grouped[key] = { name: r.citizen_name, citizenId: r.citizen_id, entries: [] };
+    grouped[key].entries.push(r);
+  });
+  const citizens = Object.values(grouped).sort((a, b) => a.name.localeCompare(b.name));
+
+  const CAT_COLORS = { PKW: '#f97316', Motorrad: '#ef4444', Boot: '#3b82f6', LKW: '#22c55e', Flugschein: '#a855f7' };
+
   $('pageContent').innerHTML = `
     <div class="pg-header">
-      <div class="pg-header-left"><h2>Bürgerregister</h2><p>${rows.length} Einträge</p></div>
+      <div class="pg-header-left"><h2>Bürgerregister</h2><p>${citizens.length} Bürger · ${rows.length} Einträge</p></div>
       <div style="display:flex;gap:.75rem;flex-wrap:wrap">
         <div class="search-bar"><i class="fas fa-search"></i>
-          <input id="regSearch" placeholder="Suchen..." value="${regSearch}" oninput="regSearch=this.value;clearTimeout(window._rst);window._rst=setTimeout(registry,250)">
+          <input id="regSearch" placeholder="Bürger suchen..." value="${regSearch}" oninput="regSearch=this.value;clearTimeout(window._rst);window._rst=setTimeout(registry,250)">
         </div>
         <button class="btn btn-primary" onclick="openAddRegistry()"><i class="fas fa-plus"></i> Eintrag hinzufügen</button>
       </div>
     </div>
-    <div class="tbl-wrap">
-      <table class="data-tbl">
-        <thead><tr><th>Prüfling</th><th>Ausweis-ID</th><th>Prüfung</th><th>Typ</th><th>Prüfer</th><th>Datum</th><th>Status</th>${isAdmin() ? '<th></th>' : ''}</tr></thead>
-        <tbody>
-          ${rows.length ? rows.map(r => `<tr>
-            <td style="font-weight:600;color:var(--text)">${r.citizen_name}</td>
-            <td>${r.citizen_id || '—'}</td>
-            <td><i class="fas ${r.icon}" style="color:var(--orange);margin-right:.4rem"></i>${r.category_name}</td>
-            <td><span class="badge ${r.exam_type === 'Praxis' ? 'badge-b' : 'badge-m'}">${r.exam_type}</span></td>
-            <td>${r.examiner_name}</td>
-            <td>${fmt(r.registered_at)}</td>
-            <td><span class="badge ${r.passed ? 'badge-g' : 'badge-r'}">${r.passed ? 'Bestanden' : 'Nicht bestanden'}</span></td>
-            ${isAdmin() ? `<td><button class="btn btn-danger btn-sm" onclick="deleteRegistry(${r.id})"><i class="fas fa-trash"></i></button></td>` : ''}
-          </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">Keine Einträge</td></tr>`}
-        </tbody>
-      </table>
-    </div>`;
+    ${citizens.length ? citizens.map(c => {
+      const passed   = c.entries.filter(e => e.passed);
+      const licenses = [...new Map(passed.map(e => [e.category_name, e])).values()];
+      const latest   = c.entries.reduce((a, b) => new Date(a.registered_at) > new Date(b.registered_at) ? a : b);
+      return `
+      <div class="card" style="margin-bottom:.75rem">
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;cursor:pointer" onclick="this.parentElement.querySelector('.reg-detail').classList.toggle('hidden')">
+          <div style="width:42px;height:42px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;color:var(--orange);flex-shrink:0">
+            ${c.name.trim()[0].toUpperCase()}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:.98rem">${c.name}${c.citizenId ? ` <span style="font-size:.75rem;color:var(--muted);font-weight:400">${c.citizenId}</span>` : ''}</div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:.15rem">Letzter Eintrag: ${fmt(latest.registered_at)}</div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">
+            ${licenses.length ? licenses.map(e => `
+              <span title="${e.category_name} – Bestanden" style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;font-weight:700;padding:.2rem .55rem;border-radius:20px;background:${(CAT_COLORS[e.category_name]||'#6b7280')}22;color:${CAT_COLORS[e.category_name]||'#6b7280'};border:1px solid ${(CAT_COLORS[e.category_name]||'#6b7280')}44">
+                <i class="fas ${e.icon}"></i>${e.category_name}
+              </span>`).join('') : `<span style="font-size:.72rem;color:var(--muted)">Keine Lizenz</span>`}
+          </div>
+          <i class="fas fa-chevron-down" style="color:var(--muted);font-size:.75rem;flex-shrink:0"></i>
+        </div>
+        <div class="reg-detail hidden" style="margin-top:.85rem;border-top:1px solid var(--border);padding-top:.75rem">
+          <table class="data-tbl" style="font-size:.82rem">
+            <thead><tr><th>Prüfung</th><th>Typ</th><th>Prüfer</th><th>Datum</th><th>Status</th>${isAdmin() ? '<th></th>' : ''}</tr></thead>
+            <tbody>
+              ${c.entries.sort((a,b) => new Date(b.registered_at)-new Date(a.registered_at)).map(e => `<tr>
+                <td><i class="fas ${e.icon}" style="color:${CAT_COLORS[e.category_name]||'var(--orange)'};margin-right:.35rem"></i>${e.category_name}</td>
+                <td><span class="badge ${e.exam_type === 'Praxis' ? 'badge-b' : 'badge-m'}">${e.exam_type}</span></td>
+                <td>${e.examiner_name}</td>
+                <td>${fmt(e.registered_at)}</td>
+                <td><span class="badge ${e.passed ? 'badge-g' : 'badge-r'}">${e.passed ? 'Bestanden' : 'Nicht bestanden'}</span></td>
+                ${isAdmin() ? `<td><button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteRegistry(${e.id})"><i class="fas fa-trash"></i></button></td>` : ''}
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    }).join('') : `<div class="empty"><i class="fas fa-id-card"></i><p>Keine Einträge gefunden</p></div>`}`;
+
   window._regCats = cats;
   const si = $('regSearch');
   if (si && document.activeElement !== si) { si.focus(); si.setSelectionRange(si.value.length, si.value.length); }
