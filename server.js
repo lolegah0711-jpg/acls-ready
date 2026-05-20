@@ -29,7 +29,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ── Auth helpers ────────────────────────────────────────────────
 function getUser(req) {
   if (!req.session.userId) return null;
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.userId) || null;
+  return db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(req.session.userId) || null;
 }
 
 function requireAuth(req, res, next) {
@@ -196,7 +196,7 @@ app.get('/auth/me', (req, res) => {
 //  USERS
 // ════════════════════════════════════════════════════════════════
 app.get('/api/users', requireAuth, (req, res) => {
-  res.json(db.prepare('SELECT id, discord_id, username, avatar, role, is_active, created_at FROM users ORDER BY username').all());
+  res.json(db.prepare('SELECT id, discord_id, username, avatar, role, rank, is_active, created_at FROM users ORDER BY username').all());
 });
 
 app.post('/api/users', (req, res) => {
