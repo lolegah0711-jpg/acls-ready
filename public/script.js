@@ -1671,6 +1671,7 @@ window.deleteBan = async id => {
 async function admin() {
   if (!isAdmin()) { $('pageContent').innerHTML = '<div class="empty"><i class="fas fa-lock"></i><p>Kein Zugriff</p></div>'; return; }
   const [users, cats, announcements, complaints] = await Promise.all([api('/api/users'), api('/api/exam-categories'), api('/api/announcements'), api('/api/complaints')]);
+  window._adminComplaints = complaints || [];
   if (!users) return;
   window._adminCats = cats;
 
@@ -1727,13 +1728,13 @@ async function admin() {
         ${(complaints || []).length ? `
         <div class="tbl-wrap" style="max-height:340px;overflow-y:auto"><table class="data-tbl">
           <thead><tr><th>Bürger</th><th>Betreff</th><th>Nachricht</th><th>Datum</th><th>Status</th><th></th></tr></thead>
-          <tbody>${complaints.map(c => `<tr>
+          <tbody>${complaints.map(c => `<tr style="cursor:pointer" onclick="openComplaint(${c.id})">
             <td style="font-weight:600">${c.citizen_name}</td>
             <td>${c.subject}</td>
             <td style="font-size:.8rem;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.message}</td>
             <td style="font-size:.78rem;color:var(--muted)">${new Date(c.created_at).toLocaleDateString('de-DE')}</td>
             <td><span style="font-size:.75rem;padding:.15rem .5rem;border-radius:6px;font-weight:600;background:${c.status==='offen'?'rgba(239,68,68,.15)':'rgba(34,197,94,.15)'};color:${c.status==='offen'?'#ef4444':'#22c55e'}">${c.status}</span></td>
-            <td style="display:flex;gap:.3rem">
+            <td onclick="event.stopPropagation()" style="display:flex;gap:.3rem">
               ${c.status==='offen'?`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'erledigt')"><i class="fas fa-check"></i></button>`:`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'offen')"><i class="fas fa-undo"></i></button>`}
             </td>
           </tr>`).join('')}</tbody>
@@ -1857,6 +1858,33 @@ window.pinAnnouncement = async id => {
 window.resolveComplaint = async (id, status) => {
   const r = await api(`/api/complaints/${id}`, { method: 'PATCH', body: { status } });
   if (r) { toast('Status aktualisiert.', 'ok'); admin(); }
+};
+
+window.openComplaint = (id) => {
+  const complaints = window._adminComplaints || [];
+  const c = complaints.find(x => x.id === id);
+  if (!c) return;
+  const statusColor = c.status === 'offen' ? '#ef4444' : '#22c55e';
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-comment-alt" style="color:var(--orange);margin-right:.5rem"></i>Beschwerde</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.7rem">
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;font-size:.82rem;color:var(--muted)">
+        <span><i class="fas fa-user" style="margin-right:.3rem"></i><b style="color:var(--fg)">${c.citizen_name}</b></span>
+        <span><i class="fas fa-calendar" style="margin-right:.3rem"></i>${new Date(c.created_at).toLocaleDateString('de-DE')}</span>
+        <span style="padding:.15rem .5rem;border-radius:6px;font-weight:600;font-size:.75rem;background:${statusColor}22;color:${statusColor}">${c.status}</span>
+      </div>
+      <div style="font-weight:700;font-size:1rem">${c.subject}</div>
+      <div style="background:var(--input);border-radius:var(--r);padding:.85rem 1rem;font-size:.87rem;line-height:1.65;white-space:pre-wrap;color:var(--fg)">${c.message}</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Schließen</button>
+      ${c.status==='offen'
+        ?`<button class="btn btn-primary" onclick="closeModal();resolveComplaint(${c.id},'erledigt')"><i class="fas fa-check"></i> Als erledigt markieren</button>`
+        :`<button class="btn btn-ghost" onclick="closeModal();resolveComplaint(${c.id},'offen')"><i class="fas fa-undo"></i> Wieder öffnen</button>`}
+    </div>`);
 };
 
 window.openAddQuestion = (cid = '', catName = '') => openModal(`
