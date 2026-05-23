@@ -2023,7 +2023,7 @@ async function ausbildung() {
           <td><span class="badge badge-m">${e.exam_type==='meister'?'Meister':'Geselle'}</span></td>
           <td><b>${e.examinee_name}</b>${e.examinee_id?` <span style="font-size:.72rem;color:var(--muted)">${e.examinee_id}</span>`:''}</td>
           <td>${e.examiner_name}</td>
-          <td><span class="badge ${e.m1_passed?'badge-g':'badge-r'}">${e.m1_score}/${e.m1_max}</span></td>
+          <td><span class="badge ${e.m1_passed?'badge-g':'badge-r'}">${e.m1_score}/${e.m1_max} Orte</span></td>
           <td><span class="badge ${e.m2_passed?'badge-g':'badge-r'}">${e.m2_score}/${e.m2_total}</span></td>
           <td><span class="badge ${e.m3_passed?'badge-g':'badge-r'}">${(+e.m3_score).toFixed(1)}/4</span></td>
           <td><span class="badge ${e.passed?'badge-g':'badge-r'}">${e.passed?'Bestanden':'Nicht bestanden'}</span></td>
@@ -2229,7 +2229,7 @@ window.submitRankExam = async function() {
     </div>
     <div style="display:flex;flex-direction:column;gap:.45rem;margin-bottom:1rem">
       ${[
-        { icon:'fa-map-marker-alt', label:'Modul 1 – Ortskunde',   pass:result.m1_passed, score:`${result.m1_score}/${result.m1_max} Punkte` },
+        { icon:'fa-map-marker-alt', label:'Modul 1 – Ortskunde',   pass:result.m1_passed, score:`${result.m1_score}/${result.m1_max} Orte bestanden` },
         { icon:'fa-brain',          label:'Modul 2 – Mentalteil',   pass:result.m2_passed, score:`${result.m2_score}/${result.m2_total} Fragen` },
         { icon:'fa-tools',          label:'Modul 3 – Praktischer Teil', pass:result.m3_passed, score:`Ø ${result.m3_score.toFixed(1)}/4 (${rLabel(result.m3_score)})` },
       ].map(m=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem .85rem;background:var(--input);border-radius:var(--r);border-left:3px solid ${m.pass?'var(--green)':'#ef4444'}">

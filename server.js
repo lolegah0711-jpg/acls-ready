@@ -1012,9 +1012,10 @@ app.post('/api/rank-exam/submit', requireAusbilder, (req, res) => {
   const user = getUser(req);
   if (!exam) return res.status(400).json({ error: 'Kein aktiver Test' });
 
-  const m1_score = m1_data.reduce((s, l) => s + (l.found?1:0) + (l.best_route?1:0) + (l.stvo?1:0), 0);
-  const m1_max   = m1_data.length * 3;
-  const m1_passed = m1_score >= Math.ceil(m1_max * 0.7);
+  // Each location passes if ≥2 of 3 criteria are met; score = number of passed locations
+  const m1_score  = m1_data.filter(l => (l.found?1:0)+(l.best_route?1:0)+(l.stvo?1:0) >= 2).length;
+  const m1_max    = m1_data.length;
+  const m1_passed = m1_score >= Math.ceil(m1_max * 0.75); // ≥3/4 locations
 
   let m2_score = 0, m2_total = 0;
   if (exam.question_ids && exam.question_ids.length > 0) {
