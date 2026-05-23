@@ -1986,6 +1986,14 @@ window.openProfileModal = async id => {
 // ════════════════════════════════════════════════════════════════
 let activeRankExam = null;
 
+const LOCATIONS_POOL = [
+  'Pillbox Hill Medical Center','Sandy Shores','Paleto Bay','Grapeseed',
+  'Vinewood Hills','Rockford Hills','Strawberry','Davis','Del Perro',
+  'La Mesa','Vespucci Beach','Little Seoul','Cypress Flats','El Burro Heights',
+  'Rancho','Mirror Park','Forum Drive','Burton','Morningwood','Chamberlain Hills',
+  'Grand Senora Desert','Alamo Sea','Zancudo River','Calafia Bridge','Lago Zancudo',
+];
+
 const M3_ITEMS   = ['Dispatch annehmen','Fragen stellen / Kommunikation','Teile holen','Auto tunen','Rechnung ausstellen & Dispatch schließen','Allgemeine Einschätzung'];
 const M3_LABELS  = ['Mangelhaft','Befriedigend','Gut','Sehr Gut'];
 const M3_COLORS  = ['#ef4444','#f97316','#22c55e','#16a34a'];
@@ -2056,7 +2064,9 @@ window.beginRankExam = async function() {
   if (!name) { toast('Bitte Namen des Prüflings eingeben', 'err'); return; }
   const data = await api('/api/rank-exam/start', { method: 'POST', body: { exam_type: type, examinee_name: name, examinee_id: pid || null } });
   if (!data) return;
-  activeRankExam = { type, examineeName: name, examineeId: pid || null, questions: data.questions, m1Data: [], m2Answers: {}, m3Ratings: new Array(6).fill(0), m3Notes: '' };
+  const poolCopy = [...LOCATIONS_POOL].sort(() => Math.random() - 0.5);
+  const m1Locations = poolCopy.slice(0, 4);
+  activeRankExam = { type, examineeName: name, examineeId: pid || null, questions: data.questions, m1Locations, m1Data: [], m2Answers: {}, m3Ratings: new Array(6).fill(0), m3Notes: '' };
   renderRankM1();
 };
 
@@ -2070,38 +2080,40 @@ function rankExamHeader(title, icon, step) {
   </div>`;
 }
 
-function renderRankM1() {
+window.renderRankM1 = function() {
+  const locs = activeRankExam.m1Locations;
   openModal(`${rankExamHeader('Modul 1 – Ortskunde','fa-map-marker-alt','1')}
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem">Gib dem Prüfling 5 Orte vor und bewerte anhand der drei Kriterien:</div>
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem">4 zufällige Orte – bewerte je drei Kriterien (max. ${locs.length*3} Punkte, Bestehen ab 70%):</div>
     <div style="display:flex;flex-direction:column;gap:.55rem">
-      ${[0,1,2,3,4].map(i => `
+      ${locs.map((loc, i) => `
         <div style="background:var(--input);border-radius:var(--r);padding:.6rem .85rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
           <span style="font-weight:700;color:var(--orange);min-width:18px">${i+1}.</span>
-          <input id="rLoc${i}" class="form-input" style="flex:1;min-width:130px" placeholder="Ort eingeben..." value="${activeRankExam.m1Data[i]?.location||''}">
+          <span style="flex:1;min-width:130px;font-weight:600;font-size:.88rem">${loc}</span>
           <label style="display:flex;align-items:center;gap:.3rem;font-size:.81rem;cursor:pointer;white-space:nowrap"><input type="checkbox" id="rFound${i}" ${activeRankExam.m1Data[i]?.found?'checked':''}> Gefunden</label>
           <label style="display:flex;align-items:center;gap:.3rem;font-size:.81rem;cursor:pointer;white-space:nowrap"><input type="checkbox" id="rRoute${i}" ${activeRankExam.m1Data[i]?.best_route?'checked':''}> Sinnvollster Weg</label>
           <label style="display:flex;align-items:center;gap:.3rem;font-size:.81rem;cursor:pointer;white-space:nowrap"><input type="checkbox" id="rStvo${i}"  ${activeRankExam.m1Data[i]?.stvo?'checked':''}> StVO Verhalten</label>
         </div>`).join('')}
     </div>
     <div class="modal-footer">
-      <span style="font-size:.78rem;color:var(--muted)">Modul 1 von 3 · max. 15 Punkte</span>
+      <span style="font-size:.78rem;color:var(--muted)">Modul 1 von 3 · max. ${locs.length*3} Punkte</span>
       <button class="btn btn-primary" onclick="rankM1Next()">Weiter zu Modul 2 <i class="fas fa-arrow-right"></i></button>
     </div>`);
-}
-
-window.rankM1Next = function() {
-  activeRankExam.m1Data = [0,1,2,3,4].map(i => ({
-    location:  $(`rLoc${i}`)?.value || `Ort ${i+1}`,
-    found:     $(`rFound${i}`)?.checked || false,
-    best_route:$(`rRoute${i}`)?.checked || false,
-    stvo:      $(`rStvo${i}`)?.checked  || false,
-  }));
-  renderRankM2(0);
 };
 
-function renderRankM2(idx) {
+window.rankM1Next = function() {
+  const locs = activeRankExam.m1Locations;
+  activeRankExam.m1Data = locs.map((loc, i) => ({
+    location:   loc,
+    found:      $(`rFound${i}`)?.checked || false,
+    best_route: $(`rRoute${i}`)?.checked || false,
+    stvo:       $(`rStvo${i}`)?.checked  || false,
+  }));
+  window.renderRankM2(0);
+};
+
+window.renderRankM2 = function(idx) {
   const exam = activeRankExam;
-  if (!exam.questions.length) { renderRankM3(); return; }
+  if (!exam.questions.length) { window.renderRankM3(); return; }
   const q     = exam.questions[idx];
   const total = exam.questions.length;
   openModal(`${rankExamHeader('Modul 2 – Mentalteil','fa-brain','2')}
@@ -2119,12 +2131,14 @@ function renderRankM2(idx) {
       }).join('')}
     </div>
     <div class="modal-footer">
-      ${idx>0?`<button class="btn btn-ghost" onclick="renderRankM2(${idx-1})"><i class="fas fa-arrow-left"></i> Zurück</button>`:'<span></span>'}
+      ${idx>0
+        ?`<button class="btn btn-ghost" onclick="renderRankM2(${idx-1})"><i class="fas fa-arrow-left"></i> Zurück</button>`
+        :`<button class="btn btn-ghost" onclick="renderRankM1()"><i class="fas fa-arrow-left"></i> Zu Modul 1</button>`}
       ${idx<total-1
         ?`<button class="btn btn-primary" onclick="renderRankM2(${idx+1})">Weiter <i class="fas fa-arrow-right"></i></button>`
         :`<button class="btn btn-primary" onclick="rankM2Next()">Weiter zu Modul 3 <i class="fas fa-arrow-right"></i></button>`}
     </div>`);
-}
+};
 
 window.rankM2Select = function(idx, ans) {
   activeRankExam.m2Answers[activeRankExam.questions[idx].id] = ans;
@@ -2132,7 +2146,7 @@ window.rankM2Select = function(idx, ans) {
 };
 window.rankM2Next = function() { renderRankM3(); };
 
-function renderRankM3() {
+window.renderRankM3 = function renderRankM3() {
   const exam = activeRankExam;
   openModal(`${rankExamHeader('Modul 3 – Praktischer Teil Auto Tuning','fa-tools','3')}
     <div style="font-size:.82rem;color:var(--muted);margin-bottom:.8rem">Bewerte den Prüfling in jeder Kategorie (Bestehen ab Ø 2,5):</div>
@@ -2159,16 +2173,16 @@ function renderRankM3() {
       <button class="btn btn-ghost" onclick="rankM2Next_back()"><i class="fas fa-arrow-left"></i> Zurück</button>
       <button class="btn btn-primary" onclick="submitRankExam()"><i class="fas fa-check"></i> Prüfung abschließen</button>
     </div>`);
-}
+};
 
 window.rankM3Rate = function(i, val) {
   activeRankExam.m3Notes = $('rM3Notes')?.value || '';
   activeRankExam.m3Ratings[i] = val;
-  renderRankM3();
+  window.renderRankM3();
 };
 window.rankM2Next_back = function() {
   activeRankExam.m3Notes = $('rM3Notes')?.value || '';
-  renderRankM2(activeRankExam.questions.length - 1);
+  window.renderRankM2(activeRankExam.questions.length - 1);
 };
 
 window.submitRankExam = async function() {

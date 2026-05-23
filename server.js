@@ -1011,11 +1011,14 @@ app.post('/api/rank-exam/submit', requireAusbilder, (req, res) => {
   const m1_max   = m1_data.length * 3;
   const m1_passed = m1_score >= Math.ceil(m1_max * 0.7);
 
-  const ph = exam.question_ids.map(() => '?').join(',');
-  const qs = db.prepare(`SELECT id,correct_answer FROM rank_questions WHERE id IN (${ph})`).all(...exam.question_ids);
-  const m2_score  = qs.filter(q => parseInt(m2_answers[q.id]) === q.correct_answer).length;
-  const m2_total  = qs.length;
-  const m2_passed = m2_total > 0 && m2_score >= Math.ceil(m2_total * 0.7);
+  let m2_score = 0, m2_total = 0;
+  if (exam.question_ids && exam.question_ids.length > 0) {
+    const ph = exam.question_ids.map(() => '?').join(',');
+    const qs = db.prepare(`SELECT id,correct_answer FROM rank_questions WHERE id IN (${ph})`).all(...exam.question_ids);
+    m2_total = qs.length;
+    m2_score = qs.filter(q => parseInt(m2_answers?.[String(q.id)]) === q.correct_answer).length;
+  }
+  const m2_passed = m2_total === 0 || m2_score >= Math.ceil(m2_total * 0.7);
 
   const ratings  = m3_data.ratings || [];
   const m3_score = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
