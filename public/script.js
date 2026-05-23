@@ -2047,7 +2047,7 @@ async function ausbildung() {
         </div>
       </div>
       ${exams?.length ? `<div class="tbl-wrap"><table class="data-tbl">
-        <thead><tr><th>Typ</th><th>Prüfling</th><th>Prüfer</th><th>M1</th><th>M2</th><th>M3</th><th>Ergebnis</th><th>Datum</th></tr></thead>
+        <thead><tr><th>Typ</th><th>Prüfling</th><th>Prüfer</th><th>M1</th><th>M2</th><th>M3</th><th>Ergebnis</th><th>Datum</th><th></th></tr></thead>
         <tbody>${exams.map(e => `<tr>
           <td><span class="badge badge-m">${e.exam_type==='meister'?'Meister':'Geselle'}</span></td>
           <td><b>${e.examinee_name}</b>${e.examinee_id?` <span style="font-size:.72rem;color:var(--muted)">${e.examinee_id}</span>`:''}</td>
@@ -2057,6 +2057,7 @@ async function ausbildung() {
           <td><span class="badge ${e.m3_passed?'badge-g':'badge-r'}">${(+e.m3_score).toFixed(1)}/4</span></td>
           <td><span class="badge ${e.passed?'badge-g':'badge-r'}">${e.passed?'Bestanden':'Nicht bestanden'}</span></td>
           <td style="white-space:nowrap">${fmt(e.taken_at)}</td>
+          <td>${e.passed?`<button class="btn btn-ghost btn-sm" onclick="window.open('/api/rank-exams/${e.id}/certificate')" title="Zertifikat öffnen"><i class="fas fa-certificate" style="color:var(--orange)"></i></button>`:''}</td>
         </tr>`).join('')}</tbody>
       </table></div>` : '<div class="empty"><i class="fas fa-graduation-cap"></i><p>Noch keine Prüfungen</p></div>'}
     </div>`;

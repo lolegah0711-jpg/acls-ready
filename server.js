@@ -1143,6 +1143,145 @@ app.get('/api/rank-exams', requireAusbilder, (req, res) => {
   res.json(db.prepare(`SELECT re.*,u.username as examiner_name,u2.username as examiner2_name FROM rank_exams re JOIN users u ON u.id=re.examiner_id LEFT JOIN users u2 ON u2.id=re.examiner2_id ORDER BY re.taken_at DESC LIMIT 50`).all());
 });
 
+app.get('/api/rank-exams/:id/certificate', requireAusbilder, (req, res) => {
+  const exam = db.prepare(`
+    SELECT re.*,u.username as examiner_name,u2.username as examiner2_name
+    FROM rank_exams re
+    JOIN users u ON u.id=re.examiner_id
+    LEFT JOIN users u2 ON u2.id=re.examiner2_id
+    WHERE re.id=? AND re.passed=1
+  `).get(+req.params.id);
+  if (!exam) return res.status(404).send('Zertifikat nicht gefunden oder Prüfung nicht bestanden.');
+
+  const date = new Date(exam.taken_at).toLocaleDateString('de-DE', { day:'2-digit', month:'long', year:'numeric' });
+  const typeFull = exam.exam_type === 'meister' ? 'Meisterprüfung' : 'Gesellenprüfung';
+  const typeTitle = exam.exam_type === 'meister' ? 'MEISTERZEUGNIS' : 'GESELLENZEUGNIS';
+  const m3_ratings = JSON.parse(exam.m3_data || '{}').ratings || [];
+  const m3avg = m3_ratings.length ? (m3_ratings.reduce((a,b)=>a+b,0)/m3_ratings.length).toFixed(1) : '–';
+  const examiners = [exam.examiner_name, exam.examiner2_name].filter(Boolean).join(' & ');
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Zertifikat – ${exam.examinee_name}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Georgia',serif; background:#f5f0e8; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; padding:2rem; }
+  .page { width:210mm; min-height:297mm; background:#fff; padding:18mm 20mm; position:relative; box-shadow:0 4px 40px rgba(0,0,0,.18); }
+
+  /* decorative border */
+  .page::before {
+    content:''; position:absolute; inset:8mm;
+    border:2px solid #b8860b; pointer-events:none;
+  }
+  .page::after {
+    content:''; position:absolute; inset:10.5mm;
+    border:1px solid #b8860b; pointer-events:none;
+  }
+
+  .header { text-align:center; padding-bottom:10mm; border-bottom:2px solid #b8860b; margin-bottom:10mm; }
+  .org { font-size:11pt; letter-spacing:.25em; text-transform:uppercase; color:#666; margin-bottom:3mm; }
+  .org-name { font-size:22pt; font-weight:bold; color:#1a1a1a; letter-spacing:.05em; margin-bottom:1mm; }
+  .org-sub { font-size:9pt; color:#888; letter-spacing:.15em; text-transform:uppercase; }
+
+  .cert-type { text-align:center; margin:8mm 0 5mm; }
+  .cert-type h1 { font-size:28pt; letter-spacing:.3em; color:#b8860b; text-transform:uppercase; font-weight:normal; }
+  .cert-type .subtitle { font-size:10pt; color:#888; letter-spacing:.1em; margin-top:2mm; }
+
+  .award { text-align:center; margin:8mm 0; }
+  .award .awarded-to { font-size:9pt; color:#888; letter-spacing:.15em; text-transform:uppercase; margin-bottom:3mm; }
+  .award .name { font-size:26pt; color:#1a1a1a; font-style:italic; border-bottom:1px solid #ccc; display:inline-block; padding-bottom:2mm; min-width:120mm; }
+
+  .body-text { text-align:center; margin:7mm 0; font-size:11pt; line-height:1.8; color:#333; }
+  .body-text strong { color:#1a1a1a; }
+
+  .modules { margin:8mm 0; border:1px solid #e0d5c0; border-radius:4px; overflow:hidden; }
+  .modules-title { background:#f5f0e8; padding:3mm 5mm; font-size:8.5pt; letter-spacing:.12em; text-transform:uppercase; color:#888; border-bottom:1px solid #e0d5c0; }
+  .module-row { display:flex; justify-content:space-between; align-items:center; padding:2.5mm 5mm; border-bottom:1px solid #f0e8d8; font-size:9.5pt; }
+  .module-row:last-child { border-bottom:none; }
+  .module-row .m-label { color:#444; }
+  .module-row .m-score { font-weight:bold; color:#2d6a2d; }
+
+  .footer { margin-top:12mm; display:flex; justify-content:space-between; align-items:flex-end; }
+  .sig-block { text-align:center; flex:1; }
+  .sig-line { border-top:1px solid #999; margin:0 10mm 2mm; }
+  .sig-label { font-size:8pt; color:#888; letter-spacing:.08em; }
+  .sig-name { font-size:9.5pt; color:#333; margin-top:1mm; }
+
+  .seal { width:28mm; height:28mm; border:2px solid #b8860b; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#b8860b; font-size:7pt; text-align:center; letter-spacing:.05em; text-transform:uppercase; flex-shrink:0; }
+
+  .cert-id { text-align:center; margin-top:6mm; font-size:7.5pt; color:#bbb; letter-spacing:.05em; }
+
+  @media print {
+    body { background:none; padding:0; }
+    .page { box-shadow:none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="org">Automobil-Club Los Santos</div>
+    <div class="org-name">ACLS</div>
+    <div class="org-sub">ColdRP · Fahrzeugservice &amp; Prüfwesen</div>
+  </div>
+
+  <div class="cert-type">
+    <h1>${typeTitle}</h1>
+    <div class="subtitle">${typeFull} – erfolgreich bestanden</div>
+  </div>
+
+  <div class="award">
+    <div class="awarded-to">Hiermit wird bestätigt, dass</div>
+    <div class="name">${exam.examinee_name}</div>
+  </div>
+
+  <div class="body-text">
+    die <strong>${typeFull}</strong> des Automobil-Club Los Santos<br>
+    am <strong>${date}</strong> erfolgreich abgelegt und bestanden hat.<br>
+    Alle drei Module wurden gemäß den Ausbildungsrichtlinien geprüft<br>
+    und mit bestandenem Ergebnis abgeschlossen.
+  </div>
+
+  <div class="modules">
+    <div class="modules-title">Modulergebnisse</div>
+    <div class="module-row">
+      <span class="m-label">Modul 1 – Ortskunde</span>
+      <span class="m-score">${exam.m1_score}/${exam.m1_max} Orte bestanden ✓</span>
+    </div>
+    <div class="module-row">
+      <span class="m-label">Modul 2 – Mentalteil / Dienstvorschriften</span>
+      <span class="m-score">${exam.m2_score}/${exam.m2_total} Fragen richtig ✓</span>
+    </div>
+    <div class="module-row">
+      <span class="m-label">Modul 3 – Praktischer Teil Auto Tuning</span>
+      <span class="m-score">Ø ${m3avg}/4 ✓</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="sig-block">
+      <div class="sig-line"></div>
+      <div class="sig-label">Datum</div>
+      <div class="sig-name">${date}</div>
+    </div>
+    <div class="seal">ACLS<br>offiziell<br>geprüft</div>
+    <div class="sig-block">
+      <div class="sig-line"></div>
+      <div class="sig-label">Prüfer</div>
+      <div class="sig-name">${examiners}</div>
+    </div>
+  </div>
+
+  <div class="cert-id">Zertifikat-Nr. ACLS-${String(exam.id).padStart(4,'0')} · ${exam.exam_type.toUpperCase()}</div>
+</div>
+<script>window.onload = () => window.print();</script>
+</body>
+</html>`);
+});
+
 // ════════════════════════════════════════════════════════════════
 //  BOT NOTIFICATIONS
 // ════════════════════════════════════════════════════════════════
