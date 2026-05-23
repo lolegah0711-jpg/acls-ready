@@ -1135,45 +1135,31 @@ app.post('/api/rank-exam/join', requireAusbilder, (req, res) => {
   });
 });
 
-// SSE: broadcast exam state updates to all connected examiners
-const examSseClients = new Map(); // joinCode → Set<res>
-
-function broadcastExamEvent(joinCode, data) {
-  const clients = examSseClients.get(joinCode);
-  if (!clients?.size) return;
-  const msg = `data: ${JSON.stringify(data)}\n\n`;
-  for (const res of [...clients]) { try { res.write(msg); } catch (_) {} }
-}
-
-app.get('/api/rank-exam/events/:code', requireAusbilder, (req, res) => {
-  const code = req.params.code.toUpperCase();
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  res.write('data: {"type":"connected"}\n\n');
-  if (!examSseClients.has(code)) examSseClients.set(code, new Set());
-  examSseClients.get(code).add(res);
-  req.on('close', () => {
-    examSseClients.get(code)?.delete(res);
-    if (!examSseClients.get(code)?.size) examSseClients.delete(code);
-  });
-});
-
 app.put('/api/rank-exam/active', requireAusbilder, (req, res) => {
   const exam = getActiveExam(req);
   if (!exam) return res.status(400).json({ error: 'Kein aktiver Test' });
-  const user = getUser(req);
   const fields = [];
   const vals   = [];
   if (req.body.m1_data    !== undefined) { fields.push('m1_data=?');    vals.push(JSON.stringify(req.body.m1_data)); }
   if (req.body.m2_answers !== undefined) { fields.push('m2_answers=?'); vals.push(JSON.stringify(req.body.m2_answers)); }
   if (req.body.m3_ratings !== undefined) { fields.push('m3_ratings=?'); vals.push(JSON.stringify(req.body.m3_ratings)); }
   if (req.body.m3_notes   !== undefined) { fields.push('m3_notes=?');   vals.push(req.body.m3_notes); }
+  if (req.body.current_module !== undefined) { fields.push('current_module=?'); vals.push(req.body.current_module); }
   if (fields.length) db.prepare(`UPDATE active_rank_exams SET ${fields.join(',')} WHERE join_code=?`).run(...vals, exam.join_code);
-  // Broadcast to other examiner(s) via SSE
-  broadcastExamEvent(exam.join_code, { type: 'state', sender_id: user.id, ...req.body });
   res.json({ ok: true });
+});
+
+// Polling endpoint: liefert aktuellen Exam-State (für Echtzeit-Sync ohne SSE)
+app.get('/api/rank-exam/state', requireAusbilder, (req, res) => {
+  const exam = getActiveExam(req);
+  if (!exam) return res.status(404).json({ error: 'Kein aktiver Test' });
+  res.json({
+    m1_data:        JSON.parse(exam.m1_data   || 'null'),
+    m2_answers:     JSON.parse(exam.m2_answers || '{}'),
+    m3_ratings:     JSON.parse(exam.m3_ratings || '[0,0,0,0,0,0]'),
+    m3_notes:       exam.m3_notes || '',
+    current_module: exam.current_module || 'm1',
+  });
 });
 
 app.post('/api/rank-exam/submit', requireAusbilder, (req, res) => {

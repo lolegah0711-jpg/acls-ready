@@ -2061,42 +2061,40 @@ window.openProfileModal = async id => {
 // ════════════════════════════════════════════════════════════════
 //  AUSBILDUNG – RANG-PRÜFUNGEN
 // ════════════════════════════════════════════════════════════════
-let activeRankExam   = null;
-let examSse          = null;   // EventSource für Echtzeit-Sync
-let currentRankModule = 'm1'; // 'm1' | 'm2' | 'm3'
-let currentRankM2Idx  = 0;    // aktuelle Frage in M2
+let activeRankExam    = null;
+let currentRankModule  = 'm1'; // 'm1' | 'm2' | 'm3'
+let currentRankM2Idx   = 0;    // aktuelle Frage in M2
+let examPollTimer      = null;  // setInterval-Handle für Sync-Polling
 
-function connectExamSSE(joinCode) {
-  if (examSse) { examSse.close(); examSse = null; }
-  examSse = new EventSource(`/api/rank-exam/events/${joinCode}`);
-  examSse.onmessage = e => {
-    let data; try { data = JSON.parse(e.data); } catch { return; }
-    if (data.type !== 'state' || !activeRankExam) return;
-    if (data.sender_id === currentUser?.id) return; // eigene Updates überspringen
+function startExamPolling() {
+  stopExamPolling();
+  examPollTimer = setInterval(async () => {
+    if (!activeRankExam) return stopExamPolling();
+    const state = await api('/api/rank-exam/state').catch(() => null);
+    if (!state || !activeRankExam) return;
 
-    // State mergen
-    if (data.m1_data    !== undefined) activeRankExam.m1Data    = data.m1_data;
-    if (data.m2_answers !== undefined) activeRankExam.m2Answers = data.m2_answers;
-    if (data.m3_ratings !== undefined) activeRankExam.m3Ratings = data.m3_ratings;
-    if (data.m3_notes   !== undefined) activeRankExam.m3Notes   = data.m3_notes;
+    // Änderungen übernehmen
+    if (state.m1_data    !== null)  activeRankExam.m1Data    = state.m1_data;
+    if (state.m2_answers)           activeRankExam.m2Answers = state.m2_answers;
+    if (state.m3_ratings)           activeRankExam.m3Ratings = state.m3_ratings;
+    if (state.m3_notes   !== undefined) activeRankExam.m3Notes = state.m3_notes;
 
-    // Modulwechsel → automatisch navigieren
-    if (data.current_module && data.current_module !== currentRankModule) {
-      currentRankModule = data.current_module;
-      if (data.current_module === 'm1') window.renderRankM1();
-      if (data.current_module === 'm2') { currentRankM2Idx = 0; window.renderRankM2(0); }
-      if (data.current_module === 'm3') window.renderRankM3();
+    // Modul geändert → automatisch navigieren
+    if (state.current_module && state.current_module !== currentRankModule) {
+      currentRankModule = state.current_module;
+      if (state.current_module === 'm1') window.renderRankM1();
+      if (state.current_module === 'm2') { currentRankM2Idx = 0; window.renderRankM2(0); }
+      if (state.current_module === 'm3') window.renderRankM3();
     } else {
-      // Gleiche Ansicht mit neuem State neu rendern
-      if (currentRankModule === 'm1') window.renderRankM1();
+      // Gleiche Ansicht aktualisieren (Antworten/Ratings des Partners sichtbar machen)
       if (currentRankModule === 'm2') window.renderRankM2(currentRankM2Idx);
       if (currentRankModule === 'm3') window.renderRankM3();
     }
-  };
+  }, 3000);
 }
 
-function disconnectExamSSE() {
-  if (examSse) { examSse.close(); examSse = null; }
+function stopExamPolling() {
+  if (examPollTimer) { clearInterval(examPollTimer); examPollTimer = null; }
 }
 
 const LOCATIONS_POOL = [
@@ -2201,7 +2199,7 @@ window.beginRankExam = async function() {
     questions: data.questions, m1Locations, m1Data: [], m2Answers: {}, m2Revealed: {},
     m3Ratings: new Array(6).fill(0), m3Notes: '' };
   currentRankModule = 'm1';
-  connectExamSSE(data.join_code);
+  startExamPolling();
   window.renderRankM1();
 };
 
@@ -2242,7 +2240,7 @@ window.doJoinRankExam = async function() {
   };
   toast(`Prüfung ${code} beigetreten`, 'ok');
   currentRankModule = 'm1';
-  connectExamSSE(data.join_code);
+  startExamPolling();
   window.renderRankM1();
 };
 
@@ -2412,7 +2410,7 @@ window.submitRankExam = async function() {
   saveRankState({ m3_notes: exam.m3Notes });
   const result = await api('/api/rank-exam/submit', { method: 'POST', body: {} });
   if (!result) return;
-  disconnectExamSSE();
+  stopExamPolling();
   activeRankExam = null;
   const rLabel = v => M3_LABELS[Math.min(Math.round(v)-1, 3)] || '';
   openModal(`
