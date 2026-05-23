@@ -174,6 +174,40 @@ function initDb() {
       created_at          DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS rank_questions (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      exam_type      TEXT NOT NULL DEFAULT 'both',
+      question       TEXT NOT NULL,
+      option_a       TEXT NOT NULL,
+      option_b       TEXT NOT NULL,
+      option_c       TEXT,
+      option_d       TEXT,
+      correct_answer INTEGER NOT NULL DEFAULT 0,
+      is_active      INTEGER DEFAULT 1,
+      created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS rank_exams (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      exam_type     TEXT NOT NULL,
+      examinee_name TEXT NOT NULL,
+      examinee_id   TEXT,
+      examiner_id   INTEGER NOT NULL REFERENCES users(id),
+      m1_data       TEXT,
+      m1_score      INTEGER,
+      m1_max        INTEGER,
+      m1_passed     INTEGER,
+      m2_score      INTEGER,
+      m2_total      INTEGER,
+      m2_passed     INTEGER,
+      m3_data       TEXT,
+      m3_score      REAL,
+      m3_passed     INTEGER,
+      passed        INTEGER DEFAULT 0,
+      notes         TEXT,
+      taken_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS bot_notifications (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       type        TEXT NOT NULL,

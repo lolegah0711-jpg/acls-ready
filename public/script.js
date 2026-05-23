@@ -107,8 +107,9 @@ const PAGES = {
   factions:  { title: 'Fraktionsfarben',        sub: 'Fahrzeugfarben der Fraktionen' },
   map:       { title: 'Abschlepphöfe',          sub: 'Interaktive GTA V Karte' },
   iczeit:    { title: 'IC-Zeit Tracking',       sub: 'Discord Voice-Kanal Anwesenheit' },
-  admin:     { title: 'Admin-Panel',            sub: 'Verwaltung & Kontrolle' },
-  bans:      { title: 'Aktive Sperren',         sub: 'Hausverbot-Verwaltung' },
+  admin:      { title: 'Admin-Panel',            sub: 'Verwaltung & Kontrolle' },
+  ausbildung: { title: 'Ausbildung',             sub: 'Gesellen- & Meisterprüfungen' },
+  bans:       { title: 'Aktive Sperren',         sub: 'Hausverbot-Verwaltung' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -148,7 +149,8 @@ function closeModal() { $('modalOverlay').classList.add('hidden'); }
 $('modalOverlay').addEventListener('click', e => { if (e.target === $('modalOverlay')) closeModal(); });
 
 // ── Helpers ──────────────────────────────────────────────────────
-const isAdmin = () => currentUser?.role === 'admin';
+const isAdmin      = () => currentUser?.role === 'admin';
+const isAusbilder  = () => currentUser?.role === 'ausbilder' || currentUser?.role === 'admin';
 const initials = n => (n || '?').split(/[_\s]/).map(p => p[0]).join('').toUpperCase().slice(0, 2);
 const fmt = dt => new Date(dt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 const fmtTime = dt => new Date(dt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
@@ -307,7 +309,8 @@ function bootApp() {
   $('app').classList.remove('hidden');
   initSidebar();
   renderUserWidget();
-  $('adminNavItem').style.display = isAdmin() ? '' : 'none';
+  $('adminNavItem').style.display     = isAdmin()     ? '' : 'none';
+  $('ausbildungNavItem').style.display = isAusbilder() ? '' : 'none';
   document.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', e => { e.preventDefault(); navigate(el.dataset.page); });
   });
@@ -338,18 +341,18 @@ async function logout() {
 
 // ── Router ────────────────────────────────────────────────────────
 function navigate(page) {
-  if (page === 'admin' && !isAdmin()) { toast('Kein Zugriff', 'err'); return; }
+  if (page === 'admin'     && !isAdmin())     { toast('Kein Zugriff', 'err'); return; }
+  if (page === 'ausbildung' && !isAusbilder()) { toast('Kein Zugriff', 'err'); return; }
   _activePage = page;
-  // Destroy Leaflet map if leaving map page
   if (leafletMap && page !== 'map') { leafletMap.remove(); leafletMap = null; }
 
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   const p = PAGES[page] || PAGES.dashboard;
-  $('pageTitle').textContent  = p.title;
+  $('pageTitle').textContent    = p.title;
   $('pageSubtitle').textContent = p.sub;
-  $('pageContent').innerHTML  = loading();
+  $('pageContent').innerHTML    = loading();
 
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, admin, bans };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, admin, ausbildung, bans };
   (renders[page] || dashboard)();
 }
 
@@ -1975,6 +1978,287 @@ window.openProfileModal = async id => {
         <div class="re-time">${ago(s.taken_at)}</div>
       </div>`).join('') : '<div class="empty" style="padding:.5rem"><p>Keine Tests absolviert</p></div>'}
     <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Schließen</button></div>`);
+};
+
+// ════════════════════════════════════════════════════════════════
+//  AUSBILDUNG – RANG-PRÜFUNGEN
+// ════════════════════════════════════════════════════════════════
+let activeRankExam = null;
+
+const M3_ITEMS   = ['Dispatch annehmen','Fragen stellen / Kommunikation','Teile holen','Auto tunen','Rechnung ausstellen & Dispatch schließen','Allgemeine Einschätzung'];
+const M3_LABELS  = ['Mangelhaft','Befriedigend','Gut','Sehr Gut'];
+const M3_COLORS  = ['#ef4444','#f97316','#22c55e','#16a34a'];
+
+async function ausbildung() {
+  const [exams, qs] = await Promise.all([api('/api/rank-exams'), api('/api/rank-questions')]);
+  const total  = exams?.length || 0;
+  const passed = exams?.filter(e => e.passed).length || 0;
+  $('pageContent').innerHTML = `
+    <div class="stats-row" style="margin-bottom:1.25rem">
+      <div class="stat-card"><div class="stat-val">${total}</div><div class="stat-lab">Gesamtprüfungen</div></div>
+      <div class="stat-card"><div class="stat-val">${passed}</div><div class="stat-lab">Bestanden</div></div>
+      <div class="stat-card"><div class="stat-val">${total ? Math.round(passed/total*100) : 0}%</div><div class="stat-lab">Bestehensquote</div></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-icon orange"><i class="fas fa-graduation-cap"></i></div>
+        <div><div class="card-title">Prüfungen</div><div class="card-sub">Gesellen- & Meisterprüfungen</div></div>
+        <div style="margin-left:auto;display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="manageRankQuestions()"><i class="fas fa-question-circle"></i> Fragen verwalten</button>
+          <button class="btn btn-primary" onclick="startRankExamSetup()"><i class="fas fa-plus"></i> Neue Prüfung</button>
+        </div>
+      </div>
+      ${exams?.length ? `<div class="tbl-wrap"><table class="data-tbl">
+        <thead><tr><th>Typ</th><th>Prüfling</th><th>Prüfer</th><th>M1</th><th>M2</th><th>M3</th><th>Ergebnis</th><th>Datum</th></tr></thead>
+        <tbody>${exams.map(e => `<tr>
+          <td><span class="badge badge-m">${e.exam_type==='meister'?'Meister':'Geselle'}</span></td>
+          <td><b>${e.examinee_name}</b>${e.examinee_id?` <span style="font-size:.72rem;color:var(--muted)">${e.examinee_id}</span>`:''}</td>
+          <td>${e.examiner_name}</td>
+          <td><span class="badge ${e.m1_passed?'badge-g':'badge-r'}">${e.m1_score}/${e.m1_max}</span></td>
+          <td><span class="badge ${e.m2_passed?'badge-g':'badge-r'}">${e.m2_score}/${e.m2_total}</span></td>
+          <td><span class="badge ${e.m3_passed?'badge-g':'badge-r'}">${(+e.m3_score).toFixed(1)}/4</span></td>
+          <td><span class="badge ${e.passed?'badge-g':'badge-r'}">${e.passed?'Bestanden':'Nicht bestanden'}</span></td>
+          <td style="white-space:nowrap">${fmt(e.taken_at)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : '<div class="empty"><i class="fas fa-graduation-cap"></i><p>Noch keine Prüfungen</p></div>'}
+    </div>`;
+  animateCountUps();
+}
+
+window.startRankExamSetup = function() {
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-graduation-cap" style="color:var(--orange);margin-right:.5rem"></i>Neue Prüfung starten</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.9rem;padding:.25rem 0">
+      <div><label class="form-label">Prüfungstyp</label>
+        <select id="rExamType" class="form-input">
+          <option value="gesellen">Gesellenprüfung</option>
+          <option value="meister">Meisterprüfung</option>
+        </select></div>
+      <div><label class="form-label">Name des Prüflings</label>
+        <input id="rExamineeName" class="form-input" placeholder="Vor- und Nachname..."></div>
+      <div><label class="form-label">Spieler-ID (optional)</label>
+        <input id="rExamineeId" class="form-input" placeholder="z.B. Steam-ID..."></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="beginRankExam()"><i class="fas fa-play"></i> Prüfung starten</button>
+    </div>`);
+};
+
+window.beginRankExam = async function() {
+  const type = $('rExamType')?.value;
+  const name = $('rExamineeName')?.value.trim();
+  const pid  = $('rExamineeId')?.value.trim();
+  if (!name) { toast('Bitte Namen des Prüflings eingeben', 'err'); return; }
+  const data = await api('/api/rank-exam/start', { method: 'POST', body: { exam_type: type, examinee_name: name, examinee_id: pid || null } });
+  if (!data) return;
+  activeRankExam = { type, examineeName: name, examineeId: pid || null, questions: data.questions, m1Data: [], m2Answers: {}, m3Ratings: new Array(6).fill(0), m3Notes: '' };
+  renderRankM1();
+};
+
+function rankExamHeader(title, icon, step) {
+  return `<div class="modal-head">
+    <div class="modal-title"><i class="fas ${icon}" style="color:var(--orange);margin-right:.5rem"></i>${title}</div>
+    <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+  </div>
+  <div style="font-size:.8rem;color:var(--muted);margin-bottom:.9rem">
+    <b style="color:var(--fg)">${activeRankExam.examineeName}</b> · ${activeRankExam.type==='meister'?'Meisterprüfung':'Gesellenprüfung'} · Modul ${step} von 3
+  </div>`;
+}
+
+function renderRankM1() {
+  openModal(`${rankExamHeader('Modul 1 – Ortskunde','fa-map-marker-alt','1')}
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem">Gib dem Prüfling 5 Orte vor und bewerte anhand der drei Kriterien:</div>
+    <div style="display:flex;flex-direction:column;gap:.55rem">
+      ${[0,1,2,3,4].map(i => `
+        <div style="background:var(--input);border-radius:var(--r);padding:.6rem .85rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+          <span style="font-weight:700;color:var(--orange);min-width:18px">${i+1}.</span>
+          <input id="rLoc${i}" class="form-input" style="flex:1;min-width:130px" placeholder="Ort eingeben..." value="${activeRankExam.m1Data[i]?.location||''}">
+          <label style="display:flex;align-items:center;gap:.3rem;font-size:.81rem;cursor:pointer;white-space:nowrap"><input type="checkbox" id="rFound${i}" ${activeRankExam.m1Data[i]?.found?'checked':''}> Gefunden</label>
+          <label style="display:flex;align-items:center;gap:.3rem;font-size:.81rem;cursor:pointer;white-space:nowrap"><input type="checkbox" id="rRoute${i}" ${activeRankExam.m1Data[i]?.best_route?'checked':''}> Sinnvollster Weg</label>
+          <label style="display:flex;align-items:center;gap:.3rem;font-size:.81rem;cursor:pointer;white-space:nowrap"><input type="checkbox" id="rStvo${i}"  ${activeRankExam.m1Data[i]?.stvo?'checked':''}> StVO Verhalten</label>
+        </div>`).join('')}
+    </div>
+    <div class="modal-footer">
+      <span style="font-size:.78rem;color:var(--muted)">Modul 1 von 3 · max. 15 Punkte</span>
+      <button class="btn btn-primary" onclick="rankM1Next()">Weiter zu Modul 2 <i class="fas fa-arrow-right"></i></button>
+    </div>`);
+}
+
+window.rankM1Next = function() {
+  activeRankExam.m1Data = [0,1,2,3,4].map(i => ({
+    location:  $(`rLoc${i}`)?.value || `Ort ${i+1}`,
+    found:     $(`rFound${i}`)?.checked || false,
+    best_route:$(`rRoute${i}`)?.checked || false,
+    stvo:      $(`rStvo${i}`)?.checked  || false,
+  }));
+  renderRankM2(0);
+};
+
+function renderRankM2(idx) {
+  const exam = activeRankExam;
+  if (!exam.questions.length) { renderRankM3(); return; }
+  const q     = exam.questions[idx];
+  const total = exam.questions.length;
+  openModal(`${rankExamHeader('Modul 2 – Mentalteil','fa-brain','2')}
+    <div class="quiz-wrap">
+      <div class="quiz-progress"><div class="quiz-progress-bar" style="width:${(idx/total)*100}%"></div></div>
+      <div class="quiz-counter">Frage ${idx+1} von ${total}</div>
+      <div class="quiz-q">${q.question}</div>
+      ${[q.option_a,q.option_b,q.option_c,q.option_d].map((opt,i)=>{
+        if(!opt||!opt.trim()) return '';
+        const isSel=exam.m2Answers[q.id]===i, isCorr=q.correct_answer===i;
+        return `<div class="quiz-option${isSel?' selected':''}${isCorr?' correct-hint':''}" onclick="rankM2Select(${idx},${i})">
+          <div class="opt-letter">${'ABCD'[i]}</div><div>${opt}</div>
+          ${isCorr?'<i class="fas fa-check-circle" style="margin-left:auto;color:var(--green);font-size:.85rem;flex-shrink:0"></i>':''}
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="modal-footer">
+      ${idx>0?`<button class="btn btn-ghost" onclick="renderRankM2(${idx-1})"><i class="fas fa-arrow-left"></i> Zurück</button>`:'<span></span>'}
+      ${idx<total-1
+        ?`<button class="btn btn-primary" onclick="renderRankM2(${idx+1})">Weiter <i class="fas fa-arrow-right"></i></button>`
+        :`<button class="btn btn-primary" onclick="rankM2Next()">Weiter zu Modul 3 <i class="fas fa-arrow-right"></i></button>`}
+    </div>`);
+}
+
+window.rankM2Select = function(idx, ans) {
+  activeRankExam.m2Answers[activeRankExam.questions[idx].id] = ans;
+  renderRankM2(idx);
+};
+window.rankM2Next = function() { renderRankM3(); };
+
+function renderRankM3() {
+  const exam = activeRankExam;
+  openModal(`${rankExamHeader('Modul 3 – Praktischer Teil Auto Tuning','fa-tools','3')}
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:.8rem">Bewerte den Prüfling in jeder Kategorie (Bestehen ab Ø 2,5):</div>
+    <div style="display:flex;flex-direction:column;gap:.55rem">
+      ${M3_ITEMS.map((item,i)=>`
+        <div style="background:var(--input);border-radius:var(--r);padding:.6rem .85rem">
+          <div style="font-size:.84rem;font-weight:600;margin-bottom:.5rem">${i+1}. ${item}</div>
+          <div style="display:flex;gap:.35rem;flex-wrap:wrap">
+            ${M3_LABELS.map((lbl,r)=>{
+              const val=r+1, sel=exam.m3Ratings[i]===val;
+              const c=M3_COLORS[r];
+              return `<button onclick="rankM3Rate(${i},${val})"
+                style="padding:.3rem .75rem;border-radius:var(--r);font-size:.78rem;font-weight:600;cursor:pointer;transition:all .12s;
+                  background:${sel?c+'22':'var(--surface2)'};color:${sel?c:'var(--muted)'};border:1px solid ${sel?c+'55':'var(--border)'}">${lbl}</button>`;
+            }).join('')}
+          </div>
+        </div>`).join('')}
+    </div>
+    <div style="margin-top:.85rem">
+      <label class="form-label">Notizen / Gesamteinschätzung</label>
+      <textarea id="rM3Notes" class="form-input" rows="2" placeholder="Freitext..." style="resize:vertical">${exam.m3Notes||''}</textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="rankM2Next_back()"><i class="fas fa-arrow-left"></i> Zurück</button>
+      <button class="btn btn-primary" onclick="submitRankExam()"><i class="fas fa-check"></i> Prüfung abschließen</button>
+    </div>`);
+}
+
+window.rankM3Rate = function(i, val) {
+  activeRankExam.m3Notes = $('rM3Notes')?.value || '';
+  activeRankExam.m3Ratings[i] = val;
+  renderRankM3();
+};
+window.rankM2Next_back = function() {
+  activeRankExam.m3Notes = $('rM3Notes')?.value || '';
+  renderRankM2(activeRankExam.questions.length - 1);
+};
+
+window.submitRankExam = async function() {
+  const exam = activeRankExam;
+  const unrated = exam.m3Ratings.filter(r => !r).length;
+  if (unrated > 0) { toast(`Noch ${unrated} Kategorie(n) in Modul 3 nicht bewertet`, 'err'); return; }
+  const unanswered = exam.questions.filter(q => exam.m2Answers[q.id] === undefined).length;
+  if (unanswered > 0) { toast(`Noch ${unanswered} Frage(n) in Modul 2 nicht beantwortet`, 'err'); return; }
+  exam.m3Notes = $('rM3Notes')?.value || '';
+  const result = await api('/api/rank-exam/submit', { method: 'POST', body: { m1_data: exam.m1Data, m2_answers: exam.m2Answers, m3_data: { ratings: exam.m3Ratings, notes: exam.m3Notes } } });
+  if (!result) return;
+  activeRankExam = null;
+  const rLabel = v => M3_LABELS[Math.min(Math.round(v)-1, 3)] || '';
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title">Prüfungsergebnis</div>
+      <button class="modal-close" onclick="closeModal();ausbildung()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="quiz-result">
+      <div class="quiz-score-big ${result.passed?'quiz-passed':'quiz-failed'}">${result.passed?'✓':'✗'}</div>
+      <div style="font-size:1.1rem;font-weight:700;margin:.75rem 0">${result.passed?'Prüfung bestanden!':'Prüfung nicht bestanden'}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.45rem;margin-bottom:1rem">
+      ${[
+        { icon:'fa-map-marker-alt', label:'Modul 1 – Ortskunde',   pass:result.m1_passed, score:`${result.m1_score}/${result.m1_max} Punkte` },
+        { icon:'fa-brain',          label:'Modul 2 – Mentalteil',   pass:result.m2_passed, score:`${result.m2_score}/${result.m2_total} Fragen` },
+        { icon:'fa-tools',          label:'Modul 3 – Praktischer Teil', pass:result.m3_passed, score:`Ø ${result.m3_score.toFixed(1)}/4 (${rLabel(result.m3_score)})` },
+      ].map(m=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem .85rem;background:var(--input);border-radius:var(--r);border-left:3px solid ${m.pass?'var(--green)':'#ef4444'}">
+        <span style="font-size:.85rem"><i class="fas ${m.icon}" style="margin-right:.4rem;color:var(--muted)"></i>${m.label}</span>
+        <span style="font-weight:700;font-size:.85rem;color:${m.pass?'var(--green)':'#ef4444'}">${m.score} ${m.pass?'✓':'✗'}</span>
+      </div>`).join('')}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal();ausbildung()">Schließen</button>
+    </div>`);
+};
+
+window.manageRankQuestions = async function() {
+  const qs = await api('/api/rank-questions');
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-question-circle" style="color:var(--orange);margin-right:.5rem"></i>Modul-2 Fragen verwalten</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <form onsubmit="addRankQuestion(event)" style="display:flex;flex-direction:column;gap:.5rem;padding-bottom:.9rem;border-bottom:1px solid var(--border);margin-bottom:.9rem">
+      <select id="rqType" class="form-input">
+        <option value="both">Beide Prüfungen</option>
+        <option value="gesellen">Nur Gesellenprüfung</option>
+        <option value="meister">Nur Meisterprüfung</option>
+      </select>
+      <input id="rqQ" class="form-input" placeholder="Frage..." required>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">
+        <input id="rqA" class="form-input" placeholder="A) ..." required>
+        <input id="rqB" class="form-input" placeholder="B) ..." required>
+        <input id="rqC" class="form-input" placeholder="C) (optional)">
+        <input id="rqD" class="form-input" placeholder="D) (optional)">
+      </div>
+      <select id="rqAns" class="form-input">
+        <option value="0">Richtige Antwort: A</option>
+        <option value="1">Richtige Antwort: B</option>
+        <option value="2">Richtige Antwort: C</option>
+        <option value="3">Richtige Antwort: D</option>
+      </select>
+      <button class="btn btn-primary btn-sm" type="submit"><i class="fas fa-plus"></i> Frage hinzufügen</button>
+    </form>
+    <div style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:.4rem">
+      ${(qs||[]).map(q=>`
+        <div style="background:var(--input);border-radius:var(--r);padding:.55rem .75rem;display:flex;align-items:flex-start;gap:.5rem">
+          <div style="flex:1;font-size:.82rem">
+            <span class="badge badge-m" style="margin-right:.35rem;font-size:.68rem">${q.exam_type==='gesellen'?'Geselle':q.exam_type==='meister'?'Meister':'Beide'}</span>${q.question}
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="deleteRankQuestion(${q.id})"><i class="fas fa-trash"></i></button>
+        </div>`).join('')||'<div class="empty"><p>Noch keine Fragen</p></div>'}
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Schließen</button></div>`);
+};
+
+window.addRankQuestion = async function(e) {
+  e.preventDefault();
+  const r = await api('/api/rank-questions', { method: 'POST', body: {
+    exam_type: $('rqType').value, question: $('rqQ').value.trim(),
+    option_a: $('rqA').value.trim(), option_b: $('rqB').value.trim(),
+    option_c: $('rqC').value.trim()||null, option_d: $('rqD').value.trim()||null,
+    correct_answer: +$('rqAns').value,
+  }});
+  if (r) { toast('Frage gespeichert!', 'ok'); manageRankQuestions(); }
+};
+
+window.deleteRankQuestion = async function(id) {
+  await api(`/api/rank-questions/${id}`, { method: 'DELETE' });
+  manageRankQuestions();
 };
 
 // ── Start ─────────────────────────────────────────────────────────

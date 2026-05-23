@@ -964,6 +964,76 @@ cron.schedule('0 3 * * *', async () => {
 }, { timezone: 'Europe/Berlin' });
 
 // ════════════════════════════════════════════════════════════════
+//  AUSBILDER – RANK EXAM SYSTEM
+// ════════════════════════════════════════════════════════════════
+function requireAusbilder(req, res, next) {
+  const user = getUser(req);
+  if (!user || (user.role !== 'ausbilder' && user.role !== 'admin')) return res.status(403).json({ error: 'Kein Zugriff' });
+  req.ausbilderUser = user;
+  next();
+}
+
+app.get('/api/rank-questions', requireAusbilder, (req, res) => {
+  const { type } = req.query;
+  const qs = type
+    ? db.prepare(`SELECT * FROM rank_questions WHERE (exam_type=? OR exam_type='both') AND is_active=1 ORDER BY created_at DESC`).all(type)
+    : db.prepare(`SELECT * FROM rank_questions WHERE is_active=1 ORDER BY exam_type, created_at DESC`).all();
+  res.json(qs);
+});
+
+app.post('/api/rank-questions', requireAusbilder, (req, res) => {
+  const { exam_type, question, option_a, option_b, option_c, option_d, correct_answer } = req.body;
+  const r = db.prepare(`INSERT INTO rank_questions (exam_type,question,option_a,option_b,option_c,option_d,correct_answer) VALUES (?,?,?,?,?,?,?)`)
+    .run(exam_type || 'both', question, option_a, option_b, option_c || null, option_d || null, +correct_answer);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.delete('/api/rank-questions/:id', requireAusbilder, (req, res) => {
+  db.prepare('UPDATE rank_questions SET is_active=0 WHERE id=?').run(+req.params.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/rank-exam/start', requireAusbilder, (req, res) => {
+  const { exam_type, examinee_name, examinee_id } = req.body;
+  const count = exam_type === 'meister' ? 10 : 7;
+  const questions = db.prepare(`SELECT id,question,option_a,option_b,option_c,option_d,correct_answer FROM rank_questions WHERE (exam_type=? OR exam_type='both') AND is_active=1 ORDER BY RANDOM() LIMIT ?`).all(exam_type, count);
+  req.session.rankExam = { exam_type, examinee_name: examinee_name || '', examinee_id: examinee_id || null, question_ids: questions.map(q => q.id) };
+  res.json({ questions });
+});
+
+app.post('/api/rank-exam/submit', requireAusbilder, (req, res) => {
+  const { m1_data, m2_answers, m3_data } = req.body;
+  const exam = req.session.rankExam;
+  const user = getUser(req);
+  if (!exam) return res.status(400).json({ error: 'Kein aktiver Test' });
+
+  const m1_score = m1_data.reduce((s, l) => s + (l.found?1:0) + (l.best_route?1:0) + (l.stvo?1:0), 0);
+  const m1_max   = m1_data.length * 3;
+  const m1_passed = m1_score >= Math.ceil(m1_max * 0.7);
+
+  const ph = exam.question_ids.map(() => '?').join(',');
+  const qs = db.prepare(`SELECT id,correct_answer FROM rank_questions WHERE id IN (${ph})`).all(...exam.question_ids);
+  const m2_score  = qs.filter(q => parseInt(m2_answers[q.id]) === q.correct_answer).length;
+  const m2_total  = qs.length;
+  const m2_passed = m2_total > 0 && m2_score >= Math.ceil(m2_total * 0.7);
+
+  const ratings  = m3_data.ratings || [];
+  const m3_score = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
+  const m3_passed = m3_score >= 2.5;
+
+  const passed = m1_passed && m2_passed && m3_passed;
+  const r = db.prepare(`INSERT INTO rank_exams (exam_type,examinee_name,examinee_id,examiner_id,m1_data,m1_score,m1_max,m1_passed,m2_score,m2_total,m2_passed,m3_data,m3_score,m3_passed,passed,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(exam.exam_type, exam.examinee_name, exam.examinee_id, user.id, JSON.stringify(m1_data), m1_score, m1_max, m1_passed?1:0, m2_score, m2_total, m2_passed?1:0, JSON.stringify(m3_data), m3_score, m3_passed?1:0, passed?1:0, m3_data.notes||null);
+
+  delete req.session.rankExam;
+  res.json({ id: r.lastInsertRowid, passed, m1_passed, m1_score, m1_max, m2_passed, m2_score, m2_total, m3_passed, m3_score });
+});
+
+app.get('/api/rank-exams', requireAusbilder, (req, res) => {
+  res.json(db.prepare(`SELECT re.*,u.username as examiner_name FROM rank_exams re JOIN users u ON u.id=re.examiner_id ORDER BY re.taken_at DESC LIMIT 50`).all());
+});
+
+// ════════════════════════════════════════════════════════════════
 //  BOT NOTIFICATIONS
 // ════════════════════════════════════════════════════════════════
 app.get('/api/bot-notifications', (req, res) => {
