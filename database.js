@@ -245,16 +245,16 @@ function initDb() {
   // Migrations
   try { db.exec('ALTER TABLE exam_questions ADD COLUMN is_ko INTEGER DEFAULT 0'); } catch(e) {}
   try { db.exec("ALTER TABLE users ADD COLUMN rank TEXT DEFAULT 'Mitarbeiter'"); } catch(e) {}
-  try { db.exec('ALTER TABLE rank_questions DROP COLUMN option_b'); } catch(e) {}
-  try { db.exec('ALTER TABLE rank_questions DROP COLUMN option_c'); } catch(e) {}
-  try { db.exec('ALTER TABLE rank_questions DROP COLUMN option_d'); } catch(e) {}
-  try { db.exec('ALTER TABLE rank_questions DROP COLUMN correct_answer'); } catch(e) {}
 
-  // Seed rank questions (Mentalteil) — only if table is empty
-  if (db.prepare('SELECT COUNT(*) as c FROM rank_questions').get().c === 0) {
-    let rq;
-    try { rq = db.prepare('INSERT INTO rank_questions (exam_type, question, option_a) VALUES (?, ?, ?)'); }
-    catch { rq = db.prepare('INSERT INTO rank_questions (exam_type, question, option_a, option_b, correct_answer) VALUES (?, ?, ?, \'\', 0)'); }
+  // Always re-seed rank questions (uses old schema columns as fallback for servers with SQLite < 3.35)
+  db.prepare('DELETE FROM rank_questions').run();
+  {
+    // Detect whether old columns still exist
+    const cols = db.prepare("PRAGMA table_info(rank_questions)").all().map(c => c.name);
+    const hasOldCols = cols.includes('option_b');
+    const rq = hasOldCols
+      ? db.prepare("INSERT INTO rank_questions (exam_type, question, option_a, option_b, correct_answer) VALUES (?, ?, ?, '', 0)")
+      : db.prepare("INSERT INTO rank_questions (exam_type, question, option_a) VALUES (?, ?, ?)");
     // Geselle
     rq.run('gesellen', 'Was ist bei der Anmeldung eines Fahrzeuges zu berücksichtigen?', 'Auf das Kennzeichen soll keine Beleidigung, Familiennamen und keine verwerflichen Zeichen oder Namen (zB. 88 oder so).');
     rq.run('gesellen', 'Wie verhalten Sie sich wenn fremde Personen auf dem ACLS-Gelände unbefugt rumlaufen?', 'Auf die fremde Person zugehen und höflich mitteilen, dass dies nicht erlaubt oder gewünscht ist.');
@@ -274,7 +274,7 @@ function initDb() {
     rq.run('meister', 'Wo kannst du überall Abschleppfahrzeuge ausparken?', 'HQ.');
     rq.run('meister', 'Was muss bei der Dokumentation nicht zwangsläufig angegeben werden?', 'Der Grund, sofern der Abschleppgrund auf dem Beweisfoto ersichtlich ist.');
     rq.run('meister', 'Sie merken, dass ein Kunde unzufrieden ist mit dem Tuning – wie verhältst du dich?', 'Ich versuche dem Kunden Alternativen zu zeigen. Falls ich in der Situation überfordert bin, hole ich mir einen Kollegen zur Hilfe.');
-    console.log('[seed] Rank questions inserted');
+    console.log('[seed] Rank questions re-seeded (17 questions)');
   }
 
   // Always re-seed questions so law changes take effect on restart
