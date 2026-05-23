@@ -1696,9 +1696,10 @@ async function admin() {
                   <div style="display:flex;flex-direction:column;gap:.3rem">
                     <select class="form-control" style="padding:.2rem .4rem;height:auto;font-size:.8rem;width:auto"
                       onchange="setRole(${u.id}, this.value)">
-                      <option value="member"  ${u.role === 'member'  ? 'selected' : ''}>Mitarbeiter</option>
-                      <option value="admin"   ${u.role === 'admin'   ? 'selected' : ''}>Admin</option>
-                      <option value="citizen" ${u.role === 'citizen' ? 'selected' : ''}>Bürger</option>
+                      <option value="member"    ${u.role === 'member'    ? 'selected' : ''}>Mitarbeiter</option>
+                      <option value="ausbilder" ${u.role === 'ausbilder' ? 'selected' : ''}>Ausbilder</option>
+                      <option value="admin"     ${u.role === 'admin'     ? 'selected' : ''}>Admin</option>
+                      <option value="citizen"   ${u.role === 'citizen'   ? 'selected' : ''}>Bürger</option>
                     </select>
                     <select class="form-control" style="padding:.2rem .4rem;height:auto;font-size:.8rem;width:auto"
                       onchange="setRank(${u.id}, this.value)">
@@ -1784,7 +1785,7 @@ window.openAddUser = () => openModal(`
     <div class="form-group"><label>Benutzername</label><input class="form-control" id="uName" required></div>
     <div class="form-group"><label>Discord-ID (18-stellig)</label><input class="form-control" id="uDid" placeholder="102938475610293847" required></div>
     <div class="form-group"><label>Rolle</label>
-      <select class="form-control" id="uRole"><option value="member">Mitarbeiter</option><option value="admin">Admin</option></select>
+      <select class="form-control" id="uRole"><option value="member">Mitarbeiter</option><option value="ausbilder">Ausbilder</option><option value="admin">Admin</option></select>
     </div>
     <div class="modal-footer">
       <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
