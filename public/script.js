@@ -167,7 +167,11 @@ const initials = n => (n || '?').split(/[_\s]/).map(p => p[0]).join('').toUpperC
 const fmt = dt => new Date(dt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 const fmtTime = dt => new Date(dt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 const ago = dt => {
-  const s = Math.floor((Date.now() - new Date(dt)) / 1000);
+  // SQLite gibt 'YYYY-MM-DD HH:MM:SS' ohne Timezone zurück → als UTC parsen
+  const d = typeof dt === 'string' && !dt.endsWith('Z') && !dt.includes('+')
+    ? new Date(dt.replace(' ', 'T') + 'Z')
+    : new Date(dt);
+  const s = Math.floor((Date.now() - d) / 1000);
   if (s < 60)    return 'gerade eben';
   if (s < 3600)  return `vor ${Math.floor(s / 60)} Min`;
   if (s < 86400) return `vor ${Math.floor(s / 3600)} Std`;
