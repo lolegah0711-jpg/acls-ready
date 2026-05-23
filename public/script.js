@@ -2084,15 +2084,22 @@ window.renderRankM1 = function() {
   const locs = activeRankExam.m1Locations;
   openModal(`${rankExamHeader('Modul 1 – Ortskunde','fa-map-marker-alt','1')}
     <div style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem">4 zufällige Orte – bewerte je drei Kriterien (max. ${locs.length*3} Punkte, Bestehen ab 70%):</div>
-    <div style="display:flex;flex-direction:column;gap:.55rem">
-      ${locs.map((loc, i) => `
-        <div style="background:var(--input);border-radius:var(--r);padding:.6rem .85rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
-          <span style="font-weight:700;color:var(--orange);min-width:18px">${i+1}.</span>
-          <span style="flex:1;min-width:130px;font-weight:600;font-size:.88rem">${loc}</span>
-          <label style="display:flex;align-items:center;gap:.3rem;font-size:.81rem;cursor:pointer;white-space:nowrap"><input type="checkbox" id="rFound${i}" ${activeRankExam.m1Data[i]?.found?'checked':''}> Gefunden</label>
-          <label style="display:flex;align-items:center;gap:.3rem;font-size:.81rem;cursor:pointer;white-space:nowrap"><input type="checkbox" id="rRoute${i}" ${activeRankExam.m1Data[i]?.best_route?'checked':''}> Sinnvollster Weg</label>
-          <label style="display:flex;align-items:center;gap:.3rem;font-size:.81rem;cursor:pointer;white-space:nowrap"><input type="checkbox" id="rStvo${i}"  ${activeRankExam.m1Data[i]?.stvo?'checked':''}> StVO Verhalten</label>
-        </div>`).join('')}
+    <div style="display:grid;grid-template-columns:1.5rem 1fr repeat(3,auto);align-items:center;gap:.5rem .9rem;padding:.1rem 0">
+      <div></div>
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Ort</div>
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;text-align:center">Gefunden</div>
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;text-align:center;white-space:nowrap">Sinvollster Weg</div>
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;text-align:center;white-space:nowrap">StVO</div>
+      ${locs.map((loc, i) => {
+        const d = activeRankExam.m1Data[i] || {};
+        return `
+        <span style="font-weight:700;color:var(--orange);text-align:right">${i+1}.</span>
+        <span style="font-weight:600;font-size:.88rem">${loc}</span>
+        <div style="display:flex;justify-content:center"><input type="checkbox" id="rFound${i}" style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:var(--orange)" ${d.found?'checked':''}></div>
+        <div style="display:flex;justify-content:center"><input type="checkbox" id="rRoute${i}" style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:var(--orange)" ${d.best_route?'checked':''}></div>
+        <div style="display:flex;justify-content:center"><input type="checkbox" id="rStvo${i}"  style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:var(--orange)" ${d.stvo?'checked':''}></div>
+        ${i < locs.length-1 ? `<div style="grid-column:1/-1;height:1px;background:var(--border);margin:.1rem 0"></div>` : ''}
+      `}).join('')}
     </div>
     <div class="modal-footer">
       <span style="font-size:.78rem;color:var(--muted)">Modul 1 von 3 · max. ${locs.length*3} Punkte</span>
