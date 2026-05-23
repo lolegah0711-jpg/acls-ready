@@ -2061,7 +2061,43 @@ window.openProfileModal = async id => {
 // ════════════════════════════════════════════════════════════════
 //  AUSBILDUNG – RANG-PRÜFUNGEN
 // ════════════════════════════════════════════════════════════════
-let activeRankExam = null;
+let activeRankExam   = null;
+let examSse          = null;   // EventSource für Echtzeit-Sync
+let currentRankModule = 'm1'; // 'm1' | 'm2' | 'm3'
+let currentRankM2Idx  = 0;    // aktuelle Frage in M2
+
+function connectExamSSE(joinCode) {
+  if (examSse) { examSse.close(); examSse = null; }
+  examSse = new EventSource(`/api/rank-exam/events/${joinCode}`);
+  examSse.onmessage = e => {
+    let data; try { data = JSON.parse(e.data); } catch { return; }
+    if (data.type !== 'state' || !activeRankExam) return;
+    if (data.sender_id === currentUser?.id) return; // eigene Updates überspringen
+
+    // State mergen
+    if (data.m1_data    !== undefined) activeRankExam.m1Data    = data.m1_data;
+    if (data.m2_answers !== undefined) activeRankExam.m2Answers = data.m2_answers;
+    if (data.m3_ratings !== undefined) activeRankExam.m3Ratings = data.m3_ratings;
+    if (data.m3_notes   !== undefined) activeRankExam.m3Notes   = data.m3_notes;
+
+    // Modulwechsel → automatisch navigieren
+    if (data.current_module && data.current_module !== currentRankModule) {
+      currentRankModule = data.current_module;
+      if (data.current_module === 'm1') window.renderRankM1();
+      if (data.current_module === 'm2') { currentRankM2Idx = 0; window.renderRankM2(0); }
+      if (data.current_module === 'm3') window.renderRankM3();
+    } else {
+      // Gleiche Ansicht mit neuem State neu rendern
+      if (currentRankModule === 'm1') window.renderRankM1();
+      if (currentRankModule === 'm2') window.renderRankM2(currentRankM2Idx);
+      if (currentRankModule === 'm3') window.renderRankM3();
+    }
+  };
+}
+
+function disconnectExamSSE() {
+  if (examSse) { examSse.close(); examSse = null; }
+}
 
 const LOCATIONS_POOL = [
   'Pillbox Hill Medical Center','Sandy Shores','Paleto Bay','Grapeseed',
@@ -2164,6 +2200,8 @@ window.beginRankExam = async function() {
   activeRankExam = { joinCode: data.join_code, type, examineeName: name, examineeId: pid||null,
     questions: data.questions, m1Locations, m1Data: [], m2Answers: {}, m2Revealed: {},
     m3Ratings: new Array(6).fill(0), m3Notes: '' };
+  currentRankModule = 'm1';
+  connectExamSSE(data.join_code);
   window.renderRankM1();
 };
 
@@ -2203,6 +2241,8 @@ window.doJoinRankExam = async function() {
     m3Notes:     data.m3_notes || '',
   };
   toast(`Prüfung ${code} beigetreten`, 'ok');
+  currentRankModule = 'm1';
+  connectExamSSE(data.join_code);
   window.renderRankM1();
 };
 
@@ -2261,7 +2301,8 @@ window.rankM1Next = function() {
     best_route: $(`rRoute${i}`)?.checked || false,
     stvo:       $(`rStvo${i}`)?.checked  || false,
   }));
-  saveRankState({ m1_data: activeRankExam.m1Data });
+  currentRankModule = 'm2'; currentRankM2Idx = 0;
+  saveRankState({ m1_data: activeRankExam.m1Data, current_module: 'm2' });
   window.renderRankM2(0);
 };
 
@@ -2306,6 +2347,7 @@ window.renderRankM2 = function(idx) {
 
 window.rankM2Mark = function(idx, val) {
   activeRankExam.m2Answers[activeRankExam.questions[idx].id] = val;
+  currentRankM2Idx = idx;
   saveRankState({ m2_answers: activeRankExam.m2Answers });
   window.renderRankM2(idx);
 };
@@ -2314,7 +2356,11 @@ window.rankM2Reveal = function(idx) {
   activeRankExam.m2Revealed[id] = !activeRankExam.m2Revealed[id];
   window.renderRankM2(idx);
 };
-window.rankM2Next = function() { window.renderRankM3(); };
+window.rankM2Next = function() {
+  currentRankModule = 'm3';
+  saveRankState({ current_module: 'm3' });
+  window.renderRankM3();
+};
 
 window.renderRankM3 = function renderRankM3() {
   const exam = activeRankExam;
@@ -2366,6 +2412,7 @@ window.submitRankExam = async function() {
   saveRankState({ m3_notes: exam.m3Notes });
   const result = await api('/api/rank-exam/submit', { method: 'POST', body: {} });
   if (!result) return;
+  disconnectExamSSE();
   activeRankExam = null;
   const rLabel = v => M3_LABELS[Math.min(Math.round(v)-1, 3)] || '';
   openModal(`
