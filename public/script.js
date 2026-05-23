@@ -2050,7 +2050,7 @@ async function ausbildung() {
         <tbody>${exams.map(e => `<tr>
           <td><span class="badge badge-m">${e.exam_type==='meister'?'Meister':'Geselle'}</span></td>
           <td><b>${e.examinee_name}</b>${e.examinee_id?` <span style="font-size:.72rem;color:var(--muted)">${e.examinee_id}</span>`:''}</td>
-          <td>${e.examiner_name}</td>
+          <td>${e.examiner_name}${e.examiner2_name?`<br><span style="font-size:.72rem;color:var(--muted)">+ ${e.examiner2_name}</span>`:''}</td>
           <td><span class="badge ${e.m1_passed?'badge-g':'badge-r'}">${e.m1_score}/${e.m1_max} Orte</span></td>
           <td><span class="badge ${e.m2_passed?'badge-g':'badge-r'}">${e.m2_score}/${e.m2_total}</span></td>
           <td><span class="badge ${e.m3_passed?'badge-g':'badge-r'}">${(+e.m3_score).toFixed(1)}/4</span></td>
@@ -2062,7 +2062,14 @@ async function ausbildung() {
   animateCountUps();
 }
 
-window.startRankExamSetup = function() {
+window.startRankExamSetup = async function() {
+  const members = await api('/api/users') || [];
+  const ausbilder = members.filter(u => u.is_active && (u.role === 'ausbilder' || u.role === 'admin'));
+  const selfId = currentUser?.id;
+  const memberOptions = ausbilder
+    .filter(u => u.id !== selfId)
+    .map(u => `<option value="${u.id}">${u.username}</option>`)
+    .join('');
   openModal(`
     <div class="modal-head">
       <div class="modal-title"><i class="fas fa-graduation-cap" style="color:var(--orange);margin-right:.5rem"></i>Neue Prüfung starten</div>
@@ -2078,6 +2085,11 @@ window.startRankExamSetup = function() {
         <input id="rExamineeName" class="form-input" placeholder="Vor- und Nachname..."></div>
       <div><label class="form-label">Spieler-ID (optional)</label>
         <input id="rExamineeId" class="form-input" placeholder="z.B. Steam-ID..."></div>
+      ${memberOptions ? `<div><label class="form-label">Zweiter Prüfer (optional)</label>
+        <select id="rExaminer2" class="form-input">
+          <option value="">– Kein zweiter Prüfer –</option>
+          ${memberOptions}
+        </select></div>` : ''}
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
@@ -2086,16 +2098,17 @@ window.startRankExamSetup = function() {
 };
 
 window.beginRankExam = async function() {
-  const type = $('rExamType')?.value;
-  const name = $('rExamineeName')?.value.trim();
-  const pid  = $('rExamineeId')?.value.trim();
+  const type       = $('rExamType')?.value;
+  const name       = $('rExamineeName')?.value.trim();
+  const pid        = $('rExamineeId')?.value.trim();
+  const examiner2  = $('rExaminer2')?.value || null;
   if (!name) { toast('Bitte Namen des Prüflings eingeben', 'err'); return; }
-  const data = await api('/api/rank-exam/start', { method: 'POST', body: { exam_type: type, examinee_name: name, examinee_id: pid || null } });
+  const data = await api('/api/rank-exam/start', { method: 'POST', body: { exam_type: type, examinee_name: name, examinee_id: pid || null, examiner2_id: examiner2 || null } });
   if (!data) return;
   const poolCopy = [...LOCATIONS_POOL].sort(() => Math.random() - 0.5);
   const m1Locations = poolCopy.slice(0, 4);
-  activeRankExam = { type, examineeName: name, examineeId: pid || null, questions: data.questions, m1Locations, m1Data: [], m2Answers: {}, m2Revealed: {}, m3Ratings: new Array(6).fill(0), m3Notes: '' };
-  renderRankM1();
+  activeRankExam = { type, examineeName: name, examineeId: pid || null, examiner2Id: examiner2 || null, questions: data.questions, m1Locations, m1Data: [], m2Answers: {}, m2Revealed: {}, m3Ratings: new Array(6).fill(0), m3Notes: '' };
+  window.renderRankM1();
 };
 
 function rankExamHeader(title, icon, step) {
@@ -2254,6 +2267,7 @@ window.submitRankExam = async function() {
     <div class="quiz-result">
       <div class="quiz-score-big ${result.passed?'quiz-passed':'quiz-failed'}">${result.passed?'✓':'✗'}</div>
       <div style="font-size:1.1rem;font-weight:700;margin:.75rem 0">${result.passed?'Prüfung bestanden!':'Prüfung nicht bestanden'}</div>
+      ${result.examiner2_name?`<div style="font-size:.8rem;color:var(--muted)"><i class="fas fa-user-friends" style="margin-right:.35rem"></i>Zweiter Prüfer: <b style="color:var(--fg)">${result.examiner2_name}</b></div>`:''}
     </div>
     <div style="display:flex;flex-direction:column;gap:.45rem;margin-bottom:1rem">
       ${[

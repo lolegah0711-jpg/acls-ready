@@ -1039,9 +1039,9 @@ app.delete('/api/rank-questions/:id', requireAusbilder, (req, res) => {
 });
 
 app.post('/api/rank-exam/start', requireAusbilder, (req, res) => {
-  const { exam_type, examinee_name, examinee_id } = req.body;
+  const { exam_type, examinee_name, examinee_id, examiner2_id } = req.body;
   const questions = db.prepare(`SELECT id,question,option_a FROM rank_questions WHERE exam_type=? AND is_active=1 ORDER BY RANDOM() LIMIT 5`).all(exam_type);
-  req.session.rankExam = { exam_type, examinee_name: examinee_name || '', examinee_id: examinee_id || null, question_ids: questions.map(q => q.id) };
+  req.session.rankExam = { exam_type, examinee_name: examinee_name || '', examinee_id: examinee_id || null, examiner2_id: examiner2_id || null, question_ids: questions.map(q => q.id) };
   res.json({ questions });
 });
 
@@ -1068,15 +1068,17 @@ app.post('/api/rank-exam/submit', requireAusbilder, (req, res) => {
   const m3_passed = m3_score >= 2.5;
 
   const passed = m1_passed && m2_passed && m3_passed;
-  const r = db.prepare(`INSERT INTO rank_exams (exam_type,examinee_name,examinee_id,examiner_id,m1_data,m1_score,m1_max,m1_passed,m2_score,m2_total,m2_passed,m3_data,m3_score,m3_passed,passed,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(exam.exam_type, exam.examinee_name, exam.examinee_id, user.id, JSON.stringify(m1_data), m1_score, m1_max, m1_passed?1:0, m2_score, m2_total, m2_passed?1:0, JSON.stringify(m3_data), m3_score, m3_passed?1:0, passed?1:0, m3_data.notes||null);
+  const examiner2_id = exam.examiner2_id ? +exam.examiner2_id : null;
+  const r = db.prepare(`INSERT INTO rank_exams (exam_type,examinee_name,examinee_id,examiner_id,examiner2_id,m1_data,m1_score,m1_max,m1_passed,m2_score,m2_total,m2_passed,m3_data,m3_score,m3_passed,passed,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(exam.exam_type, exam.examinee_name, exam.examinee_id, user.id, examiner2_id, JSON.stringify(m1_data), m1_score, m1_max, m1_passed?1:0, m2_score, m2_total, m2_passed?1:0, JSON.stringify(m3_data), m3_score, m3_passed?1:0, passed?1:0, m3_data.notes||null);
 
   delete req.session.rankExam;
-  res.json({ id: r.lastInsertRowid, passed, m1_passed, m1_score, m1_max, m2_passed, m2_score, m2_total, m3_passed, m3_score });
+  const examiner2 = examiner2_id ? db.prepare('SELECT username FROM users WHERE id=?').get(examiner2_id) : null;
+  res.json({ id: r.lastInsertRowid, passed, m1_passed, m1_score, m1_max, m2_passed, m2_score, m2_total, m3_passed, m3_score, examiner2_name: examiner2?.username || null });
 });
 
 app.get('/api/rank-exams', requireAusbilder, (req, res) => {
-  res.json(db.prepare(`SELECT re.*,u.username as examiner_name FROM rank_exams re JOIN users u ON u.id=re.examiner_id ORDER BY re.taken_at DESC LIMIT 50`).all());
+  res.json(db.prepare(`SELECT re.*,u.username as examiner_name,u2.username as examiner2_name FROM rank_exams re JOIN users u ON u.id=re.examiner_id LEFT JOIN users u2 ON u2.id=re.examiner2_id ORDER BY re.taken_at DESC LIMIT 50`).all());
 });
 
 // ════════════════════════════════════════════════════════════════

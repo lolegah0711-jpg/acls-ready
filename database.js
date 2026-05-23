@@ -245,6 +245,7 @@ function initDb() {
   // Migrations
   try { db.exec('ALTER TABLE exam_questions ADD COLUMN is_ko INTEGER DEFAULT 0'); } catch(e) {}
   try { db.exec("ALTER TABLE users ADD COLUMN rank TEXT DEFAULT 'Mitarbeiter'"); } catch(e) {}
+  try { db.exec('ALTER TABLE rank_exams ADD COLUMN examiner2_id INTEGER REFERENCES users(id)'); } catch(e) {}
 
   // Always re-seed rank questions (uses old schema columns as fallback for servers with SQLite < 3.35)
   db.prepare('DELETE FROM rank_questions').run();
