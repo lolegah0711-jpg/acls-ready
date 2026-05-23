@@ -2066,31 +2066,48 @@ let currentRankModule  = 'm1'; // 'm1' | 'm2' | 'm3'
 let currentRankM2Idx   = 0;    // aktuelle Frage in M2
 let examPollTimer      = null;  // setInterval-Handle für Sync-Polling
 
+let _lastExamSig = '';
+
 function startExamPolling() {
   stopExamPolling();
+  _lastExamSig = '';
   examPollTimer = setInterval(async () => {
     if (!activeRankExam) return stopExamPolling();
-    const state = await api('/api/rank-exam/state').catch(() => null);
+    let state;
+    try { state = await api('/api/rank-exam/state'); } catch { return; }
     if (!state || !activeRankExam) return;
 
-    // Änderungen übernehmen
-    if (state.m1_data    !== null)  activeRankExam.m1Data    = state.m1_data;
-    if (state.m2_answers)           activeRankExam.m2Answers = state.m2_answers;
-    if (state.m3_ratings)           activeRankExam.m3Ratings = state.m3_ratings;
-    if (state.m3_notes   !== undefined) activeRankExam.m3Notes = state.m3_notes;
+    // Signatur um unnötige Re-renders zu vermeiden
+    const sig = JSON.stringify([state.m2_answers, state.m3_ratings, state.m3_notes, state.current_module]);
+    const changed = sig !== _lastExamSig;
+    _lastExamSig = sig;
 
-    // Modul geändert → automatisch navigieren
+    // State immer mergen
+    if (state.m1_data    !== null)      activeRankExam.m1Data    = state.m1_data;
+    if (state.m2_answers)               activeRankExam.m2Answers = state.m2_answers;
+    if (state.m3_ratings)               activeRankExam.m3Ratings = state.m3_ratings;
+    if (state.m3_notes   !== undefined) activeRankExam.m3Notes   = state.m3_notes;
+
+    if (!changed) return; // nichts geändert → kein Re-render
+
+    // Modulwechsel → automatisch navigieren
     if (state.current_module && state.current_module !== currentRankModule) {
       currentRankModule = state.current_module;
       if (state.current_module === 'm1') window.renderRankM1();
       if (state.current_module === 'm2') { currentRankM2Idx = 0; window.renderRankM2(0); }
       if (state.current_module === 'm3') window.renderRankM3();
     } else {
-      // Gleiche Ansicht aktualisieren (Antworten/Ratings des Partners sichtbar machen)
+      // Gleiche Ansicht mit neuem Stand aktualisieren
+      if (currentRankModule === 'm1') window.renderRankM1();
       if (currentRankModule === 'm2') window.renderRankM2(currentRankM2Idx);
-      if (currentRankModule === 'm3') window.renderRankM3();
+      if (currentRankModule === 'm3') {
+        // Textarea-Inhalt retten falls gerade fokussiert
+        const ta = document.getElementById('rM3Notes');
+        if (ta && document.activeElement === ta) activeRankExam.m3Notes = ta.value;
+        window.renderRankM3();
+      }
     }
-  }, 3000);
+  }, 2000);
 }
 
 function stopExamPolling() {
