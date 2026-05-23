@@ -1723,9 +1723,12 @@ async function admin() {
                     </select>
                   </div>
                 </td>
-                <td>
+                <td style="display:flex;gap:.35rem;align-items:center">
                   <button class="btn btn-ghost btn-sm" onclick="openProfileModal(${u.id})" title="Statistiken">
                     <i class="fas fa-chart-bar"></i>
+                  </button>
+                  <button class="btn btn-ghost btn-sm" onclick="openRenameUser(${u.id},'${u.username.replace(/'/g,"\\'")}')" title="Namen ändern">
+                    <i class="fas fa-pen"></i>
                   </button>
                 </td>
                 <td>
@@ -1834,6 +1837,30 @@ window.removeUser = async id => {
   if (!confirm('Nutzer entfernen?')) return;
   const r = await api(`/api/users/${id}`, { method: 'DELETE' });
   if (r) { toast('Entfernt.', 'ok'); admin(); }
+};
+
+window.openRenameUser = (id, currentName) => openModal(`
+  <div class="modal-head">
+    <div class="modal-title"><i class="fas fa-pen" style="color:var(--orange);margin-right:.5rem"></i>Namen ändern</div>
+    <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+  </div>
+  <form onsubmit="submitRenameUser(event,${id})">
+    <div class="form-group">
+      <label>Neuer Name</label>
+      <input class="form-control" id="renameInput" value="${currentName}" required autofocus>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
+    </div>
+  </form>`);
+
+window.submitRenameUser = async (e, id) => {
+  e.preventDefault();
+  const username = $('renameInput').value.trim();
+  if (!username) return;
+  const r = await api(`/api/users/${id}`, { method: 'PATCH', body: { username } });
+  if (r) { toast('Name geändert.', 'ok'); closeModal(); admin(); }
 };
 
 window.setRank = async (id, rank) => {

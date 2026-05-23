@@ -259,9 +259,10 @@ app.post('/api/users', (req, res) => {
 });
 
 app.patch('/api/users/:id', requireAdmin, (req, res) => {
-  const { role, is_active } = req.body;
+  const { role, is_active, username } = req.body;
   if (role !== undefined)      db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, req.params.id);
   if (is_active !== undefined) db.prepare('UPDATE users SET is_active = ? WHERE id = ?').run(is_active ? 1 : 0, req.params.id);
+  if (username)                db.prepare('UPDATE users SET username = ? WHERE id = ?').run(username.trim(), req.params.id);
   res.json({ ok: true });
 });
 
