@@ -755,28 +755,36 @@ app.get('/api/gta-map', async (req, res) => {
   }
 });
 
-// Active sessions reported by bot
-const activeBotSessions = new Map(); // discord_id → { channelName, joinedAt, username }
+// Active sessions – persisted in SQLite so restarts don't clear them
+db.exec(`CREATE TABLE IF NOT EXISTS active_bot_sessions (
+  discord_id   TEXT PRIMARY KEY,
+  username     TEXT,
+  channel_name TEXT,
+  joined_at    TEXT NOT NULL
+)`);
+// Stale sessions older than 12h bereinigen (Bot-Absturz ohne Leave-Event)
+db.prepare(`DELETE FROM active_bot_sessions WHERE joined_at < datetime('now', '-12 hours')`).run();
 
 app.post('/api/active-session', (req, res) => {
   const { bot_secret, discord_id, username, channel_name, joined_at } = req.body;
   if (bot_secret !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(403).end();
   if (joined_at) {
-    activeBotSessions.set(discord_id, { channelName: channel_name, joinedAt: joined_at, username });
+    db.prepare('INSERT OR REPLACE INTO active_bot_sessions (discord_id, username, channel_name, joined_at) VALUES (?, ?, ?, ?)')
+      .run(discord_id, username || discord_id, channel_name, joined_at);
   } else {
-    activeBotSessions.delete(discord_id);
+    db.prepare('DELETE FROM active_bot_sessions WHERE discord_id = ?').run(discord_id);
   }
   res.json({ ok: true });
 });
 
 app.get('/api/active-sessions', requireAuth, (req, res) => {
   const now = Date.now();
-  const result = [];
-  for (const [discord_id, s] of activeBotSessions) {
-    const user = db.prepare('SELECT id, username FROM users WHERE discord_id = ? AND is_active = 1').get(discord_id);
-    const minutesSince = Math.floor((now - new Date(s.joinedAt).getTime()) / 60000);
-    result.push({ discord_id, username: user?.username || s.username, channelName: s.channelName, joinedAt: s.joinedAt, minutesSince });
-  }
+  const rows = db.prepare('SELECT * FROM active_bot_sessions').all();
+  const result = rows.map(s => {
+    const user = db.prepare('SELECT id, username FROM users WHERE discord_id = ? AND is_active = 1').get(s.discord_id);
+    const minutesSince = Math.floor((now - new Date(s.joined_at).getTime()) / 60000);
+    return { discord_id: s.discord_id, username: user?.username || s.username, channelName: s.channel_name, joinedAt: s.joined_at, minutesSince };
+  });
   res.json(result);
 });
 
