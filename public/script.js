@@ -2073,12 +2073,22 @@ function startExamPolling() {
   _lastExamSig = '';
   examPollTimer = setInterval(async () => {
     if (!activeRankExam) return stopExamPolling();
-    let state;
-    try { state = await api('/api/rank-exam/state'); } catch { return; }
+    let resp, state;
+    try { resp = await fetch('/api/rank-exam/state', { headers: { 'Content-Type': 'application/json' } }); } catch { return; }
+    if (resp.status === 404 || resp.status === 403) {
+      // Prüfung wurde vom anderen Prüfer abgeschlossen oder Session ungültig
+      stopExamPolling();
+      activeRankExam = null;
+      closeModal();
+      toast('Prüfung wurde abgeschlossen.', 'info');
+      return;
+    }
+    if (!resp.ok) return;
+    try { state = await resp.json(); } catch { return; }
     if (!state || !activeRankExam) return;
 
     // Signatur um unnötige Re-renders zu vermeiden
-    const sig = JSON.stringify([state.m2_answers, state.m3_ratings, state.m3_notes, state.current_module, state.current_m2_idx]);
+    const sig = JSON.stringify([state.m1_data, state.m2_answers, state.m3_ratings, state.m3_notes, state.current_module, state.current_m2_idx]);
     const changed = sig !== _lastExamSig;
     _lastExamSig = sig;
 
@@ -2299,9 +2309,9 @@ window.renderRankM1 = function() {
         return `
         <span style="font-weight:700;color:var(--orange);text-align:right">${i+1}.</span>
         <span style="font-weight:600;font-size:.88rem">${loc}</span>
-        <div style="display:flex;justify-content:center"><input type="checkbox" id="rFound${i}" style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:var(--orange)" ${d.found?'checked':''}></div>
-        <div style="display:flex;justify-content:center"><input type="checkbox" id="rRoute${i}" style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:var(--orange)" ${d.best_route?'checked':''}></div>
-        <div style="display:flex;justify-content:center"><input type="checkbox" id="rStvo${i}"  style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:var(--orange)" ${d.stvo?'checked':''}></div>
+        <div style="display:flex;justify-content:center"><input type="checkbox" id="rFound${i}" onchange="rankM1Update()" style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:var(--orange)" ${d.found?'checked':''}></div>
+        <div style="display:flex;justify-content:center"><input type="checkbox" id="rRoute${i}" onchange="rankM1Update()" style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:var(--orange)" ${d.best_route?'checked':''}></div>
+        <div style="display:flex;justify-content:center"><input type="checkbox" id="rStvo${i}"  onchange="rankM1Update()" style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:var(--orange)" ${d.stvo?'checked':''}></div>
         ${i < locs.length-1 ? `<div style="grid-column:1/-1;height:1px;background:var(--border);margin:.1rem 0"></div>` : ''}
       `}).join('')}
     </div>
@@ -2311,6 +2321,16 @@ window.renderRankM1 = function() {
     </div>`);
 };
 
+window.rankM1Update = function() {
+  if (!activeRankExam) return;
+  const locs = activeRankExam.m1Locations;
+  activeRankExam.m1Data = locs.map((loc, i) => ({
+    found:      $(`rFound${i}`)?.checked  || false,
+    best_route: $(`rRoute${i}`)?.checked  || false,
+    stvo:       $(`rStvo${i}`)?.checked   || false,
+  }));
+  saveRankState({ m1_data: activeRankExam.m1Data });
+};
 window.rankM1Next = function() {
   const locs = activeRankExam.m1Locations;
   activeRankExam.m1Data = locs.map((loc, i) => ({
@@ -2433,9 +2453,13 @@ window.submitRankExam = async function() {
   if (unanswered > 0) { toast(`Noch ${unanswered} Frage(n) in Modul 2 nicht bewertet (Richtig/Falsch)`, 'err'); return; }
   exam.m3Notes = $('rM3Notes')?.value || '';
   saveRankState({ m3_notes: exam.m3Notes });
-  const result = await api('/api/rank-exam/submit', { method: 'POST', body: {} });
-  if (!result) return;
   stopExamPolling();
+  const result = await api('/api/rank-exam/submit', { method: 'POST', body: {} });
+  if (!result) {
+    activeRankExam = null;
+    closeModal();
+    return;
+  }
   activeRankExam = null;
   const rLabel = v => M3_LABELS[Math.min(Math.round(v)-1, 3)] || '';
   openModal(`
