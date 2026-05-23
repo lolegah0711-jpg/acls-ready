@@ -83,10 +83,15 @@ function requireAdmin(req, res, next) {
 
 // ── Helpers ─────────────────────────────────────────────────────
 function weekKey() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 1);
-  const week = Math.ceil((((now - start) / 86400000) + start.getDay() + 1) / 7);
-  return `${now.getFullYear()}-W${String(week).padStart(2, '0')}`;
+  const d = new Date();
+  // ISO week: Mon=start, Sun=end → Sonntag gehört zur selben Woche wie Mo-Sa
+  const dow = (d.getDay() + 6) % 7; // Mon=0 … Sun=6
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - dow);
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, '0');
+  const day = String(monday.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`; // z.B. "2026-05-18" für Mo 18.05 – So 24.05
 }
 
 const DISCORD_API      = 'https://discord.com/api/v10';
