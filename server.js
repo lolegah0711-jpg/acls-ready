@@ -10,16 +10,50 @@ const app  = express();
 const db   = initDb();
 const PORT = process.env.PORT || 3000;
 
+// ── Persistent SQLite session store (no extra packages needed) ──
+class SQLiteStore extends session.Store {
+  constructor(database) {
+    super();
+    this.db = database;
+    this.db.exec(`CREATE TABLE IF NOT EXISTS sessions (
+      sid     TEXT PRIMARY KEY,
+      data    TEXT NOT NULL,
+      expires INTEGER NOT NULL
+    )`);
+    setInterval(() => {
+      this.db.prepare('DELETE FROM sessions WHERE expires <= ?').run(Date.now());
+    }, 5 * 60 * 1000);
+  }
+  get(sid, cb) {
+    const row = this.db.prepare('SELECT data, expires FROM sessions WHERE sid = ?').get(sid);
+    if (!row) return cb(null, null);
+    if (row.expires <= Date.now()) { this.db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid); return cb(null, null); }
+    try { cb(null, JSON.parse(row.data)); } catch { cb(null, null); }
+  }
+  set(sid, sess, cb) {
+    const exp = sess.cookie?.expires ? new Date(sess.cookie.expires).getTime() : Date.now() + 7 * 24 * 60 * 60 * 1000;
+    this.db.prepare('INSERT OR REPLACE INTO sessions (sid, data, expires) VALUES (?, ?, ?)').run(sid, JSON.stringify(sess), exp);
+    cb?.();
+  }
+  destroy(sid, cb) { this.db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid); cb?.(); }
+  touch(sid, sess, cb) {
+    const exp = sess.cookie?.expires ? new Date(sess.cookie.expires).getTime() : Date.now() + 7 * 24 * 60 * 60 * 1000;
+    this.db.prepare('UPDATE sessions SET expires = ? WHERE sid = ?').run(exp, sid);
+    cb?.();
+  }
+}
+
 // ── Middleware ──────────────────────────────────────────────────
 app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
+  store: new SQLiteStore(db),
   secret: process.env.SESSION_SECRET || 'acls-dev-secret',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    maxAge:   3 * 60 * 60 * 1000,
+    maxAge:   7 * 24 * 60 * 60 * 1000, // 7 Tage
     sameSite: 'lax',
     secure:   process.env.NODE_ENV === 'production',
   },
