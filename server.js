@@ -1144,7 +1144,8 @@ app.put('/api/rank-exam/active', requireAusbilder, (req, res) => {
   if (req.body.m2_answers !== undefined) { fields.push('m2_answers=?'); vals.push(JSON.stringify(req.body.m2_answers)); }
   if (req.body.m3_ratings !== undefined) { fields.push('m3_ratings=?'); vals.push(JSON.stringify(req.body.m3_ratings)); }
   if (req.body.m3_notes   !== undefined) { fields.push('m3_notes=?');   vals.push(req.body.m3_notes); }
-  if (req.body.current_module !== undefined) { fields.push('current_module=?'); vals.push(req.body.current_module); }
+  if (req.body.current_module  !== undefined) { fields.push('current_module=?');  vals.push(req.body.current_module); }
+  if (req.body.current_m2_idx !== undefined) { fields.push('current_m2_idx=?'); vals.push(req.body.current_m2_idx); }
   if (fields.length) db.prepare(`UPDATE active_rank_exams SET ${fields.join(',')} WHERE join_code=?`).run(...vals, exam.join_code);
   res.json({ ok: true });
 });
@@ -1158,7 +1159,8 @@ app.get('/api/rank-exam/state', requireAusbilder, (req, res) => {
     m2_answers:     JSON.parse(exam.m2_answers || '{}'),
     m3_ratings:     JSON.parse(exam.m3_ratings || '[0,0,0,0,0,0]'),
     m3_notes:       exam.m3_notes || '',
-    current_module: exam.current_module || 'm1',
+    current_module:  exam.current_module  || 'm1',
+    current_m2_idx:  exam.current_m2_idx  ?? 0,
   });
 });
 

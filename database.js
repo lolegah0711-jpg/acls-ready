@@ -222,6 +222,7 @@ function initDb() {
       m3_ratings    TEXT DEFAULT '[0,0,0,0,0,0]',
       m3_notes       TEXT DEFAULT '',
       current_module TEXT DEFAULT 'm1',
+      current_m2_idx INTEGER DEFAULT 0,
       created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -264,6 +265,7 @@ function initDb() {
   try { db.exec("ALTER TABLE users ADD COLUMN rank TEXT DEFAULT 'Mitarbeiter'"); } catch(e) {}
   try { db.exec('ALTER TABLE rank_exams ADD COLUMN examiner2_id INTEGER REFERENCES users(id)'); } catch(e) {}
   try { db.exec("ALTER TABLE active_rank_exams ADD COLUMN current_module TEXT DEFAULT 'm1'"); } catch(e) {}
+  try { db.exec("ALTER TABLE active_rank_exams ADD COLUMN current_m2_idx INTEGER DEFAULT 0"); } catch(e) {}
 
   // Always re-seed rank questions (uses old schema columns as fallback for servers with SQLite < 3.35)
   db.prepare('DELETE FROM rank_questions').run();

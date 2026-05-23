@@ -2078,7 +2078,7 @@ function startExamPolling() {
     if (!state || !activeRankExam) return;
 
     // Signatur um unnötige Re-renders zu vermeiden
-    const sig = JSON.stringify([state.m2_answers, state.m3_ratings, state.m3_notes, state.current_module]);
+    const sig = JSON.stringify([state.m2_answers, state.m3_ratings, state.m3_notes, state.current_module, state.current_m2_idx]);
     const changed = sig !== _lastExamSig;
     _lastExamSig = sig;
 
@@ -2090,16 +2090,19 @@ function startExamPolling() {
 
     if (!changed) return; // nichts geändert → kein Re-render
 
+    // Fragen-Index aus Server übernehmen
+    const serverM2Idx = state.current_m2_idx ?? currentRankM2Idx;
+
     // Modulwechsel → automatisch navigieren
     if (state.current_module && state.current_module !== currentRankModule) {
       currentRankModule = state.current_module;
       if (state.current_module === 'm1') window.renderRankM1();
-      if (state.current_module === 'm2') { currentRankM2Idx = 0; window.renderRankM2(0); }
+      if (state.current_module === 'm2') { currentRankM2Idx = serverM2Idx; window.renderRankM2(serverM2Idx); }
       if (state.current_module === 'm3') window.renderRankM3();
     } else {
       // Gleiche Ansicht mit neuem Stand aktualisieren
       if (currentRankModule === 'm1') window.renderRankM1();
-      if (currentRankModule === 'm2') window.renderRankM2(currentRankM2Idx);
+      if (currentRankModule === 'm2') { currentRankM2Idx = serverM2Idx; window.renderRankM2(serverM2Idx); }
       if (currentRankModule === 'm3') {
         // Textarea-Inhalt retten falls gerade fokussiert
         const ta = document.getElementById('rM3Notes');
@@ -2352,18 +2355,23 @@ window.renderRankM2 = function(idx) {
     </div>
     <div class="modal-footer">
       ${idx>0
-        ?`<button class="btn btn-ghost" onclick="renderRankM2(${idx-1})"><i class="fas fa-arrow-left"></i> Zurück</button>`
+        ?`<button class="btn btn-ghost" onclick="rankM2Nav(${idx-1})"><i class="fas fa-arrow-left"></i> Zurück</button>`
         :`<button class="btn btn-ghost" onclick="renderRankM1()"><i class="fas fa-arrow-left"></i> Zu Modul 1</button>`}
       ${idx<total-1
-        ?`<button class="btn btn-primary" onclick="renderRankM2(${idx+1})">Weiter <i class="fas fa-arrow-right"></i></button>`
+        ?`<button class="btn btn-primary" onclick="rankM2Nav(${idx+1})">Weiter <i class="fas fa-arrow-right"></i></button>`
         :`<button class="btn btn-primary" onclick="rankM2Next()">Weiter zu Modul 3 <i class="fas fa-arrow-right"></i></button>`}
     </div>`);
 };
 
+window.rankM2Nav = function(idx) {
+  currentRankM2Idx = idx;
+  saveRankState({ current_m2_idx: idx });
+  window.renderRankM2(idx);
+};
 window.rankM2Mark = function(idx, val) {
   activeRankExam.m2Answers[activeRankExam.questions[idx].id] = val;
   currentRankM2Idx = idx;
-  saveRankState({ m2_answers: activeRankExam.m2Answers });
+  saveRankState({ m2_answers: activeRankExam.m2Answers, current_m2_idx: idx });
   window.renderRankM2(idx);
 };
 window.rankM2Reveal = function(idx) {
