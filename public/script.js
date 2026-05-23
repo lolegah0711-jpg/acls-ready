@@ -2,6 +2,18 @@
    ACLS Frontend SPA — communicates with Express backend via fetch
    ================================================================ */
 
+// Gibt die ISO-Kalenderwoche als zweistellige Zahl zurück.
+// Unterstützt beide Formate: '2026-W21' und '2026-05-18' (Monday-Datum).
+function isoWeek(weekStr) {
+  if (!weekStr) return '';
+  if (weekStr.includes('-W')) return weekStr.split('-W')[1];
+  const d = new Date(weekStr + 'T12:00:00');
+  const jan4 = new Date(d.getFullYear(), 0, 4);
+  const startW1 = new Date(jan4);
+  startW1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+  return String(Math.round((d - startW1) / 604800000) + 1).padStart(2, '0');
+}
+
 // ── Badge Definitionen ───────────────────────────────────────────
 const BADGE_DEFS = {
   ic_10:          { icon: 'fa-clock',          color: '#cd7f32', label: '10h IC-Zeit',       desc: '10 Stunden ingame',          progress: s => ({ cur: s.icTotal,    max: 10  }) },
@@ -369,7 +381,7 @@ async function dashboard() {
 
   const eow      = d.eowWinner;
   const isCurWk  = d.isCurrentWeekWinner;
-  const curWk    = d.currentWeek ? `KW ${d.currentWeek.split('-W')[1]}` : '';
+  const curWk    = d.currentWeek ? `KW ${isoWeek(d.currentWeek)}` : '';
   const top      = d.eowStandings?.[0];
   const rankBadge = i => `<div class="rank-badge${i === 1 ? '' : i === 2 ? ' r2' : ' r3'}"${i > 3 ? ' style="background:#2a2a2a;color:var(--muted)"' : ''}>${i}</div>`;
 
@@ -378,7 +390,7 @@ async function dashboard() {
     ? `<div class="eow-banner" style="flex:1">
          <div class="eow-av">${avatarUrl(eow) ? `<img src="${avatarUrl(eow)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(eow.username)}</div>
          <div class="eow-info">
-           <div class="eow-label"><i class="fas fa-trophy" style="margin-right:.3rem"></i>Mitarbeiter der Woche · KW ${eow.week?.split('-W')[1] || ''}</div>
+           <div class="eow-label"><i class="fas fa-trophy" style="margin-right:.3rem"></i>Mitarbeiter der Woche · KW ${isoWeek(eow.week)}</div>
            <div class="eow-name">${eow.username}</div>
            <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">${eow.vote_count} Stimmen${isCurWk ? ' · Diese Woche' : ' · Letzte Woche'}</div>
          </div>
@@ -624,6 +636,8 @@ async function eow() {
     if (!citVoterNames[v.nominee_id]) citVoterNames[v.nominee_id] = [];
     citVoterNames[v.nominee_id].push(v.voter_username);
   });
+  const empVoters = {};
+  data.standings.forEach(s => { empVoters[s.id] = s.voters || []; });
 
   const hofWinners = data.history.slice(0, 5);
 
@@ -646,7 +660,7 @@ async function eow() {
               <i class="fas ${medalIcons[i]}" style="position:absolute;top:.6rem;right:.6rem;font-size:.75rem;color:${medals[i]};opacity:.7"></i>
               ${avatarEl(w, 44)}
               <div style="font-weight:700;font-size:.88rem">${w.username}</div>
-              <div style="font-size:.72rem;color:var(--muted)">KW ${w.week.split('-W')[1]} · ${w.vote_count} Stimmen</div>
+              <div style="font-size:.72rem;color:var(--muted)">KW ${isoWeek(w.week)} · ${w.vote_count} Stimmen</div>
             </div>`;
           }).join('')}
         </div>` : '<div class="empty"><i class="fas fa-trophy"></i><p>Noch keine Gewinner</p></div>'}
@@ -657,7 +671,7 @@ async function eow() {
         <div class="card-head">
           <div class="card-head-icon orange"><i class="fas fa-vote-yea"></i></div>
           <div>
-            <div class="card-title">Abstimmung – KW ${data.week.split('-W')[1]}</div>
+            <div class="card-title">Abstimmung – KW ${isoWeek(data.week)}</div>
             <div class="card-sub">${myVote ? 'Du hast bereits abgestimmt' : 'Klicke auf einen Mitarbeiter um deine Stimme abzugeben'} · Auszählung: Sonntag 18:00 Uhr</div>
           </div>
           ${isAdmin() ? `<div style="display:flex;gap:.5rem;margin-left:auto;flex-wrap:wrap">
@@ -688,9 +702,10 @@ async function eow() {
               </div>
               <div style="font-weight:700;font-size:.9rem">${u.username}${isSelf ? ' <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(Du)</span>' : ''}</div>
               ${u.rank ? `<div style="font-size:.7rem;color:var(--orange);font-weight:600">${u.rank}</div>` : ''}
-              <div style="font-size:.72rem;color:var(--muted);line-height:1.4">
+              <div style="font-size:.72rem;color:var(--muted);line-height:1.6">
                 ${tally[u.id] || 0} Mitarbeiter · ${citTally[u.id] || 0} Bürger
-                ${citVoterNames[u.id]?.length ? `<br><span style="font-size:.68rem;opacity:.8">${citVoterNames[u.id].join(', ')}</span>` : ''}
+                ${empVoters[u.id]?.length ? `<br><span style="font-size:.67rem;opacity:.85"><i class="fas fa-users" style="margin-right:.25rem"></i>${empVoters[u.id].join(', ')}</span>` : ''}
+                ${citVoterNames[u.id]?.length ? `<br><span style="font-size:.67rem;opacity:.75"><i class="fas fa-user" style="margin-right:.25rem"></i>${citVoterNames[u.id].join(', ')}</span>` : ''}
               </div>
               ${isVoted ? '<div style="font-size:.75rem;font-weight:600;color:var(--orange)"><i class="fas fa-check-circle"></i> Deine Wahl</div>' : ''}
             </div>`;

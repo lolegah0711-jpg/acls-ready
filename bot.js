@@ -12,6 +12,7 @@ const BADGE_CHANNEL_ID    = process.env.BADGE_CHANNEL_ID    || '';
 const EOW_CHANNEL_ID      = process.env.EOW_CHANNEL_ID      || '';
 const THEORY_CHANNEL_ID   = process.env.THEORY_CHANNEL_ID   || '';
 const PRACTICAL_CHANNEL_ID = process.env.PRACTICAL_CHANNEL_ID || '';
+const IC_LOG_CHANNEL_ID   = process.env.IC_LOG_CHANNEL_ID   || '';
 
 const BADGE_LABELS = {
   ic_10: '10h IC-Zeit', ic_50: '50h IC-Zeit', ic_100: '100h IC-Zeit',
@@ -164,8 +165,9 @@ client.once(Events.ClientReady, async c => {
   // Beim Start alle bereits im Channel sitzenden Mitglieder ins Tracking aufnehmen
   if (GUILD_ID) {
     try {
-      // force:true lädt frische Guild-Daten inkl. Voice-States vom Gateway
-      const guild = await client.guilds.fetch(GUILD_ID, { force: true });
+      // Gecachte Guild nutzen (enthält Voice-States aus GUILD_CREATE).
+      // force:true würde per REST fetchen und die Voice-States NICHT mitholen.
+      const guild = client.guilds.cache.get(GUILD_ID) || await client.guilds.fetch(GUILD_ID);
       await guild.members.fetch(); // Member-Cache füllen für displayName
       let found = 0;
       for (const [userId, vs] of guild.voiceStates.cache) {

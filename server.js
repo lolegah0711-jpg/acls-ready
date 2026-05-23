@@ -293,6 +293,14 @@ app.get('/api/eow', requireAuth, (req, res) => {
     WHERE v.week = ? GROUP BY v.nominee_id ORDER BY votes DESC
   `).all(wk);
 
+  const voterNamesQuery = db.prepare(`
+    SELECT u.username FROM eow_votes v JOIN users u ON u.id = v.voter_id
+    WHERE v.week = ? AND v.nominee_id = ? ORDER BY v.id ASC
+  `);
+  standings.forEach(s => {
+    s.voters = voterNamesQuery.all(wk, s.id).map(r => r.username);
+  });
+
   const history = db.prepare(`
     SELECT w.week, w.vote_count, u.username, u.avatar, u.discord_id FROM eow_winners w
     JOIN users u ON u.id = w.user_id ORDER BY w.announced_at DESC LIMIT 10
