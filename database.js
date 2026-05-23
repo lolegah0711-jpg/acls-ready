@@ -245,6 +245,37 @@ function initDb() {
   // Migrations
   try { db.exec('ALTER TABLE exam_questions ADD COLUMN is_ko INTEGER DEFAULT 0'); } catch(e) {}
   try { db.exec("ALTER TABLE users ADD COLUMN rank TEXT DEFAULT 'Mitarbeiter'"); } catch(e) {}
+  try { db.exec('ALTER TABLE rank_questions DROP COLUMN option_b'); } catch(e) {}
+  try { db.exec('ALTER TABLE rank_questions DROP COLUMN option_c'); } catch(e) {}
+  try { db.exec('ALTER TABLE rank_questions DROP COLUMN option_d'); } catch(e) {}
+  try { db.exec('ALTER TABLE rank_questions DROP COLUMN correct_answer'); } catch(e) {}
+
+  // Seed rank questions (Mentalteil) — only if table is empty
+  if (db.prepare('SELECT COUNT(*) as c FROM rank_questions').get().c === 0) {
+    let rq;
+    try { rq = db.prepare('INSERT INTO rank_questions (exam_type, question, option_a) VALUES (?, ?, ?)'); }
+    catch { rq = db.prepare('INSERT INTO rank_questions (exam_type, question, option_a, option_b, correct_answer) VALUES (?, ?, ?, \'\', 0)'); }
+    // Geselle
+    rq.run('gesellen', 'Was ist bei der Anmeldung eines Fahrzeuges zu berücksichtigen?', 'Auf das Kennzeichen soll keine Beleidigung, Familiennamen und keine verwerflichen Zeichen oder Namen (zB. 88 oder so).');
+    rq.run('gesellen', 'Wie verhalten Sie sich wenn fremde Personen auf dem ACLS-Gelände unbefugt rumlaufen?', 'Auf die fremde Person zugehen und höflich mitteilen, dass dies nicht erlaubt oder gewünscht ist.');
+    rq.run('gesellen', 'Ab wann kann man ein Hausverbot aussprechen? Und für wie lange?', 'Wenn der Kunde dich beleidigt oder dich schwer verletzt.');
+    rq.run('gesellen', 'Ein Kunde im Foyer fragt wer sein Auto abgeschleppt hat – wie gehst du vor?', 'Ich gebe ihm keine Auskunft und verweise darauf, nächstes Mal sein KFZ richtig zu parken.');
+    rq.run('gesellen', 'Wann ist ein PKW ordnungsgemäß geparkt?', 'Wenn es in Fahrtrichtung geparkt ist, nicht auf rotem Bordstein steht und eine Radreihe auf dem Bordstein ist – oder wenn es in einer gekennzeichneten Parkfläche steht.');
+    rq.run('gesellen', 'Was ist bei einer Wasserbergung mit dem Cargobob zu beachten?', 'Das Fahrzeug darf nicht zu tief im Wasser sein.');
+    rq.run('gesellen', 'Sie haben einen Dispatch im SG bekommen. Können Sie diesen mit einem Cargo anfliegen?', 'Nein.');
+    rq.run('gesellen', 'Wann wird der Cargo verwendet?', 'Immer, außer die Last ist zu schwer (zB. LKW).');
+    rq.run('gesellen', 'Wie verhalten Sie sich, wenn ein Dispatch mit „Tank ist leer" reinkommt?', 'Zur Tanke bringen und fragen ob er tanken kann.');
+    // Meister
+    rq.run('meister', 'Was machen Sie wenn jemand Hausverbot hat?', 'Den Dispatch direkt schließen, ohne ihn vorher anzunehmen.');
+    rq.run('meister', 'Was machen Sie wenn Sie der Meinung sind, dass ein Exekutivmitarbeiter sich respektlos benimmt oder Sie sich ungerecht behandelt fühlen?', 'Ich lasse mir die Dienstnummer geben und sage meiner Leitungsebene Bescheid.');
+    rq.run('meister', 'Jemand hat eine Beschwerde – hören Sie sich diese an?', 'Nein, für Beschwerden muss ein Dispatch gemacht werden. Nur Ausbilder und höher können sich dessen annehmen.');
+    rq.run('meister', 'Du siehst wie ein Arbeitskollege gerade entführt wird – beschreibe deine Vorgehensweise.', 'Selbst in Sicherheit bringen und Dispatch ans PD im Funk Bescheid sagen.');
+    rq.run('meister', 'Du bist in Davis unterwegs und siehst einen lilanen Lowrider mitten auf dem Bordstein. Schleppst du diesen ab?', 'Nein, da farblich passende Lowrider in den Gebieten der Gangs nicht abgeschleppt werden.');
+    rq.run('meister', 'Wo kannst du überall Abschleppfahrzeuge ausparken?', 'HQ.');
+    rq.run('meister', 'Was muss bei der Dokumentation nicht zwangsläufig angegeben werden?', 'Der Grund, sofern der Abschleppgrund auf dem Beweisfoto ersichtlich ist.');
+    rq.run('meister', 'Sie merken, dass ein Kunde unzufrieden ist mit dem Tuning – wie verhältst du dich?', 'Ich versuche dem Kunden Alternativen zu zeigen. Falls ich in der Situation überfordert bin, hole ich mir einen Kollegen zur Hilfe.');
+    console.log('[seed] Rank questions inserted');
+  }
 
   // Always re-seed questions so law changes take effect on restart
   db.prepare('DELETE FROM exam_questions').run();

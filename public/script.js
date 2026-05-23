@@ -2066,7 +2066,7 @@ window.beginRankExam = async function() {
   if (!data) return;
   const poolCopy = [...LOCATIONS_POOL].sort(() => Math.random() - 0.5);
   const m1Locations = poolCopy.slice(0, 4);
-  activeRankExam = { type, examineeName: name, examineeId: pid || null, questions: data.questions, m1Locations, m1Data: [], m2Answers: {}, m3Ratings: new Array(6).fill(0), m3Notes: '' };
+  activeRankExam = { type, examineeName: name, examineeId: pid || null, questions: data.questions, m1Locations, m1Data: [], m2Answers: {}, m2Revealed: {}, m3Ratings: new Array(6).fill(0), m3Notes: '' };
   renderRankM1();
 };
 
@@ -2121,21 +2121,31 @@ window.rankM1Next = function() {
 window.renderRankM2 = function(idx) {
   const exam = activeRankExam;
   if (!exam.questions.length) { window.renderRankM3(); return; }
-  const q     = exam.questions[idx];
-  const total = exam.questions.length;
+  const q       = exam.questions[idx];
+  const total   = exam.questions.length;
+  const ans     = exam.m2Answers[q.id];
+  const revealed = exam.m2Revealed[q.id];
   openModal(`${rankExamHeader('Modul 2 – Mentalteil','fa-brain','2')}
     <div class="quiz-wrap">
-      <div class="quiz-progress"><div class="quiz-progress-bar" style="width:${(idx/total)*100}%"></div></div>
+      <div class="quiz-progress"><div class="quiz-progress-bar" style="width:${((idx+1)/total)*100}%"></div></div>
       <div class="quiz-counter">Frage ${idx+1} von ${total}</div>
       <div class="quiz-q">${q.question}</div>
-      ${[q.option_a,q.option_b,q.option_c,q.option_d].map((opt,i)=>{
-        if(!opt||!opt.trim()) return '';
-        const isSel=exam.m2Answers[q.id]===i, isCorr=q.correct_answer===i;
-        return `<div class="quiz-option${isSel?' selected':''}${isCorr?' correct-hint':''}" onclick="rankM2Select(${idx},${i})">
-          <div class="opt-letter">${'ABCD'[i]}</div><div>${opt}</div>
-          ${isCorr?'<i class="fas fa-check-circle" style="margin-left:auto;color:var(--green);font-size:.85rem;flex-shrink:0"></i>':''}
-        </div>`;
-      }).join('')}
+      <div style="margin:.6rem 0">
+        <button class="btn btn-ghost btn-sm" onclick="rankM2Reveal(${idx})" style="font-size:.8rem">
+          <i class="fas fa-${revealed?'eye-slash':'eye'}"></i> ${revealed?'Antwort verbergen':'Musterlösung anzeigen'}
+        </button>
+      </div>
+      ${revealed ? `<div style="background:var(--input);border-left:3px solid var(--green);border-radius:var(--r);padding:.7rem 1rem;font-size:.87rem;color:var(--fg);line-height:1.5">${q.option_a}</div>` : ''}
+      <div style="display:flex;gap:.6rem;margin-top:.9rem">
+        <button onclick="rankM2Mark(${idx},1)" style="flex:1;padding:.65rem;border-radius:var(--r);font-weight:700;font-size:.9rem;cursor:pointer;transition:all .12s;
+          background:${ans===1?'#22c55e22':'var(--surface2)'};color:${ans===1?'#22c55e':'var(--muted)'};border:2px solid ${ans===1?'#22c55e':'var(--border)'}">
+          <i class="fas fa-check"></i> Richtig
+        </button>
+        <button onclick="rankM2Mark(${idx},0)" style="flex:1;padding:.65rem;border-radius:var(--r);font-weight:700;font-size:.9rem;cursor:pointer;transition:all .12s;
+          background:${ans===0?'#ef444422':'var(--surface2)'};color:${ans===0?'#ef4444':'var(--muted)'};border:2px solid ${ans===0?'#ef4444':'var(--border)'}">
+          <i class="fas fa-times"></i> Falsch
+        </button>
+      </div>
     </div>
     <div class="modal-footer">
       ${idx>0
@@ -2147,11 +2157,16 @@ window.renderRankM2 = function(idx) {
     </div>`);
 };
 
-window.rankM2Select = function(idx, ans) {
-  activeRankExam.m2Answers[activeRankExam.questions[idx].id] = ans;
-  renderRankM2(idx);
+window.rankM2Mark = function(idx, val) {
+  activeRankExam.m2Answers[activeRankExam.questions[idx].id] = val;
+  window.renderRankM2(idx);
 };
-window.rankM2Next = function() { renderRankM3(); };
+window.rankM2Reveal = function(idx) {
+  const id = activeRankExam.questions[idx].id;
+  activeRankExam.m2Revealed[id] = !activeRankExam.m2Revealed[id];
+  window.renderRankM2(idx);
+};
+window.rankM2Next = function() { window.renderRankM3(); };
 
 window.renderRankM3 = function renderRankM3() {
   const exam = activeRankExam;
@@ -2196,8 +2211,8 @@ window.submitRankExam = async function() {
   const exam = activeRankExam;
   const unrated = exam.m3Ratings.filter(r => !r).length;
   if (unrated > 0) { toast(`Noch ${unrated} Kategorie(n) in Modul 3 nicht bewertet`, 'err'); return; }
-  const unanswered = exam.questions.filter(q => exam.m2Answers[q.id] === undefined).length;
-  if (unanswered > 0) { toast(`Noch ${unanswered} Frage(n) in Modul 2 nicht beantwortet`, 'err'); return; }
+  const unanswered = exam.questions.filter(q => exam.m2Answers[q.id] === undefined && exam.questions.length > 0).length;
+  if (unanswered > 0) { toast(`Noch ${unanswered} Frage(n) in Modul 2 nicht bewertet (Richtig/Falsch)`, 'err'); return; }
   exam.m3Notes = $('rM3Notes')?.value || '';
   const result = await api('/api/rank-exam/submit', { method: 'POST', body: { m1_data: exam.m1Data, m2_answers: exam.m2Answers, m3_data: { ratings: exam.m3Ratings, notes: exam.m3Notes } } });
   if (!result) return;
@@ -2236,23 +2251,11 @@ window.manageRankQuestions = async function() {
     </div>
     <form onsubmit="addRankQuestion(event)" style="display:flex;flex-direction:column;gap:.5rem;padding-bottom:.9rem;border-bottom:1px solid var(--border);margin-bottom:.9rem">
       <select id="rqType" class="form-input">
-        <option value="both">Beide Prüfungen</option>
-        <option value="gesellen">Nur Gesellenprüfung</option>
-        <option value="meister">Nur Meisterprüfung</option>
+        <option value="gesellen">Gesellenprüfung</option>
+        <option value="meister">Meisterprüfung</option>
       </select>
       <input id="rqQ" class="form-input" placeholder="Frage..." required>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">
-        <input id="rqA" class="form-input" placeholder="A) ..." required>
-        <input id="rqB" class="form-input" placeholder="B) ..." required>
-        <input id="rqC" class="form-input" placeholder="C) (optional)">
-        <input id="rqD" class="form-input" placeholder="D) (optional)">
-      </div>
-      <select id="rqAns" class="form-input">
-        <option value="0">Richtige Antwort: A</option>
-        <option value="1">Richtige Antwort: B</option>
-        <option value="2">Richtige Antwort: C</option>
-        <option value="3">Richtige Antwort: D</option>
-      </select>
+      <textarea id="rqA" class="form-input" rows="2" placeholder="Musterlösung / korrekte Antwort..." required style="resize:vertical"></textarea>
       <button class="btn btn-primary btn-sm" type="submit"><i class="fas fa-plus"></i> Frage hinzufügen</button>
     </form>
     <div style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:.4rem">
@@ -2270,10 +2273,9 @@ window.manageRankQuestions = async function() {
 window.addRankQuestion = async function(e) {
   e.preventDefault();
   const r = await api('/api/rank-questions', { method: 'POST', body: {
-    exam_type: $('rqType').value, question: $('rqQ').value.trim(),
-    option_a: $('rqA').value.trim(), option_b: $('rqB').value.trim(),
-    option_c: $('rqC').value.trim()||null, option_d: $('rqD').value.trim()||null,
-    correct_answer: +$('rqAns').value,
+    exam_type: $('rqType').value,
+    question:  $('rqQ').value.trim(),
+    option_a:  $('rqA').value.trim(),
   }});
   if (r) { toast('Frage gespeichert!', 'ok'); manageRankQuestions(); }
 };

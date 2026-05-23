@@ -982,10 +982,16 @@ app.get('/api/rank-questions', requireAusbilder, (req, res) => {
 });
 
 app.post('/api/rank-questions', requireAusbilder, (req, res) => {
-  const { exam_type, question, option_a, option_b, option_c, option_d, correct_answer } = req.body;
-  const r = db.prepare(`INSERT INTO rank_questions (exam_type,question,option_a,option_b,option_c,option_d,correct_answer) VALUES (?,?,?,?,?,?,?)`)
-    .run(exam_type || 'both', question, option_a, option_b, option_c || null, option_d || null, +correct_answer);
-  res.json({ id: r.lastInsertRowid });
+  const { exam_type, question, option_a } = req.body;
+  try {
+    const r = db.prepare(`INSERT INTO rank_questions (exam_type,question,option_a) VALUES (?,?,?)`)
+      .run(exam_type || 'gesellen', question, option_a);
+    res.json({ id: r.lastInsertRowid });
+  } catch {
+    const r = db.prepare(`INSERT INTO rank_questions (exam_type,question,option_a,option_b,correct_answer) VALUES (?,?,?,?,?)`)
+      .run(exam_type || 'gesellen', question, option_a, '', 0);
+    res.json({ id: r.lastInsertRowid });
+  }
 });
 
 app.delete('/api/rank-questions/:id', requireAusbilder, (req, res) => {
@@ -995,8 +1001,7 @@ app.delete('/api/rank-questions/:id', requireAusbilder, (req, res) => {
 
 app.post('/api/rank-exam/start', requireAusbilder, (req, res) => {
   const { exam_type, examinee_name, examinee_id } = req.body;
-  const count = exam_type === 'meister' ? 10 : 7;
-  const questions = db.prepare(`SELECT id,question,option_a,option_b,option_c,option_d,correct_answer FROM rank_questions WHERE (exam_type=? OR exam_type='both') AND is_active=1 ORDER BY RANDOM() LIMIT ?`).all(exam_type, count);
+  const questions = db.prepare(`SELECT id,question,option_a FROM rank_questions WHERE exam_type=? AND is_active=1 ORDER BY RANDOM() LIMIT 5`).all(exam_type);
   req.session.rankExam = { exam_type, examinee_name: examinee_name || '', examinee_id: examinee_id || null, question_ids: questions.map(q => q.id) };
   res.json({ questions });
 });
@@ -1013,10 +1018,8 @@ app.post('/api/rank-exam/submit', requireAusbilder, (req, res) => {
 
   let m2_score = 0, m2_total = 0;
   if (exam.question_ids && exam.question_ids.length > 0) {
-    const ph = exam.question_ids.map(() => '?').join(',');
-    const qs = db.prepare(`SELECT id,correct_answer FROM rank_questions WHERE id IN (${ph})`).all(...exam.question_ids);
-    m2_total = qs.length;
-    m2_score = qs.filter(q => parseInt(m2_answers?.[String(q.id)]) === q.correct_answer).length;
+    m2_total = exam.question_ids.length;
+    m2_score = exam.question_ids.filter(id => parseInt(m2_answers?.[String(id)]) === 1).length;
   }
   const m2_passed = m2_total === 0 || m2_score >= Math.ceil(m2_total * 0.7);
 
