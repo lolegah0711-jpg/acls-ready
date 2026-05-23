@@ -208,6 +208,22 @@ function initDb() {
       taken_at      DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS active_rank_exams (
+      join_code     TEXT PRIMARY KEY,
+      exam_type     TEXT NOT NULL,
+      examinee_name TEXT NOT NULL,
+      examinee_id   TEXT,
+      examiner1_id  INTEGER NOT NULL REFERENCES users(id),
+      examiner2_id  INTEGER REFERENCES users(id),
+      question_ids  TEXT NOT NULL,
+      m1_locations  TEXT NOT NULL DEFAULT '[]',
+      m1_data       TEXT,
+      m2_answers    TEXT DEFAULT '{}',
+      m3_ratings    TEXT DEFAULT '[0,0,0,0,0,0]',
+      m3_notes      TEXT DEFAULT '',
+      created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS bot_notifications (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       type        TEXT NOT NULL,

@@ -1038,43 +1038,105 @@ app.delete('/api/rank-questions/:id', requireAusbilder, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/rank-exam/start', requireAusbilder, (req, res) => {
-  const { exam_type, examinee_name, examinee_id, examiner2_id } = req.body;
-  const questions = db.prepare(`SELECT id,question,option_a FROM rank_questions WHERE exam_type=? AND is_active=1 ORDER BY RANDOM() LIMIT 5`).all(exam_type);
-  req.session.rankExam = { exam_type, examinee_name: examinee_name || '', examinee_id: examinee_id || null, examiner2_id: examiner2_id || null, question_ids: questions.map(q => q.id) };
-  res.json({ questions });
-});
+// ── Rank Exam helpers ───────────────────────────────────────────
+function getActiveExam(req) {
+  const code = req.session.rankExamCode;
+  if (!code) return null;
+  return db.prepare('SELECT * FROM active_rank_exams WHERE join_code = ?').get(code);
+}
 
-app.post('/api/rank-exam/submit', requireAusbilder, (req, res) => {
-  const { m1_data, m2_answers, m3_data } = req.body;
-  const exam = req.session.rankExam;
-  const user = getUser(req);
-  if (!exam) return res.status(400).json({ error: 'Kein aktiver Test' });
+function scoreAndFinalize(exam, user) {
+  const m1_data   = JSON.parse(exam.m1_data || '[]');
+  const m2_answers= JSON.parse(exam.m2_answers || '{}');
+  const m3_ratings= JSON.parse(exam.m3_ratings || '[0,0,0,0,0,0]');
+  const question_ids = JSON.parse(exam.question_ids || '[]');
 
-  // Each location passes if ≥2 of 3 criteria are met; score = number of passed locations
   const m1_score  = m1_data.filter(l => (l.found?1:0)+(l.best_route?1:0)+(l.stvo?1:0) >= 2).length;
   const m1_max    = m1_data.length;
-  const m1_passed = m1_score >= Math.ceil(m1_max * 0.75); // ≥3/4 locations
+  const m1_passed = m1_score >= Math.ceil(m1_max * 0.75);
 
-  let m2_score = 0, m2_total = 0;
-  if (exam.question_ids && exam.question_ids.length > 0) {
-    m2_total = exam.question_ids.length;
-    m2_score = exam.question_ids.filter(id => parseInt(m2_answers?.[String(id)]) === 1).length;
-  }
+  const m2_total  = question_ids.length;
+  const m2_score  = question_ids.filter(id => parseInt(m2_answers[String(id)]) === 1).length;
   const m2_passed = m2_total === 0 || m2_score >= Math.ceil(m2_total * 0.7);
 
-  const ratings  = m3_data.ratings || [];
-  const m3_score = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
+  const m3_score  = m3_ratings.length ? m3_ratings.reduce((a,b)=>a+b,0)/m3_ratings.length : 0;
   const m3_passed = m3_score >= 2.5;
 
   const passed = m1_passed && m2_passed && m3_passed;
-  const examiner2_id = exam.examiner2_id ? +exam.examiner2_id : null;
-  const r = db.prepare(`INSERT INTO rank_exams (exam_type,examinee_name,examinee_id,examiner_id,examiner2_id,m1_data,m1_score,m1_max,m1_passed,m2_score,m2_total,m2_passed,m3_data,m3_score,m3_passed,passed,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(exam.exam_type, exam.examinee_name, exam.examinee_id, user.id, examiner2_id, JSON.stringify(m1_data), m1_score, m1_max, m1_passed?1:0, m2_score, m2_total, m2_passed?1:0, JSON.stringify(m3_data), m3_score, m3_passed?1:0, passed?1:0, m3_data.notes||null);
+  const examiner_id  = exam.examiner1_id;
+  const examiner2_id = exam.examiner2_id || null;
+  const r = db.prepare(`INSERT INTO rank_exams
+    (exam_type,examinee_name,examinee_id,examiner_id,examiner2_id,
+     m1_data,m1_score,m1_max,m1_passed,m2_score,m2_total,m2_passed,
+     m3_data,m3_score,m3_passed,passed,notes)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(exam.exam_type, exam.examinee_name, exam.examinee_id,
+         examiner_id, examiner2_id,
+         exam.m1_data, m1_score, m1_max, m1_passed?1:0,
+         m2_score, m2_total, m2_passed?1:0,
+         JSON.stringify({ ratings: m3_ratings, notes: exam.m3_notes }),
+         m3_score, m3_passed?1:0, passed?1:0, exam.m3_notes||null);
 
-  delete req.session.rankExam;
-  const examiner2 = examiner2_id ? db.prepare('SELECT username FROM users WHERE id=?').get(examiner2_id) : null;
-  res.json({ id: r.lastInsertRowid, passed, m1_passed, m1_score, m1_max, m2_passed, m2_score, m2_total, m3_passed, m3_score, examiner2_name: examiner2?.username || null });
+  db.prepare('DELETE FROM active_rank_exams WHERE join_code = ?').run(exam.join_code);
+  const e2 = examiner2_id ? db.prepare('SELECT username FROM users WHERE id=?').get(examiner2_id) : null;
+  return { id: r.lastInsertRowid, passed, m1_passed, m1_score, m1_max, m2_passed, m2_score, m2_total, m3_passed, m3_score, examiner2_name: e2?.username || null };
+}
+
+app.post('/api/rank-exam/start', requireAusbilder, (req, res) => {
+  const { exam_type, examinee_name, examinee_id, examiner2_id, m1_locations } = req.body;
+  const user = getUser(req);
+  const questions = db.prepare(`SELECT id,question,option_a FROM rank_questions WHERE exam_type=? AND is_active=1 ORDER BY RANDOM() LIMIT 5`).all(exam_type);
+  const join_code = Math.random().toString(36).substring(2,8).toUpperCase();
+  db.prepare(`INSERT INTO active_rank_exams (join_code,exam_type,examinee_name,examinee_id,examiner1_id,examiner2_id,question_ids,m1_locations)
+    VALUES (?,?,?,?,?,?,?,?)`)
+    .run(join_code, exam_type, examinee_name||'', examinee_id||null, user.id, examiner2_id||null,
+         JSON.stringify(questions.map(q=>q.id)), JSON.stringify(m1_locations||[]));
+  req.session.rankExamCode = join_code;
+  res.json({ join_code, questions });
+});
+
+app.post('/api/rank-exam/join', requireAusbilder, (req, res) => {
+  const { join_code } = req.body;
+  const exam = db.prepare('SELECT * FROM active_rank_exams WHERE join_code = ?').get((join_code||'').toUpperCase().trim());
+  if (!exam) return res.status(404).json({ error: 'Code nicht gefunden' });
+  req.session.rankExamCode = exam.join_code;
+  const ids = JSON.parse(exam.question_ids || '[]');
+  const questions = ids.length
+    ? db.prepare(`SELECT id,question,option_a FROM rank_questions WHERE id IN (${ids.map(()=>'?').join(',')}) AND is_active=1`).all(...ids)
+    : [];
+  res.json({
+    join_code:      exam.join_code,
+    exam_type:      exam.exam_type,
+    examinee_name:  exam.examinee_name,
+    examinee_id:    exam.examinee_id,
+    m1_locations:   JSON.parse(exam.m1_locations || '[]'),
+    m1_data:        JSON.parse(exam.m1_data || 'null'),
+    m2_answers:     JSON.parse(exam.m2_answers || '{}'),
+    m3_ratings:     JSON.parse(exam.m3_ratings || '[0,0,0,0,0,0]'),
+    m3_notes:       exam.m3_notes || '',
+    questions,
+  });
+});
+
+app.put('/api/rank-exam/active', requireAusbilder, (req, res) => {
+  const exam = getActiveExam(req);
+  if (!exam) return res.status(400).json({ error: 'Kein aktiver Test' });
+  const fields = [];
+  const vals   = [];
+  if (req.body.m1_data    !== undefined) { fields.push('m1_data=?');    vals.push(JSON.stringify(req.body.m1_data)); }
+  if (req.body.m2_answers !== undefined) { fields.push('m2_answers=?'); vals.push(JSON.stringify(req.body.m2_answers)); }
+  if (req.body.m3_ratings !== undefined) { fields.push('m3_ratings=?'); vals.push(JSON.stringify(req.body.m3_ratings)); }
+  if (req.body.m3_notes   !== undefined) { fields.push('m3_notes=?');   vals.push(req.body.m3_notes); }
+  if (fields.length) db.prepare(`UPDATE active_rank_exams SET ${fields.join(',')} WHERE join_code=?`).run(...vals, exam.join_code);
+  res.json({ ok: true });
+});
+
+app.post('/api/rank-exam/submit', requireAusbilder, (req, res) => {
+  const exam = getActiveExam(req);
+  const user = getUser(req);
+  if (!exam) return res.status(400).json({ error: 'Kein aktiver Test' });
+  delete req.session.rankExamCode;
+  res.json(scoreAndFinalize(exam, user));
 });
 
 app.get('/api/rank-exams', requireAusbilder, (req, res) => {

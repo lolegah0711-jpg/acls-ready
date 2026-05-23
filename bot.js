@@ -164,26 +164,27 @@ client.once(Events.ClientReady, async c => {
   // Beim Start alle bereits im Channel sitzenden Mitglieder ins Tracking aufnehmen
   if (GUILD_ID) {
     try {
-      const guild = await client.guilds.fetch(GUILD_ID);
-      const channels = await guild.channels.fetch();
+      // force:true lädt frische Guild-Daten inkl. Voice-States vom Gateway
+      const guild = await client.guilds.fetch(GUILD_ID, { force: true });
+      await guild.members.fetch(); // Member-Cache füllen für displayName
       let found = 0;
-      for (const [, ch] of channels) {
-        if (!ch || ch.type !== 2) continue; // 2 = GUILD_VOICE
-        if (!isIcChannel(ch.name)) continue;
-        for (const [, member] of ch.members) {
-          if (member.id === client.user.id) continue;
-          const joinedAt = new Date();
-          activeSessions.set(member.id, { channelId: ch.id, channelName: ch.name, joinedAt });
-          fetch(`${SERVER_URL}/api/active-session`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: member.id, username: member.displayName, channel_name: ch.name, joined_at: joinedAt.toISOString() }),
-          }).catch(() => {});
-          found++;
-        }
+      for (const [userId, vs] of guild.voiceStates.cache) {
+        if (userId === client.user.id) continue;
+        if (!vs.channel || !isIcChannel(vs.channel.name)) continue;
+        const joinedAt = new Date();
+        const member   = vs.member;
+        activeSessions.set(userId, { channelId: vs.channelId, channelName: vs.channel.name, joinedAt });
+        fetch(`${SERVER_URL}/api/active-session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: userId, username: member?.displayName || userId, channel_name: vs.channel.name, joined_at: joinedAt.toISOString() }),
+        }).catch(() => {});
+        found++;
       }
-      if (found > 0) console.log(`[Bot] Startup-Scan: ${found} Mitglied(er) bereits im Dienst-Channel – Tracking gestartet`);
+      console.log(`[Bot] Startup-Scan: ${found} Mitglied(er) bereits im Dienst-Channel – Tracking gestartet`);
     } catch (e) { console.error('[Bot] Startup-Scan Fehler:', e.message); }
+  } else {
+    console.warn('[Bot] GUILD_ID nicht gesetzt – Startup-Scan übersprungen!');
   }
 
   setInterval(pollNotifications, 30_000);

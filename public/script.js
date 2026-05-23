@@ -2042,6 +2042,7 @@ async function ausbildung() {
         <div><div class="card-title">Prüfungen</div><div class="card-sub">Gesellen- & Meisterprüfungen</div></div>
         <div style="margin-left:auto;display:flex;gap:.5rem;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" onclick="manageRankQuestions()"><i class="fas fa-question-circle"></i> Fragen verwalten</button>
+          <button class="btn btn-ghost btn-sm" onclick="showJoinRankExam()"><i class="fas fa-link"></i> Beitreten</button>
           <button class="btn btn-primary" onclick="startRankExamSetup()"><i class="fas fa-plus"></i> Neue Prüfung</button>
         </div>
       </div>
@@ -2098,26 +2099,80 @@ window.startRankExamSetup = async function() {
 };
 
 window.beginRankExam = async function() {
-  const type       = $('rExamType')?.value;
-  const name       = $('rExamineeName')?.value.trim();
-  const pid        = $('rExamineeId')?.value.trim();
-  const examiner2  = $('rExaminer2')?.value || null;
+  const type      = $('rExamType')?.value;
+  const name      = $('rExamineeName')?.value.trim();
+  const pid       = $('rExamineeId')?.value.trim();
+  const examiner2 = $('rExaminer2')?.value || null;
   if (!name) { toast('Bitte Namen des Prüflings eingeben', 'err'); return; }
-  const data = await api('/api/rank-exam/start', { method: 'POST', body: { exam_type: type, examinee_name: name, examinee_id: pid || null, examiner2_id: examiner2 || null } });
-  if (!data) return;
-  const poolCopy = [...LOCATIONS_POOL].sort(() => Math.random() - 0.5);
+  const poolCopy    = [...LOCATIONS_POOL].sort(() => Math.random() - 0.5);
   const m1Locations = poolCopy.slice(0, 4);
-  activeRankExam = { type, examineeName: name, examineeId: pid || null, examiner2Id: examiner2 || null, questions: data.questions, m1Locations, m1Data: [], m2Answers: {}, m2Revealed: {}, m3Ratings: new Array(6).fill(0), m3Notes: '' };
+  const data = await api('/api/rank-exam/start', { method: 'POST', body: {
+    exam_type: type, examinee_name: name, examinee_id: pid || null,
+    examiner2_id: examiner2 || null, m1_locations: m1Locations,
+  }});
+  if (!data) return;
+  activeRankExam = { joinCode: data.join_code, type, examineeName: name, examineeId: pid||null,
+    questions: data.questions, m1Locations, m1Data: [], m2Answers: {}, m2Revealed: {},
+    m3Ratings: new Array(6).fill(0), m3Notes: '' };
   window.renderRankM1();
 };
+
+window.showJoinRankExam = function() {
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-link" style="color:var(--orange);margin-right:.5rem"></i>Prüfung beitreten</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.75rem;padding:.25rem 0">
+      <p style="font-size:.85rem;color:var(--muted);margin:0">Gib den 6-stelligen Code ein, den der erste Prüfer erhalten hat.</p>
+      <input id="rJoinCode" class="form-input" placeholder="z.B. AB12CD" maxlength="6"
+        style="text-transform:uppercase;letter-spacing:.2em;font-size:1.1rem;text-align:center">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="doJoinRankExam()"><i class="fas fa-sign-in-alt"></i> Beitreten</button>
+    </div>`);
+};
+
+window.doJoinRankExam = async function() {
+  const code = $('rJoinCode')?.value.trim().toUpperCase();
+  if (!code || code.length < 4) { toast('Bitte Code eingeben', 'err'); return; }
+  const data = await api('/api/rank-exam/join', { method: 'POST', body: { join_code: code } });
+  if (!data) return;
+  activeRankExam = {
+    joinCode:    data.join_code,
+    type:        data.exam_type,
+    examineeName:data.examinee_name,
+    examineeId:  data.examinee_id,
+    questions:   data.questions,
+    m1Locations: data.m1_locations,
+    m1Data:      data.m1_data || [],
+    m2Answers:   data.m2_answers || {},
+    m2Revealed:  {},
+    m3Ratings:   data.m3_ratings || new Array(6).fill(0),
+    m3Notes:     data.m3_notes || '',
+  };
+  toast(`Prüfung ${code} beigetreten`, 'ok');
+  window.renderRankM1();
+};
+
+function saveRankState(patch) {
+  if (!activeRankExam?.joinCode) return;
+  api('/api/rank-exam/active', { method: 'PUT', body: patch }).catch(() => {});
+}
 
 function rankExamHeader(title, icon, step) {
   return `<div class="modal-head">
     <div class="modal-title"><i class="fas ${icon}" style="color:var(--orange);margin-right:.5rem"></i>${title}</div>
     <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
   </div>
-  <div style="font-size:.8rem;color:var(--muted);margin-bottom:.9rem">
-    <b style="color:var(--fg)">${activeRankExam.examineeName}</b> · ${activeRankExam.type==='meister'?'Meisterprüfung':'Gesellenprüfung'} · Modul ${step} von 3
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.9rem;flex-wrap:wrap;gap:.4rem">
+    <div style="font-size:.8rem;color:var(--muted)">
+      <b style="color:var(--fg)">${activeRankExam.examineeName}</b> · ${activeRankExam.type==='meister'?'Meisterprüfung':'Gesellenprüfung'} · Modul ${step} von 3
+    </div>
+    <div style="font-size:.75rem;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.2rem .6rem;letter-spacing:.12em;font-weight:700;color:var(--orange)" title="Code für zweiten Prüfer">
+      <i class="fas fa-link" style="margin-right:.3rem;font-size:.65rem"></i>${activeRankExam.joinCode}
+    </div>
   </div>`;
 }
 
@@ -2156,6 +2211,7 @@ window.rankM1Next = function() {
     best_route: $(`rRoute${i}`)?.checked || false,
     stvo:       $(`rStvo${i}`)?.checked  || false,
   }));
+  saveRankState({ m1_data: activeRankExam.m1Data });
   window.renderRankM2(0);
 };
 
@@ -2200,6 +2256,7 @@ window.renderRankM2 = function(idx) {
 
 window.rankM2Mark = function(idx, val) {
   activeRankExam.m2Answers[activeRankExam.questions[idx].id] = val;
+  saveRankState({ m2_answers: activeRankExam.m2Answers });
   window.renderRankM2(idx);
 };
 window.rankM2Reveal = function(idx) {
@@ -2241,6 +2298,7 @@ window.renderRankM3 = function renderRankM3() {
 window.rankM3Rate = function(i, val) {
   activeRankExam.m3Notes = $('rM3Notes')?.value || '';
   activeRankExam.m3Ratings[i] = val;
+  saveRankState({ m3_ratings: activeRankExam.m3Ratings, m3_notes: activeRankExam.m3Notes });
   window.renderRankM3();
 };
 window.rankM2Next_back = function() {
@@ -2255,7 +2313,8 @@ window.submitRankExam = async function() {
   const unanswered = exam.questions.filter(q => exam.m2Answers[q.id] === undefined && exam.questions.length > 0).length;
   if (unanswered > 0) { toast(`Noch ${unanswered} Frage(n) in Modul 2 nicht bewertet (Richtig/Falsch)`, 'err'); return; }
   exam.m3Notes = $('rM3Notes')?.value || '';
-  const result = await api('/api/rank-exam/submit', { method: 'POST', body: { m1_data: exam.m1Data, m2_answers: exam.m2Answers, m3_data: { ratings: exam.m3Ratings, notes: exam.m3Notes } } });
+  saveRankState({ m3_notes: exam.m3Notes });
+  const result = await api('/api/rank-exam/submit', { method: 'POST', body: {} });
   if (!result) return;
   activeRankExam = null;
   const rLabel = v => M3_LABELS[Math.min(Math.round(v)-1, 3)] || '';
