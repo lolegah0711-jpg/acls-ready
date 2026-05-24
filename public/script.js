@@ -280,6 +280,14 @@ async function renderVoterScreen() {
         </form>
       </div>
       </div>
+      <div style="margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border)">
+        <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem">Minispiele</div>
+        <div style="display:flex;gap:.5rem">
+          <a href="/game"  target="_blank" class="btn btn-ghost btn-sm" style="flex:1;text-align:center"><i class="fas fa-car"></i> Autorennen</a>
+          <a href="/game2" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;text-align:center"><i class="fas fa-th-large"></i> Brick Breaker</a>
+          <a href="/game3" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;text-align:center;color:#ef4444"><i class="fas fa-biohazard" style="color:#ef4444"></i> Dead Zone</a>
+        </div>
+      </div>
     </div>`;
 }
 

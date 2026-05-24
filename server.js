@@ -73,6 +73,13 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// Wie requireAuth, aber Citizens sind auch erlaubt (für Minispiele)
+function requireLogin(req, res, next) {
+  const u = getUser(req);
+  if (!u) return res.status(401).json({ error: 'Nicht angemeldet' });
+  next();
+}
+
 function requireAdmin(req, res, next) {
   const u = getUser(req);
   if (!u) return res.status(401).json({ error: 'Nicht angemeldet' });
@@ -1342,7 +1349,7 @@ app.post('/api/bot-notifications/:id/sent', (req, res) => {
 // ── Galaxie-Jäger Charakter ─────────────────────────────────────
 function xpForLevel(lv) { return lv * 100; }
 
-app.get('/api/game-char', requireAuth, (req, res) => {
+app.get('/api/game-char', requireLogin, (req, res) => {
   const user = getUser(req);
   let char = db.prepare('SELECT * FROM game_characters WHERE user_id = ?').get(user.id);
   if (!char) {
@@ -1352,7 +1359,7 @@ app.get('/api/game-char', requireAuth, (req, res) => {
   res.json(char);
 });
 
-app.post('/api/game-char/save', requireAuth, (req, res) => {
+app.post('/api/game-char/save', requireLogin, (req, res) => {
   const user = getUser(req);
   const { xp, kills } = req.body;
   if (typeof xp !== 'number' || typeof kills !== 'number') return res.status(400).json({ error: 'Ungültig' });
@@ -1373,7 +1380,7 @@ app.post('/api/game-char/save', requireAuth, (req, res) => {
   res.json({ char, levelsGained });
 });
 
-app.post('/api/game-char/upgrade', requireAuth, (req, res) => {
+app.post('/api/game-char/upgrade', requireLogin, (req, res) => {
   const user  = getUser(req);
   const { skill } = req.body;
   const SKILLS = ['skill_damage','skill_firerate','skill_speed','skill_shield'];
@@ -1405,7 +1412,7 @@ app.get('/api/game-scores/:game', (req, res) => {
   res.json(rows);
 });
 
-app.post('/api/game-scores/:game', requireAuth, (req, res) => {
+app.post('/api/game-scores/:game', requireLogin, (req, res) => {
   const user  = getUser(req);
   const { score } = req.body;
   if (typeof score !== 'number' || score < 0) return res.status(400).json({ error: 'Ungültiger Score' });
