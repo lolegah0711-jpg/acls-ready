@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book of Ra – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#0a0700;font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;}
+
+    #machine{width:min(580px,96vw);display:flex;flex-direction:column;align-items:center;gap:0;}
+
+    /* Title */
+    #title{font-size:clamp(20px,4vw,30px);font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+      background:linear-gradient(90deg,#b45309,#fbbf24,#f59e0b,#fbbf24,#b45309);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+      margin-bottom:12px;text-align:center;}
+
+    /* Reels container */
+    #reels-wrap{background:linear-gradient(180deg,#1a1000,#0d0800);border:3px solid #78350f;border-radius:12px;
+      padding:10px;width:100%;box-shadow:0 0 40px rgba(251,191,36,.15),inset 0 0 30px rgba(0,0,0,.5);}
+    #reels{display:flex;gap:6px;height:clamp(180px,36vw,270px);}
+    .reel{flex:1;background:#0a0600;border:2px solid #292000;border-radius:8px;overflow:hidden;
+      display:flex;flex-direction:column;position:relative;}
+    .reel-inner{display:flex;flex-direction:column;height:300%;transition:transform .4s cubic-bezier(.25,.46,.45,.94);}
+    .reel.spinning .reel-inner{transition:none;}
+    .sym{flex:1;display:flex;align-items:center;justify-content:center;
+      font-size:clamp(22px,5vw,40px);font-weight:700;border-bottom:1px solid #1a1000;
+      min-height:0;position:relative;transition:background .15s;}
+    .sym.win{background:rgba(251,191,36,.18)!important;box-shadow:inset 0 0 12px rgba(251,191,36,.3);}
+    .sym.win::after{content:'';position:absolute;inset:0;border:2px solid rgba(251,191,36,.6);border-radius:4px;pointer-events:none;}
+    /* Payline indicator */
+    #paylines{display:flex;justify-content:space-between;padding:4px 6px;font-size:10px;color:#6b4c00;margin-top:4px;}
+
+    /* Controls */
+    #controls{background:linear-gradient(180deg,#1a1000,#0d0800);border:3px solid #78350f;border-top:none;
+      border-radius:0 0 12px 12px;width:100%;padding:12px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+    .ctrl-group{display:flex;flex-direction:column;gap:3px;min-width:0;}
+    .ctrl-label{font-size:10px;color:#78350f;font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
+    .ctrl-val{font-size:clamp(14px,3vw,20px);font-weight:800;color:#fbbf24;white-space:nowrap;}
+
+    #spin-btn{margin-left:auto;padding:clamp(10px,2vw,14px) clamp(20px,4vw,32px);
+      background:linear-gradient(135deg,#b45309,#f59e0b);
+      border:none;border-radius:10px;font-size:clamp(13px,2.5vw,16px);font-weight:800;
+      color:#fff;cursor:pointer;letter-spacing:.05em;text-transform:uppercase;
+      box-shadow:0 4px 16px rgba(245,158,11,.4);transition:opacity .15s,transform .1s;flex-shrink:0;}
+    #spin-btn:hover{opacity:.9;transform:translateY(-1px);}
+    #spin-btn:disabled{opacity:.4;cursor:default;transform:none;}
+    #spin-btn.free{background:linear-gradient(135deg,#6d28d9,#a855f7);}
+
+    .bet-btn{background:#1a1000;border:1px solid #78350f;color:#fbbf24;padding:4px 10px;
+      border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;}
+    .bet-btn:hover{background:#2a1800;}
+
+    /* Win overlay on reels */
+    #win-flash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      font-size:clamp(18px,5vw,28px);font-weight:800;color:#fbbf24;
+      background:rgba(0,0,0,.7);border-radius:10px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5;}
+
+    /* Free spins banner */
+    #fs-banner{background:linear-gradient(135deg,#4c1d95,#7c3aed);
+      border:2px solid #a855f7;border-radius:8px;padding:6px 14px;
+      font-size:13px;font-weight:700;text-align:center;display:none;width:100%;margin-top:6px;
+      box-shadow:0 0 20px rgba(168,85,247,.3);}
+
+    /* Overlays */
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.88);z-index:100;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#100800;border:2px solid #78350f;border-radius:18px;padding:32px 38px;max-width:400px;width:92%;text-align:center;}
+    .ov-card h2{font-size:24px;font-weight:800;margin-bottom:6px;}
+    .sub{color:#6b7280;font-size:13px;margin-bottom:18px;line-height:1.5;}
+    .btn{display:inline-block;padding:11px 24px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;border:none;font-family:inherit;transition:opacity .15s;}
+    .btn:hover{opacity:.85;}
+    .btn-gold{background:linear-gradient(135deg,#b45309,#f59e0b);color:#fff;}
+    .btn-gray{background:#1f2937;color:#d1d5db;border:1px solid #374151;}
+    .lb-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #1a1000;font-size:13px;}
+    .lb-rank{width:24px;text-align:center;font-weight:700;}
+    .lb-av{width:26px;height:26px;border-radius:50%;background:#1f2937;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;overflow:hidden;flex-shrink:0;}
+    .lb-av img{width:100%;height:100%;object-fit:cover;}
+    .lb-name{flex:1;font-weight:600;}.lb-score{font-weight:700;color:#fbbf24;}
+  </style>
+</head>
+<body>
+
+<div id="machine">
+  <div id="title">☥ Book of Ra ☥</div>
+
+  <div id="reels-wrap">
+    <div id="reels">
+      <div class="reel" id="reel0"><div class="reel-inner" id="ri0"></div></div>
+      <div class="reel" id="reel1"><div class="reel-inner" id="ri1"></div></div>
+      <div class="reel" id="reel2"><div class="reel-inner" id="ri2"></div></div>
+      <div class="reel" id="reel3"><div class="reel-inner" id="ri3"></div></div>
+      <div class="reel" id="reel4"><div class="reel-inner" id="ri4"></div></div>
+    </div>
+    <div id="paylines">
+      <span>— Linie 1 (Mitte)</span><span>— Linie 2 (Oben)</span><span>— Linie 3 (Unten)</span><span>↕ Linien 4–5</span>
+    </div>
+    <div id="win-flash"></div>
+  </div>
+
+  <div id="fs-banner" id="fs-banner">🎰 <span id="fs-text">10 Freispiele!</span></div>
+
+  <div id="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Guthaben</div>
+      <div class="ctrl-val" id="balance-val">1 000</div>
+    </div>
+    <div class="ctrl-group" style="margin-left:8px">
+      <div class="ctrl-label">Einsatz</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="bet-btn" onclick="changeBet(-1)">◀</button>
+        <div class="ctrl-val" id="bet-val">10</div>
+        <button class="bet-btn" onclick="changeBet(1)">▶</button>
+      </div>
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Letzter Gewinn</div>
+      <div class="ctrl-val" id="win-val" style="color:#22c55e">0</div>
+    </div>
+    <button id="spin-btn" onclick="spin()">SPIN ▶</button>
+  </div>
+
+  <div style="margin-top:8px;display:flex;gap:8px">
+    <button class="btn-gray btn" onclick="openLb()" style="font-size:12px;padding:8px 16px">🏆 Rangliste</button>
+    <button class="btn-gray btn" onclick="resetBalance()" style="font-size:12px;padding:8px 16px">↺ Neues Spiel</button>
+  </div>
+</div>
+
+<!-- LEADERBOARD -->
+<div class="ov hidden" id="ov-lb">
+  <div class="ov-card">
+    <h2 style="margin-bottom:4px;color:#fbbf24">🏆 Rangliste</h2>
+    <p class="sub">Book of Ra – Höchstes Guthaben</p>
+    <div id="lb-list" style="text-align:left;max-height:280px;overflow-y:auto"></div>
+    <button class="btn btn-gray" onclick="closeLb()" style="margin-top:16px">Schließen</button>
+  </div>
+</div>
+
+<script>
+// ── SYMBOLS ──────────────────────────────────────────────────────────────────
+const SYMS=[
+  {e:'📖',n:'Book of Ra', col:'#fbbf24',w:2,  v:[0,0,10,25,200],wild:true,scatter:true},
+  {e:'👑',n:'Pharao',     col:'#f97316',w:4,  v:[0,0, 6,15, 75]},
+  {e:'☥', n:'Ankh',      col:'#a855f7',w:5,  v:[0,0, 5,12, 60]},
+  {e:'🪲',n:'Skarabäus',  col:'#22c55e',w:6,  v:[0,0, 4,10, 50]},
+  {e:'🗺️',n:'Entdecker', col:'#60a5fa',w:7,  v:[0,0, 3, 8, 40]},
+  {e:'A', n:'Ass',        col:'#ef4444',w:12, v:[0,0, 2, 5, 20]},
+  {e:'K', n:'König',      col:'#d97706',w:12, v:[0,0, 2, 5, 15]},
+  {e:'Q', n:'Dame',       col:'#8b5cf6',w:14, v:[0,0, 1, 3, 10]},
+  {e:'J', n:'Bube',       col:'#06b6d4',w:16, v:[0,0, 1, 3, 10]},
+  {e:'10',n:'Zehn',       col:'#6b7280',w:22, v:[0,0, 1, 2,  8]},
+];
+const TOTAL_W=SYMS.reduce((a,s)=>a+s.w,0);
+
+// 5 paylines: each is [row for reel 0..4]
+const PAYLINES=[
+  [1,1,1,1,1], // middle
+  [0,0,0,0,0], // top
+  [2,2,2,2,2], // bottom
+  [0,1,2,1,0], // V
+  [2,1,0,1,2], // inverted V
+];
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let balance=1000, bet=10, freeSpins=0, specialSym=-1;
+let spinning=false, highScore=1000;
+let currentUser=null;
+// result[reel][row] = symbol index
+let result=Array.from({length:5},()=>[0,0,0]);
+// spinIntervals per reel
+let spinItvs=[];
+
+const BETS=[5,10,20,50,100,200,500];
+let betIdx=1;
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+async function init(){
+  try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  buildReels();updateUI();
+}
+
+function rndSym(){
+  let r=Math.random()*TOTAL_W;
+  for(let i=0;i<SYMS.length;i++){r-=SYMS[i].w;if(r<=0)return i;}
+  return SYMS.length-1;
+}
+
+function buildReels(){
+  for(let ri=0;ri<5;ri++){
+    const inner=document.getElementById(`ri${ri}`);
+    inner.innerHTML='';
+    // 9 rows (3×3 for animation)
+    for(let row=0;row<9;row++){
+      const s=rndSym();
+      const el=document.createElement('div');
+      el.className='sym';
+      el.style.color=SYMS[s].col;
+      el.id=`s${ri}_${row}`;
+      el.textContent=SYMS[s].e;
+      inner.appendChild(el);
+    }
+    // Show middle 3
+    inner.style.transform=`translateY(-${100/3}%)`;
+  }
+}
+
+function setVisible(ri,r0,r1,r2){
+  // rows 3,4,5 are "visible" in 9-row strip
+  document.getElementById(`s${ri}_3`).style.color=SYMS[r0].col;document.getElementById(`s${ri}_3`).textContent=SYMS[r0].e;
+  document.getElementById(`s${ri}_4`).style.color=SYMS[r1].col;document.getElementById(`s${ri}_4`).textContent=SYMS[r1].e;
+  document.getElementById(`s${ri}_5`).style.color=SYMS[r2].col;document.getElementById(`s${ri}_5`).textContent=SYMS[r2].e;
+  result[ri]=[r0,r1,r2];
+}
+
+// ── SPIN ─────────────────────────────────────────────────────────────────────
+function spin(){
+  if(spinning)return;
+  const cost=freeSpins>0?0:bet;
+  if(balance<cost&&freeSpins===0){alert('Nicht genug Guthaben!');return;}
+  if(freeSpins===0)balance-=cost;
+  else{freeSpins--;updateFsBanner();}
+
+  spinning=true;
+  document.getElementById('spin-btn').disabled=true;
+  document.getElementById('win-val').textContent='0';
+  document.getElementById('win-val').style.color='#22c55e';
+  clearWinHighlights();
+
+  // Generate final result
+  const finalResult=Array.from({length:5},()=>[rndSym(),rndSym(),rndSym()]);
+
+  // If in free spins, expand special symbol
+  if(freeSpins>=0&&specialSym>=0){
+    // Check if 3+ special on any reel, expand
+    for(let ri=0;ri<5;ri++){
+      const count=finalResult[ri].filter(s=>s===specialSym).length;
+      if(count>=2)finalResult[ri]=[specialSym,specialSym,specialSym];
+    }
+  }
+
+  // Start spinning all reels
+  for(let ri=0;ri<5;ri++){
+    const reel=document.getElementById(`reel${ri}`);
+    const inner=document.getElementById(`ri${ri}`);
+    reel.classList.add('spinning');
+    // Rapidly change symbols
+    spinItvs[ri]=setInterval(()=>{
+      for(let row=0;row<9;row++){
+        const el=document.getElementById(`s${ri}_${row}`);
+        const s=rndSym();el.textContent=SYMS[s].e;el.style.color=SYMS[s].col;
+      }
+    },80);
+    // Stop staggered
+    setTimeout(()=>{
+      clearInterval(spinItvs[ri]);
+      reel.classList.remove('spinning');
+      setVisible(ri,...finalResult[ri]);
+    },900+ri*350);
+  }
+
+  // All done
+  setTimeout(()=>{
+    spinning=false;
+    document.getElementById('spin-btn').disabled=false;
+    evaluateResult(finalResult);
+  },900+4*350+200);
+}
+
+function evaluateResult(res){
+  let totalWin=0;
+  const winCells=new Set();
+
+  for(let li=0;li<PAYLINES.length;li++){
+    const pl=PAYLINES[li];
+    const symsOnLine=Array.from({length:5},(_,ri)=>res[ri][pl[ri]]);
+    // Find base symbol (first non-wild, or wild if all wild)
+    let base=symsOnLine[0];
+    if(SYMS[base].wild){
+      base=symsOnLine.find(s=>!SYMS[s].wild)??0;
+    }
+    // Count consecutive from left (wild substitutes)
+    let cnt=0;
+    for(let ri=0;ri<5;ri++){
+      if(symsOnLine[ri]===base||SYMS[symsOnLine[ri]].wild)cnt++;
+      else break;
+    }
+    if(cnt>=3){
+      const mul=SYMS[base].v[cnt];
+      const lineWin=mul*bet;
+      totalWin+=lineWin;
+      for(let ri=0;ri<cnt;ri++) winCells.add(`${ri}_${pl[ri]+3}`);
+    }
+  }
+
+  // Scatter: count books anywhere
+  const books=res.flat().filter(s=>SYMS[s].scatter).length;
+  const scatterMul=[0,0,2,5,20,100][Math.min(books,5)];
+  if(books>=2){
+    totalWin+=scatterMul*bet;
+    res.forEach((col,ri)=>col.forEach((s,row)=>{if(SYMS[s].scatter)winCells.add(`${ri}_${row+3}`);}));
+  }
+  if(books>=3){
+    freeSpins+=10;
+    specialSym=Math.floor(Math.random()*SYMS.length);
+    updateFsBanner();
+    flashMsg(`🎰 ${books} Books! +10 Freispiele! Spezialsymbol: ${SYMS[specialSym].e}`,'#a855f7',3000);
+  }
+
+  if(winCells.size>0) highlightWin(winCells);
+
+  balance+=totalWin;
+  if(balance>highScore)highScore=balance;
+  document.getElementById('win-val').textContent=totalWin.toLocaleString();
+  document.getElementById('win-val').style.color=totalWin>0?'#fbbf24':'#6b7280';
+  if(totalWin>0&&books<3) flashMsg(`+${totalWin.toLocaleString()} 🪙`,'#fbbf24',1500);
+
+  updateUI();
+  if(balance<=0&&freeSpins===0){setTimeout(()=>submitAndReset(),1500);}
+}
+
+function highlightWin(cells){
+  cells.forEach(id=>{
+    const el=document.getElementById(`s${id}`);
+    if(el)el.classList.add('win');
+  });
+  setTimeout(clearWinHighlights,2000);
+}
+function clearWinHighlights(){
+  document.querySelectorAll('.sym.win').forEach(el=>el.classList.remove('win'));
+}
+
+function flashMsg(msg,col,dur){
+  const el=document.getElementById('win-flash');
+  el.textContent=msg;el.style.color=col;el.style.opacity='1';
+  setTimeout(()=>el.style.opacity='0',dur);
+}
+
+function updateFsBanner(){
+  const b=document.getElementById('fs-banner');
+  if(freeSpins>0){
+    b.style.display='block';
+    document.getElementById('fs-text').textContent=`${freeSpins} Freispiele verbleibend · Spezialsymbol: ${SYMS[specialSym]?.e||'?'}`;
+    document.getElementById('spin-btn').className='btn'; // keep as element
+    document.getElementById('spin-btn').style.background='linear-gradient(135deg,#6d28d9,#a855f7)';
+    document.getElementById('spin-btn').textContent='FREISPIN ▶';
+  }else{
+    b.style.display='none';specialSym=-1;
+    document.getElementById('spin-btn').style.background='linear-gradient(135deg,#b45309,#f59e0b)';
+    document.getElementById('spin-btn').textContent='SPIN ▶';
+  }
+}
+
+function updateUI(){
+  document.getElementById('balance-val').textContent=balance.toLocaleString();
+}
+
+function changeBet(dir){
+  if(spinning||freeSpins>0)return;
+  betIdx=Math.max(0,Math.min(BETS.length-1,betIdx+dir));
+  bet=BETS[betIdx];
+  document.getElementById('bet-val').textContent=bet.toLocaleString();
+}
+
+function resetBalance(){
+  if(spinning)return;
+  balance=1000;freeSpins=0;specialSym=-1;
+  updateUI();updateFsBanner();buildReels();
+  document.getElementById('win-val').textContent='0';
+  document.getElementById('win-val').style.color='#22c55e';
+}
+
+async function submitAndReset(){
+  try{await fetch('/api/game-scores/bookofra',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score:highScore})});}catch{}
+  alert(`Kein Guthaben mehr! Höchster Stand: ${highScore.toLocaleString()} Coins`);
+  resetBalance();highScore=1000;
+}
+
+// ── LEADERBOARD ──────────────────────────────────────────────────────────────
+async function openLb(){
+  // Submit current high score before showing
+  try{await fetch('/api/game-scores/bookofra',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score:highScore})});}catch{}
+  document.getElementById('ov-lb').classList.remove('hidden');
+  const el=document.getElementById('lb-list');
+  el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Laden…</div>';
+  try{
+    const r=await fetch('/api/game-scores/bookofra'),data=await r.json();
+    if(!data.length){el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Noch keine Einträge</div>';return;}
+    el.innerHTML=data.map((row,i)=>{
+      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+      const me=currentUser&&row.discord_id===currentUser.discord_id;
+      const av=row.avatar?`<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`:(row.username||'?').slice(0,2).toUpperCase();
+      return`<div class="lb-row" style="${me?'background:#1a1000;border-radius:5px;':''}">
+        <div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
+        <div class="lb-name">${row.username||'Unbekannt'}</div>
+        <div class="lb-score">${row.score.toLocaleString()} 🪙</div>
+      </div>`;
+    }).join('');
+  }catch{el.innerHTML='<div style="text-align:center;color:#ef4444">Fehler</div>';}
+}
+function closeLb(){document.getElementById('ov-lb').classList.add('hidden');}
+
+window.addEventListener('keydown',e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();if(!spinning)spin();}});
+
+init();
+</script>
+</body>
+</html>

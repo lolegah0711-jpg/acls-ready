@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snake – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#050505;font-family:'Inter',sans-serif;color:#fff;overflow:hidden;display:flex;align-items:center;justify-content:center;height:100vh;}
+    canvas{display:block;}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.88);z-index:100;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#0c0c0c;border:1px solid #1e1e1e;border-radius:18px;padding:36px 42px;max-width:380px;width:92%;text-align:center;}
+    .ov-card h2{font-size:26px;font-weight:800;margin-bottom:6px;}
+    .sub{color:#6b7280;font-size:14px;margin-bottom:20px;line-height:1.5;}
+    .btn{display:inline-block;padding:11px 26px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;border:none;font-family:inherit;transition:opacity .15s;}
+    .btn:hover{opacity:.85;}
+    .btn-green{background:#16a34a;color:#fff;}
+    .btn-gray{background:#1f2937;color:#d1d5db;border:1px solid #374151;}
+    .lb-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #141414;font-size:13px;}
+    .lb-rank{width:24px;text-align:center;font-weight:700;}
+    .lb-av{width:26px;height:26px;border-radius:50%;background:#1f2937;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;overflow:hidden;flex-shrink:0;}
+    .lb-av img{width:100%;height:100%;object-fit:cover;}
+    .lb-name{flex:1;font-weight:600;}.lb-score{font-weight:700;color:#4ade80;}
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="ov" id="ov-start">
+  <div class="ov-card">
+    <div style="font-size:48px;margin-bottom:8px">🐍</div>
+    <h2 style="color:#4ade80">SNAKE</h2>
+    <p class="sub">WASD oder Pfeiltasten lenken die Schlange.<br>Iss die Äpfel ohne dich selbst zu berühren.<br>Alle 5 Äpfel steigt die Geschwindigkeit.</p>
+    <button class="btn btn-green" onclick="startGame()" style="font-size:15px;padding:13px 32px">▶ STARTEN</button>
+    <br><br>
+    <button class="btn btn-gray" onclick="openLb()">🏆 Rangliste</button>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-dead">
+  <div class="ov-card">
+    <div style="font-size:40px;margin-bottom:8px">💀</div>
+    <h2 style="color:#ef4444">GAME OVER</h2>
+    <p class="sub" id="go-stats"></p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn btn-green" onclick="startGame()">Nochmal</button>
+      <button class="btn btn-gray" onclick="openLb()">🏆 Rangliste</button>
+    </div>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-lb">
+  <div class="ov-card">
+    <h2 style="margin-bottom:4px">🏆 Rangliste</h2>
+    <p class="sub">Snake – Höchster Score</p>
+    <div id="lb-list" style="text-align:left;max-height:280px;overflow-y:auto"></div>
+    <button class="btn btn-gray" onclick="closeLb()" style="margin-top:16px">Schließen</button>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const COLS=20,ROWS=20;
+let CELL,OX,OY;
+let snake,dir,inputQ,food,score,level,foodEaten,gameState='idle',lastMoveT=0,moveInterval=180;
+let currentUser=null;
+
+function resize(){
+  canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+  const maxBoard=Math.min(canvas.width*.88,canvas.height*.78);
+  CELL=Math.min(Math.floor(maxBoard/Math.max(COLS,ROWS)),34);
+  OX=Math.floor((canvas.width-COLS*CELL)/2);
+  OY=Math.floor((canvas.height-ROWS*CELL)/2)+16;
+}
+window.addEventListener('resize',resize);resize();
+
+async function init(){
+  try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  requestAnimationFrame(draw);
+}
+
+function initGame(){
+  const mx=Math.floor(COLS/2),my=Math.floor(ROWS/2);
+  snake=[{x:mx,y:my},{x:mx-1,y:my},{x:mx-2,y:my}];
+  dir={x:1,y:0};inputQ=[];score=0;level=1;foodEaten=0;moveInterval=180;
+  spawnFood();
+}
+
+function spawnFood(){
+  const occ=new Set(snake.map(s=>`${s.x},${s.y}`));
+  let fx,fy;
+  do{fx=Math.floor(Math.random()*COLS);fy=Math.floor(Math.random()*ROWS);}
+  while(occ.has(`${fx},${fy}`));
+  food={x:fx,y:fy};
+}
+
+function moveSnake(){
+  if(inputQ.length){
+    const n=inputQ.shift();
+    if(n.x!==-dir.x||n.y!==-dir.y)dir=n;
+  }
+  const head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+  if(head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS){endGame();return;}
+  if(snake.some(s=>s.x===head.x&&s.y===head.y)){endGame();return;}
+  snake.unshift(head);
+  if(head.x===food.x&&head.y===food.y){
+    score+=10*level;foodEaten++;
+    if(foodEaten%5===0){level++;moveInterval=Math.max(60,moveInterval-18);}
+    spawnFood();
+  }else snake.pop();
+}
+
+function draw(ts){
+  requestAnimationFrame(draw);
+  if(gameState==='playing'&&ts-lastMoveT>=moveInterval){moveSnake();lastMoveT=ts;}
+  ctx.fillStyle='#050505';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#090909';ctx.fillRect(OX,OY,COLS*CELL,ROWS*CELL);
+  ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=1;
+  for(let x=0;x<=COLS;x++){ctx.beginPath();ctx.moveTo(OX+x*CELL,OY);ctx.lineTo(OX+x*CELL,OY+ROWS*CELL);ctx.stroke();}
+  for(let y=0;y<=ROWS;y++){ctx.beginPath();ctx.moveTo(OX,OY+y*CELL);ctx.lineTo(OX+COLS*CELL,OY+y*CELL);ctx.stroke();}
+
+  if(food&&gameState!=='idle'){
+    const fx=OX+food.x*CELL+CELL*.5,fy=OY+food.y*CELL+CELL*.5;
+    ctx.shadowColor='#ef4444';ctx.shadowBlur=14;
+    ctx.fillStyle='#dc2626';ctx.beginPath();ctx.arc(fx,fy,CELL*.36,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(fx-CELL*.06,fy-CELL*.09,CELL*.18,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0;ctx.strokeStyle='#15803d';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(fx+1,fy-CELL*.33);ctx.lineTo(fx+CELL*.2,fy-CELL*.47);ctx.stroke();
+  }
+
+  if(snake){
+    for(let i=snake.length-1;i>=0;i--){
+      const s=snake[i],t=i/snake.length;
+      const x=OX+s.x*CELL+2,y=OY+s.y*CELL+2,w=CELL-4;
+      ctx.shadowColor=i===0?'#4ade80':'transparent';ctx.shadowBlur=i===0?10:0;
+      const lum=Math.round(42-t*22);
+      ctx.fillStyle=i===0?'#4ade80':`hsl(142,72%,${lum}%)`;
+      ctx.fillRect(x,y,w,w);ctx.shadowBlur=0;
+      if(i===0){
+        ctx.fillStyle='#052e16';
+        const ex=OX+s.x*CELL+CELL*.5+dir.x*CELL*.18,ey=OY+s.y*CELL+CELL*.5+dir.y*CELL*.18;
+        const px=dir.y*CELL*.16,py=-dir.x*CELL*.16;
+        ctx.beginPath();ctx.arc(ex+px,ey+py,2,0,Math.PI*2);ctx.fill();
+        ctx.beginPath();ctx.arc(ex-px,ey-py,2,0,Math.PI*2);ctx.fill();
+      }
+    }
+  }
+
+  ctx.shadowBlur=0;ctx.textBaseline='bottom';ctx.textAlign='left';
+  ctx.font='bold 13px Inter,sans-serif';
+  const hudY=OY-8;
+  ctx.fillStyle='#6b7280';ctx.fillText('Score',OX,hudY);
+  ctx.fillStyle='#4ade80';ctx.fillText(`${score}`,OX+46,hudY);
+  ctx.fillStyle='#6b7280';ctx.fillText('Level',OX+110,hudY);
+  ctx.fillStyle='#fff';ctx.fillText(`${level}`,OX+152,hudY);
+  ctx.fillStyle='#6b7280';ctx.fillText('Länge',OX+182,hudY);
+  ctx.fillStyle='#fff';ctx.fillText(`${snake?snake.length:0}`,OX+226,hudY);
+  ctx.strokeStyle='#1f2937';ctx.lineWidth=2;ctx.strokeRect(OX-.5,OY-.5,COLS*CELL+1,ROWS*CELL+1);
+}
+
+async function endGame(){
+  gameState='dead';
+  document.getElementById('go-stats').textContent=`Score: ${score.toLocaleString()} · Level ${level} · Länge ${snake.length}`;
+  document.getElementById('ov-dead').classList.remove('hidden');
+  try{await fetch('/api/game-scores/snake',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score})});}catch{}
+}
+
+function startGame(){
+  document.getElementById('ov-start').classList.add('hidden');
+  document.getElementById('ov-dead').classList.add('hidden');
+  initGame();gameState='playing';lastMoveT=performance.now();
+}
+
+async function openLb(){
+  document.getElementById('ov-lb').classList.remove('hidden');
+  const el=document.getElementById('lb-list');
+  el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Laden…</div>';
+  try{
+    const r=await fetch('/api/game-scores/snake'),data=await r.json();
+    if(!data.length){el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Noch keine Einträge</div>';return;}
+    el.innerHTML=data.map((row,i)=>{
+      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+      const me=currentUser&&row.discord_id===currentUser.discord_id;
+      const av=row.avatar?`<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`:(row.username||'?').slice(0,2).toUpperCase();
+      return`<div class="lb-row" style="${me?'background:#0a1a0a;border-radius:5px;':''}">
+        <div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
+        <div class="lb-name">${row.username||'Unbekannt'}</div>
+        <div class="lb-score">${row.score.toLocaleString()}</div>
+      </div>`;
+    }).join('');
+  }catch{el.innerHTML='<div style="text-align:center;color:#ef4444">Fehler</div>';}
+}
+function closeLb(){document.getElementById('ov-lb').classList.add('hidden');}
+
+const DIRS={'arrowup':{x:0,y:-1},'w':{x:0,y:-1},'arrowdown':{x:0,y:1},'s':{x:0,y:1},'arrowleft':{x:-1,y:0},'a':{x:-1,y:0},'arrowright':{x:1,y:0},'d':{x:1,y:0}};
+window.addEventListener('keydown',e=>{
+  const d=DIRS[e.key.toLowerCase()];
+  if(d){e.preventDefault();if(gameState==='playing'&&inputQ.length<3)inputQ.push(d);}
+});
+
+init();
+</script>
+</body>
+</html>

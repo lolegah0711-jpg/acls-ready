@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tetris – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#050505;font-family:'Inter',sans-serif;color:#fff;overflow:hidden;display:flex;align-items:center;justify-content:center;height:100vh;}
+    canvas{display:block;}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.88);z-index:100;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#0c0c0c;border:1px solid #1e1e1e;border-radius:18px;padding:36px 42px;max-width:380px;width:92%;text-align:center;}
+    .ov-card h2{font-size:26px;font-weight:800;margin-bottom:6px;}
+    .sub{color:#6b7280;font-size:13px;margin-bottom:20px;line-height:1.6;}
+    .btn{display:inline-block;padding:11px 26px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;border:none;font-family:inherit;transition:opacity .15s;}
+    .btn:hover{opacity:.85;}
+    .btn-blue{background:#2563eb;color:#fff;}
+    .btn-gray{background:#1f2937;color:#d1d5db;border:1px solid #374151;}
+    .lb-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #141414;font-size:13px;}
+    .lb-rank{width:24px;text-align:center;font-weight:700;}
+    .lb-av{width:26px;height:26px;border-radius:50%;background:#1f2937;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;overflow:hidden;flex-shrink:0;}
+    .lb-av img{width:100%;height:100%;object-fit:cover;}
+    .lb-name{flex:1;font-weight:600;}.lb-score{font-weight:700;color:#60a5fa;}
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="ov" id="ov-start">
+  <div class="ov-card">
+    <div style="font-size:44px;margin-bottom:8px">🧱</div>
+    <h2 style="color:#60a5fa">TETRIS</h2>
+    <p class="sub">
+      ◀ ▶ / A D &nbsp;— Bewegen<br>
+      ▲ / W &nbsp;— Drehen<br>
+      ▼ / S &nbsp;— Schnell fallen<br>
+      Leertaste &nbsp;— Hard Drop<br>
+      C / Shift &nbsp;— Hold
+    </p>
+    <button class="btn btn-blue" onclick="startGame()" style="font-size:15px;padding:13px 32px">▶ STARTEN</button>
+    <br><br>
+    <button class="btn btn-gray" onclick="openLb()">🏆 Rangliste</button>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-dead">
+  <div class="ov-card">
+    <div style="font-size:40px;margin-bottom:8px">💀</div>
+    <h2 style="color:#ef4444">GAME OVER</h2>
+    <p class="sub" id="go-stats"></p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn btn-blue" onclick="startGame()">Nochmal</button>
+      <button class="btn btn-gray" onclick="openLb()">🏆 Rangliste</button>
+    </div>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-lb">
+  <div class="ov-card">
+    <h2 style="margin-bottom:4px">🏆 Rangliste</h2>
+    <p class="sub">Tetris – Höchster Score</p>
+    <div id="lb-list" style="text-align:left;max-height:280px;overflow-y:auto"></div>
+    <button class="btn btn-gray" onclick="closeLb()" style="margin-top:16px">Schließen</button>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const BW=10,BH=20;
+let CELL,BX,BY; // board pixel offset
+
+// Pieces: 7 standard + colors
+const PIECES=[
+  {s:[[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],[[0,0,1,0],[0,0,1,0],[0,0,1,0],[0,0,1,0]],[[0,0,0,0],[0,0,0,0],[1,1,1,1],[0,0,0,0]],[[0,1,0,0],[0,1,0,0],[0,1,0,0],[0,1,0,0]]],c:'#06b6d4'},
+  {s:[[[1,1],[1,1]],[[1,1],[1,1]],[[1,1],[1,1]],[[1,1],[1,1]]],c:'#eab308'},
+  {s:[[[0,1,0],[1,1,1],[0,0,0]],[[0,1,0],[0,1,1],[0,1,0]],[[0,0,0],[1,1,1],[0,1,0]],[[0,1,0],[1,1,0],[0,1,0]]],c:'#a855f7'},
+  {s:[[[0,1,1],[1,1,0],[0,0,0]],[[0,1,0],[0,1,1],[0,0,1]],[[0,0,0],[0,1,1],[1,1,0]],[[1,0,0],[1,1,0],[0,1,0]]],c:'#22c55e'},
+  {s:[[[1,1,0],[0,1,1],[0,0,0]],[[0,0,1],[0,1,1],[0,1,0]],[[0,0,0],[1,1,0],[0,1,1]],[[0,1,0],[1,1,0],[1,0,0]]],c:'#ef4444'},
+  {s:[[[1,0,0],[1,1,1],[0,0,0]],[[0,1,1],[0,1,0],[0,1,0]],[[0,0,0],[1,1,1],[0,0,1]],[[0,1,0],[0,1,0],[1,1,0]]],c:'#3b82f6'},
+  {s:[[[0,0,1],[1,1,1],[0,0,0]],[[0,1,0],[0,1,0],[0,1,1]],[[0,0,0],[1,1,1],[1,0,0]],[[1,1,0],[0,1,0],[0,1,0]]],c:'#f97316'},
+];
+
+let board,cur,held,canHold,bag,nextQ,score,level,lines,gameState='idle',dropT=0,dropInterval=800;
+let lockTimer=0,lockDelay=500,onFloor=false;
+let lastT=0,currentUser=null;
+let softDrop=false,moveL=false,moveR=false,dasL=0,dasR=0;
+
+function resize(){
+  canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+  CELL=Math.min(Math.floor(canvas.height*.84/BH),30);
+  const totalW=BW*CELL+220; // board + side panel
+  BX=Math.floor((canvas.width-totalW)/2)+110;
+  BY=Math.floor((canvas.height-BH*CELL)/2);
+}
+window.addEventListener('resize',resize);resize();
+
+async function init(){
+  try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  requestAnimationFrame(gameLoop);
+}
+
+function makeBag(){const b=[0,1,2,3,4,5,6];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
+function nextPiece(){if(bag.length===0)bag=makeBag();nextQ.push(bag.shift());if(bag.length===0)bag=makeBag();}
+
+function initGame(){
+  board=Array.from({length:BH},()=>new Array(BW).fill(0));
+  bag=makeBag();nextQ=[];
+  for(let i=0;i<5;i++)nextPiece();
+  held=null;canHold=true;score=0;level=1;lines=0;dropInterval=800;
+  spawnPiece();
+}
+
+function spawnPiece(){
+  const pi=nextQ.shift();nextPiece();
+  const shape=PIECES[pi].s[0];
+  cur={pi,rot:0,x:Math.floor((BW-shape[0].length)/2),y:0};
+  onFloor=false;lockTimer=lockDelay;canHold=true;
+  if(collision(cur.x,cur.y,cur.rot)){endGame();return;}
+}
+
+function shape(rot){return PIECES[cur.pi].s[rot%4];}
+function color(pi){return PIECES[pi].c;}
+
+function collision(x,y,rot){
+  const s=PIECES[cur.pi].s[rot%4];
+  for(let r=0;r<s.length;r++)for(let c=0;c<s[r].length;c++){
+    if(!s[r][c])continue;
+    const nx=x+c,ny=y+r;
+    if(nx<0||nx>=BW||ny>=BH)return true;
+    if(ny>=0&&board[ny][nx])return true;
+  }
+  return false;
+}
+
+function lock(){
+  const s=shape(cur.rot);
+  for(let r=0;r<s.length;r++)for(let c=0;c<s[r].length;c++){
+    if(!s[r][c])continue;
+    if(cur.y+r<0){endGame();return;}
+    board[cur.y+r][cur.x+c]=color(cur.pi);
+  }
+  clearLines();spawnPiece();
+}
+
+function clearLines(){
+  let cleared=0;
+  for(let r=BH-1;r>=0;r--){
+    if(board[r].every(c=>c)){board.splice(r,1);board.unshift(new Array(BW).fill(0));cleared++;r++;}
+  }
+  if(cleared){
+    lines+=cleared;
+    score+=[0,100,300,500,800][cleared]*level;
+    const newLevel=Math.floor(lines/10)+1;
+    if(newLevel>level){level=newLevel;dropInterval=Math.max(50,800-(level-1)*70);}
+  }
+}
+
+function rotate(dir){
+  const newRot=(cur.rot+dir+4)%4;
+  const offsets=[0,-1,1,-2,2];
+  for(const ox of offsets){
+    if(!collision(cur.x+ox,cur.y,newRot)){cur.rot=newRot;cur.x+=ox;return;}
+  }
+}
+
+function ghostY(){
+  let y=cur.y;while(!collision(cur.x,y+1,cur.rot))y++;return y;
+}
+
+function tryMove(dx){if(!collision(cur.x+dx,cur.y,cur.rot)){cur.x+=dx;onFloor=false;}}
+function tryDrop(){if(!collision(cur.x,cur.y+1,cur.rot)){cur.y++;onFloor=false;}else onFloor=true;}
+function hardDrop(){let d=0;while(!collision(cur.x,cur.y+1,cur.rot)){cur.y++;d++;}score+=d*2;lock();}
+
+function holdPiece(){
+  if(!canHold)return;canHold=false;
+  const prev=held;held=cur.pi;
+  if(prev===null)spawnPiece();
+  else{cur={pi:prev,rot:0,x:Math.floor((BW-PIECES[prev].s[0][0].length)/2),y:0};onFloor=false;lockTimer=lockDelay;}
+}
+
+function gameLoop(ts){
+  requestAnimationFrame(gameLoop);
+  const dt=Math.min((ts-lastT)/1000,.05);lastT=ts;
+  if(gameState==='playing'){
+    // DAS
+    if(moveL){dasL-=dt*1000;if(dasL<=0){tryMove(-1);dasL=50;}}
+    if(moveR){dasR-=dt*1000;if(dasR<=0){tryMove(1);dasR=50;}}
+    // Drop
+    const interval=softDrop?Math.max(50,dropInterval/8):dropInterval;
+    dropT+=dt*1000;
+    if(dropT>=interval){tryDrop();dropT=0;if(softDrop&&onFloor)score+=0;}
+    // Lock delay
+    if(onFloor){lockTimer-=dt*1000;if(lockTimer<=0)lock();}
+    else lockTimer=lockDelay;
+  }
+  draw();
+}
+
+function drawCell(x,y,col,alpha=1){
+  ctx.globalAlpha=alpha;
+  ctx.fillStyle=col;
+  ctx.fillRect(BX+x*CELL+1,BY+y*CELL+1,CELL-2,CELL-2);
+  ctx.fillStyle='rgba(255,255,255,.18)';
+  ctx.fillRect(BX+x*CELL+1,BY+y*CELL+1,CELL-2,4);
+  ctx.globalAlpha=1;
+}
+
+function drawMini(shape,col,cx,cy,boxSize){
+  const rows=shape.length,cols=shape[0].length;
+  const cs=Math.min(Math.floor((boxSize-8)/Math.max(rows,cols)),CELL);
+  const ox=cx+Math.floor((boxSize-cols*cs)/2);
+  const oy=cy+Math.floor((boxSize-rows*cs)/2);
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+    if(!shape[r][c])continue;
+    ctx.fillStyle=col;ctx.fillRect(ox+c*cs+1,oy+r*cs+1,cs-2,cs-2);
+    ctx.fillStyle='rgba(255,255,255,.18)';ctx.fillRect(ox+c*cs+1,oy+r*cs+1,cs-2,4);
+  }
+}
+
+function draw(){
+  ctx.fillStyle='#050505';ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Board bg
+  ctx.fillStyle='#0a0a0a';ctx.fillRect(BX,BY,BW*CELL,BH*CELL);
+  ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=1;
+  for(let x=0;x<=BW;x++){ctx.beginPath();ctx.moveTo(BX+x*CELL,BY);ctx.lineTo(BX+x*CELL,BY+BH*CELL);ctx.stroke();}
+  for(let y=0;y<=BH;y++){ctx.beginPath();ctx.moveTo(BX,BY+y*CELL);ctx.lineTo(BX+BW*CELL,BY+y*CELL);ctx.stroke();}
+
+  // Placed blocks
+  for(let r=0;r<BH;r++)for(let c=0;c<BW;c++)if(board[r][c])drawCell(c,r,board[r][c]);
+
+  if(cur&&gameState==='playing'){
+    // Ghost
+    const gy=ghostY();
+    const s=shape(cur.rot);
+    for(let r=0;r<s.length;r++)for(let c=0;c<s[r].length;c++){
+      if(!s[r][c])continue;
+      ctx.globalAlpha=.18;ctx.fillStyle=color(cur.pi);
+      ctx.fillRect(BX+(cur.x+c)*CELL+1,BY+(gy+r)*CELL+1,CELL-2,CELL-2);
+      ctx.globalAlpha=1;
+    }
+    // Current piece
+    for(let r=0;r<s.length;r++)for(let c=0;c<s[r].length;c++){
+      if(!s[r][c])continue;
+      if(cur.y+r>=0)drawCell(cur.x+c,cur.y+r,color(cur.pi));
+    }
+  }
+
+  ctx.strokeStyle='#1f2937';ctx.lineWidth=2;ctx.strokeRect(BX-.5,BY-.5,BW*CELL+1,BH*CELL+1);
+
+  // ── SIDE PANEL ──
+  const px=BX+BW*CELL+14,boxW=96,boxH=80;
+  ctx.font='bold 10px Inter,sans-serif';ctx.textAlign='left';ctx.fillStyle='#4b5563';
+
+  // Hold
+  ctx.fillText('HOLD',px,BY+14);
+  ctx.strokeStyle='#1f2937';ctx.lineWidth=1;ctx.strokeRect(px,BY+18,boxW,boxH);
+  if(held!==null)drawMini(PIECES[held].s[0],color(held),px,BY+18,boxW);
+
+  // Score/Level/Lines
+  const sy=BY+boxH+32;
+  ctx.fillStyle='#4b5563';ctx.fillText('SCORE',px,sy);
+  ctx.font='bold 18px Inter,sans-serif';ctx.fillStyle='#60a5fa';ctx.fillText(score.toLocaleString(),px,sy+20);
+  ctx.font='bold 10px Inter,sans-serif';ctx.fillStyle='#4b5563';ctx.fillText('LEVEL',px,sy+44);
+  ctx.font='bold 18px Inter,sans-serif';ctx.fillStyle='#fff';ctx.fillText(level,px,sy+64);
+  ctx.font='bold 10px Inter,sans-serif';ctx.fillStyle='#4b5563';ctx.fillText('LINIEN',px,sy+88);
+  ctx.font='bold 18px Inter,sans-serif';ctx.fillStyle='#fff';ctx.fillText(lines,px,sy+108);
+
+  // Next pieces
+  ctx.font='bold 10px Inter,sans-serif';ctx.fillStyle='#4b5563';ctx.fillText('NEXT',px,sy+132);
+  for(let i=0;i<Math.min(3,nextQ.length);i++){
+    const ny2=sy+142+i*58;
+    ctx.strokeStyle='#1a1a1a';ctx.lineWidth=1;ctx.strokeRect(px,ny2,boxW,54);
+    drawMini(PIECES[nextQ[i]].s[0],color(nextQ[i]),px,ny2,boxW);
+  }
+
+  // Left panel: hold hint
+  const lpx=BX-110;
+  ctx.font='10px Inter,sans-serif';ctx.fillStyle='#374151';ctx.textAlign='left';
+  const hints=['◀▶ Bewegen','▲ Drehen','▼ Schnell','Space Drop','C Hold'];
+  hints.forEach((h,i)=>ctx.fillText(h,lpx,BY+20+i*22));
+}
+
+async function endGame(){
+  gameState='dead';
+  document.getElementById('go-stats').textContent=`Score: ${score.toLocaleString()} · Level ${level} · ${lines} Linien`;
+  document.getElementById('ov-dead').classList.remove('hidden');
+  try{await fetch('/api/game-scores/tetris',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score})});}catch{}
+}
+
+function startGame(){
+  document.getElementById('ov-start').classList.add('hidden');
+  document.getElementById('ov-dead').classList.add('hidden');
+  initGame();gameState='playing';dropT=0;
+}
+
+async function openLb(){
+  document.getElementById('ov-lb').classList.remove('hidden');
+  const el=document.getElementById('lb-list');
+  el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Laden…</div>';
+  try{
+    const r=await fetch('/api/game-scores/tetris'),data=await r.json();
+    if(!data.length){el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Noch keine Einträge</div>';return;}
+    el.innerHTML=data.map((row,i)=>{
+      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+      const me=currentUser&&row.discord_id===currentUser.discord_id;
+      const av=row.avatar?`<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`:(row.username||'?').slice(0,2).toUpperCase();
+      return`<div class="lb-row" style="${me?'background:#0a0f1a;border-radius:5px;':''}">
+        <div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
+        <div class="lb-name">${row.username||'Unbekannt'}</div>
+        <div class="lb-score">${row.score.toLocaleString()}</div>
+      </div>`;
+    }).join('');
+  }catch{el.innerHTML='<div style="text-align:center;color:#ef4444">Fehler</div>';}
+}
+function closeLb(){document.getElementById('ov-lb').classList.add('hidden');}
+
+window.addEventListener('keydown',e=>{
+  if(gameState!=='playing')return;
+  if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A'){e.preventDefault();tryMove(-1);moveL=true;dasL=170;}
+  if(e.key==='ArrowRight'||e.key==='d'||e.key==='D'){e.preventDefault();tryMove(1);moveR=true;dasR=170;}
+  if(e.key==='ArrowUp'||e.key==='w'||e.key==='W'){e.preventDefault();rotate(1);}
+  if(e.key==='ArrowDown'||e.key==='s'||e.key==='S'){e.preventDefault();softDrop=true;}
+  if(e.key===' '){e.preventDefault();hardDrop();}
+  if(e.key==='c'||e.key==='C'||e.key==='Shift'){e.preventDefault();holdPiece();}
+  if(e.key==='z'||e.key==='Z'){e.preventDefault();rotate(-1);}
+});
+window.addEventListener('keyup',e=>{
+  if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A')moveL=false;
+  if(e.key==='ArrowRight'||e.key==='d'||e.key==='D')moveR=false;
+  if(e.key==='ArrowDown'||e.key==='s'||e.key==='S')softDrop=false;
+});
+
+init();
+</script>
+</body>
+</html>

@@ -1428,6 +1428,9 @@ app.post('/api/game-scores/:game', requireLogin, (req, res) => {
 app.get('/game',  (req, res) => res.sendFile(path.join(__dirname, 'public', 'game.html')));
 app.get('/game2', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game2.html')));
 app.get('/game3', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game3.html')));
+app.get('/game4', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game4.html')));
+app.get('/game5', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game5.html')));
+app.get('/game6', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game6.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(PORT, () => console.log(`[ACLS] Server läuft auf http://localhost:${PORT}`));
