@@ -130,14 +130,21 @@ function runEowEvaluation() {
       SELECT nominee_id FROM citizen_votes WHERE week = ?
     ) GROUP BY nominee_id ORDER BY votes DESC LIMIT 1
   `).get(wk, wk);
-  if (!winner) { console.log(`[EoW] ${wk}: keine Stimmen`); return null; }
-  db.prepare('INSERT OR REPLACE INTO eow_winners (user_id, week, vote_count) VALUES (?, ?, ?)')
-    .run(winner.nominee_id, wk, winner.votes);
-  checkAndAwardBadges(winner.nominee_id);
-  console.log(`[EoW] ${wk}: user #${winner.nominee_id} (${winner.votes} Stimmen)`);
-  const winnerUser = db.prepare('SELECT discord_id, username FROM users WHERE id = ?').get(winner.nominee_id);
-  if (winnerUser) queueNotification('eow', winnerUser.discord_id, { username: winnerUser.username, votes: winner.votes, week: wk });
-  return winner;
+  if (winner) {
+    db.prepare('INSERT OR REPLACE INTO eow_winners (user_id, week, vote_count) VALUES (?, ?, ?)')
+      .run(winner.nominee_id, wk, winner.votes);
+    checkAndAwardBadges(winner.nominee_id);
+    console.log(`[EoW] ${wk}: user #${winner.nominee_id} (${winner.votes} Stimmen)`);
+    const winnerUser = db.prepare('SELECT discord_id, username FROM users WHERE id = ?').get(winner.nominee_id);
+    if (winnerUser) queueNotification('eow', winnerUser.discord_id, { username: winnerUser.username, votes: winner.votes, week: wk });
+  } else {
+    console.log(`[EoW] ${wk}: keine Stimmen`);
+  }
+  // Stimmen zurücksetzen damit nächste Woche neu abgestimmt werden kann
+  db.prepare('DELETE FROM eow_votes WHERE week = ?').run(wk);
+  db.prepare('DELETE FROM citizen_votes WHERE week = ?').run(wk);
+  console.log(`[EoW] ${wk}: Stimmen zurückgesetzt`);
+  return winner || null;
 }
 
 // ════════════════════════════════════════════════════════════════
