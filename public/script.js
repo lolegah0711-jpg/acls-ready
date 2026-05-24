@@ -328,7 +328,11 @@ function bootApp() {
   $('adminNavItem').style.display     = isAdmin()     ? '' : 'none';
   $('ausbildungNavItem').style.display = isAusbilder() ? '' : 'none';
   document.querySelectorAll('.nav-item').forEach(el => {
-    el.addEventListener('click', e => { e.preventDefault(); navigate(el.dataset.page); });
+    el.addEventListener('click', e => {
+      if (el.getAttribute('href') && !el.dataset.page) return; // external links open normally
+      e.preventDefault();
+      navigate(el.dataset.page);
+    });
   });
   navigate('dashboard');
   // Abzeichen alle 30 Minuten neu laden wenn Dashboard aktiv
