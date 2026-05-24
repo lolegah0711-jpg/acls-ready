@@ -2053,7 +2053,7 @@ window.openProfileModal = async id => {
         <div class="re-time">${ago(s.taken_at)}</div>
       </div>`).join('') : '<div class="empty" style="padding:.5rem"><p>Keine Tests absolviert</p></div>'}
     <div class="modal-footer">
-      ${u.id === currentUser.id ? `<a href="/game" target="_blank" class="btn btn-ghost" style="color:var(--orange);border-color:rgba(249,115,22,.35)"><i class="fas fa-gamepad"></i> Minispiel</a>` : ''}
+      ${u.id === currentUser.id ? `<a href="/game" target="_blank" class="btn btn-ghost" style="color:var(--orange);border-color:rgba(249,115,22,.35)"><i class="fas fa-car"></i> Autorennen</a><a href="/game2" target="_blank" class="btn btn-ghost" style="color:var(--orange);border-color:rgba(249,115,22,.35)"><i class="fas fa-th-large"></i> Brick Breaker</a>` : ''}
       <button class="btn btn-ghost" onclick="closeModal()">Schließen</button>
     </div>`);
 };

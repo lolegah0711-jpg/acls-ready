@@ -1339,7 +1339,8 @@ app.post('/api/bot-notifications/:id/sent', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  SPA fallback
 // ════════════════════════════════════════════════════════════════
-app.get('/game', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game.html')));
+app.get('/game',  (req, res) => res.sendFile(path.join(__dirname, 'public', 'game.html')));
+app.get('/game2', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game2.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(PORT, () => console.log(`[ACLS] Server läuft auf http://localhost:${PORT}`));
