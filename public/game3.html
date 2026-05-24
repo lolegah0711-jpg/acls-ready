@@ -128,7 +128,7 @@
     // ── Game State ────────────────────────────────────────────────
     let state = 'idle'; // idle | playing | wave_end | dead
     let wave, lives, invincible;
-    let player, bullets, eBullets, enemies, particles, floats, stars;
+    let player, bullets=[], eBullets=[], enemies=[], particles=[], floats=[], stars;
     let fireTimer, spawnQueue, spawnTimer, waveKillCount, waveGoal;
 
     function buildStars() {
