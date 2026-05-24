@@ -1339,6 +1339,62 @@ app.post('/api/bot-notifications/:id/sent', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  SPA fallback
 // ════════════════════════════════════════════════════════════════
+// ── Galaxie-Jäger Charakter ─────────────────────────────────────
+function xpForLevel(lv) { return lv * 100; }
+
+app.get('/api/game-char', requireAuth, (req, res) => {
+  const user = getUser(req);
+  let char = db.prepare('SELECT * FROM game_characters WHERE user_id = ?').get(user.id);
+  if (!char) {
+    db.prepare('INSERT OR IGNORE INTO game_characters (user_id) VALUES (?)').run(user.id);
+    char = db.prepare('SELECT * FROM game_characters WHERE user_id = ?').get(user.id);
+  }
+  res.json(char);
+});
+
+app.post('/api/game-char/save', requireAuth, (req, res) => {
+  const user = getUser(req);
+  const { xp, kills } = req.body;
+  if (typeof xp !== 'number' || typeof kills !== 'number') return res.status(400).json({ error: 'Ungültig' });
+  db.prepare('INSERT OR IGNORE INTO game_characters (user_id) VALUES (?)').run(user.id);
+  let char = db.prepare('SELECT * FROM game_characters WHERE user_id = ?').get(user.id);
+  char.xp += Math.max(0, Math.floor(xp));
+  char.total_kills += Math.max(0, Math.floor(kills));
+  // Level ups
+  let levelsGained = 0;
+  while (char.xp >= xpForLevel(char.level)) {
+    char.xp -= xpForLevel(char.level);
+    char.level++;
+    char.skill_points++;
+    levelsGained++;
+  }
+  db.prepare(`UPDATE game_characters SET level=?,xp=?,skill_points=?,total_kills=? WHERE user_id=?`)
+    .run(char.level, char.xp, char.skill_points, char.total_kills, user.id);
+  res.json({ char, levelsGained });
+});
+
+app.post('/api/game-char/upgrade', requireAuth, (req, res) => {
+  const user  = getUser(req);
+  const { skill } = req.body;
+  const SKILLS = ['skill_damage','skill_firerate','skill_speed','skill_shield'];
+  if (!SKILLS.includes(skill)) return res.status(400).json({ error: 'Unbekannter Skill' });
+  const char = db.prepare('SELECT * FROM game_characters WHERE user_id = ?').get(user.id);
+  if (!char || char.skill_points <= 0) return res.status(400).json({ error: 'Keine Punkte' });
+  if (char[skill] >= 5) return res.status(400).json({ error: 'Bereits maximal' });
+  db.prepare(`UPDATE game_characters SET ${skill}=${skill}+1, skill_points=skill_points-1 WHERE user_id=?`).run(user.id);
+  res.json({ ok: true, char: db.prepare('SELECT * FROM game_characters WHERE user_id=?').get(user.id) });
+});
+
+app.get('/api/game-char/leaderboard', (req, res) => {
+  const rows = db.prepare(`
+    SELECT gc.user_id, u.username, u.avatar, u.discord_id, gc.level, gc.total_kills,
+           gc.skill_damage, gc.skill_firerate, gc.skill_speed, gc.skill_shield
+    FROM game_characters gc JOIN users u ON u.id = gc.user_id
+    ORDER BY gc.level DESC, gc.total_kills DESC LIMIT 15
+  `).all();
+  res.json(rows);
+});
+
 // ── Minigame Ranglisten ─────────────────────────────────────────
 app.get('/api/game-scores/:game', (req, res) => {
   const rows = db.prepare(`
@@ -1364,6 +1420,7 @@ app.post('/api/game-scores/:game', requireAuth, (req, res) => {
 
 app.get('/game',  (req, res) => res.sendFile(path.join(__dirname, 'public', 'game.html')));
 app.get('/game2', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game2.html')));
+app.get('/game3', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game3.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(PORT, () => console.log(`[ACLS] Server läuft auf http://localhost:${PORT}`));

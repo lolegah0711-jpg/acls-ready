@@ -226,6 +226,18 @@ function initDb() {
       created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS game_characters (
+      user_id        INTEGER PRIMARY KEY REFERENCES users(id),
+      level          INTEGER DEFAULT 1,
+      xp             INTEGER DEFAULT 0,
+      skill_damage   INTEGER DEFAULT 0,
+      skill_firerate INTEGER DEFAULT 0,
+      skill_speed    INTEGER DEFAULT 0,
+      skill_shield   INTEGER DEFAULT 0,
+      skill_points   INTEGER DEFAULT 0,
+      total_kills    INTEGER DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS game_scores (
       user_id    INTEGER NOT NULL REFERENCES users(id),
       game       TEXT NOT NULL,
