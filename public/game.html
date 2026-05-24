@@ -80,10 +80,10 @@
     let player, enemies, particles, dashOff, spawnTimer, spawnInterval, speedTimer;
 
     function reset() {
-      score = 0; lives = 3; speed = 4.2; frame = 0; invincible = 0;
+      score = 0; lives = 3; speed = 3.0; frame = 0; invincible = 0;
       player   = { lane: 1, x: LANES[1], targetX: LANES[1], y: H - 95 };
       enemies  = []; particles = [];
-      dashOff  = 0; spawnTimer = 0; spawnInterval = 88; speedTimer = 0;
+      dashOff  = 0; spawnTimer = 0; spawnInterval = 110; speedTimer = 0;
     }
 
     function spawnEnemy() {
@@ -165,8 +165,8 @@
       speedTimer++;
       if (speedTimer >= 300) {
         speedTimer = 0;
-        speed = Math.min(14, speed + 0.6);
-        spawnInterval = Math.max(38, spawnInterval - 6);
+        speed = Math.min(10, speed + 0.35);
+        spawnInterval = Math.max(55, spawnInterval - 5);
       }
 
       // Score (1 point every 5 frames)
