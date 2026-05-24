@@ -226,6 +226,14 @@ function initDb() {
       created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS game_scores (
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      game       TEXT NOT NULL,
+      score      INTEGER NOT NULL DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, game)
+    );
+
     CREATE TABLE IF NOT EXISTS bot_notifications (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       type        TEXT NOT NULL,

@@ -1339,6 +1339,29 @@ app.post('/api/bot-notifications/:id/sent', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  SPA fallback
 // ════════════════════════════════════════════════════════════════
+// ── Minigame Ranglisten ─────────────────────────────────────────
+app.get('/api/game-scores/:game', (req, res) => {
+  const rows = db.prepare(`
+    SELECT gs.user_id, u.username, u.avatar, u.discord_id, gs.score, gs.updated_at
+    FROM game_scores gs JOIN users u ON u.id = gs.user_id
+    WHERE gs.game = ? ORDER BY gs.score DESC LIMIT 15
+  `).all(req.params.game);
+  res.json(rows);
+});
+
+app.post('/api/game-scores/:game', requireAuth, (req, res) => {
+  const user  = getUser(req);
+  const { score } = req.body;
+  if (typeof score !== 'number' || score < 0) return res.status(400).json({ error: 'Ungültiger Score' });
+  db.prepare(`
+    INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id, game) DO UPDATE SET
+      score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+      updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END
+  `).run(user.id, req.params.game, score);
+  res.json({ ok: true });
+});
+
 app.get('/game',  (req, res) => res.sendFile(path.join(__dirname, 'public', 'game.html')));
 app.get('/game2', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game2.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
