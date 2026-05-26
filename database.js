@@ -246,6 +246,16 @@ function initDb() {
       PRIMARY KEY (user_id, game)
     );
 
+    CREATE TABLE IF NOT EXISTS price_items (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      category   TEXT NOT NULL,
+      name       TEXT NOT NULL,
+      price      TEXT NOT NULL,
+      notes      TEXT,
+      sort_order INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS bot_notifications (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       type        TEXT NOT NULL,
@@ -440,6 +450,29 @@ function initDb() {
       sq.run(flug,'Du bist laut §12 betrunken und willst fliegen. Was gilt?','Auf kurzen Strecken erlaubt','Nur tagsüber erlaubt','Absolutes Fahrverbot – Führen unter Alkohol verboten','',2,1);
       sq.run(flug,'Du gefährdest laut §1 Abs. 1 absichtlich andere Luftfahrzeuge. Was droht?','Nur Verwarnung','Kleines Bußgeld','Sofortiger Lizenzentzug und Strafanzeige','',2,1);
     })();
+  }
+
+  // Seed default prices (only if table is empty)
+  if (db.prepare('SELECT COUNT(*) as c FROM price_items').get().c === 0) {
+    const pi = db.prepare('INSERT INTO price_items (category, name, price, notes, sort_order) VALUES (?, ?, ?, ?, ?)');
+    const seed = db.transaction(() => {
+      // Fahrschule
+      pi.run('Fahrschule', 'Theorie Versuch', '500$', 'Pro Versuch, wird automatisch abgezogen', 1);
+      pi.run('Fahrschule', 'PKW',             '1.000$', 'Rechnungspreis – automatischer Kontoabzug', 2);
+      pi.run('Fahrschule', 'LKW',             '3.000$', 'Rechnungspreis – automatischer Kontoabzug', 3);
+      pi.run('Fahrschule', 'Motorrad',        '800$',   'Rechnungspreis – automatischer Kontoabzug', 4);
+      pi.run('Fahrschule', 'Boot',            '4.000$', 'Rechnungspreis – automatischer Kontoabzug', 5);
+      pi.run('Fahrschule', 'Flugzeug',        '6.000$', 'Rechnungspreis – automatischer Kontoabzug', 6);
+      // Kundenpreise
+      pi.run('Kundenpreise', 'Tank leer (5L tanken)',          '500$',            'Gebühr bar auf Hand',         1);
+      pi.run('Kundenpreise', 'VIP Tuning (andere Standorte)',  '5.000$',          'Bar auf Hand',                2);
+      pi.run('Kundenpreise', 'Kennzeichen',                    '1.000$',          'Bar auf Hand',                3);
+      pi.run('Kundenpreise', 'Kennzeichen Abmeldung',          '1.000$',          'Bar auf Hand',                4);
+      pi.run('Kundenpreise', 'Schlosswechsel',                 '1.000$',          'Bar auf Hand',                5);
+      pi.run('Kundenpreise', 'Auto Transport',                 '1.000$ – 2.000$', 'Streckenabhängig, bar auf Hand', 6);
+      pi.run('Kundenpreise', 'Reifenzustand / Ölwechsel',      '2.000$',          'Jeweils, bar auf Hand',       7);
+    });
+    seed();
   }
 
   return db;

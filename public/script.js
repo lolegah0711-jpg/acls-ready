@@ -119,6 +119,7 @@ const PAGES = {
   factions:  { title: 'Fraktionsfarben',        sub: 'Fahrzeugfarben der Fraktionen' },
   map:       { title: 'Abschlepphöfe',          sub: 'Interaktive GTA V Karte' },
   iczeit:    { title: 'IC-Zeit Tracking',       sub: 'Discord Voice-Kanal Anwesenheit' },
+  prices:    { title: 'Preisliste',             sub: 'Fahrschule & Servicepreise' },
   admin:      { title: 'Admin-Panel',            sub: 'Verwaltung & Kontrolle' },
   ausbildung: { title: 'Ausbildung',             sub: 'Gesellen- & Meisterprüfungen' },
   bans:       { title: 'Aktive Sperren',         sub: 'Hausverbot-Verwaltung' },
@@ -384,7 +385,7 @@ function navigate(page) {
   $('pageSubtitle').textContent = p.sub;
   $('pageContent').innerHTML    = loading();
 
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, admin, ausbildung, bans };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, admin, ausbildung, bans };
   (renders[page] || dashboard)();
 }
 
@@ -1712,6 +1713,149 @@ window.liftBan = async id => {
 window.deleteBan = async id => {
   const r = await api(`/api/bans/${id}`, { method: 'DELETE' });
   if (r) { toast('Gelöscht.', 'ok'); bans(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  PREISLISTE
+// ════════════════════════════════════════════════════════════════
+async function prices() {
+  const rows = await api('/api/prices');
+  if (!rows) return;
+
+  const cats = {};
+  rows.forEach(r => { if (!cats[r.category]) cats[r.category] = []; cats[r.category].push(r); });
+
+  const CAT_META = {
+    'Fahrschule':   { icon: 'fa-graduation-cap', col: '#f97316', sub: 'Rechnungspreis – wird automatisch vom Konto abgezogen' },
+    'Kundenpreise': { icon: 'fa-hand-holding-usd', col: '#22c55e', sub: 'Bar auf Hand' },
+  };
+
+  const canEdit = isAdmin() || currentUser?.role === 'member' || currentUser?.role === 'ausbilder';
+
+  $('pageContent').innerHTML = `
+    <div class="pg-header">
+      <div class="pg-header-left"><h2>Preisliste</h2><p>${rows.length} Einträge in ${Object.keys(cats).length} Kategorien</p></div>
+      ${canEdit ? `<button class="btn btn-primary" onclick="openAddPrice()"><i class="fas fa-plus"></i> Preis hinzufügen</button>` : ''}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem">
+      ${Object.entries(cats).map(([cat, items]) => {
+        const m = CAT_META[cat] || { icon: 'fa-tag', col: '#6b7280', sub: '' };
+        return `
+        <div class="card">
+          <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;padding-bottom:.75rem;border-bottom:1px solid var(--border)">
+            <div style="width:38px;height:38px;border-radius:10px;background:${m.col}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="fas ${m.icon}" style="color:${m.col};font-size:1rem"></i>
+            </div>
+            <div>
+              <div style="font-weight:700;font-size:.98rem">${cat}</div>
+              ${m.sub ? `<div style="font-size:.72rem;color:var(--muted)">${m.sub}</div>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.5rem">
+            ${items.map(item => `
+            <div style="display:flex;align-items:center;gap:.75rem;padding:.55rem .65rem;border-radius:8px;background:var(--surface2);transition:background .15s" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:600;font-size:.88rem">${item.name}</div>
+                ${item.notes ? `<div style="font-size:.72rem;color:var(--muted);margin-top:.1rem">${item.notes}</div>` : ''}
+              </div>
+              <div style="font-size:.95rem;font-weight:800;color:${m.col};white-space:nowrap">${item.price}</div>
+              ${canEdit ? `
+              <div style="display:flex;gap:.3rem;flex-shrink:0">
+                <button class="btn btn-ghost btn-sm" title="Bearbeiten" onclick="openEditPrice(${item.id},'${encodeURIComponent(JSON.stringify(item))}')"><i class="fas fa-pen" style="font-size:.7rem"></i></button>
+                <button class="btn btn-danger btn-sm" title="Löschen" onclick="deletePrice(${item.id})"><i class="fas fa-trash" style="font-size:.7rem"></i></button>
+              </div>` : ''}
+            </div>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+window.openAddPrice = () => {
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-tags" style="color:var(--orange);margin-right:.5rem"></i>Preis hinzufügen</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <form onsubmit="submitPrice(event)">
+      <div class="form-row">
+        <div class="form-group"><label>Kategorie</label>
+          <select class="form-control" id="pCat">
+            <option>Fahrschule</option>
+            <option>Kundenpreise</option>
+            <option value="__custom__">Neue Kategorie…</option>
+          </select>
+        </div>
+        <div class="form-group" id="pCatCustomWrap" style="display:none"><label>Kategoriename</label>
+          <input class="form-control" id="pCatCustom" placeholder="z.B. Sonderleistungen">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Bezeichnung</label><input class="form-control" id="pName" placeholder="z.B. PKW" required></div>
+        <div class="form-group"><label>Preis</label><input class="form-control" id="pPrice" placeholder="z.B. 1.000$" required></div>
+      </div>
+      <div class="form-group"><label>Hinweis (optional)</label><input class="form-control" id="pNotes" placeholder="z.B. Bar auf Hand"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
+      </div>
+    </form>`);
+  document.getElementById('pCat').addEventListener('change', function() {
+    const wrap = document.getElementById('pCatCustomWrap');
+    wrap.style.display = this.value === '__custom__' ? '' : 'none';
+  });
+};
+
+window.openEditPrice = (id, encoded) => {
+  const item = JSON.parse(decodeURIComponent(encoded));
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-pen" style="color:var(--orange);margin-right:.5rem"></i>Preis bearbeiten</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <form onsubmit="submitEditPrice(event,${id})">
+      <div class="form-row">
+        <div class="form-group"><label>Kategorie</label><input class="form-control" id="epCat" value="${item.category}" required></div>
+        <div class="form-group"><label>Bezeichnung</label><input class="form-control" id="epName" value="${item.name}" required></div>
+      </div>
+      <div class="form-group"><label>Preis</label><input class="form-control" id="epPrice" value="${item.price}" required></div>
+      <div class="form-group"><label>Hinweis (optional)</label><input class="form-control" id="epNotes" value="${item.notes||''}"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
+      </div>
+    </form>`);
+};
+
+window.submitPrice = async e => {
+  e.preventDefault();
+  const catSel = document.getElementById('pCat').value;
+  const category = catSel === '__custom__' ? document.getElementById('pCatCustom').value.trim() : catSel;
+  if (!category) return;
+  const r = await api('/api/prices', { method: 'POST', body: {
+    category,
+    name:  document.getElementById('pName').value,
+    price: document.getElementById('pPrice').value,
+    notes: document.getElementById('pNotes').value,
+  }});
+  if (r) { closeModal(); toast('Preis gespeichert!', 'ok'); prices(); }
+};
+
+window.submitEditPrice = async (e, id) => {
+  e.preventDefault();
+  const r = await api(`/api/prices/${id}`, { method: 'PATCH', body: {
+    category: document.getElementById('epCat').value,
+    name:     document.getElementById('epName').value,
+    price:    document.getElementById('epPrice').value,
+    notes:    document.getElementById('epNotes').value,
+  }});
+  if (r) { closeModal(); toast('Gespeichert!', 'ok'); prices(); }
+};
+
+window.deletePrice = async id => {
+  if (!confirm('Preis löschen?')) return;
+  const r = await api(`/api/prices/${id}`, { method: 'DELETE' });
+  if (r) { toast('Gelöscht.', 'ok'); prices(); }
 };
 
 // ════════════════════════════════════════════════════════════════

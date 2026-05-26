@@ -1353,6 +1353,36 @@ app.post('/api/bot-notifications/:id/sent', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  SPA fallback
 // ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+//  PREISLISTE
+// ════════════════════════════════════════════════════════════════
+app.get('/api/prices', requireAuth, (req, res) => {
+  res.json(db.prepare('SELECT * FROM price_items ORDER BY category, sort_order, id').all());
+});
+
+app.post('/api/prices', requireAuth, (req, res) => {
+  const { category, name, price, notes } = req.body;
+  if (!category?.trim() || !name?.trim() || !price?.trim()) return res.status(400).json({ error: 'Fehlende Felder' });
+  const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM price_items WHERE category = ?').get(category.trim()).m;
+  const r = db.prepare('INSERT INTO price_items (category, name, price, notes, sort_order) VALUES (?, ?, ?, ?, ?)')
+    .run(category.trim(), name.trim(), price.trim(), notes?.trim() || null, maxOrder + 1);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.patch('/api/prices/:id', requireAuth, (req, res) => {
+  const { category, name, price, notes } = req.body;
+  const item = db.prepare('SELECT id FROM price_items WHERE id = ?').get(+req.params.id);
+  if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
+  db.prepare('UPDATE price_items SET category=?, name=?, price=?, notes=? WHERE id=?')
+    .run(category.trim(), name.trim(), price.trim(), notes?.trim() || null, +req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/prices/:id', requireAuth, (req, res) => {
+  db.prepare('DELETE FROM price_items WHERE id = ?').run(+req.params.id);
+  res.json({ ok: true });
+});
+
 // ── Galaxie-Jäger Charakter ─────────────────────────────────────
 function xpForLevel(lv) { return lv * 100; }
 
