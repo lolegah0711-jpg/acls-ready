@@ -914,7 +914,7 @@ window.selectOpt = function(i) {
   const qst = activeQuiz.questions[activeQuiz.current];
   activeQuiz.answers[qst.id] = i;
   if (qst.is_ko && i !== qst.correct_answer) {
-    api('/api/exams/ko-fail', { method: 'POST', body: { citizen_name: activeQuiz.citizenName, citizen_id: activeQuiz.citizenId, category_id: activeQuiz.category_id } })
+    api('/api/exams/ko-fail', { method: 'POST', body: { citizen_name: activeQuiz.citizenName, citizen_id: activeQuiz.citizenId, category_id: activeQuiz.category_id, question: qst.question } })
       .then(r => {
         const banNote = (r?.banId && activeQuiz.citizenName)
           ? `<div style="margin-top:.75rem;padding:.6rem .9rem;background:rgba(239,68,68,.1);border-radius:var(--r);border:1px solid rgba(239,68,68,.25);font-size:.82rem;color:#ef4444"><i class="fas fa-ban" style="margin-right:.4rem"></i><b>${activeQuiz.citizenName}</b> wurde automatisch für 24 Stunden gesperrt.</div>` : '';

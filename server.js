@@ -488,13 +488,14 @@ function createBan(db, personName, personId, reason, issuedById) {
 
 // K.O.-Frage falsch → sofort ban + registry-Eintrag
 app.post('/api/exams/ko-fail', requireAuth, (req, res) => {
-  const { citizen_name, citizen_id, category_id } = req.body;
+  const { citizen_name, citizen_id, category_id, question } = req.body;
   const user = getUser(req);
   const category = db.prepare('SELECT name FROM exam_categories WHERE id = ?').get(+category_id);
   let banId = null;
   if (citizen_name) {
-    db.prepare(`INSERT INTO registry (citizen_name, citizen_id, category_id, examiner_id, exam_type, passed) VALUES (?, ?, ?, ?, 'Theorie', 0)`)
-      .run(citizen_name, citizen_id || null, +category_id, user.id);
+    const notesJson = question ? JSON.stringify({ wrong: [question] }) : null;
+    db.prepare(`INSERT INTO registry (citizen_name, citizen_id, category_id, examiner_id, exam_type, passed, notes) VALUES (?, ?, ?, ?, 'Theorie', 0, ?)`)
+      .run(citizen_name, citizen_id || null, +category_id, user.id, notesJson);
     banId = createBan(db, citizen_name, citizen_id, `K.O.-Frage falsch – ${category?.name || ''}`, user.id);
   }
   delete req.session.activeExam;
