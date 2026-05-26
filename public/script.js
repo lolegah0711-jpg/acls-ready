@@ -115,7 +115,7 @@ const PAGES = {
   activity:  { title: 'Aktivität',              sub: 'Letzte Ereignisse' },
   eow:       { title: 'Mitarbeiter der Woche',  sub: 'Wöchentliche Abstimmung' },
   exams:     { title: 'Prüfung starten',        sub: 'Theorie & Praxis' },
-  registry:  { title: 'Bürger Register',        sub: 'Alle Führerschein-Inhaber' },
+  registry:  { title: 'Bürgerregister',          sub: 'Alle Führerschein-Inhaber' },
   factions:  { title: 'Fraktionsfarben',        sub: 'Fahrzeugfarben der Fraktionen' },
   map:       { title: 'Abschlepphöfe',          sub: 'Interaktive GTA V Karte' },
   iczeit:    { title: 'IC-Zeit Tracking',       sub: 'Discord Voice-Kanal Anwesenheit' },
@@ -1112,7 +1112,11 @@ async function registry() {
     if (!grouped[key]) grouped[key] = { name: r.citizen_name, citizenId: r.citizen_id, entries: [] };
     grouped[key].entries.push(r);
   });
-  const citizens = Object.values(grouped).sort((a, b) => a.name.localeCompare(b.name));
+  const citizens = Object.values(grouped).sort((a, b) => {
+    const aT = Math.max(...a.entries.map(e => new Date(e.registered_at).getTime()));
+    const bT = Math.max(...b.entries.map(e => new Date(e.registered_at).getTime()));
+    return bT - aT;
+  });
 
   const CAT_COLORS = { PKW: '#f97316', Motorrad: '#ef4444', Boot: '#3b82f6', LKW: '#22c55e', Flugschein: '#a855f7' };
 
@@ -1152,14 +1156,24 @@ async function registry() {
           <table class="data-tbl" style="font-size:.82rem">
             <thead><tr><th>Prüfung</th><th>Typ</th><th>Prüfer</th><th>Datum</th><th>Status</th>${isAdmin() ? '<th></th>' : ''}</tr></thead>
             <tbody>
-              ${c.entries.sort((a,b) => new Date(b.registered_at)-new Date(a.registered_at)).map(e => `<tr>
-                <td><i class="fas ${e.icon}" style="color:${CAT_COLORS[e.category_name]||'var(--orange)'};margin-right:.35rem"></i>${e.category_name}</td>
-                <td><span class="badge ${e.exam_type === 'Praxis' ? 'badge-b' : 'badge-m'}">${e.exam_type}</span></td>
-                <td>${e.examiner_name}</td>
-                <td>${fmt(e.registered_at)}</td>
-                <td><span class="badge ${e.passed ? 'badge-g' : 'badge-r'}">${e.passed ? 'Bestanden' : 'Nicht bestanden'}</span></td>
-                ${isAdmin() ? `<td><button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteRegistry(${e.id})"><i class="fas fa-trash"></i></button></td>` : ''}
-              </tr>`).join('')}
+              ${c.entries.sort((a,b) => new Date(b.registered_at)-new Date(a.registered_at)).map(e => {
+                let wrongQs = [];
+                try { wrongQs = JSON.parse(e.notes || '{}').wrong || []; } catch {}
+                const cols = isAdmin() ? 6 : 5;
+                return `<tr>
+                  <td><i class="fas ${e.icon}" style="color:${CAT_COLORS[e.category_name]||'var(--orange)'};margin-right:.35rem"></i>${e.category_name}</td>
+                  <td><span class="badge ${e.exam_type === 'Praxis' ? 'badge-b' : 'badge-m'}">${e.exam_type}</span></td>
+                  <td>${e.examiner_name}</td>
+                  <td>${fmt(e.registered_at)}</td>
+                  <td><span class="badge ${e.passed ? 'badge-g' : 'badge-r'}">${e.passed ? 'Bestanden' : 'Nicht bestanden'}</span></td>
+                  ${isAdmin() ? `<td><button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteRegistry(${e.id})"><i class="fas fa-trash"></i></button></td>` : ''}
+                </tr>${wrongQs.length ? `<tr style="background:rgba(239,68,68,.04)">
+                  <td colspan="${cols}" style="padding:.45rem .9rem .6rem">
+                    <div style="font-size:.72rem;font-weight:700;color:#ef4444;margin-bottom:.3rem"><i class="fas fa-times-circle" style="margin-right:.3rem"></i>Falsch beantwortet (${wrongQs.length})</div>
+                    <ul style="margin:0;padding-left:1.1rem;font-size:.78rem;color:#fca5a5;line-height:1.6">${wrongQs.map(q => `<li>${q}</li>`).join('')}</ul>
+                  </td>
+                </tr>` : ''}`;
+              }).join('')}
             </tbody>
           </table>
         </div>

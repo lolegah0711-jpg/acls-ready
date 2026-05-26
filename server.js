@@ -426,7 +426,7 @@ app.post('/api/exams/submit', requireAuth, (req, res) => {
   if (!exam) return res.status(400).json({ error: 'Kein aktiver Test' });
 
   const placeholders = exam.question_ids.map(() => '?').join(',');
-  const questions = db.prepare(`SELECT id, correct_answer FROM exam_questions WHERE id IN (${placeholders})`).all(...exam.question_ids);
+  const questions = db.prepare(`SELECT id, question, correct_answer FROM exam_questions WHERE id IN (${placeholders})`).all(...exam.question_ids);
 
   let score = 0;
   const results = questions.map(q => {
@@ -440,12 +440,18 @@ app.post('/api/exams/submit', requireAuth, (req, res) => {
   db.prepare('INSERT INTO exam_sessions (user_id, category_id, mode, score, total, passed) VALUES (?, ?, ?, ?, ?, ?)')
     .run(user.id, exam.category_id, exam.mode, score, total, passed ? 1 : 0);
 
+  const wrongQuestions = results
+    .filter(r => !r.correct)
+    .map(r => questions.find(q => q.id === r.id)?.question)
+    .filter(Boolean);
+  const notesJson = wrongQuestions.length ? JSON.stringify({ wrong: wrongQuestions }) : null;
+
   let registryId = null;
   const category = db.prepare('SELECT name FROM exam_categories WHERE id = ?').get(exam.category_id);
-  if (passed && exam.citizenName) {
-    const r = db.prepare(`INSERT INTO registry (citizen_name, citizen_id, category_id, examiner_id, exam_type, passed)
-      VALUES (?, ?, ?, ?, 'Theorie', 1)`)
-      .run(exam.citizenName, exam.citizenId || null, exam.category_id, user.id);
+  if (exam.citizenName) {
+    const r = db.prepare(`INSERT INTO registry (citizen_name, citizen_id, category_id, examiner_id, exam_type, passed, notes)
+      VALUES (?, ?, ?, ?, 'Theorie', ?, ?)`)
+      .run(exam.citizenName, exam.citizenId || null, exam.category_id, user.id, passed ? 1 : 0, notesJson);
     registryId = r.lastInsertRowid;
   }
 
