@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sky Cop – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#050a1a;font-family:'Inter',sans-serif;color:#fff;overflow:hidden;display:flex;align-items:center;justify-content:center;height:100vh;}
+    canvas{display:block;}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.88);z-index:100;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#0c1020;border:1px solid #1e2a4a;border-radius:18px;padding:36px 42px;max-width:380px;width:92%;text-align:center;}
+    .ov-card h2{font-size:26px;font-weight:800;margin-bottom:6px;}
+    .sub{color:#6b7280;font-size:14px;margin-bottom:20px;line-height:1.5;}
+    .btn{display:inline-block;padding:11px 26px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;border:none;font-family:inherit;transition:opacity .15s;}
+    .btn:hover{opacity:.85;}
+    .btn-blue{background:#1d4ed8;color:#fff;}
+    .btn-gray{background:#1f2937;color:#d1d5db;border:1px solid #374151;}
+    .lb-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #141414;font-size:13px;}
+    .lb-rank{width:24px;text-align:center;font-weight:700;}
+    .lb-av{width:26px;height:26px;border-radius:50%;background:#1f2937;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;overflow:hidden;flex-shrink:0;}
+    .lb-av img{width:100%;height:100%;object-fit:cover;}
+    .lb-name{flex:1;font-weight:600;}.lb-score{font-weight:700;color:#60a5fa;}
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="ov" id="ov-start">
+  <div class="ov-card">
+    <div style="font-size:52px;margin-bottom:8px">🚁</div>
+    <h2 style="color:#60a5fa">SKY COP</h2>
+    <p class="sub">Weiche den Gebäuden aus!<br>Leertaste, Klick oder Tippen zum Fliegen.<br>Je weiter du fliegst, desto schneller wird es.</p>
+    <button class="btn btn-blue" onclick="startGame()" style="font-size:15px;padding:13px 32px">▶ FLIEGEN</button>
+    <br><br>
+    <button class="btn btn-gray" onclick="openLb()">🏆 Rangliste</button>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-dead">
+  <div class="ov-card">
+    <div style="font-size:40px;margin-bottom:8px">💥</div>
+    <h2 style="color:#ef4444">ABGESTÜRZT</h2>
+    <p class="sub" id="go-stats"></p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn btn-blue" onclick="startGame()">Nochmal</button>
+      <button class="btn btn-gray" onclick="openLb()">🏆 Rangliste</button>
+    </div>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-lb">
+  <div class="ov-card">
+    <h2 style="margin-bottom:4px">🏆 Rangliste</h2>
+    <p class="sub">Sky Cop – Höchste Distanz</p>
+    <div id="lb-list" style="text-align:left;max-height:280px;overflow-y:auto"></div>
+    <button class="btn btn-gray" onclick="closeLb()" style="margin-top:16px">Schließen</button>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+let W,H,SCALE;
+let heli,pipes,score,bestScore=0,gameState='idle',frameId,lastT=0;
+let currentUser=null,particlePool=[];
+
+// Game constants (base values, scale with SCALE)
+const GRAVITY=0.38, JUMP=-7.2, PIPE_W=52, GAP_MIN=110, GAP_MAX=190,
+      PIPE_SPEED_BASE=2.4, PIPE_SPEED_MAX=5.2, PIPE_INTERVAL=1700;
+
+let pipeSpeed=PIPE_SPEED_BASE, lastPipe=0, groundY=0;
+
+function resize(){
+  W=canvas.width=window.innerWidth;
+  H=canvas.height=window.innerHeight;
+  SCALE=Math.min(W,H)/600;
+  groundY=H-40*Math.max(SCALE,0.5);
+}
+window.addEventListener('resize',resize);resize();
+
+async function init(){
+  try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  drawIdle();
+}
+
+// ── IDLE BACKGROUND ──
+function drawIdle(){
+  ctx.fillStyle='#050a1a';ctx.fillRect(0,0,W,H);
+  drawCity(0);drawGround();
+  requestAnimationFrame(drawIdle);
+}
+
+// ── GAME INIT ──
+function startGame(){
+  document.getElementById('ov-start').classList.add('hidden');
+  document.getElementById('ov-dead').classList.add('hidden');
+  heli={x:W*0.22,y:H/2,vy:0,w:44*SCALE,h:28*SCALE,angle:0};
+  pipes=[];score=0;particlePool=[];
+  pipeSpeed=PIPE_SPEED_BASE*SCALE;
+  lastPipe=performance.now()-800;
+  gameState='playing';
+  cancelAnimationFrame(frameId);
+  lastT=performance.now();
+  frameId=requestAnimationFrame(loop);
+}
+
+// ── MAIN LOOP ──
+function loop(ts){
+  frameId=requestAnimationFrame(loop);
+  const dt=Math.min(ts-lastT,50);lastT=ts;
+  update(ts,dt);
+  render(ts);
+}
+
+function update(ts,dt){
+  if(gameState!=='playing')return;
+
+  // Heli physics
+  heli.vy+=GRAVITY*(dt/16);
+  heli.y+=heli.vy*(dt/16);
+  heli.angle=Math.max(-25,Math.min(40,heli.vy*2.5));
+
+  // Ground / ceiling collision
+  if(heli.y+heli.h/2>=groundY){crash();return;}
+  if(heli.y-heli.h/2<=0){heli.y=heli.h/2;heli.vy=0;}
+
+  // Spawn pipes
+  if(ts-lastPipe>PIPE_INTERVAL){
+    lastPipe=ts;
+    const gap=lerp(GAP_MAX,GAP_MIN,Math.min(score/40,1))*SCALE;
+    const minTop=60*SCALE,maxTop=groundY-gap-60*SCALE;
+    const topH=minTop+Math.random()*(maxTop-minTop);
+    pipes.push({x:W,topH,botY:topH+gap,passed:false});
+  }
+
+  // Move pipes, check collision
+  const pw=PIPE_W*SCALE;
+  for(let i=pipes.length-1;i>=0;i--){
+    const p=pipes[i];
+    p.x-=pipeSpeed*(dt/16);
+
+    // Score
+    if(!p.passed&&p.x+pw<heli.x-heli.w/2){
+      p.passed=true;score++;
+      // Increase speed gradually
+      pipeSpeed=Math.min(PIPE_SPEED_MAX*SCALE,(PIPE_SPEED_BASE+score*0.05)*SCALE);
+    }
+
+    // Remove off-screen
+    if(p.x+pw<0){pipes.splice(i,1);continue;}
+
+    // Collision AABB (slightly inset for forgiving hitbox)
+    const margin=4*SCALE;
+    const hx1=heli.x-heli.w/2+margin,hx2=heli.x+heli.w/2-margin;
+    const hy1=heli.y-heli.h/2+margin,hy2=heli.y+heli.h/2-margin;
+    if(hx2>p.x+margin&&hx1<p.x+pw-margin){
+      if(hy1<p.topH||hy2>p.botY){crash();return;}
+    }
+  }
+
+  // Particles age
+  for(let i=particlePool.length-1;i>=0;i--){
+    const pt=particlePool[i];
+    pt.life-=dt;pt.x+=pt.vx*(dt/16);pt.y+=pt.vy*(dt/16);pt.vy+=0.15*(dt/16);
+    if(pt.life<=0)particlePool.splice(i,1);
+  }
+}
+
+function lerp(a,b,t){return a+(b-a)*t;}
+
+function crash(){
+  gameState='dead';
+  spawnParticles(heli.x,heli.y,16,'#ef4444');
+  spawnParticles(heli.x,heli.y,8,'#fbbf24');
+  if(score>bestScore)bestScore=score;
+  document.getElementById('go-stats').textContent=`Gebäude durchflogen: ${score}${score>0&&score===bestScore?' 🏆 Neuer Rekord!':''}`;
+  document.getElementById('ov-dead').classList.remove('hidden');
+  submitScore(score);
+}
+
+function spawnParticles(x,y,n,col){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2,spd=1+Math.random()*4;
+    particlePool.push({x,y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd-2,life:400+Math.random()*300,col,size:2+Math.random()*4});
+  }
+}
+
+// ── RENDER ──
+function render(ts){
+  ctx.fillStyle='#050a1a';ctx.fillRect(0,0,W,H);
+
+  // Sky gradient
+  const sky=ctx.createLinearGradient(0,0,0,groundY);
+  sky.addColorStop(0,'#070f2e');sky.addColorStop(1,'#0d1a40');
+  ctx.fillStyle=sky;ctx.fillRect(0,0,W,groundY);
+
+  // Stars
+  ctx.fillStyle='rgba(255,255,255,.6)';
+  for(let i=0;i<80;i++){
+    const sx=((i*137+ts*0.008*(i%3===0?1:-0.5))%W+W)%W;
+    const sy=(i*73)%groundY*0.6;
+    ctx.fillRect(sx,sy,i%5===0?2:1,i%5===0?2:1);
+  }
+
+  drawCity(ts);
+
+  // Pipes
+  const pw=PIPE_W*SCALE;
+  ctx.save();
+  for(const p of pipes){
+    // Top pipe
+    drawPipe(p.x,0,pw,p.topH,true);
+    // Bottom pipe
+    drawPipe(p.x,p.botY,pw,groundY-p.botY,false);
+    // Gap line (subtle)
+    ctx.strokeStyle='rgba(96,165,250,.12)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(p.x,p.topH);ctx.lineTo(p.x+pw,p.topH);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(p.x,p.botY);ctx.lineTo(p.x+pw,p.botY);ctx.stroke();
+  }
+  ctx.restore();
+
+  drawGround();
+
+  // Particles
+  for(const pt of particlePool){
+    ctx.globalAlpha=Math.min(1,pt.life/200);
+    ctx.fillStyle=pt.col;
+    ctx.beginPath();ctx.arc(pt.x,pt.y,pt.size,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // Helicopter
+  if(gameState!=='dead'||particlePool.length>0){
+    drawHeli(heli.x,heli.y,heli.angle,ts,gameState==='dead');
+  }
+
+  // HUD
+  if(gameState==='playing'||gameState==='dead'){
+    ctx.save();
+    ctx.textAlign='center';
+    ctx.shadowColor='rgba(0,0,0,.8)';ctx.shadowBlur=8;
+    ctx.font=`bold ${Math.round(36*SCALE)}px Inter,sans-serif`;
+    ctx.fillStyle='#fff';ctx.fillText(score,W/2,60*SCALE);
+    if(bestScore>0&&gameState==='playing'){
+      ctx.font=`bold ${Math.round(14*SCALE)}px Inter,sans-serif`;
+      ctx.fillStyle='rgba(255,255,255,.5)';ctx.fillText(`Rekord: ${bestScore}`,W/2,82*SCALE);
+    }
+    ctx.restore();
+  }
+
+  // Idle hint
+  if(gameState==='idle'){
+    ctx.fillStyle='rgba(255,255,255,.18)';ctx.textAlign='center';
+    ctx.font=`${Math.round(13*SCALE)}px Inter,sans-serif`;
+    ctx.fillText('Leertaste oder Klick zum Starten',W/2,H-80*SCALE);
+  }
+}
+
+function drawPipe(x,y,w,h,isTop){
+  const grad=ctx.createLinearGradient(x,0,x+w,0);
+  grad.addColorStop(0,'#1a3a6e');grad.addColorStop(0.4,'#2563eb');grad.addColorStop(1,'#1e40af');
+  ctx.fillStyle=grad;ctx.fillRect(x,y,w,h);
+  // Cap
+  const capH=16*SCALE,capX=x-4*SCALE,capW=w+8*SCALE;
+  const capY=isTop?y+h-capH:y;
+  ctx.fillStyle='#3b82f6';ctx.fillRect(capX,capY,capW,capH);
+  // Highlight
+  ctx.fillStyle='rgba(255,255,255,.08)';ctx.fillRect(x+2*SCALE,y,4*SCALE,h);
+  // Window details
+  for(let wy=y+20*SCALE;wy<y+h-20*SCALE;wy+=30*SCALE){
+    ctx.fillStyle='rgba(96,165,250,.2)';ctx.fillRect(x+8*SCALE,wy,w-16*SCALE,10*SCALE);
+  }
+}
+
+function drawGround(){
+  ctx.fillStyle='#0f172a';ctx.fillRect(0,groundY,W,H-groundY);
+  ctx.fillStyle='#1e3a5f';ctx.fillRect(0,groundY,W,3*Math.max(SCALE,0.5));
+  // Road markings
+  ctx.fillStyle='rgba(255,255,255,.15)';
+  const dashW=30*SCALE,dashH=3*Math.max(SCALE,0.5),dashGap=20*SCALE;
+  const ry=groundY+(H-groundY)/2-dashH/2;
+  for(let dx=0;dx<W;dx+=dashW+dashGap){
+    ctx.fillRect(dx,ry,dashW,dashH);
+  }
+}
+
+function drawCity(ts){
+  // Far buildings (parallax slow)
+  const scroll=gameState==='playing'?(ts*0.015)%W:0;
+  const bldgs=[
+    [0,.18,'#0a1628'],[80,.28,'#0d1f38'],[160,.22,'#080f20'],[240,.32,'#0c1a30'],
+    [320,.25,'#0a1530'],[400,.20,'#0d1e38'],[480,.30,'#090e1f'],[560,.24,'#0b1830'],
+    [640,.18,'#0c1c38'],[720,.27,'#080e1e'],[800,.22,'#0d1f30'],
+  ];
+  for(const [bx,frac,col] of bldgs){
+    const x=((bx-scroll*0.3)%W+W)%W;
+    const bh=groundY*frac;
+    ctx.fillStyle=col;ctx.fillRect(x,groundY-bh,60*SCALE,bh);
+    // Windows
+    for(let wy=groundY-bh+5*SCALE;wy<groundY-5*SCALE;wy+=10*SCALE){
+      for(let wx=x+4*SCALE;wx<x+56*SCALE;wx+=8*SCALE){
+        const lit=Math.sin((wx+wy+ts*0.001)*0.7)>0.3;
+        ctx.fillStyle=lit?'rgba(255,220,100,.25)':'rgba(0,0,0,.3)';
+        ctx.fillRect(wx,wy,5*SCALE,5*SCALE);
+      }
+    }
+  }
+  // Police lights on rooftops
+  const pl=gameState==='playing'?(ts*0.002)%1:0;
+  ctx.fillStyle=pl>0.5?'rgba(239,68,68,.6)':'rgba(59,130,246,.6)';
+  ctx.shadowColor=pl>0.5?'#ef4444':'#3b82f6';ctx.shadowBlur=8;
+  for(const [bx,frac] of bldgs){
+    const x=((bx-scroll*0.3)%W+W)%W;
+    ctx.fillRect(x+28*SCALE,groundY-groundY*frac-4*SCALE,4*SCALE,4*SCALE);
+  }
+  ctx.shadowBlur=0;
+}
+
+function drawHeli(x,y,angle,ts,crashed){
+  if(crashed)return;
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.rotate(angle*Math.PI/180);
+
+  const s=SCALE;
+
+  // Body shadow
+  ctx.fillStyle='rgba(0,0,0,.3)';
+  ctx.beginPath();ctx.ellipse(2*s,2*s,22*s,10*s,0,0,Math.PI*2);ctx.fill();
+
+  // Body
+  ctx.fillStyle='#1d4ed8';
+  ctx.beginPath();ctx.ellipse(0,0,20*s,9*s,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#2563eb';
+  ctx.beginPath();ctx.ellipse(-2*s,-1*s,14*s,7*s,0,0,Math.PI*2);ctx.fill();
+
+  // Cockpit window
+  ctx.fillStyle='rgba(147,210,255,.85)';
+  ctx.beginPath();ctx.ellipse(8*s,-1*s,8*s,5*s,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.4)';
+  ctx.beginPath();ctx.ellipse(6*s,-2*s,4*s,2*s,-0.3,0,Math.PI*2);ctx.fill();
+
+  // Police stripe
+  ctx.fillStyle='#ef4444';
+  ctx.fillRect(-18*s,-2*s,36*s,3*s);
+
+  // Tail
+  ctx.fillStyle='#1e40af';
+  ctx.beginPath();ctx.moveTo(-20*s,-3*s);ctx.lineTo(-32*s,0);ctx.lineTo(-20*s,4*s);ctx.closePath();ctx.fill();
+
+  // Tail rotor
+  ctx.fillStyle='rgba(255,255,255,.5)';
+  ctx.fillRect(-30*s,-7*s,3*s,14*s);
+
+  // Main rotor (spinning)
+  const rAngle=(ts*0.018)%(Math.PI*2);
+  ctx.strokeStyle='rgba(200,220,255,.8)';ctx.lineWidth=2.5*s;
+  ctx.save();ctx.rotate(rAngle);
+  ctx.beginPath();ctx.moveTo(-26*s,0);ctx.lineTo(26*s,0);ctx.stroke();
+  ctx.rotate(Math.PI/2);
+  ctx.beginPath();ctx.moveTo(-26*s,0);ctx.lineTo(26*s,0);ctx.stroke();
+  ctx.restore();
+
+  // Skids
+  ctx.strokeStyle='#93c5fd';ctx.lineWidth=2*s;
+  ctx.beginPath();ctx.moveTo(-12*s,9*s);ctx.lineTo(12*s,9*s);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-12*s,9*s);ctx.lineTo(-14*s,6*s);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(12*s,9*s);ctx.lineTo(14*s,6*s);ctx.stroke();
+
+  // Police lights on top
+  const lt=Math.floor(ts/250)%2===0;
+  ctx.fillStyle=lt?'#ef4444':'#3b82f6';
+  ctx.shadowColor=lt?'#ef4444':'#3b82f6';ctx.shadowBlur=12;
+  ctx.beginPath();ctx.arc(0,-10*s,3*s,0,Math.PI*2);ctx.fill();
+  ctx.shadowBlur=0;
+
+  ctx.restore();
+}
+
+// ── INPUT ──
+function flap(){
+  if(gameState==='playing')heli.vy=JUMP*Math.max(SCALE,0.7);
+  else if(gameState==='idle')startGame();
+}
+window.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();flap();}});
+canvas.addEventListener('click',()=>{if(gameState!=='dead')flap();});
+canvas.addEventListener('touchstart',e=>{e.preventDefault();if(gameState!=='dead')flap();},{passive:false});
+
+// ── SCORE ──
+async function submitScore(s){
+  try{await fetch('/api/game-scores/skycop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score:s})});}catch{}
+}
+
+// ── LEADERBOARD ──
+async function openLb(){
+  document.getElementById('ov-lb').classList.remove('hidden');
+  const el=document.getElementById('lb-list');
+  el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Laden…</div>';
+  try{
+    const r=await fetch('/api/game-scores/skycop'),data=await r.json();
+    if(!data.length){el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Noch keine Einträge</div>';return;}
+    el.innerHTML=data.map((row,i)=>{
+      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+      const me=currentUser&&row.discord_id===currentUser.discord_id;
+      const av=row.avatar?`<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`:(row.username||'?').slice(0,2).toUpperCase();
+      return`<div class="lb-row" style="${me?'background:#0a1020;border-radius:5px;':''}">
+        <div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
+        <div class="lb-name">${row.username||'Unbekannt'}</div>
+        <div class="lb-score">${row.score} 🏢</div>
+      </div>`;
+    }).join('');
+  }catch{el.innerHTML='<div style="text-align:center;color:#ef4444">Fehler</div>';}
+}
+function closeLb(){document.getElementById('ov-lb').classList.add('hidden');}
+
+init();
+</script>
+</body>
+</html>

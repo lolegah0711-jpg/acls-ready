@@ -289,6 +289,7 @@ async function renderVoterScreen() {
           <a href="/game4" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center"><i class="fas fa-snake"></i> Snake</a>
           <a href="/game5" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center"><i class="fas fa-th-large"></i> Tetris</a>
           <a href="/game6" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#fbbf24"><i class="fas fa-dice" style="color:#fbbf24"></i> Book of Ra</a>
+          <a href="/game7" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#60a5fa"><i class="fas fa-helicopter" style="color:#60a5fa"></i> Sky Cop</a>
         </div>
       </div>
     </div>`;
