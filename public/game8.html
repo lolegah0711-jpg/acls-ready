@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Doodle Jump – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#0a0f1e;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Inter',sans-serif;overflow:hidden;}
+    canvas{display:block;border-radius:12px;box-shadow:0 0 40px rgba(99,102,241,.3);}
+
+    #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(8,12,20,.88);backdrop-filter:blur(6px);z-index:10;}
+    #overlay h2{font-size:clamp(28px,6vw,48px);font-weight:800;color:#f9fafb;margin-bottom:6px;}
+    #overlay .sub{font-size:14px;color:#6b7280;margin-bottom:28px;}
+    .btn{display:inline-block;padding:12px 36px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;border:none;font-family:'Inter',sans-serif;transition:opacity .15s;}
+    .btn-primary{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;}
+    .btn-primary:hover{opacity:.85;}
+    .btn-ghost{background:rgba(255,255,255,.06);color:#9ca3af;border:1px solid rgba(255,255,255,.1);}
+    .btn-ghost:hover{background:rgba(255,255,255,.1);color:#e5e7eb;}
+
+    #score-display{position:fixed;top:16px;right:16px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.1);color:#f9fafb;padding:7px 18px;border-radius:10px;font-size:15px;font-weight:700;z-index:5;backdrop-filter:blur(4px);}
+    #best-display{position:fixed;top:52px;right:16px;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.06);color:#6b7280;padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;z-index:5;}
+
+    #leaderboard{margin-top:20px;width:300px;}
+    #leaderboard h3{font-size:14px;font-weight:700;color:#6b7280;letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;text-align:center;}
+    .lb-row{display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:8px;background:rgba(255,255,255,.04);margin-bottom:4px;}
+    .lb-rank{font-size:13px;font-weight:700;color:#6b7280;width:24px;}
+    .lb-rank.gold{color:#fbbf24;}
+    .lb-rank.silver{color:#9ca3af;}
+    .lb-rank.bronze{color:#92400e;}
+    .lb-name{flex:1;font-size:13px;color:#e5e7eb;font-weight:600;}
+    .lb-score{font-size:13px;font-weight:700;color:#818cf8;}
+
+    .controls-hint{margin-top:16px;font-size:12px;color:#4b5563;text-align:center;line-height:1.7;}
+  </style>
+</head>
+<body>
+
+<a href="/" onclick="window.close()" style="position:fixed;top:10px;left:10px;z-index:999;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;font-family:Inter,sans-serif;backdrop-filter:blur(4px)">← Portal</a>
+
+<canvas id="c"></canvas>
+<div id="score-display">Score: 0</div>
+<div id="best-display">Best: 0</div>
+
+<!-- START OVERLAY -->
+<div id="overlay">
+  <div style="font-size:52px;margin-bottom:8px">🟢</div>
+  <h2>Doodle Jump</h2>
+  <div class="sub">Springe so hoch wie möglich!</div>
+  <button class="btn btn-primary" onclick="startGame()">Spielen</button>
+  <div id="leaderboard" style="display:none">
+    <h3>🏆 Bestenliste</h3>
+    <div id="lb-rows"></div>
+  </div>
+  <div class="controls-hint">
+    ← → oder A/D · Handy: tippe links/rechts auf dem Bildschirm
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+// ── Responsive sizing ──
+function resize() {
+  const maxW = Math.min(400, window.innerWidth - 20);
+  const maxH = Math.min(640, window.innerHeight - 20);
+  canvas.width  = maxW;
+  canvas.height = maxH;
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+const W = () => canvas.width;
+const H = () => canvas.height;
+
+// ── Constants ──
+const GRAVITY     = 0.35;
+const JUMP_V      = -13;
+const MOVE_SPEED  = 5;
+const PLAT_W      = 68;
+const PLAT_H      = 14;
+const PLAT_COUNT  = 10;
+
+// ── State ──
+let state = 'idle'; // idle | playing | dead
+let score = 0;
+let best  = parseInt(localStorage.getItem('dj-best') || '0');
+let cameraY = 0; // world Y of top of canvas
+
+let doodle = {};
+let platforms = [];
+let particles = [];
+let bgStars = [];
+
+let keys = {};
+let touchDir = 0; // -1 left, 0 none, 1 right
+
+document.addEventListener('keydown', e => { keys[e.key] = true; });
+document.addEventListener('keyup',   e => { keys[e.key] = false; });
+
+// Touch controls
+canvas.addEventListener('touchstart', e => {
+  const x = e.touches[0].clientX;
+  touchDir = x < window.innerWidth / 2 ? -1 : 1;
+  e.preventDefault();
+}, { passive: false });
+canvas.addEventListener('touchend',   () => { touchDir = 0; }, { passive: false });
+
+// ── Helpers ──
+function rand(min, max) { return Math.random() * (max - min) + min; }
+
+function makeStars() {
+  bgStars = [];
+  for (let i = 0; i < 80; i++) {
+    bgStars.push({ x: rand(0, 800), y: rand(0, 4000), r: rand(.5, 2), a: rand(.2, .8) });
+  }
+}
+
+function initPlatforms() {
+  platforms = [];
+  // Always a solid platform under the starting position
+  const startX = W() / 2 - PLAT_W / 2;
+  platforms.push({ x: startX, y: H() - 80, w: PLAT_W, h: PLAT_H, type: 'normal', vx: 0, broken: false });
+
+  for (let i = 1; i < PLAT_COUNT; i++) {
+    spawnPlatformAbove(platforms[platforms.length - 1].y);
+  }
+}
+
+function platType(score) {
+  const r = Math.random();
+  if (score < 500) return 'normal';
+  if (score < 1500) return r < .15 ? 'moving' : r < .25 ? 'break' : 'normal';
+  if (score < 3000) return r < .20 ? 'moving' : r < .35 ? 'break' : 'normal';
+  return r < .25 ? 'moving' : r < .45 ? 'break' : 'normal';
+}
+
+function spawnPlatformAbove(refY) {
+  const gap  = rand(60, 100);
+  const newY = refY - gap;
+  const newX = rand(4, W() - PLAT_W - 4);
+  const type = platType(score);
+  const vx   = type === 'moving' ? rand(1.5, 3) * (Math.random() < .5 ? 1 : -1) : 0;
+  platforms.push({ x: newX, y: newY, w: PLAT_W, h: PLAT_H, type, vx, broken: false, breakAnim: 0 });
+}
+
+function initDoodle() {
+  const startPlat = platforms[0];
+  doodle = {
+    x: startPlat.x + PLAT_W / 2 - 20,
+    y: startPlat.y - 36,
+    w: 40, h: 36,
+    vx: 0, vy: 0,
+    face: 0, // 0=right 1=left
+    squish: 1,
+    dead: false,
+  };
+}
+
+// ── Game Loop ──
+let animId;
+let lastTime = 0;
+
+function startGame() {
+  document.getElementById('overlay').style.display = 'none';
+  state  = 'playing';
+  score  = 0;
+  cameraY = 0;
+  makeStars();
+  initPlatforms();
+  initDoodle();
+  particles = [];
+  updateScoreDisplay();
+  cancelAnimationFrame(animId);
+  lastTime = 0;
+  animId = requestAnimationFrame(loop);
+}
+
+function loop(ts) {
+  const dt = Math.min((ts - lastTime) / 16.67, 3);
+  lastTime = ts;
+  if (state === 'playing') {
+    update(dt);
+    draw();
+    animId = requestAnimationFrame(loop);
+  }
+}
+
+// ── Update ──
+function update(dt) {
+  // Input
+  const left  = keys['ArrowLeft']  || keys['a'] || keys['A'] || touchDir === -1;
+  const right = keys['ArrowRight'] || keys['d'] || keys['D'] || touchDir === 1;
+  if (left)  { doodle.vx = -MOVE_SPEED; doodle.face = 1; }
+  else if (right) { doodle.vx =  MOVE_SPEED; doodle.face = 0; }
+  else        doodle.vx *= 0.75;
+
+  // Physics
+  doodle.vy += GRAVITY * dt;
+  doodle.x  += doodle.vx * dt;
+  doodle.y  += doodle.vy * dt;
+
+  // Wrap
+  if (doodle.x + doodle.w < 0)  doodle.x = W();
+  if (doodle.x > W())            doodle.x = -doodle.w;
+
+  // Squish animation
+  if (doodle.squish !== 1) doodle.squish += (1 - doodle.squish) * 0.2 * dt;
+
+  // Platform collision (only when falling)
+  if (doodle.vy > 0) {
+    for (const p of platforms) {
+      if (p.broken) continue;
+      const px = p.x, py = p.y, pw = p.w, ph = p.h;
+      const foot = doodle.y + doodle.h;
+      const prevFoot = foot - doodle.vy * dt;
+      if (
+        doodle.x + doodle.w > px + 4 &&
+        doodle.x < px + pw - 4 &&
+        prevFoot <= py + ph &&
+        foot >= py
+      ) {
+        if (p.type === 'break') {
+          p.broken = true;
+          p.breakAnim = 1;
+          spawnBreakParticles(p);
+        } else {
+          doodle.vy = JUMP_V;
+          doodle.squish = 0.6;
+          p.breakAnim = 1; // bounce flash
+        }
+        break;
+      }
+    }
+  }
+
+  // Camera: keep doodle in upper 40% of screen
+  const screenY = doodle.y - cameraY;
+  if (screenY < H() * 0.4) {
+    const delta = H() * 0.4 - screenY;
+    cameraY -= delta;
+    score = Math.max(score, Math.round(-cameraY / 5));
+    updateScoreDisplay();
+  }
+
+  // Move platforms
+  for (const p of platforms) {
+    if (p.type === 'moving' && !p.broken) {
+      p.x += p.vx * dt;
+      if (p.x < 0 || p.x + p.w > W()) p.vx *= -1;
+    }
+    if (p.breakAnim > 0) p.breakAnim -= 0.07 * dt;
+  }
+
+  // Remove platforms below screen, add new ones above
+  const bottomWorld  = cameraY + H() + 100;
+  const topWorld     = cameraY - 20;
+  platforms = platforms.filter(p => p.y < bottomWorld);
+  const topPlat = platforms.reduce((a, b) => a.y < b.y ? a : b, { y: 99999 });
+  while (topPlat && topPlat.y > topWorld - 50) {
+    spawnPlatformAbove(platforms.reduce((a, b) => a.y < b.y ? a : b).y);
+  }
+
+  // Particles
+  for (const pt of particles) {
+    pt.x += pt.vx * dt;
+    pt.y += pt.vy * dt;
+    pt.vy += 0.2 * dt;
+    pt.life -= 0.04 * dt;
+  }
+  particles = particles.filter(pt => pt.life > 0);
+
+  // Death: fell below screen
+  if (doodle.y - cameraY > H() + 50) {
+    gameOver();
+  }
+}
+
+function spawnBreakParticles(p) {
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      x: p.x + rand(0, p.w),
+      y: p.y,
+      vx: rand(-3, 3),
+      vy: rand(-4, 0),
+      life: 1,
+      col: '#92400e',
+      r: rand(3, 7),
+    });
+  }
+}
+
+// ── Draw ──
+function draw() {
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H());
+  grad.addColorStop(0, '#0a0523');
+  grad.addColorStop(1, '#0a1628');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W(), H());
+
+  // Stars
+  for (const s of bgStars) {
+    const sy = ((s.y - cameraY * 0.05) % (H() + 20) + H() + 20) % (H() + 20) - 10;
+    ctx.globalAlpha = s.a;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(s.x % W(), sy, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Platforms
+  for (const p of platforms) {
+    const sx = p.x;
+    const sy = p.y - cameraY;
+    if (sy > H() + 20 || sy < -20) continue;
+
+    ctx.save();
+    if (p.type === 'break' && p.broken) {
+      // nothing — already removed visually, but draw animation if any
+    } else if (p.type === 'break') {
+      const col1 = '#78350f', col2 = '#92400e';
+      drawPlatform(sx, sy, p.w, p.h, col1, col2, p.breakAnim);
+    } else if (p.type === 'moving') {
+      const col1 = '#1d4ed8', col2 = '#3b82f6';
+      drawPlatform(sx, sy, p.w, p.h, col1, col2, p.breakAnim);
+    } else {
+      const col1 = '#15803d', col2 = '#22c55e';
+      drawPlatform(sx, sy, p.w, p.h, col1, col2, p.breakAnim);
+    }
+    ctx.restore();
+  }
+
+  // Particles
+  for (const pt of particles) {
+    const py = pt.y - cameraY;
+    ctx.globalAlpha = pt.life;
+    ctx.fillStyle = pt.col;
+    ctx.beginPath();
+    ctx.arc(pt.x, py, pt.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Doodle
+  drawDoodle();
+}
+
+function drawPlatform(x, y, w, h, col1, col2, flash) {
+  const g = ctx.createLinearGradient(x, y, x, y + h);
+  g.addColorStop(0, col2);
+  g.addColorStop(1, col1);
+  ctx.fillStyle = g;
+  if (flash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${flash * .5})`;
+  }
+  roundRect(ctx, x, y, w, h, 6);
+  ctx.fill();
+  // sheen
+  ctx.fillStyle = 'rgba(255,255,255,.12)';
+  roundRect(ctx, x + 4, y + 2, w - 8, 3, 2);
+  ctx.fill();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawDoodle() {
+  const dx = doodle.x;
+  const dy = doodle.y - cameraY;
+  const w  = doodle.w;
+  const h  = doodle.h;
+  const sq = doodle.squish;
+  const flip = doodle.face === 1;
+
+  ctx.save();
+  ctx.translate(dx + w / 2, dy + h);
+  ctx.scale(flip ? -1 : 1, 1);
+  ctx.translate(-(w / 2), -h);
+
+  // Body (squished vertically when bouncing)
+  ctx.save();
+  ctx.translate(w / 2, h);
+  ctx.scale(1 / sq, sq);
+  ctx.translate(-w / 2, -h);
+
+  // Body blob
+  ctx.fillStyle = '#4ade80';
+  roundRect(ctx, 2, 6, w - 4, h - 6, 10);
+  ctx.fill();
+
+  // Belly
+  ctx.fillStyle = '#86efac';
+  roundRect(ctx, 8, 14, w - 16, h - 18, 6);
+  ctx.fill();
+
+  ctx.restore();
+
+  // Eyes
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(22, 12, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#1e1b4b';
+  ctx.beginPath(); ctx.arc(24, 13, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(25, 12, 1, 0, Math.PI * 2); ctx.fill();
+
+  // Nose
+  ctx.fillStyle = '#f97316';
+  roundRect(ctx, 26, 18, 8, 5, 3);
+  ctx.fill();
+
+  // Mouth (smile)
+  ctx.strokeStyle = '#15803d';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(20, 22, 5, 0.2, Math.PI - 0.2);
+  ctx.stroke();
+
+  // Ears / antennae
+  ctx.fillStyle = '#4ade80';
+  ctx.beginPath(); ctx.arc(8, 5, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(32, 5, 4, 0, Math.PI * 2); ctx.fill();
+
+  ctx.restore();
+}
+
+// ── Score ──
+function updateScoreDisplay() {
+  document.getElementById('score-display').textContent = 'Score: ' + score;
+  if (score > best) {
+    best = score;
+    localStorage.setItem('dj-best', best);
+    document.getElementById('best-display').textContent = 'Best: ' + best;
+  }
+}
+
+document.getElementById('best-display').textContent = 'Best: ' + best;
+
+// ── Game Over ──
+async function gameOver() {
+  state = 'dead';
+  cancelAnimationFrame(animId);
+
+  // Submit score
+  try {
+    await fetch('/api/game-scores/doodlejump', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ score })
+    });
+  } catch {}
+
+  // Load leaderboard
+  let rows = [];
+  try {
+    const res = await fetch('/api/game-scores/doodlejump');
+    rows = await res.json();
+  } catch {}
+
+  // Show overlay
+  const ov = document.getElementById('overlay');
+  ov.innerHTML = `
+    <div style="font-size:48px;margin-bottom:8px">😵</div>
+    <h2 style="color:#f9fafb">Game Over</h2>
+    <div class="sub">Dein Score: <strong style="color:#818cf8">${score}</strong></div>
+    <button class="btn btn-primary" onclick="startGame()" style="margin-bottom:12px">Nochmal</button>
+    <div id="leaderboard" style="display:block">
+      <h3>🏆 Bestenliste</h3>
+      <div id="lb-rows">${rows.slice(0,10).map((r,i)=>`
+        <div class="lb-row">
+          <div class="lb-rank ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
+          <div class="lb-name">${r.username || 'Unbekannt'}</div>
+          <div class="lb-score">${r.score}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="controls-hint">← → oder A/D bewegen · Springe auf Plattformen</div>
+  `;
+  ov.style.display = 'flex';
+}
+
+// ── Load leaderboard on start screen ──
+(async () => {
+  try {
+    const res = await fetch('/api/game-scores/doodlejump');
+    const rows = await res.json();
+    if (!rows.length) return;
+    const lb = document.getElementById('leaderboard');
+    lb.style.display = 'block';
+    document.getElementById('lb-rows').innerHTML = rows.slice(0,5).map((r,i)=>`
+      <div class="lb-row">
+        <div class="lb-rank ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
+        <div class="lb-name">${r.username || 'Unbekannt'}</div>
+        <div class="lb-score">${r.score}</div>
+      </div>`).join('');
+  } catch {}
+})();
+</script>
+</body>
+</html>

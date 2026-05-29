@@ -1475,6 +1475,7 @@ app.get('/game4', (req, res) => res.sendFile(path.join(__dirname, 'public', 'gam
 app.get('/game5', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game5.html')));
 app.get('/game6', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game6.html')));
 app.get('/game7', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game7.html')));
+app.get('/game8', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game8.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(PORT, () => console.log(`[ACLS] Server läuft auf http://localhost:${PORT}`));
