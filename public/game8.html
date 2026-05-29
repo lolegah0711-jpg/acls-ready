@@ -255,12 +255,15 @@ function update(dt) {
   }
 
   // Remove platforms below screen, add new ones above
-  const bottomWorld  = cameraY + H() + 100;
-  const topWorld     = cameraY - 20;
+  const bottomWorld = cameraY + H() + 100;
   platforms = platforms.filter(p => p.y < bottomWorld);
-  const topPlat = platforms.reduce((a, b) => a.y < b.y ? a : b, { y: 99999 });
-  while (topPlat && topPlat.y > topWorld - 50) {
-    spawnPlatformAbove(platforms.reduce((a, b) => a.y < b.y ? a : b).y);
+
+  // Spawn up to 3 new platforms per frame until we have enough above the camera
+  for (let i = 0; i < 3; i++) {
+    if (!platforms.length) break;
+    const topY = platforms.reduce((a, b) => a.y < b.y ? a : b).y;
+    if (topY < cameraY - 20) break;
+    spawnPlatformAbove(topY);
   }
 
   // Particles
