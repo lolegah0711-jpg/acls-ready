@@ -138,14 +138,22 @@
   <div id="controls">
     <div class="ctrl-group">
       <div class="ctrl-label">Guthaben</div>
-      <div class="ctrl-val" id="balance-val">1.000</div>
+      <div class="ctrl-val" id="balance-val">5.000</div>
     </div>
     <div class="ctrl-group" style="margin-left:8px">
-      <div class="ctrl-label">Einsatz</div>
+      <div class="ctrl-label">Einsatz/Linie</div>
       <div style="display:flex;align-items:center;gap:6px">
         <button class="bet-btn" onclick="changeBet(-1)">◀</button>
         <div class="ctrl-val" id="bet-val">10</div>
         <button class="bet-btn" onclick="changeBet(1)">▶</button>
+      </div>
+    </div>
+    <div class="ctrl-group" style="margin-left:4px">
+      <div class="ctrl-label">Linien</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="bet-btn" onclick="changeLines(-1)">◀</button>
+        <div class="ctrl-val" id="lines-val">5</div>
+        <button class="bet-btn" onclick="changeLines(1)">▶</button>
       </div>
     </div>
     <div class="ctrl-group">
@@ -228,7 +236,7 @@
 // v[n] = multiplier for n matching symbols (index 0..5)
 // Values match official Book of Ra paytable (multiplier × line bet)
 const SYMS = [
-  {e:'📖', n:'Book of Ra',  col:'#fbbf24', w:2,  v:[0,0,0,  1.8, 18,  180], wild:true, scatter:true},
+  {e:'📖', n:'Book of Ra',  col:'#fbbf24', w:5,  v:[0,0,0,  1.8, 18,  180], wild:true, scatter:true},
   {e:'🧭', n:'Abenteurer',  col:'#f97316', w:3,  v:[0,0,1,  10,  100, 500]},
   {e:'👑', n:'Pharao',      col:'#fcd34d', w:4,  v:[0,0,0.5, 4,   40,  200]},
   {e:'🦅', n:'Horus',       col:'#f59e0b', w:5,  v:[0,0,0.5, 3,   10,   75]},
@@ -241,25 +249,33 @@ const SYMS = [
 ];
 const TOTAL_W = SYMS.reduce((a, s) => a + s.w, 0);
 
-// 5 paylines – each entry = row index (0=top, 1=mid, 2=bot) for reels 0..4
+// 10 paylines – each entry = row index (0=top, 1=mid, 2=bot) for reels 0..4
 const PAYLINES = [
   [1,1,1,1,1], // 1: middle
   [0,0,0,0,0], // 2: top
   [2,2,2,2,2], // 3: bottom
-  [0,1,2,1,0], // 4: V-shape
+  [0,1,2,1,0], // 4: V
   [2,1,0,1,2], // 5: inverted-V
+  [0,0,1,2,2], // 6: diagonal down
+  [2,2,1,0,0], // 7: diagonal up
+  [1,0,0,0,1], // 8: arch top
+  [1,2,2,2,1], // 9: arch bottom
+  [0,1,1,1,0], // 10: top bridge
 ];
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
-let balance = 1000, bet = 10;
+let balance = 5000, bet = 10;
 let freeSpins = 0, specialSym = -1, inFreeSpin = false;
 let pendingWin = 0;
-let spinning = false, highScore = 1000;
+let spinning = false, highScore = 5000;
 let currentUser = null;
 let result = Array.from({length: 5}, () => [0, 0, 0]);
 let spinItvs = [];
 const BETS = [5, 10, 20, 50, 100, 200, 500];
 let betIdx = 1;
+const LINES_OPTS = [1, 3, 5, 10];
+let linesIdx = 2; // default 5
+let lines = 5;
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
@@ -307,10 +323,11 @@ function setVisible(ri, r0, r1, r2) {
 function spin() {
   if (spinning || pendingWin > 0) return;
   const isFree = freeSpins > 0;
-  if (!isFree && balance < bet) { alert('Nicht genug Guthaben!'); return; }
+  const cost = bet * lines;
+  if (!isFree && balance < cost) { alert('Nicht genug Guthaben!'); return; }
 
   if (isFree) { freeSpins--; inFreeSpin = true; }
-  else { balance -= bet; inFreeSpin = false; }
+  else { balance -= cost; inFreeSpin = false; }
 
   spinning = true;
   document.getElementById('spin-btn').disabled = true;
@@ -364,8 +381,8 @@ function evaluateResult(res) {
   let totalWin = 0;
   const winCells = new Set();
 
-  // Payline wins
-  for (let li = 0; li < PAYLINES.length; li++) {
+  // Payline wins (only active lines)
+  for (let li = 0; li < lines; li++) {
     const pl = PAYLINES[li];
     const line = pl.map((row, ri) => res[ri][row]);
 
@@ -393,7 +410,7 @@ function evaluateResult(res) {
   const books = res.flat().filter(s => SYMS[s].scatter).length;
   if (books >= 3) {
     const scatterMul = SYMS[0].v[Math.min(books, 5)] || 0;
-    totalWin += scatterMul * bet;
+    totalWin += scatterMul * bet * lines;
     res.forEach((col, ri) => col.forEach((s, row) => {
       if (SYMS[s].scatter) winCells.add(`${ri}_${row + 3}`);
     }));
@@ -650,10 +667,17 @@ function changeBet(dir) {
   document.getElementById('bet-val').textContent = bet.toLocaleString('de-DE');
 }
 
+function changeLines(dir) {
+  if (spinning || freeSpins > 0 || pendingWin > 0) return;
+  linesIdx = Math.max(0, Math.min(LINES_OPTS.length - 1, linesIdx + dir));
+  lines = LINES_OPTS[linesIdx];
+  document.getElementById('lines-val').textContent = lines;
+}
+
 function resetBalance() {
   if (spinning) return;
   if (pendingWin > 0) { takeWin(); return; }
-  balance = 1000; freeSpins = 0; specialSym = -1; inFreeSpin = false; pendingWin = 0;
+  balance = 5000; freeSpins = 0; specialSym = -1; inFreeSpin = false; pendingWin = 0;
   setWinDisplay(0, '#6b7280', 'Letzter Gewinn');
   enableSpin();
   updateUI();
@@ -670,7 +694,7 @@ async function submitAndReset() {
   } catch {}
   alert(`Kein Guthaben mehr!\nHöchster Stand: ${highScore.toLocaleString('de-DE')} Coins`);
   resetBalance();
-  highScore = 1000;
+  highScore = 5000;
 }
 
 window.addEventListener('keydown', e => {
