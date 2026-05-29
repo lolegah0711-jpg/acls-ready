@@ -381,7 +381,7 @@ async function loadVoterMarket() {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-bottom:.5rem">
         <div style="min-width:0;flex:1">
           <div style="font-weight:700;font-size:.95rem">${l.car}</div>
-          <div style="font-weight:800;color:#f97316;font-size:.95rem">${l.price}</div>
+          <div style="font-weight:800;color:#f97316;font-size:.95rem">${l.price}$</div>
         </div>
         ${canDel ? `<button class="btn btn-danger btn-sm" onclick="voterDeleteListing(${l.id})"><i class="fas fa-trash"></i></button>` : ''}
       </div>
@@ -1987,7 +1987,7 @@ function listingCard(l, canEditAny) {
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem">
       <div style="min-width:0;flex:1">
         <div style="font-weight:800;font-size:1.05rem;margin-bottom:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${l.car}">${l.car}</div>
-        <div style="font-size:1.1rem;font-weight:800;color:#f97316">${l.price}</div>
+        <div style="font-size:1.1rem;font-weight:800;color:#f97316">${l.price}$</div>
       </div>
       <div style="flex-shrink:0;width:44px;height:44px;border-radius:10px;background:#f9731618;display:flex;align-items:center;justify-content:center">
         <i class="fas fa-car-side" style="color:#f97316;font-size:1.1rem"></i>
