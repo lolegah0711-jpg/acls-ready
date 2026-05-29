@@ -6,82 +6,118 @@
   <title>Book of Ra – ACLS</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
-    *{margin:0;padding:0;box-sizing:border-box;}
-    body{background:#0a0700;font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;}
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#0a0700;font-family:'Inter',sans-serif;color:#fff;min-height:100vh;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;}
 
-    #machine{width:min(580px,96vw);display:flex;flex-direction:column;align-items:center;gap:0;}
+    #machine{width:min(640px,96vw);display:flex;flex-direction:column;align-items:center;}
 
-    /* Title */
     #title{font-size:clamp(20px,4vw,30px);font-weight:800;letter-spacing:.12em;text-transform:uppercase;
       background:linear-gradient(90deg,#b45309,#fbbf24,#f59e0b,#fbbf24,#b45309);
       -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
       margin-bottom:12px;text-align:center;}
 
-    /* Reels container */
-    #reels-wrap{background:linear-gradient(180deg,#1a1000,#0d0800);border:3px solid #78350f;border-radius:12px;
-      padding:10px;width:100%;box-shadow:0 0 40px rgba(251,191,36,.15),inset 0 0 30px rgba(0,0,0,.5);}
+    #reels-wrap{background:linear-gradient(180deg,#1a1000,#0d0800);border:3px solid #78350f;
+      border-radius:12px 12px 0 0;padding:10px 10px 8px;width:100%;position:relative;
+      box-shadow:0 0 40px rgba(251,191,36,.15),inset 0 0 30px rgba(0,0,0,.5);}
     #reels{display:flex;gap:6px;height:clamp(180px,36vw,270px);}
     .reel{flex:1;background:#0a0600;border:2px solid #292000;border-radius:8px;overflow:hidden;
       display:flex;flex-direction:column;position:relative;}
-    .reel-inner{display:flex;flex-direction:column;height:300%;transition:transform .4s cubic-bezier(.25,.46,.45,.94);}
-    .reel.spinning .reel-inner{transition:none;}
+    .reel-inner{display:flex;flex-direction:column;height:300%;transform:translateY(-33.333%);}
     .sym{flex:1;display:flex;align-items:center;justify-content:center;
       font-size:clamp(22px,5vw,40px);font-weight:700;border-bottom:1px solid #1a1000;
       min-height:0;position:relative;transition:background .15s;}
     .sym.win{background:rgba(251,191,36,.18)!important;box-shadow:inset 0 0 12px rgba(251,191,36,.3);}
     .sym.win::after{content:'';position:absolute;inset:0;border:2px solid rgba(251,191,36,.6);border-radius:4px;pointer-events:none;}
-    /* Payline indicator */
-    #paylines{display:flex;justify-content:space-between;padding:4px 6px;font-size:10px;color:#6b4c00;margin-top:4px;}
+    .sym.expand{background:rgba(168,85,247,.25)!important;box-shadow:inset 0 0 16px rgba(168,85,247,.5);}
+    .sym.expand::after{content:'';position:absolute;inset:0;border:2px solid rgba(168,85,247,.8);border-radius:4px;pointer-events:none;}
 
-    /* Controls */
+    #win-flash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      font-size:clamp(18px,5vw,28px);font-weight:800;color:#fbbf24;background:rgba(0,0,0,.7);
+      border-radius:10px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:5;}
+
     #controls{background:linear-gradient(180deg,#1a1000,#0d0800);border:3px solid #78350f;border-top:none;
       border-radius:0 0 12px 12px;width:100%;padding:12px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
     .ctrl-group{display:flex;flex-direction:column;gap:3px;min-width:0;}
     .ctrl-label{font-size:10px;color:#78350f;font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
     .ctrl-val{font-size:clamp(14px,3vw,20px);font-weight:800;color:#fbbf24;white-space:nowrap;}
-
-    #spin-btn{margin-left:auto;padding:clamp(10px,2vw,14px) clamp(20px,4vw,32px);
-      background:linear-gradient(135deg,#b45309,#f59e0b);
-      border:none;border-radius:10px;font-size:clamp(13px,2.5vw,16px);font-weight:800;
-      color:#fff;cursor:pointer;letter-spacing:.05em;text-transform:uppercase;
-      box-shadow:0 4px 16px rgba(245,158,11,.4);transition:opacity .15s,transform .1s;flex-shrink:0;}
-    #spin-btn:hover{opacity:.9;transform:translateY(-1px);}
-    #spin-btn:disabled{opacity:.4;cursor:default;transform:none;}
-    #spin-btn.free{background:linear-gradient(135deg,#6d28d9,#a855f7);}
-
     .bet-btn{background:#1a1000;border:1px solid #78350f;color:#fbbf24;padding:4px 10px;
       border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;}
     .bet-btn:hover{background:#2a1800;}
 
-    /* Win overlay on reels */
-    #win-flash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-      font-size:clamp(18px,5vw,28px);font-weight:800;color:#fbbf24;
-      background:rgba(0,0,0,.7);border-radius:10px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5;}
+    #actions{display:flex;gap:8px;margin-left:auto;align-items:center;}
+    .action-btn{padding:clamp(10px,2vw,13px) clamp(16px,3.5vw,26px);border:none;border-radius:10px;
+      font-size:clamp(12px,2.5vw,14px);font-weight:800;color:#fff;cursor:pointer;letter-spacing:.05em;
+      text-transform:uppercase;transition:opacity .15s,transform .1s;flex-shrink:0;font-family:inherit;}
+    .action-btn:hover{opacity:.9;transform:translateY(-1px);}
+    .action-btn:disabled{opacity:.4;cursor:default;transform:none;}
+    #spin-btn{background:linear-gradient(135deg,#b45309,#f59e0b);box-shadow:0 4px 16px rgba(245,158,11,.4);}
+    #spin-btn.free{background:linear-gradient(135deg,#6d28d9,#a855f7);box-shadow:0 4px 16px rgba(168,85,247,.4);}
+    #take-btn{background:linear-gradient(135deg,#15803d,#22c55e);box-shadow:0 4px 16px rgba(34,197,94,.3);}
+    #gamble-btn{background:linear-gradient(135deg,#9f1239,#f43f5e);box-shadow:0 4px 16px rgba(244,63,94,.3);}
 
-    /* Free spins banner */
-    #fs-banner{background:linear-gradient(135deg,#4c1d95,#7c3aed);
-      border:2px solid #a855f7;border-radius:8px;padding:6px 14px;
-      font-size:13px;font-weight:700;text-align:center;display:none;width:100%;margin-top:6px;
-      box-shadow:0 0 20px rgba(168,85,247,.3);}
+    #fs-banner{background:linear-gradient(135deg,#4c1d95,#7c3aed);border:2px solid #a855f7;
+      border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;text-align:center;
+      display:none;width:100%;margin-top:6px;box-shadow:0 0 20px rgba(168,85,247,.3);}
+
+    #extras{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;
+      font-weight:700;font-size:12px;cursor:pointer;border:none;font-family:inherit;transition:opacity .15s;}
+    .btn:hover{opacity:.85;}
+    .btn-gray{background:#1f2937;color:#d1d5db;border:1px solid #374151;}
 
     /* Overlays */
-    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.88);z-index:100;}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+      background:rgba(0,0,0,.88);z-index:100;}
     .ov.hidden{display:none;}
-    .ov-card{background:#100800;border:2px solid #78350f;border-radius:18px;padding:32px 38px;max-width:400px;width:92%;text-align:center;}
-    .ov-card h2{font-size:24px;font-weight:800;margin-bottom:6px;}
-    .sub{color:#6b7280;font-size:13px;margin-bottom:18px;line-height:1.5;}
-    .btn{display:inline-block;padding:11px 24px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;border:none;font-family:inherit;transition:opacity .15s;}
-    .btn:hover{opacity:.85;}
-    .btn-gold{background:linear-gradient(135deg,#b45309,#f59e0b);color:#fff;}
-    .btn-gray{background:#1f2937;color:#d1d5db;border:1px solid #374151;}
+    .ov-card{background:#100800;border:2px solid #78350f;border-radius:18px;padding:28px 32px;
+      max-width:460px;width:92%;text-align:center;}
+    .ov-title{font-size:22px;font-weight:800;margin-bottom:6px;color:#fbbf24;}
+    .ov-sub{color:#9ca3af;font-size:13px;margin-bottom:20px;}
+
+    /* Gamble */
+    .gamble-card-wrap{width:90px;height:130px;margin:0 auto 20px;position:relative;}
+    .gamble-card{width:100%;height:100%;border-radius:12px;display:flex;align-items:center;
+      justify-content:center;font-size:52px;font-weight:900;position:relative;}
+    .gamble-card.back{background:linear-gradient(135deg,#1e1b4b,#312e81);border:2px solid #4338ca;
+      color:#4338ca;font-size:26px;}
+    .gamble-card.red-card{background:linear-gradient(135deg,#450a0a,#991b1b);border:2px solid #ef4444;}
+    .gamble-card.black-card{background:linear-gradient(135deg,#111827,#374151);border:2px solid #6b7280;}
+    .gamble-card.g-win{box-shadow:0 0 30px rgba(34,197,94,.7);}
+    .gamble-card.g-lose{box-shadow:0 0 30px rgba(239,68,68,.7);}
+
+    .g-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:10px;}
+    .g-btn{padding:10px 18px;border:none;border-radius:10px;font-size:15px;font-weight:800;
+      cursor:pointer;font-family:inherit;transition:opacity .15s,transform .1s;min-width:70px;}
+    .g-btn:hover{opacity:.9;transform:translateY(-1px);}
+    .g-btn:disabled{opacity:.4;cursor:default;transform:none;}
+    .g-red{background:linear-gradient(135deg,#991b1b,#ef4444);color:#fff;}
+    .g-black{background:linear-gradient(135deg,#1f2937,#374151);color:#fff;border:1px solid #4b5563;}
+    .g-suit{background:#1a1000;border:1px solid #78350f;color:#fbbf24;font-size:20px;padding:10px 14px;}
+    .g-suit.rs{color:#ef4444;}
+    .g-green{background:linear-gradient(135deg,#15803d,#22c55e);color:#fff;}
+    .g-pink{background:linear-gradient(135deg,#9f1239,#f43f5e);color:#fff;}
+
+    /* Paytable */
+    .pt-row{display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid #1a1000;font-size:13px;}
+    .pt-sym{font-size:22px;width:34px;text-align:center;}
+    .pt-name{flex:1;font-weight:600;text-align:left;}
+    .pt-pays{display:flex;gap:5px;}
+    .pt-pay{background:#1a1000;border-radius:5px;padding:2px 7px;font-size:11px;font-weight:700;color:#fbbf24;}
+    .pt-tag{font-size:9px;color:#a855f7;font-weight:700;background:#2e1065;padding:1px 5px;border-radius:4px;}
+
+    /* Leaderboard */
     .lb-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #1a1000;font-size:13px;}
     .lb-rank{width:24px;text-align:center;font-weight:700;}
-    .lb-av{width:26px;height:26px;border-radius:50%;background:#1f2937;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;overflow:hidden;flex-shrink:0;}
+    .lb-av{width:26px;height:26px;border-radius:50%;background:#1f2937;display:flex;align-items:center;
+      justify-content:center;font-size:9px;font-weight:700;overflow:hidden;flex-shrink:0;}
     .lb-av img{width:100%;height:100%;object-fit:cover;}
-    .lb-name{flex:1;font-weight:600;}.lb-score{font-weight:700;color:#fbbf24;}
+    .lb-name{flex:1;font-weight:600;}
+    .lb-score{font-weight:700;color:#fbbf24;}
   </style>
 </head>
 <body>
+
 <a href="/" onclick="window.close()" style="position:fixed;top:10px;left:10px;z-index:999;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;font-family:Inter,sans-serif;backdrop-filter:blur(4px)">← Portal</a>
 
 <div id="machine">
@@ -95,18 +131,15 @@
       <div class="reel" id="reel3"><div class="reel-inner" id="ri3"></div></div>
       <div class="reel" id="reel4"><div class="reel-inner" id="ri4"></div></div>
     </div>
-    <div id="paylines">
-      <span>— Linie 1 (Mitte)</span><span>— Linie 2 (Oben)</span><span>— Linie 3 (Unten)</span><span>↕ Linien 4–5</span>
-    </div>
     <div id="win-flash"></div>
   </div>
 
-  <div id="fs-banner" id="fs-banner">🎰 <span id="fs-text">10 Freispiele!</span></div>
+  <div id="fs-banner">🎰 <span id="fs-text"></span></div>
 
   <div id="controls">
     <div class="ctrl-group">
       <div class="ctrl-label">Guthaben</div>
-      <div class="ctrl-val" id="balance-val">1 000</div>
+      <div class="ctrl-val" id="balance-val">1.000</div>
     </div>
     <div class="ctrl-group" style="margin-left:8px">
       <div class="ctrl-label">Einsatz</div>
@@ -117,292 +150,534 @@
       </div>
     </div>
     <div class="ctrl-group">
-      <div class="ctrl-label">Letzter Gewinn</div>
-      <div class="ctrl-val" id="win-val" style="color:#22c55e">0</div>
+      <div class="ctrl-label" id="win-label">Letzter Gewinn</div>
+      <div class="ctrl-val" id="win-val" style="color:#6b7280">0</div>
     </div>
-    <button id="spin-btn" onclick="spin()">SPIN ▶</button>
+    <div id="actions">
+      <button id="spin-btn" class="action-btn" onclick="spin()">SPIN ▶</button>
+      <button id="take-btn" class="action-btn" onclick="takeWin()" style="display:none">NEHMEN ✓</button>
+      <button id="gamble-btn" class="action-btn" onclick="openGamble()" style="display:none">GAMBLE ♠</button>
+    </div>
   </div>
 
-  <div style="margin-top:8px;display:flex;gap:8px">
-    <button class="btn-gray btn" onclick="openLb()" style="font-size:12px;padding:8px 16px">🏆 Rangliste</button>
-    <button class="btn-gray btn" onclick="resetBalance()" style="font-size:12px;padding:8px 16px">↺ Neues Spiel</button>
+  <div id="extras">
+    <button class="btn btn-gray" onclick="openLb()">🏆 Rangliste</button>
+    <button class="btn btn-gray" onclick="openPaytable()">📊 Gewinntabelle</button>
+    <button class="btn btn-gray" onclick="resetBalance()">↺ Neues Spiel</button>
   </div>
 </div>
 
-<!-- LEADERBOARD -->
+<!-- GAMBLE OVERLAY -->
+<div class="ov hidden" id="ov-gamble">
+  <div class="ov-card">
+    <div class="ov-title">🃏 Gamble</div>
+    <div class="ov-sub">Einsatz: <span id="g-amount" style="color:#fbbf24;font-weight:800">0</span> Coins</div>
+    <div class="gamble-card-wrap">
+      <div class="gamble-card back" id="g-card">?</div>
+    </div>
+    <div id="g-choices">
+      <p style="font-size:12px;color:#9ca3af;margin-bottom:8px">Farbe erraten → ×2 Gewinn</p>
+      <div class="g-row">
+        <button class="g-btn g-red" onclick="guessColor('red')">🔴 Rot</button>
+        <button class="g-btn g-black" onclick="guessColor('black')">⚫ Schwarz</button>
+      </div>
+      <p style="font-size:12px;color:#9ca3af;margin-bottom:8px">Symbol erraten → ×4 Gewinn</p>
+      <div class="g-row">
+        <button class="g-btn g-suit rs" onclick="guessSuit('♥')">♥</button>
+        <button class="g-btn g-suit rs" onclick="guessSuit('♦')">♦</button>
+        <button class="g-btn g-suit" onclick="guessSuit('♣')">♣</button>
+        <button class="g-btn g-suit" onclick="guessSuit('♠')">♠</button>
+      </div>
+    </div>
+    <div id="g-result" style="display:none;margin-top:16px">
+      <div id="g-msg" style="font-size:20px;font-weight:800;margin-bottom:14px"></div>
+      <div class="g-row">
+        <button id="g-again" class="g-btn g-pink" onclick="gambleAgain()">Nochmal ♠</button>
+        <button id="g-take" class="g-btn g-green" onclick="takeAfterGamble()">Nehmen ✓</button>
+      </div>
+    </div>
+    <button class="btn btn-gray" onclick="closeGamble()" style="margin-top:14px;font-size:12px">Abbrechen</button>
+  </div>
+</div>
+
+<!-- PAYTABLE OVERLAY -->
+<div class="ov hidden" id="ov-pt">
+  <div class="ov-card" style="max-width:500px">
+    <div class="ov-title">📊 Gewinntabelle</div>
+    <div class="ov-sub">Multiplikatoren × Einsatz pro Linie</div>
+    <div id="pt-list" style="text-align:left;max-height:380px;overflow-y:auto"></div>
+    <div style="margin-top:12px;font-size:11px;color:#6b7280;text-align:left;line-height:1.6">
+      📖 Wild (ersetzt alles) + Scatter (3+ überall → 10 Freispiele)<br>
+      Freispiele: Spezialsymbol dehnt sich auf ganze Walze aus
+    </div>
+    <button class="btn btn-gray" onclick="document.getElementById('ov-pt').classList.add('hidden')" style="margin-top:16px">Schließen</button>
+  </div>
+</div>
+
+<!-- LEADERBOARD OVERLAY -->
 <div class="ov hidden" id="ov-lb">
   <div class="ov-card">
-    <h2 style="margin-bottom:4px;color:#fbbf24">🏆 Rangliste</h2>
-    <p class="sub">Book of Ra – Höchstes Guthaben</p>
-    <div id="lb-list" style="text-align:left;max-height:280px;overflow-y:auto"></div>
-    <button class="btn btn-gray" onclick="closeLb()" style="margin-top:16px">Schließen</button>
+    <div class="ov-title">🏆 Rangliste</div>
+    <div class="ov-sub">Book of Ra – Höchstes Guthaben</div>
+    <div id="lb-list" style="text-align:left;max-height:300px;overflow-y:auto"></div>
+    <button class="btn btn-gray" onclick="document.getElementById('ov-lb').classList.add('hidden')" style="margin-top:16px">Schließen</button>
   </div>
 </div>
 
 <script>
-// ── SYMBOLS ──────────────────────────────────────────────────────────────────
-const SYMS=[
-  {e:'📖',n:'Book of Ra', col:'#fbbf24',w:2,  v:[0,0,10,25,200,500],wild:true,scatter:true},
-  {e:'👑',n:'Pharao',     col:'#f97316',w:4,  v:[0,0, 6,15, 75,200]},
-  {e:'☥', n:'Ankh',      col:'#a855f7',w:5,  v:[0,0, 5,12, 60,150]},
-  {e:'🪲',n:'Skarabäus',  col:'#22c55e',w:6,  v:[0,0, 4,10, 50,120]},
-  {e:'🗺️',n:'Entdecker', col:'#60a5fa',w:7,  v:[0,0, 3, 8, 40, 80]},
-  {e:'A', n:'Ass',        col:'#ef4444',w:12, v:[0,0, 2, 5, 20, 40]},
-  {e:'K', n:'König',      col:'#d97706',w:12, v:[0,0, 2, 5, 15, 30]},
-  {e:'Q', n:'Dame',       col:'#8b5cf6',w:14, v:[0,0, 1, 3, 10, 20]},
-  {e:'J', n:'Bube',       col:'#06b6d4',w:16, v:[0,0, 1, 3, 10, 20]},
-  {e:'10',n:'Zehn',       col:'#6b7280',w:22, v:[0,0, 1, 2,  8, 15]},
+// ── SYMBOLS ───────────────────────────────────────────────────────────────────
+// v[n] = multiplier for n matching symbols (index 0..5)
+const SYMS = [
+  {e:'📖', n:'Book of Ra',  col:'#fbbf24', w:2,  v:[0,0,0,2,20,200],   wild:true, scatter:true},
+  {e:'🧭', n:'Abenteurer',  col:'#f97316', w:3,  v:[0,0,0,10,100,5000]},
+  {e:'👑', n:'Pharao',      col:'#fcd34d', w:4,  v:[0,0,0,3,30,400]},
+  {e:'🪲', n:'Skarabäus',   col:'#22c55e', w:6,  v:[0,0,0,3,25,75]},
+  {e:'A',  n:'Ass',         col:'#ef4444', w:10, v:[0,0,0,1,4,15]},
+  {e:'K',  n:'König',       col:'#d97706', w:10, v:[0,0,0,1,4,15]},
+  {e:'Q',  n:'Dame',        col:'#8b5cf6', w:14, v:[0,0,0,1,3,10]},
+  {e:'J',  n:'Bube',        col:'#06b6d4', w:14, v:[0,0,0,1,3,10]},
+  {e:'10', n:'Zehn',        col:'#6b7280', w:20, v:[0,0,0,1,2,5]},
 ];
-const TOTAL_W=SYMS.reduce((a,s)=>a+s.w,0);
+const TOTAL_W = SYMS.reduce((a, s) => a + s.w, 0);
 
-// 5 paylines: each is [row for reel 0..4]
-const PAYLINES=[
-  [1,1,1,1,1], // middle
-  [0,0,0,0,0], // top
-  [2,2,2,2,2], // bottom
-  [0,1,2,1,0], // V
-  [2,1,0,1,2], // inverted V
+// 5 paylines – each entry = row index (0=top, 1=mid, 2=bot) for reels 0..4
+const PAYLINES = [
+  [1,1,1,1,1], // 1: middle
+  [0,0,0,0,0], // 2: top
+  [2,2,2,2,2], // 3: bottom
+  [0,1,2,1,0], // 4: V-shape
+  [2,1,0,1,2], // 5: inverted-V
 ];
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
-let balance=1000, bet=10, freeSpins=0, specialSym=-1;
-let spinning=false, highScore=1000;
-let currentUser=null;
-// result[reel][row] = symbol index
-let result=Array.from({length:5},()=>[0,0,0]);
-// spinIntervals per reel
-let spinItvs=[];
+let balance = 1000, bet = 10;
+let freeSpins = 0, specialSym = -1, inFreeSpin = false;
+let pendingWin = 0;
+let spinning = false, highScore = 1000;
+let currentUser = null;
+let result = Array.from({length: 5}, () => [0, 0, 0]);
+let spinItvs = [];
+const BETS = [5, 10, 20, 50, 100, 200, 500];
+let betIdx = 1;
 
-const BETS=[5,10,20,50,100,200,500];
-let betIdx=1;
-
-// ── INIT ─────────────────────────────────────────────────────────────────────
-async function init(){
-  try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
-  buildReels();updateUI();
+// ── INIT ──────────────────────────────────────────────────────────────────────
+async function init() {
+  try { const r = await fetch('/auth/me'); if (r.ok) currentUser = await r.json(); } catch {}
+  buildReels();
+  updateUI();
+  buildPaytable();
 }
 
-function rndSym(){
-  let r=Math.random()*TOTAL_W;
-  for(let i=0;i<SYMS.length;i++){r-=SYMS[i].w;if(r<=0)return i;}
-  return SYMS.length-1;
+function rndSym() {
+  let r = Math.random() * TOTAL_W;
+  for (let i = 0; i < SYMS.length; i++) { r -= SYMS[i].w; if (r <= 0) return i; }
+  return SYMS.length - 1;
 }
 
-function buildReels(){
-  for(let ri=0;ri<5;ri++){
-    const inner=document.getElementById(`ri${ri}`);
-    inner.innerHTML='';
-    // 9 rows (3×3 for animation)
-    for(let row=0;row<9;row++){
-      const s=rndSym();
-      const el=document.createElement('div');
-      el.className='sym';
-      el.style.color=SYMS[s].col;
-      el.id=`s${ri}_${row}`;
-      el.textContent=SYMS[s].e;
+function buildReels() {
+  for (let ri = 0; ri < 5; ri++) {
+    const inner = document.getElementById(`ri${ri}`);
+    inner.innerHTML = '';
+    for (let row = 0; row < 9; row++) {
+      const s = rndSym();
+      const el = document.createElement('div');
+      el.className = 'sym';
+      el.style.color = SYMS[s].col;
+      el.id = `s${ri}_${row}`;
+      el.textContent = SYMS[s].e;
       inner.appendChild(el);
     }
-    // Show middle 3
-    inner.style.transform=`translateY(-${100/3}%)`;
+    inner.style.transform = 'translateY(-33.333%)';
   }
 }
 
-function setVisible(ri,r0,r1,r2){
-  // rows 3,4,5 are "visible" in 9-row strip
-  document.getElementById(`s${ri}_3`).style.color=SYMS[r0].col;document.getElementById(`s${ri}_3`).textContent=SYMS[r0].e;
-  document.getElementById(`s${ri}_4`).style.color=SYMS[r1].col;document.getElementById(`s${ri}_4`).textContent=SYMS[r1].e;
-  document.getElementById(`s${ri}_5`).style.color=SYMS[r2].col;document.getElementById(`s${ri}_5`).textContent=SYMS[r2].e;
-  result[ri]=[r0,r1,r2];
+// Rows 3,4,5 are the visible cells in the 9-row strip
+function setVisible(ri, r0, r1, r2) {
+  [[3, r0], [4, r1], [5, r2]].forEach(([row, si]) => {
+    const el = document.getElementById(`s${ri}_${row}`);
+    el.style.color = SYMS[si].col;
+    el.textContent = SYMS[si].e;
+    el.className = 'sym';
+  });
+  result[ri] = [r0, r1, r2];
 }
 
-// ── SPIN ─────────────────────────────────────────────────────────────────────
-function spin(){
-  if(spinning)return;
-  const cost=freeSpins>0?0:bet;
-  if(balance<cost&&freeSpins===0){alert('Nicht genug Guthaben!');return;}
-  if(freeSpins===0)balance-=cost;
-  else{freeSpins--;updateFsBanner();}
+// ── SPIN ──────────────────────────────────────────────────────────────────────
+function spin() {
+  if (spinning || pendingWin > 0) return;
+  const isFree = freeSpins > 0;
+  if (!isFree && balance < bet) { alert('Nicht genug Guthaben!'); return; }
 
-  spinning=true;
-  document.getElementById('spin-btn').disabled=true;
-  document.getElementById('win-val').textContent='0';
-  document.getElementById('win-val').style.color='#22c55e';
+  if (isFree) { freeSpins--; inFreeSpin = true; }
+  else { balance -= bet; inFreeSpin = false; }
+
+  spinning = true;
+  document.getElementById('spin-btn').disabled = true;
+  setWinDisplay(0, '#6b7280', 'Letzter Gewinn');
   clearWinHighlights();
+  updateUI();
 
-  // Generate final result
-  const finalResult=Array.from({length:5},()=>[rndSym(),rndSym(),rndSym()]);
+  // Determine final outcome
+  const finalResult = Array.from({length: 5}, () => [rndSym(), rndSym(), rndSym()]);
 
-  // If in free spins, expand special symbol
-  if(freeSpins>=0&&specialSym>=0){
-    // Check if 3+ special on any reel, expand
-    for(let ri=0;ri<5;ri++){
-      const count=finalResult[ri].filter(s=>s===specialSym).length;
-      if(count>=2)finalResult[ri]=[specialSym,specialSym,specialSym];
+  // Expanding symbol: if special sym appears on a reel, whole reel becomes it
+  if (inFreeSpin && specialSym >= 0) {
+    for (let ri = 0; ri < 5; ri++) {
+      if (finalResult[ri].includes(specialSym)) {
+        finalResult[ri] = [specialSym, specialSym, specialSym];
+      }
     }
   }
 
-  // Start spinning all reels
-  for(let ri=0;ri<5;ri++){
-    const reel=document.getElementById(`reel${ri}`);
-    const inner=document.getElementById(`ri${ri}`);
-    reel.classList.add('spinning');
-    // Rapidly change symbols
-    spinItvs[ri]=setInterval(()=>{
-      for(let row=0;row<9;row++){
-        const el=document.getElementById(`s${ri}_${row}`);
-        const s=rndSym();el.textContent=SYMS[s].e;el.style.color=SYMS[s].col;
+  // Animate and stop reels one by one
+  for (let ri = 0; ri < 5; ri++) {
+    spinItvs[ri] = setInterval(() => {
+      for (let row = 0; row < 9; row++) {
+        const el = document.getElementById(`s${ri}_${row}`);
+        const s = rndSym();
+        el.textContent = SYMS[s].e;
+        el.style.color = SYMS[s].col;
       }
-    },80);
-    // Stop staggered
-    setTimeout(()=>{
+    }, 80);
+    setTimeout(() => {
       clearInterval(spinItvs[ri]);
-      reel.classList.remove('spinning');
-      setVisible(ri,...finalResult[ri]);
-    },900+ri*350);
+      setVisible(ri, ...finalResult[ri]);
+      // Visual expand indicator
+      if (inFreeSpin && specialSym >= 0 &&
+          finalResult[ri].every(s => s === specialSym)) {
+        [3, 4, 5].forEach(row => {
+          document.getElementById(`s${ri}_${row}`).classList.add('expand');
+        });
+      }
+    }, 900 + ri * 350);
   }
 
-  // All done
-  setTimeout(()=>{
-    spinning=false;
-    document.getElementById('spin-btn').disabled=false;
+  setTimeout(() => {
+    spinning = false;
     evaluateResult(finalResult);
-  },900+4*350+200);
+  }, 900 + 4 * 350 + 200);
 }
 
-function evaluateResult(res){
-  let totalWin=0;
-  const winCells=new Set();
+// ── EVALUATE ──────────────────────────────────────────────────────────────────
+function evaluateResult(res) {
+  let totalWin = 0;
+  const winCells = new Set();
 
-  for(let li=0;li<PAYLINES.length;li++){
-    const pl=PAYLINES[li];
-    const symsOnLine=Array.from({length:5},(_,ri)=>res[ri][pl[ri]]);
-    // Find base symbol (first non-wild, or wild if all wild)
-    let base=symsOnLine[0];
-    if(SYMS[base].wild){
-      base=symsOnLine.find(s=>!SYMS[s].wild)??0;
-    }
-    // Count consecutive from left (wild substitutes)
-    let cnt=0;
-    for(let ri=0;ri<5;ri++){
-      if(symsOnLine[ri]===base||SYMS[symsOnLine[ri]].wild)cnt++;
+  // Payline wins
+  for (let li = 0; li < PAYLINES.length; li++) {
+    const pl = PAYLINES[li];
+    const line = pl.map((row, ri) => res[ri][row]);
+
+    // Base symbol = first non-wild; if all wild, base = Book (index 0)
+    let base = line.find(s => !SYMS[s].wild);
+    if (base === undefined) base = 0;
+
+    // Count consecutive matches from left (wild substitutes)
+    let cnt = 0;
+    for (let ri = 0; ri < 5; ri++) {
+      if (line[ri] === base || SYMS[line[ri]].wild) cnt++;
       else break;
     }
-    if(cnt>=3){
-      const mul=SYMS[base].v[cnt]??0;
-      const lineWin=mul*bet;
-      totalWin+=lineWin;
-      for(let ri=0;ri<cnt;ri++) winCells.add(`${ri}_${pl[ri]+3}`);
+
+    if (cnt >= 3) {
+      const mul = SYMS[base].v[cnt] || 0;
+      if (mul > 0) {
+        totalWin += mul * bet;
+        for (let ri = 0; ri < cnt; ri++) winCells.add(`${ri}_${pl[ri] + 3}`);
+      }
     }
   }
 
-  // Scatter: count books anywhere
-  const books=res.flat().filter(s=>SYMS[s].scatter).length;
-  const scatterMul=[0,0,2,5,20,100][Math.min(books,5)];
-  if(books>=2){
-    totalWin+=scatterMul*bet;
-    res.forEach((col,ri)=>col.forEach((s,row)=>{if(SYMS[s].scatter)winCells.add(`${ri}_${row+3}`);}));
+  // Scatter: count Books anywhere on the grid
+  const books = res.flat().filter(s => SYMS[s].scatter).length;
+  if (books >= 3) {
+    const scatterMul = SYMS[0].v[Math.min(books, 5)] || 0;
+    totalWin += scatterMul * bet;
+    res.forEach((col, ri) => col.forEach((s, row) => {
+      if (SYMS[s].scatter) winCells.add(`${ri}_${row + 3}`);
+    }));
+    freeSpins += 10;
+    specialSym = Math.floor(Math.random() * SYMS.length);
+    flashMsg(`🎰 ${books} Books! +10 Freispiele! ${SYMS[specialSym].e} ist Spezialsymbol`, '#a855f7', 3500);
   }
-  if(books>=3){
-    freeSpins+=10;
-    specialSym=Math.floor(Math.random()*SYMS.length);
-    updateFsBanner();
-    flashMsg(`🎰 ${books} Books! +10 Freispiele! Spezialsymbol: ${SYMS[specialSym].e}`,'#a855f7',3000);
+
+  updateFsBanner();
+  if (winCells.size > 0) highlightWin(winCells);
+
+  if (totalWin > 0) {
+    pendingWin = totalWin;
+    highScore = Math.max(highScore, balance + pendingWin);
+    setWinDisplay(pendingWin, '#fbbf24', 'Gewinn');
+    if (books < 3) flashMsg(`+${pendingWin.toLocaleString('de-DE')} 🪙`, '#fbbf24', 1800);
+    showPendingButtons();
+  } else {
+    setWinDisplay(0, '#6b7280', 'Letzter Gewinn');
+    enableSpin();
+    updateUI();
+    checkGameOver();
   }
+}
 
-  if(winCells.size>0) highlightWin(winCells);
+// ── WIN STATE ─────────────────────────────────────────────────────────────────
+function showPendingButtons() {
+  document.getElementById('spin-btn').style.display = 'none';
+  document.getElementById('take-btn').style.display = '';
+  document.getElementById('gamble-btn').style.display = '';
+}
 
-  balance+=totalWin;
-  if(balance>highScore)highScore=balance;
-  document.getElementById('win-val').textContent=totalWin.toLocaleString();
-  document.getElementById('win-val').style.color=totalWin>0?'#fbbf24':'#6b7280';
-  if(totalWin>0&&books<3) flashMsg(`+${totalWin.toLocaleString()} 🪙`,'#fbbf24',1500);
+function enableSpin() {
+  document.getElementById('spin-btn').style.display = '';
+  document.getElementById('spin-btn').disabled = false;
+  document.getElementById('take-btn').style.display = 'none';
+  document.getElementById('gamble-btn').style.display = 'none';
+}
 
+function takeWin() {
+  const won = pendingWin;
+  balance += won;
+  pendingWin = 0;
+  highScore = Math.max(highScore, balance);
+  setWinDisplay(won, won > 0 ? '#fbbf24' : '#6b7280', 'Letzter Gewinn');
+  enableSpin();
   updateUI();
-  if(balance<=0&&freeSpins===0){setTimeout(()=>submitAndReset(),1500);}
+  checkGameOver();
 }
 
-function highlightWin(cells){
-  cells.forEach(id=>{
-    const el=document.getElementById(`s${id}`);
-    if(el)el.classList.add('win');
-  });
-  setTimeout(clearWinHighlights,2000);
-}
-function clearWinHighlights(){
-  document.querySelectorAll('.sym.win').forEach(el=>el.classList.remove('win'));
+function setWinDisplay(amount, color, label) {
+  document.getElementById('win-val').textContent = amount > 0
+    ? amount.toLocaleString('de-DE') + ' 🪙' : '0';
+  document.getElementById('win-val').style.color = color;
+  document.getElementById('win-label').textContent = label;
 }
 
-function flashMsg(msg,col,dur){
-  const el=document.getElementById('win-flash');
-  el.textContent=msg;el.style.color=col;el.style.opacity='1';
-  setTimeout(()=>el.style.opacity='0',dur);
+function checkGameOver() {
+  if (balance <= 0 && freeSpins === 0) setTimeout(submitAndReset, 1500);
 }
 
-function updateFsBanner(){
-  const b=document.getElementById('fs-banner');
-  if(freeSpins>0){
-    b.style.display='block';
-    document.getElementById('fs-text').textContent=`${freeSpins} Freispiele verbleibend · Spezialsymbol: ${SYMS[specialSym]?.e||'?'}`;
-    document.getElementById('spin-btn').className='btn'; // keep as element
-    document.getElementById('spin-btn').style.background='linear-gradient(135deg,#6d28d9,#a855f7)';
-    document.getElementById('spin-btn').textContent='FREISPIN ▶';
-  }else{
-    b.style.display='none';specialSym=-1;
-    document.getElementById('spin-btn').style.background='linear-gradient(135deg,#b45309,#f59e0b)';
-    document.getElementById('spin-btn').textContent='SPIN ▶';
+// ── GAMBLE ────────────────────────────────────────────────────────────────────
+function openGamble() {
+  if (!pendingWin) return;
+  document.getElementById('g-amount').textContent = pendingWin.toLocaleString('de-DE');
+  const card = document.getElementById('g-card');
+  card.className = 'gamble-card back';
+  card.textContent = '?';
+  document.getElementById('g-choices').style.display = '';
+  document.getElementById('g-result').style.display = 'none';
+  document.querySelectorAll('#g-choices .g-btn').forEach(b => b.disabled = false);
+  document.getElementById('ov-gamble').classList.remove('hidden');
+}
+
+function closeGamble() {
+  document.getElementById('ov-gamble').classList.add('hidden');
+}
+
+function guessColor(guess) {
+  document.querySelectorAll('#g-choices .g-btn').forEach(b => b.disabled = true);
+  const suits = ['♥', '♦', '♣', '♠'];
+  const suit = suits[Math.floor(Math.random() * 4)];
+  const isRed = suit === '♥' || suit === '♦';
+  const win = (guess === 'red') === isRed;
+  revealCard(suit, isRed);
+  resolveGamble(win, 2);
+}
+
+function guessSuit(guess) {
+  document.querySelectorAll('#g-choices .g-btn').forEach(b => b.disabled = true);
+  const suits = ['♥', '♦', '♣', '♠'];
+  const suit = suits[Math.floor(Math.random() * 4)];
+  const isRed = suit === '♥' || suit === '♦';
+  const win = guess === suit;
+  revealCard(suit, isRed);
+  resolveGamble(win, 4);
+}
+
+function revealCard(suit, isRed) {
+  const card = document.getElementById('g-card');
+  card.className = 'gamble-card ' + (isRed ? 'red-card' : 'black-card');
+  card.textContent = suit;
+}
+
+function resolveGamble(win, mul) {
+  document.getElementById('g-choices').style.display = 'none';
+  const card = document.getElementById('g-card');
+
+  if (win) {
+    pendingWin *= mul;
+    highScore = Math.max(highScore, balance + pendingWin);
+    card.classList.add('g-win');
+    document.getElementById('g-msg').innerHTML =
+      `<span style="color:#22c55e">✓ Gewonnen! ×${mul}</span><br>` +
+      `<span style="font-size:14px;color:#9ca3af">${pendingWin.toLocaleString('de-DE')} Coins</span>`;
+    document.getElementById('g-amount').textContent = pendingWin.toLocaleString('de-DE');
+    document.getElementById('g-again').style.display = '';
+    document.getElementById('g-take').textContent = 'Nehmen ✓';
+    setWinDisplay(pendingWin, '#fbbf24', 'Gewinn');
+  } else {
+    card.classList.add('g-lose');
+    document.getElementById('g-msg').innerHTML =
+      `<span style="color:#ef4444">✗ Verloren!</span>`;
+    document.getElementById('g-again').style.display = 'none';
+    document.getElementById('g-take').textContent = 'Weiter →';
+    pendingWin = 0;
+    setWinDisplay(0, '#6b7280', 'Letzter Gewinn');
   }
+
+  document.getElementById('g-result').style.display = '';
 }
 
-function updateUI(){
-  document.getElementById('balance-val').textContent=balance.toLocaleString();
+function gambleAgain() {
+  const card = document.getElementById('g-card');
+  card.className = 'gamble-card back';
+  card.textContent = '?';
+  document.getElementById('g-amount').textContent = pendingWin.toLocaleString('de-DE');
+  document.getElementById('g-choices').style.display = '';
+  document.getElementById('g-result').style.display = 'none';
+  document.querySelectorAll('#g-choices .g-btn').forEach(b => b.disabled = false);
 }
 
-function changeBet(dir){
-  if(spinning||freeSpins>0)return;
-  betIdx=Math.max(0,Math.min(BETS.length-1,betIdx+dir));
-  bet=BETS[betIdx];
-  document.getElementById('bet-val').textContent=bet.toLocaleString();
+function takeAfterGamble() {
+  closeGamble();
+  takeWin();
 }
 
-function resetBalance(){
-  if(spinning)return;
-  balance=1000;freeSpins=0;specialSym=-1;
-  updateUI();updateFsBanner();buildReels();
-  document.getElementById('win-val').textContent='0';
-  document.getElementById('win-val').style.color='#22c55e';
+// ── PAYTABLE ──────────────────────────────────────────────────────────────────
+function buildPaytable() {
+  document.getElementById('pt-list').innerHTML = SYMS.map(s => {
+    const tags = [];
+    if (s.wild)    tags.push('<span class="pt-tag">WILD</span>');
+    if (s.scatter) tags.push('<span class="pt-tag">SCATTER</span>');
+    return `<div class="pt-row">
+      <div class="pt-sym" style="color:${s.col}">${s.e}</div>
+      <div class="pt-name">${s.n} ${tags.join(' ')}</div>
+      <div class="pt-pays">
+        <div class="pt-pay">×3: ${s.v[3]}×</div>
+        <div class="pt-pay">×4: ${s.v[4]}×</div>
+        <div class="pt-pay">×5: ${s.v[5]}×</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
-async function submitAndReset(){
-  try{await fetch('/api/game-scores/bookofra',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score:highScore})});}catch{}
-  alert(`Kein Guthaben mehr! Höchster Stand: ${highScore.toLocaleString()} Coins`);
-  resetBalance();highScore=1000;
+function openPaytable() {
+  document.getElementById('ov-pt').classList.remove('hidden');
 }
 
-// ── LEADERBOARD ──────────────────────────────────────────────────────────────
-async function openLb(){
-  // Submit current high score before showing
-  try{await fetch('/api/game-scores/bookofra',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score:highScore})});}catch{}
+// ── LEADERBOARD ───────────────────────────────────────────────────────────────
+async function openLb() {
+  try {
+    await fetch('/api/game-scores/bookofra', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({score: highScore})
+    });
+  } catch {}
   document.getElementById('ov-lb').classList.remove('hidden');
-  const el=document.getElementById('lb-list');
-  el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Laden…</div>';
-  try{
-    const r=await fetch('/api/game-scores/bookofra'),data=await r.json();
-    if(!data.length){el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Noch keine Einträge</div>';return;}
-    el.innerHTML=data.map((row,i)=>{
-      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
-      const me=currentUser&&row.discord_id===currentUser.discord_id;
-      const av=row.avatar?`<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`:(row.username||'?').slice(0,2).toUpperCase();
-      return`<div class="lb-row" style="${me?'background:#1a1000;border-radius:5px;':''}">
-        <div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
-        <div class="lb-name">${row.username||'Unbekannt'}</div>
-        <div class="lb-score">${row.score.toLocaleString()} 🪙</div>
+  const el = document.getElementById('lb-list');
+  el.innerHTML = '<div style="text-align:center;padding:14px;color:#6b7280">Laden…</div>';
+  try {
+    const data = await (await fetch('/api/game-scores/bookofra')).json();
+    if (!data.length) {
+      el.innerHTML = '<div style="text-align:center;padding:14px;color:#6b7280">Noch keine Einträge</div>';
+      return;
+    }
+    el.innerHTML = data.map((row, i) => {
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+      const me = currentUser && row.discord_id === currentUser.discord_id;
+      const av = row.avatar
+        ? `<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`
+        : (row.username || '?').slice(0, 2).toUpperCase();
+      return `<div class="lb-row" style="${me ? 'background:#1a1000;border-radius:5px;' : ''}">
+        <div class="lb-rank">${medal}</div>
+        <div class="lb-av">${av}</div>
+        <div class="lb-name">${row.username || 'Unbekannt'}</div>
+        <div class="lb-score">${row.score.toLocaleString('de-DE')} 🪙</div>
       </div>`;
     }).join('');
-  }catch{el.innerHTML='<div style="text-align:center;color:#ef4444">Fehler</div>';}
+  } catch {
+    el.innerHTML = '<div style="text-align:center;color:#ef4444">Fehler beim Laden</div>';
+  }
 }
-function closeLb(){document.getElementById('ov-lb').classList.add('hidden');}
 
-window.addEventListener('keydown',e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();if(!spinning)spin();}});
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function highlightWin(cells) {
+  cells.forEach(id => {
+    const el = document.getElementById(`s${id}`);
+    if (el && !el.classList.contains('expand')) el.classList.add('win');
+  });
+  setTimeout(clearWinHighlights, 2500);
+}
+
+function clearWinHighlights() {
+  document.querySelectorAll('.sym.win, .sym.expand').forEach(el => {
+    el.classList.remove('win', 'expand');
+  });
+}
+
+function flashMsg(msg, col, dur) {
+  const el = document.getElementById('win-flash');
+  el.textContent = msg;
+  el.style.color = col;
+  el.style.opacity = '1';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.style.opacity = '0', dur);
+}
+
+function updateFsBanner() {
+  const b = document.getElementById('fs-banner');
+  if (freeSpins > 0) {
+    b.style.display = 'block';
+    document.getElementById('fs-text').textContent =
+      `${freeSpins} Freispiele verbleibend · Spezialsymbol: ${SYMS[specialSym]?.e || '?'}`;
+    document.getElementById('spin-btn').classList.add('free');
+    document.getElementById('spin-btn').textContent = 'FREISPIN ▶';
+  } else {
+    b.style.display = 'none';
+    specialSym = -1;
+    inFreeSpin = false;
+    document.getElementById('spin-btn').classList.remove('free');
+    document.getElementById('spin-btn').textContent = 'SPIN ▶';
+  }
+}
+
+function updateUI() {
+  document.getElementById('balance-val').textContent = balance.toLocaleString('de-DE');
+}
+
+function changeBet(dir) {
+  if (spinning || freeSpins > 0 || pendingWin > 0) return;
+  betIdx = Math.max(0, Math.min(BETS.length - 1, betIdx + dir));
+  bet = BETS[betIdx];
+  document.getElementById('bet-val').textContent = bet.toLocaleString('de-DE');
+}
+
+function resetBalance() {
+  if (spinning) return;
+  if (pendingWin > 0) { takeWin(); return; }
+  balance = 1000; freeSpins = 0; specialSym = -1; inFreeSpin = false; pendingWin = 0;
+  setWinDisplay(0, '#6b7280', 'Letzter Gewinn');
+  enableSpin();
+  updateUI();
+  updateFsBanner();
+  buildReels();
+}
+
+async function submitAndReset() {
+  try {
+    await fetch('/api/game-scores/bookofra', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({score: highScore})
+    });
+  } catch {}
+  alert(`Kein Guthaben mehr!\nHöchster Stand: ${highScore.toLocaleString('de-DE')} Coins`);
+  resetBalance();
+  highScore = 1000;
+}
+
+window.addEventListener('keydown', e => {
+  if ((e.key === ' ' || e.key === 'Enter') && !spinning && pendingWin === 0) {
+    e.preventDefault();
+    spin();
+  }
+});
 
 init();
 </script>
