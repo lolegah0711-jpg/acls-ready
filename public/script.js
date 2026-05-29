@@ -2057,6 +2057,9 @@ async function admin() {
   window._adminCats = cats;
 
   $('pageContent').innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:1rem">
+      <button class="btn btn-ghost" onclick="enterCitizenView()"><i class="fas fa-eye" style="margin-right:.4rem"></i>Bürgeransicht</button>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start">
       <div style="display:flex;flex-direction:column;gap:1rem"><!-- col-left -->
       <div class="card">
@@ -2232,6 +2235,38 @@ window.submitRenameUser = async (e, id) => {
 window.setRank = async (id, rank) => {
   const r = await api(`/api/users/${id}/rank`, { method: 'PATCH', body: { rank } });
   if (r) toast('Rang gespeichert.', 'ok');
+};
+
+// ── Bürgeransicht (Admin-Vorschau) ───────────────────────────────
+window.enterCitizenView = async () => {
+  window._origVoterLogout = window.voterLogout;
+  window.voterLogout = () => toast('Abmelden nicht verfügbar in der Vorschau.', 'err');
+
+  const banner = document.createElement('div');
+  banner.id = 'citizenPreviewBanner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#7c3aed;color:#fff;padding:8px 20px;display:flex;align-items:center;justify-content:space-between;font-family:Inter,sans-serif;font-size:13px;font-weight:600;box-shadow:0 2px 12px rgba(0,0,0,.4)';
+  banner.innerHTML = `
+    <span><i class="fas fa-eye" style="margin-right:8px"></i>Bürgeransicht – Vorschau</span>
+    <button onclick="exitCitizenView()" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:5px 16px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;font-family:Inter,sans-serif">← Zurück zum Admin</button>`;
+  document.body.appendChild(banner);
+
+  $('app').classList.add('hidden');
+  $('loginScreen').classList.add('hidden');
+  $('voterScreen').classList.remove('hidden');
+  $('voterScreen').style.paddingTop = '44px';
+  await renderVoterScreen();
+};
+
+window.exitCitizenView = () => {
+  const banner = document.getElementById('citizenPreviewBanner');
+  if (banner) banner.remove();
+  $('voterScreen').classList.add('hidden');
+  $('voterScreen').style.paddingTop = '';
+  $('app').classList.remove('hidden');
+  if (window._origVoterLogout) {
+    window.voterLogout = window._origVoterLogout;
+    delete window._origVoterLogout;
+  }
 };
 
 window.openAnnouncementModal = () => openModal(`
