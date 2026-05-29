@@ -1388,6 +1388,46 @@ app.delete('/api/prices/:id', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ── FAHRZEUGMARKT ────────────────────────────────────────────────
+app.get('/api/car-listings', (req, res) => {
+  res.json(db.prepare('SELECT * FROM car_listings ORDER BY created_at DESC').all());
+});
+
+app.post('/api/car-listings', requireLogin, (req, res) => {
+  const { name, phone, car, price, notes } = req.body;
+  if (!name?.trim() || !phone?.trim() || !car?.trim() || !price?.trim())
+    return res.status(400).json({ error: 'Fehlende Felder' });
+  const u = getUser(req);
+  const r = db.prepare(
+    'INSERT INTO car_listings (name, phone, car, price, notes, owner_discord_id, owner_user_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, u?.discord_id || null, u?.id || null);
+  res.json({ ok: true, id: r.lastInsertRowid });
+});
+
+app.patch('/api/car-listings/:id', requireLogin, (req, res) => {
+  const u = getUser(req);
+  if (!u || u.role !== 'admin') return res.status(403).json({ error: 'Kein Zugriff' });
+  const { name, phone, car, price, notes } = req.body;
+  if (!name?.trim() || !phone?.trim() || !car?.trim() || !price?.trim())
+    return res.status(400).json({ error: 'Fehlende Felder' });
+  const item = db.prepare('SELECT id FROM car_listings WHERE id = ?').get(+req.params.id);
+  if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
+  db.prepare('UPDATE car_listings SET name=?, phone=?, car=?, price=?, notes=? WHERE id=?')
+    .run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, +req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/car-listings/:id', requireLogin, (req, res) => {
+  const u = getUser(req);
+  if (!u) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const item = db.prepare('SELECT * FROM car_listings WHERE id = ?').get(+req.params.id);
+  if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
+  if (u.role !== 'admin' && item.owner_discord_id !== u.discord_id)
+    return res.status(403).json({ error: 'Kein Zugriff' });
+  db.prepare('DELETE FROM car_listings WHERE id = ?').run(+req.params.id);
+  res.json({ ok: true });
+});
+
 // ── Galaxie-Jäger Charakter ─────────────────────────────────────
 function xpForLevel(lv) { return lv * 100; }
 

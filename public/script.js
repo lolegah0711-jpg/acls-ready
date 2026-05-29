@@ -120,6 +120,7 @@ const PAGES = {
   map:       { title: 'Abschlepphöfe',          sub: 'Interaktive GTA V Karte' },
   iczeit:    { title: 'IC-Zeit Tracking',       sub: 'Discord Voice-Kanal Anwesenheit' },
   prices:    { title: 'Preisliste',             sub: 'Fahrschule & Servicepreise' },
+  carmarket: { title: 'Fahrzeugmarkt',          sub: 'Private Fahrzeuginserate' },
   admin:      { title: 'Admin-Panel',            sub: 'Verwaltung & Kontrolle' },
   ausbildung: { title: 'Ausbildung',             sub: 'Gesellen- & Meisterprüfungen' },
   bans:       { title: 'Aktive Sperren',         sub: 'Hausverbot-Verwaltung' },
@@ -250,6 +251,7 @@ async function renderVoterScreen() {
       <div style="display:flex;gap:.5rem;margin-bottom:1.25rem">
         <button class="btn btn-primary btn-sm" id="tabVote" onclick="voterTab('vote')" style="flex:1"><i class="fas fa-vote-yea"></i> Abstimmung</button>
         <button class="btn btn-ghost btn-sm" id="tabComplaint" onclick="voterTab('complaint')" style="flex:1"><i class="fas fa-comment-alt"></i> Beschwerde</button>
+        <button class="btn btn-ghost btn-sm" id="tabMarket" onclick="voterTab('market')" style="flex:1"><i class="fas fa-car-side"></i> Markt</button>
       </div>
       <div id="voterTabContent">
       <div id="voteSection">
@@ -280,6 +282,15 @@ async function renderVoterScreen() {
           <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-paper-plane"></i> Absenden</button>
         </form>
       </div>
+      <div id="marketSection" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <h2 style="margin:0">Fahrzeugmarkt</h2>
+          <button class="btn btn-primary btn-sm" onclick="openAddListing()"><i class="fas fa-plus"></i> Inserat</button>
+        </div>
+        <div id="voterListings" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:.65rem">
+          <div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div>
+        </div>
+      </div>
       </div>
       <div style="margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border)">
         <a href="/preise" target="_blank" class="btn btn-ghost btn-sm" style="width:100%;text-align:center;margin-bottom:.75rem"><i class="fas fa-tags"></i> Preisliste ansehen</a>
@@ -299,11 +310,51 @@ async function renderVoterScreen() {
 }
 
 window.voterTab = tab => {
-  const isVote = tab === 'vote';
-  document.getElementById('voteSection').style.display = isVote ? '' : 'none';
-  document.getElementById('complaintSection').style.display = isVote ? 'none' : '';
-  document.getElementById('tabVote').className = `btn btn-sm ${isVote ? 'btn-primary' : 'btn-ghost'}`;
-  document.getElementById('tabComplaint').className = `btn btn-sm ${!isVote ? 'btn-primary' : 'btn-ghost'}`;
+  document.getElementById('voteSection').style.display      = tab === 'vote'      ? '' : 'none';
+  document.getElementById('complaintSection').style.display = tab === 'complaint' ? '' : 'none';
+  document.getElementById('marketSection').style.display    = tab === 'market'    ? '' : 'none';
+  ['vote','complaint','market'].forEach(t => {
+    const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (el) el.className = `btn btn-sm ${t === tab ? 'btn-primary' : 'btn-ghost'}`;
+  });
+  if (tab === 'market') loadVoterMarket();
+};
+
+async function loadVoterMarket() {
+  const el = document.getElementById('voterListings');
+  if (!el) return;
+  const rows = await fetch('/api/car-listings').then(r => r.json()).catch(() => []);
+  if (!rows.length) {
+    el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--muted)">Noch keine Inserate vorhanden.</div>';
+    return;
+  }
+  el.innerHTML = rows.map(l => {
+    const isOwner = currentUser?.discord_id === l.owner_discord_id;
+    const canDel  = isOwner || currentUser?.role === 'admin';
+    return `
+    <div style="background:var(--surface2);border-radius:10px;padding:.85rem">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-bottom:.5rem">
+        <div style="min-width:0;flex:1">
+          <div style="font-weight:700;font-size:.95rem">${l.car}</div>
+          <div style="font-weight:800;color:#f97316;font-size:.95rem">${l.price}</div>
+        </div>
+        ${canDel ? `<button class="btn btn-danger btn-sm" onclick="voterDeleteListing(${l.id})"><i class="fas fa-trash"></i></button>` : ''}
+      </div>
+      <div style="font-size:.8rem;color:var(--muted);display:flex;flex-direction:column;gap:.15rem">
+        <div><i class="fas fa-user" style="width:13px;text-align:center;margin-right:.3rem"></i>${l.name}</div>
+        <div><i class="fas fa-phone" style="width:13px;text-align:center;margin-right:.3rem"></i>${l.phone}</div>
+        ${l.notes ? `<div style="font-style:italic;margin-top:.2rem">${l.notes}</div>` : ''}
+      </div>
+      <div style="font-size:.7rem;color:var(--muted);margin-top:.4rem">${ago(l.created_at)}</div>
+    </div>`;
+  }).join('');
+}
+
+window.voterDeleteListing = async id => {
+  if (!confirm('Inserat löschen?')) return;
+  const r = await fetch(`/api/car-listings/${id}`, { method: 'DELETE' });
+  if (r.ok) { toast('Inserat gelöscht.', 'ok'); loadVoterMarket(); }
+  else toast('Fehler', 'err');
 };
 
 window.submitComplaintForm = async e => {
@@ -387,7 +438,7 @@ function navigate(page) {
   $('pageSubtitle').textContent = p.sub;
   $('pageContent').innerHTML    = loading();
 
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, admin, ausbildung, bans };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, admin, ausbildung, bans };
   (renders[page] || dashboard)();
 }
 
@@ -1858,6 +1909,141 @@ window.deletePrice = async id => {
   if (!confirm('Preis löschen?')) return;
   const r = await api(`/api/prices/${id}`, { method: 'DELETE' });
   if (r) { toast('Gelöscht.', 'ok'); prices(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  FAHRZEUGMARKT
+// ════════════════════════════════════════════════════════════════
+async function carmarket() {
+  const rows = await api('/api/car-listings');
+  if (rows === null) return;
+
+  const canEditAny = isAdmin();
+
+  $('pageContent').innerHTML = `
+    <div class="pg-header">
+      <div class="pg-header-left">
+        <h2>Fahrzeugmarkt</h2>
+        <p>${rows.length} Inserat${rows.length !== 1 ? 'e' : ''}</p>
+      </div>
+      <button class="btn btn-primary" onclick="openAddListing()"><i class="fas fa-plus"></i> Inserat erstellen</button>
+    </div>
+    ${!rows.length ? `<div class="empty"><i class="fas fa-car-side"></i><p>Noch keine Inserate vorhanden.</p></div>` : `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem" id="listingGrid">
+      ${rows.map(l => listingCard(l, canEditAny)).join('')}
+    </div>`}`;
+}
+
+function listingCard(l, canEditAny) {
+  const isOwner = currentUser?.discord_id === l.owner_discord_id;
+  const canDel  = canEditAny || isOwner;
+  return `
+  <div class="card" style="display:flex;flex-direction:column;gap:.5rem">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem">
+      <div style="min-width:0;flex:1">
+        <div style="font-weight:800;font-size:1.05rem;margin-bottom:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${l.car}">${l.car}</div>
+        <div style="font-size:1.1rem;font-weight:800;color:#f97316">${l.price}</div>
+      </div>
+      <div style="flex-shrink:0;width:44px;height:44px;border-radius:10px;background:#f9731618;display:flex;align-items:center;justify-content:center">
+        <i class="fas fa-car-side" style="color:#f97316;font-size:1.1rem"></i>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.25rem;font-size:.83rem;color:var(--muted)">
+      <div><i class="fas fa-user" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.name}</div>
+      <div><i class="fas fa-phone" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.phone}</div>
+      ${l.notes ? `<div style="margin-top:.2rem;font-style:italic;color:var(--text-2,var(--muted))">${l.notes}</div>` : ''}
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:.5rem;border-top:1px solid var(--border)">
+      <div style="font-size:.72rem;color:var(--muted)">${ago(l.created_at)}</div>
+      <div style="display:flex;gap:.35rem">
+        ${canEditAny ? `<button class="btn btn-ghost btn-sm" title="Bearbeiten" onclick="openEditListing(${l.id},'${encodeURIComponent(JSON.stringify(l))}')"><i class="fas fa-pen" style="font-size:.7rem"></i></button>` : ''}
+        ${canDel ? `<button class="btn btn-danger btn-sm" title="Löschen" onclick="deleteListing(${l.id})"><i class="fas fa-trash" style="font-size:.7rem"></i></button>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+window.openAddListing = () => {
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-car-side" style="color:var(--orange);margin-right:.5rem"></i>Inserat erstellen</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <form onsubmit="submitListing(event)">
+      <div class="form-group"><label>Fahrzeug *</label><input class="form-control" id="lCar" placeholder="z.B. Audi A4 Avant 2020" required></div>
+      <div class="form-row">
+        <div class="form-group"><label>Wunschpreis *</label><input class="form-control" id="lPrice" placeholder="z.B. 85.000$" required></div>
+        <div class="form-group"><label>Telefonnummer *</label><input class="form-control" id="lPhone" placeholder="z.B. 555-1234" required></div>
+      </div>
+      <div class="form-group"><label>Dein Name *</label><input class="form-control" id="lName" placeholder="Vor- und Nachname (IC)" required value="${currentUser?.username || ''}"></div>
+      <div class="form-group"><label>Notizen (optional)</label><textarea class="form-control" id="lNotes" rows="3" placeholder="Zustand, Ausstattung, besondere Merkmale…" style="resize:vertical"></textarea></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Inserieren</button>
+      </div>
+    </form>`);
+};
+
+window.submitListing = async e => {
+  e.preventDefault();
+  const res = await fetch('/api/car-listings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      car:   document.getElementById('lCar').value,
+      price: document.getElementById('lPrice').value,
+      phone: document.getElementById('lPhone').value,
+      name:  document.getElementById('lName').value,
+      notes: document.getElementById('lNotes').value,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { toast(data.error || 'Fehler', 'err'); return; }
+  closeModal();
+  toast('Inserat erstellt!', 'ok');
+  // Refresh whichever view is active
+  if (document.getElementById('listingGrid')) carmarket();
+  else if (document.getElementById('voterListings')) loadVoterMarket();
+};
+
+window.openEditListing = (id, encoded) => {
+  const l = JSON.parse(decodeURIComponent(encoded));
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-pen" style="color:var(--orange);margin-right:.5rem"></i>Inserat bearbeiten</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <form onsubmit="submitEditListing(event,${id})">
+      <div class="form-group"><label>Fahrzeug *</label><input class="form-control" id="elCar" value="${l.car}" required></div>
+      <div class="form-row">
+        <div class="form-group"><label>Wunschpreis *</label><input class="form-control" id="elPrice" value="${l.price}" required></div>
+        <div class="form-group"><label>Telefonnummer *</label><input class="form-control" id="elPhone" value="${l.phone}" required></div>
+      </div>
+      <div class="form-group"><label>Name *</label><input class="form-control" id="elName" value="${l.name}" required></div>
+      <div class="form-group"><label>Notizen</label><textarea class="form-control" id="elNotes" rows="3" style="resize:vertical">${l.notes || ''}</textarea></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
+      </div>
+    </form>`);
+};
+
+window.submitEditListing = async (e, id) => {
+  e.preventDefault();
+  const r = await api(`/api/car-listings/${id}`, { method: 'PATCH', body: {
+    car:   document.getElementById('elCar').value,
+    price: document.getElementById('elPrice').value,
+    phone: document.getElementById('elPhone').value,
+    name:  document.getElementById('elName').value,
+    notes: document.getElementById('elNotes').value,
+  }});
+  if (r) { closeModal(); toast('Gespeichert!', 'ok'); carmarket(); }
+};
+
+window.deleteListing = async id => {
+  if (!confirm('Inserat löschen?')) return;
+  const r = await api(`/api/car-listings/${id}`, { method: 'DELETE' });
+  if (r) { toast('Inserat gelöscht.', 'ok'); carmarket(); }
 };
 
 // ════════════════════════════════════════════════════════════════

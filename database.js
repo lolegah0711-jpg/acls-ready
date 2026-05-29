@@ -264,6 +264,18 @@ function initDb() {
       sent        INTEGER DEFAULT 0,
       created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS car_listings (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      name             TEXT NOT NULL,
+      phone            TEXT NOT NULL,
+      car              TEXT NOT NULL,
+      price            TEXT NOT NULL,
+      notes            TEXT,
+      owner_discord_id TEXT,
+      owner_user_id    INTEGER REFERENCES users(id),
+      created_at       DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Seed admin users from env vars on first start (Railway: set ADMIN_DISCORD_IDS and ADMIN_USERNAMES)
