@@ -2008,6 +2008,11 @@ function listingCard(l, canEditAny) {
   </div>`;
 }
 
+window.fmtListingPrice = input => {
+  const digits = input.value.replace(/\D/g, '');
+  input.value = digits ? parseInt(digits, 10).toLocaleString('de-DE') : '';
+};
+
 window.openAddListing = () => {
   openModal(`
     <div class="modal-head">
@@ -2017,7 +2022,7 @@ window.openAddListing = () => {
     <form onsubmit="submitListing(event)">
       <div class="form-group"><label>Fahrzeug *</label><input class="form-control" id="lCar" placeholder="z.B. Audi A4 Avant 2020" required></div>
       <div class="form-row">
-        <div class="form-group"><label>Wunschpreis *</label><input class="form-control" id="lPrice" placeholder="z.B. 85.000$" required></div>
+        <div class="form-group"><label>Wunschpreis *</label><input class="form-control" id="lPrice" placeholder="z.B. 85.000" oninput="fmtListingPrice(this)" required></div>
         <div class="form-group"><label>Telefonnummer *</label><input class="form-control" id="lPhone" placeholder="z.B. 555-1234" required></div>
       </div>
       <div class="form-group"><label>Dein Name *</label><input class="form-control" id="lName" placeholder="Vor- und Nachname (IC)" required value="${currentUser?.username || ''}"></div>
@@ -2061,7 +2066,7 @@ window.openEditListing = (id, encoded) => {
     <form onsubmit="submitEditListing(event,${id})">
       <div class="form-group"><label>Fahrzeug *</label><input class="form-control" id="elCar" value="${l.car}" required></div>
       <div class="form-row">
-        <div class="form-group"><label>Wunschpreis *</label><input class="form-control" id="elPrice" value="${l.price}" required></div>
+        <div class="form-group"><label>Wunschpreis *</label><input class="form-control" id="elPrice" value="${l.price}" oninput="fmtListingPrice(this)" required></div>
         <div class="form-group"><label>Telefonnummer *</label><input class="form-control" id="elPhone" value="${l.phone}" required></div>
       </div>
       <div class="form-group"><label>Name *</label><input class="form-control" id="elName" value="${l.name}" required></div>
