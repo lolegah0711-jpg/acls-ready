@@ -1346,7 +1346,12 @@ app.get('/api/rank-exams/:id/certificate', requireAusbilder, (req, res) => {
 // ════════════════════════════════════════════════════════════════
 app.get('/api/bot-notifications', (req, res) => {
   if (req.headers['x-bot-secret'] !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(401).end();
-  res.json(db.prepare('SELECT * FROM bot_notifications WHERE sent = 0 ORDER BY created_at ASC').all());
+  const rows = db.prepare('SELECT * FROM bot_notifications WHERE sent = 0 ORDER BY created_at ASC').all();
+  if (rows.length) {
+    const ids = rows.map(r => r.id);
+    db.prepare(`UPDATE bot_notifications SET sent = 1 WHERE id IN (${ids.map(() => '?').join(',')})`).run(...ids);
+  }
+  res.json(rows);
 });
 
 app.post('/api/bot-notifications/:id/sent', (req, res) => {
