@@ -282,6 +282,7 @@ async function renderVoterScreen() {
       </div>
       </div>
       <div style="margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border)">
+        <a href="/preise" target="_blank" class="btn btn-ghost btn-sm" style="width:100%;text-align:center;margin-bottom:.75rem"><i class="fas fa-tags"></i> Preisliste ansehen</a>
         <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem">Minispiele</div>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap">
           <a href="/game"  target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center"><i class="fas fa-car"></i> Autorennen</a>

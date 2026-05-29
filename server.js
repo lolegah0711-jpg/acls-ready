@@ -76,8 +76,13 @@ function requireAuth(req, res, next) {
 // Wie requireAuth, aber Citizens sind auch erlaubt (für Minispiele)
 function requireLogin(req, res, next) {
   const u = getUser(req);
-  if (!u) return res.status(401).json({ error: 'Nicht angemeldet' });
-  next();
+  if (u) return next();
+  // Voter session: check if this Discord user exists in the DB (e.g. citizen role)
+  if (req.session.voterDiscordId) {
+    const vu = db.prepare('SELECT * FROM users WHERE discord_id = ? AND is_active = 1').get(req.session.voterDiscordId);
+    if (vu) { req.session.userId = vu.id; return next(); }
+  }
+  return res.status(401).json({ error: 'Nicht angemeldet' });
 }
 
 function requireAdmin(req, res, next) {
@@ -1356,7 +1361,7 @@ app.post('/api/bot-notifications/:id/sent', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  PREISLISTE
 // ════════════════════════════════════════════════════════════════
-app.get('/api/prices', requireAuth, (req, res) => {
+app.get('/api/prices', (req, res) => {
   res.json(db.prepare('SELECT * FROM price_items ORDER BY category, sort_order, id').all());
 });
 
@@ -1462,6 +1467,7 @@ app.post('/api/game-scores/:game', requireLogin, (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/preise', (req, res) => res.sendFile(path.join(__dirname, 'public', 'preise.html')));
 app.get('/game',  (req, res) => res.sendFile(path.join(__dirname, 'public', 'game.html')));
 app.get('/game2', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game2.html')));
 app.get('/game3', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game3.html')));
