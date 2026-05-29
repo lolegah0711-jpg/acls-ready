@@ -248,13 +248,17 @@ async function renderVoterScreen() {
         </div>
         <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="voterLogout()"><i class="fas fa-sign-out-alt"></i> Abmelden</button>
       </div>
-      <div style="display:flex;gap:.5rem;margin-bottom:1.25rem">
-        <button class="btn btn-primary btn-sm" id="tabVote" onclick="voterTab('vote')" style="flex:1"><i class="fas fa-vote-yea"></i> Abstimmung</button>
+      <div style="display:flex;gap:.5rem;margin-bottom:1.25rem;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" id="tabPrice" onclick="voterTab('price')" style="flex:1"><i class="fas fa-tags"></i> Preise</button>
+        <button class="btn btn-ghost btn-sm" id="tabVote" onclick="voterTab('vote')" style="flex:1"><i class="fas fa-vote-yea"></i> Abstimmung</button>
         <button class="btn btn-ghost btn-sm" id="tabComplaint" onclick="voterTab('complaint')" style="flex:1"><i class="fas fa-comment-alt"></i> Beschwerde</button>
         <button class="btn btn-ghost btn-sm" id="tabMarket" onclick="voterTab('market')" style="flex:1"><i class="fas fa-car-side"></i> Markt</button>
       </div>
       <div id="voterTabContent">
-      <div id="voteSection">
+      <div id="priceSection">
+        <div id="voterPrices"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
+      </div>
+      <div id="voteSection" style="display:none">
       <h2 style="margin-bottom:.25rem">Mitarbeiter der Woche</h2>
       <p style="color:var(--muted);font-size:.85rem;margin-bottom:1.25rem">
         ${myVote ? 'Du hast bereits abgestimmt.' : 'Wähle einen ACLS-Mitarbeiter dieser Woche.'}
@@ -293,7 +297,6 @@ async function renderVoterScreen() {
       </div>
       </div>
       <div style="margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border)">
-        <a href="/preise" target="_blank" class="btn btn-ghost btn-sm" style="width:100%;text-align:center;margin-bottom:.75rem"><i class="fas fa-tags"></i> Preisliste ansehen</a>
         <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem">Minispiele</div>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap">
           <a href="/game"  target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center"><i class="fas fa-car"></i> Autorennen</a>
@@ -307,18 +310,60 @@ async function renderVoterScreen() {
         </div>
       </div>
     </div>`;
+  loadVoterPrices();
 }
 
 window.voterTab = tab => {
+  document.getElementById('priceSection').style.display     = tab === 'price'     ? '' : 'none';
   document.getElementById('voteSection').style.display      = tab === 'vote'      ? '' : 'none';
   document.getElementById('complaintSection').style.display = tab === 'complaint' ? '' : 'none';
   document.getElementById('marketSection').style.display    = tab === 'market'    ? '' : 'none';
-  ['vote','complaint','market'].forEach(t => {
+  ['price','vote','complaint','market'].forEach(t => {
     const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     if (el) el.className = `btn btn-sm ${t === tab ? 'btn-primary' : 'btn-ghost'}`;
   });
   if (tab === 'market') loadVoterMarket();
+  if (tab === 'price')  loadVoterPrices();
 };
+
+async function loadVoterPrices() {
+  const el = document.getElementById('voterPrices');
+  if (!el || el.dataset.loaded) return;
+  const rows = await fetch('/api/prices').then(r => r.json()).catch(() => []);
+  if (!rows.length) { el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--muted)">Keine Preise hinterlegt.</div>'; return; }
+
+  const CAT_META = {
+    'Fahrschule':   { icon: 'fa-graduation-cap', col: '#f97316', sub: 'Automatischer Kontoabzug' },
+    'Kundenpreise': { icon: 'fa-hand-holding-usd', col: '#22c55e', sub: 'Bar auf Hand' },
+  };
+  const cats = {};
+  rows.forEach(r => { if (!cats[r.category]) cats[r.category] = []; cats[r.category].push(r); });
+
+  el.innerHTML = Object.entries(cats).map(([cat, items]) => {
+    const m = CAT_META[cat] || { icon: 'fa-tag', col: '#6b7280', sub: '' };
+    return `
+    <div style="background:var(--surface2);border-radius:10px;padding:.85rem;margin-bottom:.75rem">
+      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.65rem;padding-bottom:.55rem;border-bottom:1px solid var(--border)">
+        <div style="width:30px;height:30px;border-radius:8px;background:${m.col}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fas ${m.icon}" style="color:${m.col};font-size:.85rem"></i>
+        </div>
+        <div>
+          <div style="font-weight:700;font-size:.9rem">${cat}</div>
+          ${m.sub ? `<div style="font-size:.68rem;color:var(--muted)">${m.sub}</div>` : ''}
+        </div>
+      </div>
+      ${items.map(item => `
+      <div style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;${items.indexOf(item) < items.length-1 ? 'border-bottom:1px solid var(--border)' : ''}">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.83rem;font-weight:600">${item.name}</div>
+          ${item.notes ? `<div style="font-size:.7rem;color:var(--muted)">${item.notes}</div>` : ''}
+        </div>
+        <div style="font-size:.88rem;font-weight:800;color:${m.col};white-space:nowrap">${item.price}</div>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+  el.dataset.loaded = '1';
+}
 
 async function loadVoterMarket() {
   const el = document.getElementById('voterListings');
