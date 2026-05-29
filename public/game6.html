@@ -226,16 +226,18 @@
 <script>
 // ── SYMBOLS ───────────────────────────────────────────────────────────────────
 // v[n] = multiplier for n matching symbols (index 0..5)
+// Values match official Book of Ra paytable (multiplier × line bet)
 const SYMS = [
-  {e:'📖', n:'Book of Ra',  col:'#fbbf24', w:2,  v:[0,0,0,2,20,200],   wild:true, scatter:true},
-  {e:'🧭', n:'Abenteurer',  col:'#f97316', w:3,  v:[0,0,0,10,100,5000]},
-  {e:'👑', n:'Pharao',      col:'#fcd34d', w:4,  v:[0,0,0,3,30,400]},
-  {e:'🪲', n:'Skarabäus',   col:'#22c55e', w:6,  v:[0,0,0,3,25,75]},
-  {e:'A',  n:'Ass',         col:'#ef4444', w:10, v:[0,0,0,1,4,15]},
-  {e:'K',  n:'König',       col:'#d97706', w:10, v:[0,0,0,1,4,15]},
-  {e:'Q',  n:'Dame',        col:'#8b5cf6', w:14, v:[0,0,0,1,3,10]},
-  {e:'J',  n:'Bube',        col:'#06b6d4', w:14, v:[0,0,0,1,3,10]},
-  {e:'10', n:'Zehn',        col:'#6b7280', w:20, v:[0,0,0,1,2,5]},
+  {e:'📖', n:'Book of Ra',  col:'#fbbf24', w:2,  v:[0,0,0,  1.8, 18,  180], wild:true, scatter:true},
+  {e:'🧭', n:'Abenteurer',  col:'#f97316', w:3,  v:[0,0,1,  10,  100, 500]},
+  {e:'👑', n:'Pharao',      col:'#fcd34d', w:4,  v:[0,0,0.5, 4,   40,  200]},
+  {e:'🦅', n:'Horus',       col:'#f59e0b', w:5,  v:[0,0,0.5, 3,   10,   75]},
+  {e:'🪲', n:'Skarabäus',   col:'#22c55e', w:6,  v:[0,0,0.5, 3,   10,   75]},
+  {e:'A',  n:'Ass',         col:'#ef4444', w:10, v:[0,0,0,   0.5,  4,   15]},
+  {e:'K',  n:'König',       col:'#d97706', w:10, v:[0,0,0,   0.5,  4,   15]},
+  {e:'Q',  n:'Dame',        col:'#8b5cf6', w:14, v:[0,0,0,   0.5,  2.5, 10]},
+  {e:'J',  n:'Bube',        col:'#06b6d4', w:14, v:[0,0,0,   0.5,  2.5, 10]},
+  {e:'10', n:'Zehn',        col:'#6b7280', w:20, v:[0,0,0,   0.5,  2.5, 10]},
 ];
 const TOTAL_W = SYMS.reduce((a, s) => a + s.w, 0);
 
@@ -378,7 +380,7 @@ function evaluateResult(res) {
       else break;
     }
 
-    if (cnt >= 3) {
+    if (cnt >= 2) {
       const mul = SYMS[base].v[cnt] || 0;
       if (mul > 0) {
         totalWin += mul * bet;
@@ -545,14 +547,14 @@ function buildPaytable() {
     const tags = [];
     if (s.wild)    tags.push('<span class="pt-tag">WILD</span>');
     if (s.scatter) tags.push('<span class="pt-tag">SCATTER</span>');
+    const pays = [2,3,4,5]
+      .filter(n => s.v[n] > 0)
+      .map(n => `<div class="pt-pay">×${n}: ${s.v[n]}×</div>`)
+      .join('');
     return `<div class="pt-row">
       <div class="pt-sym" style="color:${s.col}">${s.e}</div>
       <div class="pt-name">${s.n} ${tags.join(' ')}</div>
-      <div class="pt-pays">
-        <div class="pt-pay">×3: ${s.v[3]}×</div>
-        <div class="pt-pay">×4: ${s.v[4]}×</div>
-        <div class="pt-pay">×5: ${s.v[5]}×</div>
-      </div>
+      <div class="pt-pays">${pays}</div>
     </div>`;
   }).join('');
 }
