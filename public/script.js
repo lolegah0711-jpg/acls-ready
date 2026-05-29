@@ -376,15 +376,18 @@ async function loadVoterMarket() {
   el.innerHTML = rows.map(l => {
     const isOwner = currentUser?.discord_id === l.owner_discord_id;
     const canDel  = isOwner || currentUser?.role === 'admin';
+    const isRent  = l.listing_type === 'vermietung';
+    const dur     = l.duration === '7_tage' ? '7 Tage' : l.duration === '1_monat' ? '1 Monat' : '';
     return `
     <div style="background:var(--surface2);border-radius:10px;padding:.85rem">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-bottom:.5rem">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-bottom:.4rem">
         <div style="min-width:0;flex:1">
           <div style="font-weight:700;font-size:.95rem">${l.car}</div>
-          <div style="font-weight:800;color:#f97316;font-size:.95rem">${l.price}$</div>
+          <div style="font-weight:800;color:#f97316;font-size:.95rem">${l.price}$${isRent && dur ? `<span style="font-size:.72rem;font-weight:600;color:var(--muted);margin-left:.3rem">/ ${dur}</span>` : ''}</div>
         </div>
         ${canDel ? `<button class="btn btn-danger btn-sm" onclick="voterDeleteListing(${l.id})"><i class="fas fa-trash"></i></button>` : ''}
       </div>
+      <div style="margin-bottom:.45rem">${listingTypeBadge(l)}</div>
       <div style="font-size:.8rem;color:var(--muted);display:flex;flex-direction:column;gap:.15rem">
         <div><i class="fas fa-user" style="width:13px;text-align:center;margin-right:.3rem"></i>${l.name}</div>
         <div><i class="fas fa-phone" style="width:13px;text-align:center;margin-right:.3rem"></i>${l.phone}</div>
@@ -1979,20 +1982,31 @@ async function carmarket() {
     </div>`}`;
 }
 
+function listingTypeBadge(l) {
+  const isRent = l.listing_type === 'vermietung';
+  const dur = l.duration === '7_tage' ? '7 Tage' : l.duration === '1_monat' ? '1 Monat' : '';
+  return isRent
+    ? `<span style="font-size:.68rem;font-weight:700;padding:.2rem .55rem;border-radius:20px;background:rgba(59,130,246,.15);color:#60a5fa;white-space:nowrap"><i class="fas fa-key" style="margin-right:.3rem"></i>Miete${dur ? ' · ' + dur : ''}</span>`
+    : `<span style="font-size:.68rem;font-weight:700;padding:.2rem .55rem;border-radius:20px;background:rgba(34,197,94,.12);color:#22c55e;white-space:nowrap"><i class="fas fa-tag" style="margin-right:.3rem"></i>Verkauf</span>`;
+}
+
 function listingCard(l, canEditAny) {
   const isOwner = currentUser?.discord_id === l.owner_discord_id;
   const canDel  = canEditAny || isOwner;
+  const isRent  = l.listing_type === 'vermietung';
+  const dur     = l.duration === '7_tage' ? '7 Tage' : l.duration === '1_monat' ? '1 Monat' : '';
   return `
   <div class="card" style="display:flex;flex-direction:column;gap:.5rem">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem">
       <div style="min-width:0;flex:1">
         <div style="font-weight:800;font-size:1.05rem;margin-bottom:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${l.car}">${l.car}</div>
-        <div style="font-size:1.1rem;font-weight:800;color:#f97316">${l.price}$</div>
+        <div style="font-size:1.1rem;font-weight:800;color:#f97316">${l.price}$${isRent && dur ? `<span style="font-size:.75rem;font-weight:600;color:var(--muted);margin-left:.3rem">/ ${dur}</span>` : ''}</div>
       </div>
       <div style="flex-shrink:0;width:44px;height:44px;border-radius:10px;background:#f9731618;display:flex;align-items:center;justify-content:center">
-        <i class="fas fa-car-side" style="color:#f97316;font-size:1.1rem"></i>
+        <i class="fas fa-${isRent ? 'key' : 'car-side'}" style="color:#f97316;font-size:1.1rem"></i>
       </div>
     </div>
+    <div>${listingTypeBadge(l)}</div>
     <div style="display:flex;flex-direction:column;gap:.25rem;font-size:.83rem;color:var(--muted)">
       <div><i class="fas fa-user" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.name}</div>
       <div><i class="fas fa-phone" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.phone}</div>
@@ -2020,9 +2034,24 @@ window.openAddListing = () => {
       <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
     </div>
     <form onsubmit="submitListing(event)">
+      <input type="hidden" id="lTypeVal" value="verkauf">
+      <div class="form-group">
+        <label>Art des Inserats *</label>
+        <div style="display:flex;gap:.5rem">
+          <button type="button" id="lBtnVerkauf" class="btn btn-primary btn-sm" style="flex:1" onclick="setListingType('verkauf')"><i class="fas fa-tag"></i> Verkauf</button>
+          <button type="button" id="lBtnVermietung" class="btn btn-ghost btn-sm" style="flex:1" onclick="setListingType('vermietung')"><i class="fas fa-key"></i> Vermietung</button>
+        </div>
+      </div>
+      <div id="lDurationWrap" class="form-group" style="display:none">
+        <label>Laufzeit *</label>
+        <select class="form-control" id="lDuration">
+          <option value="7_tage">7 Tage</option>
+          <option value="1_monat">1 Monat</option>
+        </select>
+      </div>
       <div class="form-group"><label>Fahrzeug *</label><input class="form-control" id="lCar" placeholder="z.B. Audi A4 Avant 2020" required></div>
       <div class="form-row">
-        <div class="form-group"><label>Wunschpreis *</label><input class="form-control" id="lPrice" placeholder="z.B. 85.000" oninput="fmtListingPrice(this)" required></div>
+        <div class="form-group"><label id="lPriceLabel">Wunschpreis *</label><input class="form-control" id="lPrice" placeholder="z.B. 85.000" oninput="fmtListingPrice(this)" required></div>
         <div class="form-group"><label>Telefonnummer *</label><input class="form-control" id="lPhone" placeholder="z.B. 555-1234" required></div>
       </div>
       <div class="form-group"><label>Dein Name *</label><input class="form-control" id="lName" placeholder="Vor- und Nachname (IC)" required value="${currentUser?.username || ''}"></div>
@@ -2034,17 +2063,28 @@ window.openAddListing = () => {
     </form>`);
 };
 
+window.setListingType = type => {
+  document.getElementById('lTypeVal').value = type;
+  document.getElementById('lBtnVerkauf').className   = `btn btn-sm ${type === 'verkauf'    ? 'btn-primary' : 'btn-ghost'}`;
+  document.getElementById('lBtnVermietung').className = `btn btn-sm ${type === 'vermietung' ? 'btn-primary' : 'btn-ghost'}`;
+  document.getElementById('lDurationWrap').style.display = type === 'vermietung' ? '' : 'none';
+  const pl = document.getElementById('lPriceLabel');
+  if (pl) pl.textContent = type === 'vermietung' ? 'Mietpreis *' : 'Wunschpreis *';
+};
+
 window.submitListing = async e => {
   e.preventDefault();
   const res = await fetch('/api/car-listings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      car:   document.getElementById('lCar').value,
-      price: document.getElementById('lPrice').value,
-      phone: document.getElementById('lPhone').value,
-      name:  document.getElementById('lName').value,
-      notes: document.getElementById('lNotes').value,
+      car:          document.getElementById('lCar').value,
+      price:        document.getElementById('lPrice').value,
+      phone:        document.getElementById('lPhone').value,
+      name:         document.getElementById('lName').value,
+      notes:        document.getElementById('lNotes').value,
+      listing_type: document.getElementById('lTypeVal').value,
+      duration:     document.getElementById('lDuration')?.value || null,
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -2058,15 +2098,31 @@ window.submitListing = async e => {
 
 window.openEditListing = (id, encoded) => {
   const l = JSON.parse(decodeURIComponent(encoded));
+  const isRent = l.listing_type === 'vermietung';
   openModal(`
     <div class="modal-head">
       <div class="modal-title"><i class="fas fa-pen" style="color:var(--orange);margin-right:.5rem"></i>Inserat bearbeiten</div>
       <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
     </div>
     <form onsubmit="submitEditListing(event,${id})">
+      <input type="hidden" id="elTypeVal" value="${l.listing_type || 'verkauf'}">
+      <div class="form-group">
+        <label>Art des Inserats *</label>
+        <div style="display:flex;gap:.5rem">
+          <button type="button" id="elBtnVerkauf" class="btn ${!isRent ? 'btn-primary' : 'btn-ghost'} btn-sm" style="flex:1" onclick="setEditListingType('verkauf')"><i class="fas fa-tag"></i> Verkauf</button>
+          <button type="button" id="elBtnVermietung" class="btn ${isRent ? 'btn-primary' : 'btn-ghost'} btn-sm" style="flex:1" onclick="setEditListingType('vermietung')"><i class="fas fa-key"></i> Vermietung</button>
+        </div>
+      </div>
+      <div id="elDurationWrap" class="form-group" style="${isRent ? '' : 'display:none'}">
+        <label>Laufzeit *</label>
+        <select class="form-control" id="elDuration">
+          <option value="7_tage" ${l.duration === '7_tage' ? 'selected' : ''}>7 Tage</option>
+          <option value="1_monat" ${l.duration === '1_monat' ? 'selected' : ''}>1 Monat</option>
+        </select>
+      </div>
       <div class="form-group"><label>Fahrzeug *</label><input class="form-control" id="elCar" value="${l.car}" required></div>
       <div class="form-row">
-        <div class="form-group"><label>Wunschpreis *</label><input class="form-control" id="elPrice" value="${l.price}" oninput="fmtListingPrice(this)" required></div>
+        <div class="form-group"><label id="elPriceLabel">${isRent ? 'Mietpreis *' : 'Wunschpreis *'}</label><input class="form-control" id="elPrice" value="${l.price}" oninput="fmtListingPrice(this)" required></div>
         <div class="form-group"><label>Telefonnummer *</label><input class="form-control" id="elPhone" value="${l.phone}" required></div>
       </div>
       <div class="form-group"><label>Name *</label><input class="form-control" id="elName" value="${l.name}" required></div>
@@ -2078,14 +2134,25 @@ window.openEditListing = (id, encoded) => {
     </form>`);
 };
 
+window.setEditListingType = type => {
+  document.getElementById('elTypeVal').value = type;
+  document.getElementById('elBtnVerkauf').className    = `btn btn-sm ${type === 'verkauf'    ? 'btn-primary' : 'btn-ghost'}`;
+  document.getElementById('elBtnVermietung').className  = `btn btn-sm ${type === 'vermietung' ? 'btn-primary' : 'btn-ghost'}`;
+  document.getElementById('elDurationWrap').style.display = type === 'vermietung' ? '' : 'none';
+  const pl = document.getElementById('elPriceLabel');
+  if (pl) pl.textContent = type === 'vermietung' ? 'Mietpreis *' : 'Wunschpreis *';
+};
+
 window.submitEditListing = async (e, id) => {
   e.preventDefault();
   const r = await api(`/api/car-listings/${id}`, { method: 'PATCH', body: {
-    car:   document.getElementById('elCar').value,
-    price: document.getElementById('elPrice').value,
-    phone: document.getElementById('elPhone').value,
-    name:  document.getElementById('elName').value,
-    notes: document.getElementById('elNotes').value,
+    car:          document.getElementById('elCar').value,
+    price:        document.getElementById('elPrice').value,
+    phone:        document.getElementById('elPhone').value,
+    name:         document.getElementById('elName').value,
+    notes:        document.getElementById('elNotes').value,
+    listing_type: document.getElementById('elTypeVal').value,
+    duration:     document.getElementById('elDuration')?.value || null,
   }});
   if (r) { closeModal(); toast('Gespeichert!', 'ok'); carmarket(); }
 };

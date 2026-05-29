@@ -1398,9 +1398,10 @@ app.post('/api/car-listings', requireLogin, (req, res) => {
   if (!name?.trim() || !phone?.trim() || !car?.trim() || !price?.trim())
     return res.status(400).json({ error: 'Fehlende Felder' });
   const u = getUser(req);
+  const { listing_type, duration } = req.body;
   const r = db.prepare(
-    'INSERT INTO car_listings (name, phone, car, price, notes, owner_discord_id, owner_user_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, u?.discord_id || null, u?.id || null);
+    'INSERT INTO car_listings (name, phone, car, price, notes, listing_type, duration, owner_discord_id, owner_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, u?.discord_id || null, u?.id || null);
   res.json({ ok: true, id: r.lastInsertRowid });
 });
 
@@ -1412,8 +1413,9 @@ app.patch('/api/car-listings/:id', requireLogin, (req, res) => {
     return res.status(400).json({ error: 'Fehlende Felder' });
   const item = db.prepare('SELECT id FROM car_listings WHERE id = ?').get(+req.params.id);
   if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
-  db.prepare('UPDATE car_listings SET name=?, phone=?, car=?, price=?, notes=? WHERE id=?')
-    .run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, +req.params.id);
+  const { listing_type, duration } = req.body;
+  db.prepare('UPDATE car_listings SET name=?, phone=?, car=?, price=?, notes=?, listing_type=?, duration=? WHERE id=?')
+    .run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, +req.params.id);
   res.json({ ok: true });
 });
 
