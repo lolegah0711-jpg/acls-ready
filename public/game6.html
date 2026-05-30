@@ -113,6 +113,14 @@
     .lb-av img{width:100%;height:100%;object-fit:cover;}
     .lb-name{flex:1;font-weight:600;}
     .lb-score{font-weight:700;color:#fbbf24;}
+
+    /* Autoplay picker */
+    .ap-opts{display:flex;gap:10px;justify-content:center;margin:18px 0 8px;}
+    .ap-opt{padding:14px 22px;border:none;border-radius:10px;font-size:18px;font-weight:800;
+      background:linear-gradient(135deg,#78350f,#b45309);color:#fbbf24;cursor:pointer;
+      font-family:inherit;transition:opacity .15s,transform .1s;}
+    .ap-opt:hover{opacity:.85;transform:translateY(-2px);}
+    #autoplay-btn.ap-active{background:#991b1b!important;color:#fff!important;border-color:#ef4444!important;}
   </style>
 </head>
 <body>
@@ -174,7 +182,23 @@
   <div id="extras">
     <button class="btn btn-gray" onclick="openLb()">🏆 Rangliste</button>
     <button class="btn btn-gray" onclick="openPaytable()">📊 Gewinntabelle</button>
+    <button id="autoplay-btn" class="btn btn-gray" onclick="openAutoplayPicker()">▶▶ Autoplay</button>
     <button class="btn btn-gray" onclick="resetBalance()">↺ Neues Spiel</button>
+  </div>
+</div>
+
+<!-- AUTOPLAY PICKER OVERLAY -->
+<div class="ov hidden" id="ov-autoplay">
+  <div class="ov-card" style="max-width:340px">
+    <div class="ov-title">▶▶ Autoplay</div>
+    <div class="ov-sub">Anzahl automatischer Spins wählen</div>
+    <div class="ap-opts">
+      <button class="ap-opt" onclick="startAutoplay(10)">10</button>
+      <button class="ap-opt" onclick="startAutoplay(25)">25</button>
+      <button class="ap-opt" onclick="startAutoplay(50)">50</button>
+      <button class="ap-opt" onclick="startAutoplay(100)">100</button>
+    </div>
+    <button class="btn btn-gray" onclick="document.getElementById('ov-autoplay').classList.add('hidden')" style="margin-top:8px;font-size:12px">Abbrechen</button>
   </div>
 </div>
 
@@ -278,6 +302,7 @@ const BETS = [5, 10, 20, 50, 100, 200, 500];
 let betIdx = 1;
 let lines = 9; // default 9 (standard Book of Ra)
 let gambleRounds = 0;
+let autoplayActive = false, autoplayRemaining = 0;
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
@@ -342,7 +367,7 @@ function spin() {
   if (!isFree && balance < cost) { alert('Nicht genug Guthaben!'); return; }
 
   if (isFree) { freeSpins--; inFreeSpin = true; }
-  else { balance -= cost; inFreeSpin = false; }
+  else { balance -= cost; inFreeSpin = false; if (autoplayActive) { autoplayRemaining--; updateAutoplayBtn(); } }
 
   spinning = true;
   document.getElementById('spin-btn').disabled = true;
@@ -473,6 +498,11 @@ function evaluateResult(res) {
 
 // ── WIN STATE ─────────────────────────────────────────────────────────────────
 function showPendingButtons() {
+  if (autoplayActive) {
+    // During autoplay: auto-take wins, skip gamble
+    setTimeout(takeWin, 600);
+    return;
+  }
   document.getElementById('spin-btn').style.display = 'none';
   document.getElementById('take-btn').style.display = '';
   document.getElementById('gamble-btn').style.display = '';
@@ -483,6 +513,13 @@ function enableSpin() {
   document.getElementById('spin-btn').disabled = false;
   document.getElementById('take-btn').style.display = 'none';
   document.getElementById('gamble-btn').style.display = 'none';
+  if (autoplayActive) {
+    if (autoplayRemaining > 0 && (balance >= bet * lines || freeSpins > 0)) {
+      setTimeout(spin, 700);
+    } else {
+      stopAutoplay();
+    }
+  }
 }
 
 function takeWin() {
@@ -504,7 +541,40 @@ function setWinDisplay(amount, color, label) {
 }
 
 function checkGameOver() {
-  if (balance <= 0 && freeSpins === 0) setTimeout(submitAndReset, 1500);
+  if (balance <= 0 && freeSpins === 0) { stopAutoplay(); setTimeout(submitAndReset, 1500); }
+}
+
+// ── AUTOPLAY ──────────────────────────────────────────────────────────────────
+function openAutoplayPicker() {
+  if (autoplayActive) { stopAutoplay(); return; }
+  if (spinning || pendingWin > 0 || freeSpins > 0) return;
+  document.getElementById('ov-autoplay').classList.remove('hidden');
+}
+
+function startAutoplay(count) {
+  document.getElementById('ov-autoplay').classList.add('hidden');
+  autoplayRemaining = count;
+  autoplayActive = true;
+  updateAutoplayBtn();
+  spin();
+}
+
+function stopAutoplay() {
+  autoplayActive = false;
+  autoplayRemaining = 0;
+  updateAutoplayBtn();
+}
+
+function updateAutoplayBtn() {
+  const btn = document.getElementById('autoplay-btn');
+  if (!btn) return;
+  if (autoplayActive) {
+    btn.textContent = `⏹ Stop (${autoplayRemaining})`;
+    btn.classList.add('ap-active');
+  } else {
+    btn.textContent = '▶▶ Autoplay';
+    btn.classList.remove('ap-active');
+  }
 }
 
 // ── GAMBLE ────────────────────────────────────────────────────────────────────
