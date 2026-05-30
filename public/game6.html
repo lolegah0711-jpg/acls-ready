@@ -152,7 +152,7 @@
       <div class="ctrl-label">Linien</div>
       <div style="display:flex;align-items:center;gap:6px">
         <button class="bet-btn" onclick="changeLines(-1)">◀</button>
-        <div class="ctrl-val" id="lines-val">5</div>
+        <div class="ctrl-val" id="lines-val">9</div>
         <button class="bet-btn" onclick="changeLines(1)">▶</button>
       </div>
     </div>
@@ -178,7 +178,7 @@
 <div class="ov hidden" id="ov-gamble">
   <div class="ov-card">
     <div class="ov-title">🃏 Gamble</div>
-    <div class="ov-sub">Einsatz: <span id="g-amount" style="color:#fbbf24;font-weight:800">0</span> Coins</div>
+    <div class="ov-sub">Einsatz: <span id="g-amount" style="color:#fbbf24;font-weight:800">0</span> Coins &nbsp;·&nbsp; Runde <span id="g-rounds" style="color:#9ca3af">0 / 5</span></div>
     <div class="gamble-card-wrap">
       <div class="gamble-card back" id="g-card">?</div>
     </div>
@@ -233,19 +233,18 @@
 
 <script>
 // ── SYMBOLS ───────────────────────────────────────────────────────────────────
-// v[n] = multiplier for n matching symbols (index 0..5)
-// Values match official Book of Ra paytable (multiplier × line bet)
+// v[n] = true multiplier × line-bet for n consecutive symbols from left
 const SYMS = [
-  {e:'📖', n:'Book of Ra',  col:'#fbbf24', w:5,  v:[0,0,0,  1.8, 18,  180], wild:true, scatter:true},
-  {e:'🧭', n:'Abenteurer',  col:'#f97316', w:3,  v:[0,0,1,  10,  100, 500]},
-  {e:'👑', n:'Pharao',      col:'#fcd34d', w:4,  v:[0,0,0.5, 4,   40,  200]},
-  {e:'🦅', n:'Horus',       col:'#f59e0b', w:5,  v:[0,0,0.5, 3,   10,   75]},
-  {e:'🪲', n:'Skarabäus',   col:'#22c55e', w:6,  v:[0,0,0.5, 3,   10,   75]},
-  {e:'A',  n:'Ass',         col:'#ef4444', w:10, v:[0,0,0,   0.5,  4,   15]},
-  {e:'K',  n:'König',       col:'#d97706', w:10, v:[0,0,0,   0.5,  4,   15]},
-  {e:'Q',  n:'Dame',        col:'#8b5cf6', w:14, v:[0,0,0,   0.5,  2.5, 10]},
-  {e:'J',  n:'Bube',        col:'#06b6d4', w:14, v:[0,0,0,   0.5,  2.5, 10]},
-  {e:'10', n:'Zehn',        col:'#6b7280', w:20, v:[0,0,0,   0.5,  2.5, 10]},
+  {e:'📖', n:'Book of Ra',    col:'#fbbf24', w:5,  v:[0,0,0,  18,  180, 1800], wild:true, scatter:true},
+  {e:'🧭', n:'Archäologe',    col:'#f97316', w:3,  v:[0,0,10, 100, 1000,5000]},
+  {e:'👑', n:'Sphinx',        col:'#fcd34d', w:4,  v:[0,0,5,   40,  400,2000]},
+  {e:'🦅', n:'Goldener Totem',col:'#f59e0b', w:5,  v:[0,0,5,   30,  100, 750]},
+  {e:'🪲', n:'Skarabäus',     col:'#22c55e', w:6,  v:[0,0,5,   30,  100, 750]},
+  {e:'A',  n:'Ass',           col:'#ef4444', w:10, v:[0,0,0,    5,   40, 150]},
+  {e:'K',  n:'König',         col:'#d97706', w:10, v:[0,0,0,    5,   40, 150]},
+  {e:'Q',  n:'Dame',          col:'#8b5cf6', w:14, v:[0,0,0,    5,   25, 100]},
+  {e:'J',  n:'Bube',          col:'#06b6d4', w:14, v:[0,0,0,    5,   25, 100]},
+  {e:'10', n:'Zehn',          col:'#6b7280', w:20, v:[0,0,0,    5,   25, 100]},
 ];
 const TOTAL_W = SYMS.reduce((a, s) => a + s.w, 0);
 
@@ -273,9 +272,8 @@ let result = Array.from({length: 5}, () => [0, 0, 0]);
 let spinItvs = [];
 const BETS = [5, 10, 20, 50, 100, 200, 500];
 let betIdx = 1;
-const LINES_OPTS = [1, 3, 5, 10];
-let linesIdx = 2; // default 5
-let lines = 5;
+let lines = 9; // default 9 (standard Book of Ra)
+let gambleRounds = 0;
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
@@ -475,7 +473,9 @@ function checkGameOver() {
 // ── GAMBLE ────────────────────────────────────────────────────────────────────
 function openGamble() {
   if (!pendingWin) return;
+  gambleRounds = 0;
   document.getElementById('g-amount').textContent = pendingWin.toLocaleString('de-DE');
+  document.getElementById('g-rounds').textContent = '0 / 5';
   const card = document.getElementById('g-card');
   card.className = 'gamble-card back';
   card.textContent = '?';
@@ -521,13 +521,17 @@ function resolveGamble(win, mul) {
 
   if (win) {
     pendingWin *= mul;
+    gambleRounds++;
     highScore = Math.max(highScore, balance + pendingWin);
     card.classList.add('g-win');
+    const maxReached = gambleRounds >= 5;
+    document.getElementById('g-rounds').textContent = `${gambleRounds} / 5`;
     document.getElementById('g-msg').innerHTML =
       `<span style="color:#22c55e">✓ Gewonnen! ×${mul}</span><br>` +
-      `<span style="font-size:14px;color:#9ca3af">${pendingWin.toLocaleString('de-DE')} Coins</span>`;
+      `<span style="font-size:14px;color:#9ca3af">${pendingWin.toLocaleString('de-DE')} Coins</span>` +
+      (maxReached ? '<br><span style="font-size:11px;color:#f97316">Max. 5 Runden erreicht</span>' : '');
     document.getElementById('g-amount').textContent = pendingWin.toLocaleString('de-DE');
-    document.getElementById('g-again').style.display = '';
+    document.getElementById('g-again').style.display = maxReached ? 'none' : '';
     document.getElementById('g-take').textContent = 'Nehmen ✓';
     setWinDisplay(pendingWin, '#fbbf24', 'Gewinn');
   } else {
@@ -548,6 +552,7 @@ function gambleAgain() {
   card.className = 'gamble-card back';
   card.textContent = '?';
   document.getElementById('g-amount').textContent = pendingWin.toLocaleString('de-DE');
+  document.getElementById('g-rounds').textContent = `${gambleRounds} / 5`;
   document.getElementById('g-choices').style.display = '';
   document.getElementById('g-result').style.display = 'none';
   document.querySelectorAll('#g-choices .g-btn').forEach(b => b.disabled = false);
@@ -669,8 +674,7 @@ function changeBet(dir) {
 
 function changeLines(dir) {
   if (spinning || freeSpins > 0 || pendingWin > 0) return;
-  linesIdx = Math.max(0, Math.min(LINES_OPTS.length - 1, linesIdx + dir));
-  lines = LINES_OPTS[linesIdx];
+  lines = Math.max(1, Math.min(10, lines + dir));
   document.getElementById('lines-val').textContent = lines;
 }
 
