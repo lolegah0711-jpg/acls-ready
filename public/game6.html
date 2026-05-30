@@ -405,6 +405,9 @@ function evaluateResult(res) {
     let base = line.find(s => !SYMS[s].wild);
     if (base === undefined) base = 0;
 
+    // During free spins the bonus symbol is handled separately (expansion payout)
+    if (inFreeSpin && specialSym >= 0 && base === specialSym) continue;
+
     // Count consecutive matches from left (wild substitutes)
     let cnt = 0;
     for (let ri = 0; ri < 5; ri++) {
@@ -430,8 +433,25 @@ function evaluateResult(res) {
       if (SYMS[s].scatter) winCells.add(`${ri}_${row + 3}`);
     }));
     freeSpins += 10;
-    specialSym = Math.floor(Math.random() * SYMS.length);
+    // Bonus symbol must not be Book (index 0) per Deluxe rules
+    specialSym = 1 + Math.floor(Math.random() * (SYMS.length - 1));
     flashMsg(`🎰 ${books} Books! +10 Freispiele! ${SYMS[specialSym].e} ist Spezialsymbol`, '#a855f7', 3500);
+  }
+
+  // Free spin expansion: bonus symbol pays on all played lines, non-consecutive
+  if (inFreeSpin && specialSym >= 0) {
+    const bonusReels = [];
+    for (let ri = 0; ri < 5; ri++) {
+      if (res[ri].includes(specialSym)) bonusReels.push(ri);
+    }
+    const cnt = bonusReels.length;
+    const mul = cnt > 0 ? (SYMS[specialSym].v[Math.min(cnt, 5)] || 0) : 0;
+    if (mul > 0) {
+      const expansionWin = mul * bet * lines;
+      totalWin += expansionWin;
+      bonusReels.forEach(ri => [0, 1, 2].forEach(row => winCells.add(`${ri}_${row + 3}`)));
+      flashMsg(`🌟 ${cnt}× ${SYMS[specialSym].e} Bonus-Walzen! +${expansionWin.toLocaleString('de-DE')} 🪙`, '#f97316', 3000);
+    }
   }
 
   updateFsBanner();
