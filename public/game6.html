@@ -156,6 +156,10 @@
         <button class="bet-btn" onclick="changeLines(1)">▶</button>
       </div>
     </div>
+    <div class="ctrl-group" style="margin-left:4px">
+      <div class="ctrl-label">Gesamt/Spin</div>
+      <div class="ctrl-val" id="total-bet-val" style="color:#ef4444">90</div>
+    </div>
     <div class="ctrl-group">
       <div class="ctrl-label" id="win-label">Letzter Gewinn</div>
       <div class="ctrl-val" id="win-val" style="color:#6b7280">0</div>
@@ -235,7 +239,7 @@
 // ── SYMBOLS ───────────────────────────────────────────────────────────────────
 // v[n] = true multiplier × line-bet for n consecutive symbols from left
 const SYMS = [
-  {e:'📖', n:'Book of Ra',    col:'#fbbf24', w:5,  v:[0,0,0,  18,  180, 1800], wild:true, scatter:true},
+  {e:'📖', n:'Book of Ra',    col:'#fbbf24', w:5,  v:[0,0,0,  18,  180, 1800], wild:true, scatter:true, img:'/book-icon.png'},
   {e:'🧭', n:'Archäologe',    col:'#f97316', w:3,  v:[0,0,10, 100, 1000,5000]},
   {e:'👑', n:'Sphinx',        col:'#fcd34d', w:4,  v:[0,0,5,   40,  400,2000]},
   {e:'🦅', n:'Goldener Totem',col:'#f59e0b', w:5,  v:[0,0,5,   30,  100, 750]},
@@ -289,6 +293,21 @@ function rndSym() {
   return SYMS.length - 1;
 }
 
+function setSymEl(el, si) {
+  const s = SYMS[si];
+  el.style.color = s.col;
+  if (s.img) {
+    el.innerHTML = `<img src="${s.img}" style="max-width:78%;max-height:78%;object-fit:contain;display:block;pointer-events:none">`;
+  } else {
+    el.textContent = s.e;
+  }
+}
+
+function updateTotalBet() {
+  const el = document.getElementById('total-bet-val');
+  if (el) el.textContent = (bet * lines).toLocaleString('de-DE');
+}
+
 function buildReels() {
   for (let ri = 0; ri < 5; ri++) {
     const inner = document.getElementById(`ri${ri}`);
@@ -297,9 +316,8 @@ function buildReels() {
       const s = rndSym();
       const el = document.createElement('div');
       el.className = 'sym';
-      el.style.color = SYMS[s].col;
       el.id = `s${ri}_${row}`;
-      el.textContent = SYMS[s].e;
+      setSymEl(el, s);
       inner.appendChild(el);
     }
     inner.style.transform = 'translateY(-33.333%)';
@@ -310,9 +328,8 @@ function buildReels() {
 function setVisible(ri, r0, r1, r2) {
   [[3, r0], [4, r1], [5, r2]].forEach(([row, si]) => {
     const el = document.getElementById(`s${ri}_${row}`);
-    el.style.color = SYMS[si].col;
-    el.textContent = SYMS[si].e;
     el.className = 'sym';
+    setSymEl(el, si);
   });
   result[ri] = [r0, r1, r2];
 }
@@ -351,7 +368,7 @@ function spin() {
       for (let row = 0; row < 9; row++) {
         const el = document.getElementById(`s${ri}_${row}`);
         const s = rndSym();
-        el.textContent = SYMS[s].e;
+        el.textContent = SYMS[s].e; // emoji only during spin animation
         el.style.color = SYMS[s].col;
       }
     }, 80);
@@ -573,8 +590,11 @@ function buildPaytable() {
       .filter(n => s.v[n] > 0)
       .map(n => `<div class="pt-pay">×${n}: ${s.v[n]}×</div>`)
       .join('');
+    const symHtml = s.img
+      ? `<img src="${s.img}" style="width:28px;height:28px;object-fit:contain">`
+      : s.e;
     return `<div class="pt-row">
-      <div class="pt-sym" style="color:${s.col}">${s.e}</div>
+      <div class="pt-sym" style="color:${s.col}">${symHtml}</div>
       <div class="pt-name">${s.n} ${tags.join(' ')}</div>
       <div class="pt-pays">${pays}</div>
     </div>`;
@@ -663,6 +683,7 @@ function updateFsBanner() {
 
 function updateUI() {
   document.getElementById('balance-val').textContent = balance.toLocaleString('de-DE');
+  updateTotalBet();
 }
 
 function changeBet(dir) {
@@ -670,12 +691,14 @@ function changeBet(dir) {
   betIdx = Math.max(0, Math.min(BETS.length - 1, betIdx + dir));
   bet = BETS[betIdx];
   document.getElementById('bet-val').textContent = bet.toLocaleString('de-DE');
+  updateTotalBet();
 }
 
 function changeLines(dir) {
   if (spinning || freeSpins > 0 || pendingWin > 0) return;
   lines = Math.max(1, Math.min(10, lines + dir));
   document.getElementById('lines-val').textContent = lines;
+  updateTotalBet();
 }
 
 function resetBalance() {
