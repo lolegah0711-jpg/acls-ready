@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prüfungsquiz – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#0f0f0f;font-family:'Inter',sans-serif;color:#f0f0f0;min-height:100vh;
+      display:flex;flex-direction:column;align-items:center;padding:16px 12px 40px;}
+    #back{position:fixed;top:10px;left:10px;z-index:99;background:rgba(0,0,0,.6);
+      border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:5px 14px;
+      border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;backdrop-filter:blur(4px);}
+    h1{font-size:clamp(22px,5vw,32px);font-weight:800;margin:52px 0 4px;text-align:center;
+      background:linear-gradient(135deg,#22c55e,#4ade80);-webkit-background-clip:text;
+      -webkit-text-fill-color:transparent;background-clip:text;}
+    .sub{font-size:13px;color:#888;margin-bottom:28px;text-align:center;}
+
+    #screen-pick, #screen-quiz, #screen-result{width:min(640px,98vw);}
+
+    /* Category picker */
+    .cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
+    .cat-btn{background:#1a1a1a;border:2px solid #2a2a2a;border-radius:12px;padding:20px 12px;
+      text-align:center;cursor:pointer;transition:border-color .15s,background .15s;}
+    .cat-btn:hover{background:#222;border-color:#22c55e;}
+    .cat-icon{font-size:28px;margin-bottom:8px;}
+    .cat-name{font-size:14px;font-weight:700;}
+    .cat-count{font-size:11px;color:#888;margin-top:3px;}
+
+    /* Quiz */
+    #screen-quiz{display:none;}
+    .progress-bar{height:5px;background:#2a2a2a;border-radius:3px;margin-bottom:20px;overflow:hidden;}
+    .progress-fill{height:100%;background:linear-gradient(90deg,#22c55e,#4ade80);transition:width .4s ease;border-radius:3px;}
+    .q-meta{display:flex;justify-content:space-between;font-size:12px;color:#888;margin-bottom:10px;}
+    .q-text{font-size:clamp(15px,3vw,18px);font-weight:700;line-height:1.5;margin-bottom:20px;
+      background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:16px 18px;}
+    .options{display:flex;flex-direction:column;gap:10px;}
+    .opt{background:#1a1a1a;border:2px solid #2a2a2a;border-radius:10px;padding:13px 16px;
+      font-size:14px;font-weight:600;cursor:pointer;transition:border-color .15s,background .15s;
+      text-align:left;color:#f0f0f0;font-family:inherit;}
+    .opt:hover:not(:disabled){background:#222;border-color:#4ade80;}
+    .opt.correct{background:#052e16;border-color:#22c55e;color:#4ade80;}
+    .opt.wrong  {background:#2d0606;border-color:#ef4444;color:#ef4444;}
+    .opt:disabled{cursor:default;}
+    .feedback{margin-top:14px;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;}
+    .feedback.ok {background:#052e16;color:#4ade80;border:1px solid #22c55e33;}
+    .feedback.err{background:#2d0606;color:#ef4444;border:1px solid #ef444433;}
+    #btn-next{margin-top:16px;padding:11px 28px;border:none;border-radius:9px;
+      background:linear-gradient(135deg,#15803d,#22c55e);color:#fff;font-size:14px;
+      font-weight:800;font-family:inherit;cursor:pointer;display:none;width:100%;}
+
+    /* Result */
+    #screen-result{display:none;text-align:center;}
+    .score-circle{width:120px;height:120px;border-radius:50%;margin:0 auto 20px;
+      display:flex;align-items:center;justify-content:center;flex-direction:column;
+      font-size:28px;font-weight:900;border:4px solid;}
+    .score-circle.pass{border-color:#22c55e;background:#052e16;color:#4ade80;}
+    .score-circle.fail{border-color:#ef4444;background:#2d0606;color:#ef4444;}
+    .score-pct{font-size:13px;font-weight:600;}
+    .result-list{text-align:left;margin-top:20px;display:flex;flex-direction:column;gap:8px;}
+    .r-item{background:#1a1a1a;border-radius:8px;padding:10px 14px;font-size:13px;
+      border-left:3px solid;}
+    .r-item.ok {border-color:#22c55e;}
+    .r-item.err{border-color:#ef4444;}
+    .r-q{font-weight:700;margin-bottom:4px;}
+    .r-ans{color:#888;font-size:12px;}
+    .r-correct{color:#4ade80;font-size:12px;font-weight:600;}
+    .btn-restart{margin-top:20px;padding:12px 28px;border:none;border-radius:9px;
+      background:#1a1a1a;border:2px solid #2a2a2a;color:#f0f0f0;font-size:14px;
+      font-weight:700;font-family:inherit;cursor:pointer;}
+    .btn-restart:hover{border-color:#22c55e;}
+  </style>
+</head>
+<body>
+<a id="back" href="/" onclick="window.close()">← Portal</a>
+<h1>Prüfungsquiz</h1>
+<div class="sub">Übe für deine echte Prüfung — ohne Risiko</div>
+
+<!-- 1. Kategorie wählen -->
+<div id="screen-pick">
+  <div class="cat-grid" id="cat-grid">
+    <div style="text-align:center;padding:2rem;color:#888;grid-column:1/-1">Wird geladen…</div>
+  </div>
+</div>
+
+<!-- 2. Quiz -->
+<div id="screen-quiz">
+  <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+  <div class="q-meta">
+    <span id="q-counter">Frage 1 / 15</span>
+    <span id="q-cat" style="color:#22c55e;font-weight:700"></span>
+  </div>
+  <div class="q-text" id="q-text"></div>
+  <div class="options" id="options"></div>
+  <div class="feedback" id="feedback" style="display:none"></div>
+  <button id="btn-next" onclick="nextQuestion()">Weiter →</button>
+</div>
+
+<!-- 3. Ergebnis -->
+<div id="screen-result">
+  <div class="score-circle" id="score-circle">
+    <span id="score-frac"></span>
+    <span class="score-pct" id="score-pct"></span>
+  </div>
+  <div id="result-title" style="font-size:20px;font-weight:800;margin-bottom:4px"></div>
+  <div id="result-sub" style="font-size:13px;color:#888;margin-bottom:4px"></div>
+  <div class="result-list" id="result-list"></div>
+  <button class="btn-restart" onclick="showPick()">↺ Neue Runde</button>
+</div>
+
+<script>
+const ICONS = {PKW:'🚗',Motorrad:'🏍️',Boot:'⛵',LKW:'🚛',Flugschein:'✈️'};
+let questions = [], current = 0, answers = [], catName = '';
+
+async function init() {
+  const cats = await (await fetch('/api/exam-categories')).json().catch(() => []);
+  document.getElementById('cat-grid').innerHTML = cats.length
+    ? cats.map(c => `
+      <div class="cat-btn" onclick="startQuiz(${c.id},'${c.name}')">
+        <div class="cat-icon">${ICONS[c.name]||'📋'}</div>
+        <div class="cat-name">${c.name}</div>
+        <div class="cat-count">${c.question_count||''} Fragen</div>
+      </div>`).join('')
+    : '<div style="color:#888;grid-column:1/-1;text-align:center;padding:2rem">Keine Kategorien verfügbar</div>';
+}
+
+async function startQuiz(catId, name) {
+  catName = name;
+  const data = await (await fetch(`/api/practice-questions/${catId}`)).json().catch(() => []);
+  if (!data.length) { alert('Keine Fragen für diese Kategorie verfügbar.'); return; }
+  questions = data;
+  current = 0;
+  answers = [];
+  document.getElementById('screen-pick').style.display = 'none';
+  document.getElementById('screen-result').style.display = 'none';
+  document.getElementById('screen-quiz').style.display = '';
+  document.getElementById('q-cat').textContent = name;
+  showQuestion();
+}
+
+function showQuestion() {
+  const q = questions[current];
+  const total = questions.length;
+  document.getElementById('progress-fill').style.width = `${(current / total) * 100}%`;
+  document.getElementById('q-counter').textContent = `Frage ${current + 1} / ${total}`;
+  document.getElementById('q-text').textContent = q.question;
+  document.getElementById('feedback').style.display = 'none';
+  document.getElementById('btn-next').style.display = 'none';
+
+  const opts = [q.option_a, q.option_b, q.option_c, q.option_d].filter(Boolean);
+  document.getElementById('options').innerHTML = opts.map((o, i) =>
+    `<button class="opt" onclick="answer(${i})">${String.fromCharCode(65+i)}. ${o}</button>`
+  ).join('');
+}
+
+function answer(idx) {
+  const q = questions[current];
+  const correct = q.correct_answer; // 0-indexed
+  const btns = document.querySelectorAll('.opt');
+  btns.forEach(b => b.disabled = true);
+  btns[idx].classList.add(idx === correct ? 'correct' : 'wrong');
+  if (idx !== correct) btns[correct].classList.add('correct');
+
+  const ok = idx === correct;
+  answers.push({ q, chosen: idx, correct, ok });
+
+  const fb = document.getElementById('feedback');
+  fb.className = `feedback ${ok ? 'ok' : 'err'}`;
+  fb.textContent = ok ? '✓ Richtig!' : `✗ Falsch — Richtige Antwort: ${String.fromCharCode(65+correct)}`;
+  fb.style.display = '';
+  document.getElementById('btn-next').style.display = '';
+  document.getElementById('btn-next').textContent = current < questions.length - 1 ? 'Weiter →' : 'Auswertung anzeigen';
+}
+
+function nextQuestion() {
+  current++;
+  if (current >= questions.length) showResult();
+  else showQuestion();
+}
+
+function showResult() {
+  document.getElementById('screen-quiz').style.display = 'none';
+  document.getElementById('screen-result').style.display = '';
+  const total = answers.length;
+  const correct = answers.filter(a => a.ok).length;
+  const pct = Math.round((correct / total) * 100);
+  const pass = pct >= 70;
+
+  const circle = document.getElementById('score-circle');
+  circle.className = `score-circle ${pass ? 'pass' : 'fail'}`;
+  document.getElementById('score-frac').textContent = `${correct}/${total}`;
+  document.getElementById('score-pct').textContent = `${pct}%`;
+  document.getElementById('result-title').textContent = pass ? '🎉 Bestanden!' : '😔 Nicht bestanden';
+  document.getElementById('result-sub').textContent = pass
+    ? `${pct}% — Du bist bereit für die echte Prüfung!`
+    : `${pct}% — Mindestens 70% erforderlich. Weiter üben!`;
+
+  const opts = q => [q.option_a, q.option_b, q.option_c, q.option_d].filter(Boolean);
+  document.getElementById('result-list').innerHTML = answers.map((a, i) => `
+    <div class="r-item ${a.ok ? 'ok' : 'err'}">
+      <div class="r-q">${i+1}. ${a.q.question}</div>
+      ${!a.ok ? `<div class="r-ans">Deine Antwort: ${String.fromCharCode(65+a.chosen)}. ${opts(a.q)[a.chosen]||'–'}</div>` : ''}
+      ${!a.ok ? `<div class="r-correct">✓ Richtig: ${String.fromCharCode(65+a.correct)}. ${opts(a.q)[a.correct]||'–'}</div>` : ''}
+    </div>`).join('');
+}
+
+function showPick() {
+  document.getElementById('screen-result').style.display = 'none';
+  document.getElementById('screen-quiz').style.display = 'none';
+  document.getElementById('screen-pick').style.display = '';
+}
+
+init();
+</script>
+</body>
+</html>

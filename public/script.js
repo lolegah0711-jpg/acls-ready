@@ -314,6 +314,7 @@ async function renderVoterScreen() {
           <a href="/game8" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#4ade80"><i class="fas fa-frog" style="color:#4ade80"></i> Doodle Jump</a>
           <a href="/game9" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#f97316"><i class="fas fa-shield-alt" style="color:#f97316"></i> Tower Defense</a>
           <a href="/game10" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#f59e0b"><i class="fas fa-th" style="color:#f59e0b"></i> 2048</a>
+          <a href="/quiz" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#22c55e"><i class="fas fa-graduation-cap" style="color:#22c55e"></i> Prüfungsquiz</a>
         </div>
       </div>
     </div>`;

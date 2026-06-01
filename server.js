@@ -428,6 +428,12 @@ app.get('/api/exam-questions/:catId', requireAdmin, (req, res) => {
   res.json(db.prepare('SELECT * FROM exam_questions WHERE category_id = ? AND is_active = 1 ORDER BY id DESC').all(req.params.catId));
 });
 
+// Öffentlicher Übungsmodus für Bürger — gibt 15 zufällige Fragen zurück
+app.get('/api/practice-questions/:catId', (req, res) => {
+  const rows = db.prepare('SELECT id, question, option_a, option_b, option_c, option_d, correct_answer FROM exam_questions WHERE category_id = ? AND is_active = 1 ORDER BY RANDOM() LIMIT 15').all(req.params.catId);
+  res.json(rows);
+});
+
 app.post('/api/exam-questions', requireAdmin, (req, res) => {
   const { category_id, question, option_a, option_b, option_c, option_d, correct_answer } = req.body;
   if (!question || !option_a || !option_b || !option_c || !option_d) return res.status(400).json({ error: 'Fehlende Felder' });
@@ -1666,6 +1672,7 @@ app.get('/game7', (req, res) => res.sendFile(path.join(__dirname, 'public', 'gam
 app.get('/game8', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game8.html')));
 app.get('/game9', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game9.html')));
 app.get('/game10', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game10.html')));
+app.get('/quiz',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'quiz.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(PORT, () => console.log(`[ACLS] Server läuft auf http://localhost:${PORT}`));
