@@ -93,6 +93,29 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// ── Audit Log ────────────────────────────────────────────────────
+function auditLog(req, action, details = '') {
+  const u = getUser(req);
+  const userId   = u?.id   || null;
+  const username = u?.username || (req.session.voterUsername || 'unbekannt');
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+  db.prepare('INSERT INTO audit_log (user_id, username, action, details, ip) VALUES (?, ?, ?, ?, ?)')
+    .run(userId, username, action, details, ip);
+}
+
+// ── Rate Limiter (in-memory, per IP) ────────────────────────────
+const _rateLimits = new Map();
+function rateLimit(key, maxPerWindow, windowMs) {
+  const now = Date.now();
+  const entry = _rateLimits.get(key) || { count: 0, reset: now + windowMs };
+  if (now > entry.reset) { entry.count = 0; entry.reset = now + windowMs; }
+  entry.count++;
+  _rateLimits.set(key, entry);
+  return entry.count > maxPerWindow;
+}
+// Cleanup alle 5 Minuten
+setInterval(() => { const now = Date.now(); _rateLimits.forEach((v, k) => { if (now > v.reset) _rateLimits.delete(k); }); }, 5 * 60 * 1000);
+
 // ── Helpers ─────────────────────────────────────────────────────
 // Hilfsfunktion: Berliner Datumsteile auslesen
 function _berlinParts() {
@@ -303,11 +326,14 @@ app.patch('/api/users/:id', requireAdmin, (req, res) => {
   if (role !== undefined)      db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, req.params.id);
   if (is_active !== undefined) db.prepare('UPDATE users SET is_active = ? WHERE id = ?').run(is_active ? 1 : 0, req.params.id);
   if (username)                db.prepare('UPDATE users SET username = ? WHERE id = ?').run(username.trim(), req.params.id);
+  auditLog(req, 'user_update', `id=${req.params.id} ${JSON.stringify({role,is_active,username})}`);
   res.json({ ok: true });
 });
 
 app.delete('/api/users/:id', requireAdmin, (req, res) => {
+  const target = db.prepare('SELECT username FROM users WHERE id = ?').get(req.params.id);
   db.prepare('UPDATE users SET is_active = 0 WHERE id = ?').run(req.params.id);
+  auditLog(req, 'user_deactivate', `id=${req.params.id} username=${target?.username}`);
   res.json({ ok: true });
 });
 
@@ -364,6 +390,7 @@ app.post('/api/eow/reset', requireAdmin, (req, res) => {
   const wk = votingWeekKey();
   db.prepare('DELETE FROM eow_votes WHERE week = ?').run(wk);
   db.prepare('DELETE FROM citizen_votes WHERE week = ?').run(wk);
+  auditLog(req, 'eow_reset', `week=${wk}`);
   res.json({ ok: true });
 });
 
@@ -658,17 +685,22 @@ app.post('/api/bans', requireAuth, (req, res) => {
   }
   const r = db.prepare('INSERT INTO bans (person_name, person_id, reason, issued_by, duration_days, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
     .run(person_name, person_id || null, reason, user.id, duration_days || null, expires_at);
+  auditLog(req, 'ban_create', `person=${person_name} id=${person_id} reason=${reason} days=${duration_days||'∞'}`);
   res.json({ id: r.lastInsertRowid });
 });
 
 app.patch('/api/bans/:id/lift', requireAuth, (req, res) => {
   const user = getUser(req);
+  const ban = db.prepare('SELECT person_name FROM bans WHERE id=?').get(req.params.id);
   db.prepare('UPDATE bans SET is_active=0, lifted_by=?, lifted_at=CURRENT_TIMESTAMP WHERE id=?').run(user.id, req.params.id);
+  auditLog(req, 'ban_lift', `ban_id=${req.params.id} person=${ban?.person_name}`);
   res.json({ ok: true });
 });
 
 app.delete('/api/bans/:id', requireAdmin, (req, res) => {
+  const ban = db.prepare('SELECT person_name FROM bans WHERE id=?').get(req.params.id);
   db.prepare('DELETE FROM bans WHERE id = ?').run(req.params.id);
+  auditLog(req, 'ban_delete', `ban_id=${req.params.id} person=${ban?.person_name}`);
   res.json({ ok: true });
 });
 
@@ -731,6 +763,9 @@ app.get('/api/citizen-votes', (req, res) => {
 });
 
 app.post('/api/citizen-vote', (req, res) => {
+  const ip        = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+  if (rateLimit(`vote:${ip}`, 5, 60 * 1000)) return res.status(429).json({ error: 'Zu viele Anfragen, bitte warte kurz' });
+
   const discordId = req.session.voterDiscordId || (req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null);
   const username  = req.session.voterUsername  || (req.session.userId ? db.prepare('SELECT username FROM users WHERE id = ?').get(req.session.userId)?.username : null);
   if (!discordId) return res.status(401).json({ error: 'Nicht angemeldet' });
@@ -1020,13 +1055,23 @@ app.post('/api/complaints', (req, res) => {
   res.json({ ok: true });
 });
 
+// Bürger sieht eigene Beschwerden
+app.get('/api/my-complaints', (req, res) => {
+  const discordId = req.session.voterDiscordId || (req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null);
+  if (!discordId) return res.json([]);
+  const rows = db.prepare('SELECT id, subject, status, admin_response, admin_response_at, created_at FROM complaints WHERE citizen_discord_id = ? ORDER BY created_at DESC LIMIT 20').all(discordId);
+  res.json(rows);
+});
+
 app.get('/api/complaints', requireAdmin, (req, res) => {
   res.json(db.prepare('SELECT * FROM complaints ORDER BY created_at DESC').all());
 });
 
 app.patch('/api/complaints/:id', requireAdmin, (req, res) => {
-  const { status } = req.body;
-  db.prepare('UPDATE complaints SET status = ? WHERE id = ?').run(status, req.params.id);
+  const { status, admin_response } = req.body;
+  db.prepare('UPDATE complaints SET status = ?, admin_response = ?, admin_response_at = CASE WHEN ? IS NOT NULL THEN datetime(\'now\') ELSE admin_response_at END WHERE id = ?')
+    .run(status, admin_response || null, admin_response || null, req.params.id);
+  auditLog(req, 'complaint_update', `id=${req.params.id} status=${status}`);
   res.json({ ok: true });
 });
 
@@ -1050,7 +1095,7 @@ app.get('/api/profile/:id', requireAuth, (req, res) => {
 //  CRON: Sunday 20:00 — auto-count EoW
 // ════════════════════════════════════════════════════════════════
 // Abgelaufene Sperren stündlich deaktivieren
-cron.schedule('0 * * * *', () => {
+cron.schedule('* * * * *', () => {
   const r = db.prepare(`UPDATE bans SET is_active=0 WHERE is_active=1 AND expires_at IS NOT NULL AND expires_at <= datetime('now')`).run();
   if (r.changes > 0) console.log(`[Cron] ${r.changes} abgelaufene Sperre(n) deaktiviert`);
 });
@@ -1557,25 +1602,57 @@ app.get('/api/twitch-status', async (req, res) => {
 
 // ── Minigame Ranglisten ─────────────────────────────────────────
 app.get('/api/game-scores/:game', (req, res) => {
-  const rows = db.prepare(`
-    SELECT gs.user_id, u.username, u.avatar, u.discord_id, gs.score, gs.updated_at
+  const staff = db.prepare(`
+    SELECT u.username, u.avatar, u.discord_id, gs.score, gs.updated_at
     FROM game_scores gs JOIN users u ON u.id = gs.user_id
-    WHERE gs.game = ? ORDER BY gs.score DESC LIMIT 15
+    WHERE gs.game = ?
   `).all(req.params.game);
-  res.json(rows);
+  const visitors = db.prepare(`
+    SELECT NULL as avatar, vgs.discord_id, vgs.username, vgs.score, vgs.updated_at
+    FROM visitor_game_scores vgs WHERE vgs.game = ?
+  `).all(req.params.game);
+  // Merge: wenn ein Besucher auch Staff ist, Staff-Eintrag hat Vorrang
+  const staffIds = new Set(staff.map(r => r.discord_id));
+  const merged = [...staff, ...visitors.filter(v => !staffIds.has(v.discord_id))];
+  merged.sort((a, b) => b.score - a.score);
+  res.json(merged.slice(0, 15));
 });
 
-app.post('/api/game-scores/:game', requireLogin, (req, res) => {
-  const user  = getUser(req);
+app.post('/api/game-scores/:game', (req, res) => {
   const { score } = req.body;
   if (typeof score !== 'number' || score < 0) return res.status(400).json({ error: 'Ungültiger Score' });
+  const user = getUser(req);
+  if (user) {
+    // Eingeloggter Mitarbeiter
+    db.prepare(`
+      INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, game) DO UPDATE SET
+        score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+        updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END
+    `).run(user.id, req.params.game, score);
+    return res.json({ ok: true });
+  }
+  // Bürger mit Voter-Session
+  const discordId = req.session.voterDiscordId;
+  const username  = req.session.voterUsername || 'Bürger';
+  if (!discordId) return res.status(401).json({ error: 'Nicht angemeldet' });
   db.prepare(`
-    INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-    ON CONFLICT(user_id, game) DO UPDATE SET
+    INSERT INTO visitor_game_scores (discord_id, username, game, score, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(discord_id, game) DO UPDATE SET
       score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
-      updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END
-  `).run(user.id, req.params.game, score);
+      updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END,
+      username   = excluded.username
+  `).run(discordId, username, req.params.game, score);
   res.json({ ok: true });
+});
+
+// ── Audit-Log ───────────────────────────────────────────────────
+app.get('/api/audit-log', requireAdmin, (req, res) => {
+  const rows = db.prepare(`
+    SELECT id, username, action, details, ip, created_at
+    FROM audit_log ORDER BY created_at DESC LIMIT 200
+  `).all();
+  res.json(rows);
 });
 
 app.get('/preise', (req, res) => res.sendFile(path.join(__dirname, 'public', 'preise.html')));

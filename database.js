@@ -276,7 +276,30 @@ function initDb() {
       owner_user_id    INTEGER REFERENCES users(id),
       created_at       DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS visitor_game_scores (
+      discord_id  TEXT NOT NULL,
+      username    TEXT,
+      game        TEXT NOT NULL,
+      score       INTEGER NOT NULL DEFAULT 0,
+      updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (discord_id, game)
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER REFERENCES users(id),
+      username    TEXT,
+      action      TEXT NOT NULL,
+      details     TEXT,
+      ip          TEXT,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
+
+  // Admin-Response Spalte nachrüsten falls nicht vorhanden
+  try { db.exec(`ALTER TABLE complaints ADD COLUMN admin_response TEXT`); } catch {}
+  try { db.exec(`ALTER TABLE complaints ADD COLUMN admin_response_at DATETIME`); } catch {}
 
   // Seed admin users from env vars on first start (Railway: set ADMIN_DISCORD_IDS and ADMIN_USERNAMES)
   const adminIds  = (process.env.ADMIN_DISCORD_IDS  || '').split(',').map(s => s.trim()).filter(Boolean);

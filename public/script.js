@@ -285,6 +285,10 @@ async function renderVoterScreen() {
           <div class="form-group"><label>Nachricht</label><textarea class="form-control" id="cMessage" rows="4" placeholder="Beschreibe dein Anliegen..." required style="resize:vertical"></textarea></div>
           <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-paper-plane"></i> Absenden</button>
         </form>
+        <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border)">
+          <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.75rem">Meine Beschwerden</div>
+          <div id="my-complaints-list"><div style="color:var(--muted);font-size:.85rem">Wird geladen…</div></div>
+        </div>
       </div>
       <div id="marketSection" style="display:none">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
@@ -326,8 +330,9 @@ window.voterTab = tab => {
     const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     if (el) el.className = `btn btn-sm ${t === tab ? 'btn-primary' : 'btn-ghost'}`;
   });
-  if (tab === 'market') loadVoterMarket();
-  if (tab === 'price')  loadVoterPrices();
+  if (tab === 'market')    loadVoterMarket();
+  if (tab === 'price')     loadVoterPrices();
+  if (tab === 'complaint') loadMyComplaints();
 };
 
 async function loadVoterPrices() {
@@ -416,9 +421,29 @@ window.submitComplaintForm = async e => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ citizen_name: $('cName').value.trim(), citizen_discord_id: currentUser.discord_id, subject: $('cSubject').value.trim(), message: $('cMessage').value.trim() }),
   });
-  if (r.ok) { toast('Beschwerde eingereicht!', 'ok'); $('cSubject').value = ''; $('cMessage').value = ''; voterTab('vote'); }
+  if (r.ok) { toast('Beschwerde eingereicht!', 'ok'); $('cSubject').value = ''; $('cMessage').value = ''; loadMyComplaints(); }
   else toast('Fehler beim Senden', 'err');
 };
+
+async function loadMyComplaints() {
+  const el = document.getElementById('my-complaints-list');
+  if (!el) return;
+  try {
+    const data = await (await fetch('/api/my-complaints')).json();
+    if (!data.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.85rem">Noch keine Beschwerden eingereicht.</div>'; return; }
+    const statusColor = s => s === 'offen' ? '#f59e0b' : s === 'in_bearbeitung' ? '#3b82f6' : '#22c55e';
+    const statusLabel = s => s === 'offen' ? 'Offen' : s === 'in_bearbeitung' ? 'In Bearbeitung' : 'Gelöst';
+    el.innerHTML = data.map(c => `
+      <div style="border:1px solid var(--border);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:.5rem">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem">
+          <span style="font-weight:700;font-size:.9rem">${c.subject}</span>
+          <span style="font-size:.72rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;background:${statusColor(c.status)}22;color:${statusColor(c.status)}">${statusLabel(c.status)}</span>
+        </div>
+        <div style="font-size:.75rem;color:var(--muted)">${new Date(c.created_at).toLocaleDateString('de-DE')}</div>
+        ${c.admin_response ? `<div style="margin-top:.5rem;padding:.5rem .75rem;background:var(--surface2);border-radius:6px;font-size:.82rem;border-left:3px solid #3b82f6"><span style="color:#3b82f6;font-weight:700;font-size:.72rem">Admin-Antwort:</span><br>${c.admin_response}</div>` : ''}
+      </div>`).join('');
+  } catch { el.innerHTML = '<div style="color:var(--muted);font-size:.85rem">Fehler beim Laden.</div>'; }
+}
 
 window.castCitizenVote = async nominee_id => {
   const r = await fetch('/api/citizen-vote', {
@@ -2344,7 +2369,42 @@ async function admin() {
           </div>`).join('') : '<div class="empty" style="padding:1rem"><p>Keine Ankündigungen</p></div>'}
       </div>
     </div><!-- /col-right -->
+    </div>
+    <!-- Audit-Log -->
+    <div class="card" style="margin-top:1rem">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(168,85,247,.15)"><i class="fas fa-shield-alt" style="color:#a855f7"></i></div>
+        <div><div class="card-title">Audit-Log</div><div class="card-sub">Letzte Admin-Aktionen</div></div>
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="loadAuditLog()"><i class="fas fa-sync-alt"></i></button>
+      </div>
+      <div id="audit-log-list"><div style="text-align:center;padding:1rem;color:var(--muted);font-size:.85rem">Wird geladen…</div></div>
     </div>`;
+  loadAuditLog();
+}
+
+async function loadAuditLog() {
+  const el = document.getElementById('audit-log-list');
+  if (!el) return;
+  const data = await api('/api/audit-log');
+  if (!data?.length) { el.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted);font-size:.85rem">Keine Einträge</div>'; return; }
+  const actionLabel = a => ({
+    user_update:'Nutzer bearbeitet', user_deactivate:'Nutzer deaktiviert',
+    ban_create:'Sperre erteilt', ban_lift:'Sperre aufgehoben', ban_delete:'Sperre gelöscht',
+    eow_reset:'EOW zurückgesetzt', complaint_update:'Beschwerde aktualisiert'
+  }[a] || a);
+  const actionColor = a => a.startsWith('ban') ? '#ef4444' : a.startsWith('eow') ? '#f59e0b' : a.startsWith('user_deactivate') ? '#ef4444' : '#a855f7';
+  el.innerHTML = `<div class="tbl-wrap" style="max-height:320px;overflow-y:auto">
+    <table class="data-tbl">
+      <thead><tr><th>Zeit</th><th>Admin</th><th>Aktion</th><th>Details</th><th>IP</th></tr></thead>
+      <tbody>${data.map(r => `<tr>
+        <td style="white-space:nowrap;font-size:.78rem;color:var(--muted)">${new Date(r.created_at).toLocaleString('de-DE')}</td>
+        <td style="font-weight:600;font-size:.85rem">${r.username||'–'}</td>
+        <td><span style="font-size:.75rem;font-weight:700;padding:.15rem .45rem;border-radius:4px;background:${actionColor(r.action)}22;color:${actionColor(r.action)}">${actionLabel(r.action)}</span></td>
+        <td style="font-size:.78rem;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.details||''}">${r.details||'–'}</td>
+        <td style="font-size:.75rem;color:var(--muted)">${r.ip||'–'}</td>
+      </tr>`).join('')}</tbody>
+    </table>
+  </div>`;
 }
 
 window.openAddUser = () => openModal(`
@@ -2479,16 +2539,17 @@ window.pinAnnouncement = async id => {
   if (r) { toast('Gespeichert.', 'ok'); admin(); }
 };
 
-window.resolveComplaint = async (id, status) => {
-  const r = await api(`/api/complaints/${id}`, { method: 'PATCH', body: { status } });
-  if (r) { toast('Status aktualisiert.', 'ok'); admin(); }
+window.resolveComplaint = async (id, status, response) => {
+  const r = await api(`/api/complaints/${id}`, { method: 'PATCH', body: { status, admin_response: response || null } });
+  if (r) { toast('Gespeichert.', 'ok'); closeModal(); admin(); }
 };
 
 window.openComplaint = (id) => {
   const complaints = window._adminComplaints || [];
   const c = complaints.find(x => x.id === id);
   if (!c) return;
-  const statusColor = c.status === 'offen' ? '#ef4444' : '#22c55e';
+  const statusColor = s => s === 'offen' ? '#ef4444' : s === 'in_bearbeitung' ? '#f59e0b' : '#22c55e';
+  const statusLabel = s => s === 'offen' ? 'Offen' : s === 'in_bearbeitung' ? 'In Bearbeitung' : 'Gelöst';
   openModal(`
     <div class="modal-head">
       <div class="modal-title"><i class="fas fa-comment-alt" style="color:var(--orange);margin-right:.5rem"></i>Beschwerde</div>
@@ -2498,16 +2559,23 @@ window.openComplaint = (id) => {
       <div style="display:flex;gap:.6rem;flex-wrap:wrap;font-size:.82rem;color:var(--muted)">
         <span><i class="fas fa-user" style="margin-right:.3rem"></i><b style="color:var(--fg)">${c.citizen_name}</b></span>
         <span><i class="fas fa-calendar" style="margin-right:.3rem"></i>${new Date(c.created_at).toLocaleDateString('de-DE')}</span>
-        <span style="padding:.15rem .5rem;border-radius:6px;font-weight:600;font-size:.75rem;background:${statusColor}22;color:${statusColor}">${c.status}</span>
+        <span style="padding:.15rem .5rem;border-radius:6px;font-weight:600;font-size:.75rem;background:${statusColor(c.status)}22;color:${statusColor(c.status)}">${statusLabel(c.status)}</span>
       </div>
       <div style="font-weight:700;font-size:1rem">${c.subject}</div>
       <div style="background:var(--input);border-radius:var(--r);padding:.85rem 1rem;font-size:.87rem;line-height:1.65;white-space:pre-wrap;color:var(--fg)">${c.message}</div>
+      ${c.admin_response ? `<div style="padding:.6rem .8rem;background:rgba(59,130,246,.1);border-left:3px solid #3b82f6;border-radius:6px;font-size:.85rem"><b style="color:#3b82f6">Bisherige Antwort:</b><br>${c.admin_response}</div>` : ''}
+      <div class="form-group" style="margin:0">
+        <label style="font-size:.8rem">Antwort an Bürger (optional)</label>
+        <textarea class="form-control" id="complaint-response" rows="3" placeholder="Diese Antwort wird dem Bürger angezeigt…" style="resize:vertical">${c.admin_response||''}</textarea>
+      </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn btn-sm" style="background:rgba(239,68,68,.15);color:#ef4444;border:1px solid #ef444444" onclick="resolveComplaint(${c.id},'offen',document.getElementById('complaint-response').value)">Offen</button>
+        <button class="btn btn-sm" style="background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid #f59e0b44" onclick="resolveComplaint(${c.id},'in_bearbeitung',document.getElementById('complaint-response').value)">In Bearbeitung</button>
+        <button class="btn btn-primary btn-sm" onclick="resolveComplaint(${c.id},'geloest',document.getElementById('complaint-response').value)"><i class="fas fa-check"></i> Gelöst</button>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Schließen</button>
-      ${c.status==='offen'
-        ?`<button class="btn btn-primary" onclick="closeModal();resolveComplaint(${c.id},'erledigt')"><i class="fas fa-check"></i> Als erledigt markieren</button>`
-        :`<button class="btn btn-ghost" onclick="closeModal();resolveComplaint(${c.id},'offen')"><i class="fas fa-undo"></i> Wieder öffnen</button>`}
     </div>`);
 };
 
