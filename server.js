@@ -1491,6 +1491,49 @@ app.get('/api/game-char/leaderboard', (req, res) => {
   res.json(rows);
 });
 
+// ── Twitch Status ───────────────────────────────────────────────
+const TWITCH_CLIENT_ID     = process.env.TWITCH_CLIENT_ID;
+const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
+const TWITCH_CHANNEL       = 'xonolanx';
+let _twitchToken = null, _twitchTokenExp = 0;
+let _twitchCache = null, _twitchCacheTs  = 0;
+
+async function getTwitchToken() {
+  if (_twitchToken && Date.now() < _twitchTokenExp) return _twitchToken;
+  const r = await fetch(
+    `https://id.twitch.tv/oauth2/token?client_id=${TWITCH_CLIENT_ID}&client_secret=${TWITCH_CLIENT_SECRET}&grant_type=client_credentials`,
+    { method: 'POST' }
+  );
+  const d = await r.json();
+  _twitchToken    = d.access_token;
+  _twitchTokenExp = Date.now() + (d.expires_in - 300) * 1000;
+  return _twitchToken;
+}
+
+app.get('/api/twitch-status', async (req, res) => {
+  if (!TWITCH_CLIENT_ID || !TWITCH_CLIENT_SECRET)
+    return res.json({ live: false, channel: TWITCH_CHANNEL, configured: false });
+  if (_twitchCache && Date.now() - _twitchCacheTs < 60000)
+    return res.json(_twitchCache);
+  try {
+    const token = await getTwitchToken();
+    const r = await fetch(`https://api.twitch.tv/helix/streams?user_login=${TWITCH_CHANNEL}`, {
+      headers: { 'Client-ID': TWITCH_CLIENT_ID, 'Authorization': `Bearer ${token}` }
+    });
+    const data = await r.json();
+    const s = data.data?.[0];
+    _twitchCache = s
+      ? { live: true,  channel: TWITCH_CHANNEL, title: s.title, game: s.game_name,
+          viewers: s.viewer_count,
+          thumbnail: s.thumbnail_url?.replace('{width}','320').replace('{height}','180') }
+      : { live: false, channel: TWITCH_CHANNEL };
+    _twitchCacheTs = Date.now();
+    res.json(_twitchCache);
+  } catch {
+    res.json({ live: false, channel: TWITCH_CHANNEL, error: true });
+  }
+});
+
 // ── Minigame Ranglisten ─────────────────────────────────────────
 app.get('/api/game-scores/:game', (req, res) => {
   const rows = db.prepare(`

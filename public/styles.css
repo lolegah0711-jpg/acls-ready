@@ -825,6 +825,14 @@ input, select, textarea { font-family: inherit; }
 }
 @keyframes modal-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+@keyframes live-pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.5);opacity:.6} }
+.twitch-card { background: linear-gradient(135deg,rgba(100,65,164,.18),rgba(145,70,255,.08)); border:1px solid rgba(145,70,255,.3); border-radius:var(--rl); padding:1rem 1.2rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:.6rem; }
+.twitch-live-dot { width:10px; height:10px; border-radius:50%; background:#ef4444; flex-shrink:0; animation:live-pulse 1.4s ease-in-out infinite; }
+.twitch-offline-dot { width:10px; height:10px; border-radius:50%; background:#6b7280; flex-shrink:0; }
+.twitch-thumb { width:120px; height:68px; border-radius:6px; object-fit:cover; flex-shrink:0; background:#1a1a2e; }
+.twitch-info { flex:1; min-width:0; }
+.twitch-badge-live { display:inline-block; background:#ef4444; color:#fff; font-size:.65rem; font-weight:800; padding:.15rem .45rem; border-radius:4px; letter-spacing:.06em; margin-right:.4rem; vertical-align:middle; }
+.twitch-badge-off  { display:inline-block; background:#374151; color:#9ca3af; font-size:.65rem; font-weight:800; padding:.15rem .45rem; border-radius:4px; letter-spacing:.06em; margin-right:.4rem; vertical-align:middle; }
 .gta-map-img { image-rendering: auto; image-rendering: -webkit-optimize-contrast; }
 .leaflet-container { background: #1a1a2e; }
 .map-outer { border-radius: var(--rl); overflow: hidden; }

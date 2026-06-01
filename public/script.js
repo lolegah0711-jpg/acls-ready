@@ -495,6 +495,53 @@ function navigate(page) {
 // ════════════════════════════════════════════════════════════════
 //  DASHBOARD
 // ════════════════════════════════════════════════════════════════
+async function loadTwitchWidget() {
+  try {
+    const t = await (await fetch('/api/twitch-status')).json();
+    const el = document.getElementById('twitch-widget');
+    if (!el) return;
+    const channelUrl = `https://www.twitch.tv/${t.channel}`;
+    if (t.live) {
+      el.innerHTML = `<div class="twitch-card">
+        <div class="twitch-live-dot"></div>
+        ${t.thumbnail ? `<img class="twitch-thumb" src="${t.thumbnail}" alt="Stream">` : ''}
+        <div class="twitch-info">
+          <div style="margin-bottom:.25rem">
+            <span class="twitch-badge-live">LIVE</span>
+            <span style="font-weight:700;font-size:.95rem;color:#c084fc">${t.channel}</span>
+          </div>
+          <div style="font-size:.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px" title="${t.title}">${t.title || ''}</div>
+          <div style="font-size:.75rem;color:#9ca3af;margin-top:.2rem">
+            ${t.game ? `<i class="fas fa-gamepad" style="margin-right:.3rem"></i>${t.game} &nbsp;·&nbsp; ` : ''}
+            <i class="fas fa-eye" style="margin-right:.3rem"></i>${t.viewers?.toLocaleString('de-DE')} Zuschauer
+          </div>
+        </div>
+        <a href="${channelUrl}" target="_blank" style="flex-shrink:0">
+          <button class="btn btn-sm" style="background:linear-gradient(135deg,#6441a5,#9147ff);color:#fff;border:none;white-space:nowrap">
+            <i class="fab fa-twitch"></i> Jetzt schauen
+          </button>
+        </a>
+      </div>`;
+    } else {
+      el.innerHTML = `<div class="twitch-card">
+        <div class="twitch-offline-dot"></div>
+        <div class="twitch-info">
+          <div style="margin-bottom:.2rem">
+            <span class="twitch-badge-off">OFFLINE</span>
+            <span style="font-weight:700;font-size:.9rem;color:#9ca3af">${t.channel}</span>
+          </div>
+          <div style="font-size:.78rem;color:#6b7280">Derzeit nicht live</div>
+        </div>
+        <a href="${channelUrl}" target="_blank" style="flex-shrink:0">
+          <button class="btn btn-ghost btn-sm" style="white-space:nowrap">
+            <i class="fab fa-twitch" style="color:#9147ff"></i> Kanal besuchen
+          </button>
+        </a>
+      </div>`;
+    }
+  } catch {}
+}
+
 async function dashboard() {
   const [d, announcements, myBadgesRes] = await Promise.all([api('/api/dashboard'), api('/api/announcements'), api('/api/my-badges')]);
   if (!d) return;
@@ -572,6 +619,16 @@ async function dashboard() {
     <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0">
       ${winnerCard}
       ${voteCard}
+    </div>
+
+    <!-- Twitch -->
+    <div id="twitch-widget">
+      <div class="twitch-card">
+        <div class="twitch-offline-dot"></div>
+        <div class="twitch-info">
+          <div style="font-size:.8rem;color:#9ca3af">Wird geladen…</div>
+        </div>
+      </div>
     </div>
 
     <!-- 4 Stat cards -->
@@ -713,6 +770,9 @@ async function dashboard() {
     </div>` : ''}`;
   animateCountUps();
   requestAnimationFrame(() => requestAnimationFrame(animateBadgeRings));
+  loadTwitchWidget();
+  clearInterval(dashboard._twitchPoll);
+  dashboard._twitchPoll = setInterval(loadTwitchWidget, 2 * 60 * 1000);
 }
 
 // ════════════════════════════════════════════════════════════════
