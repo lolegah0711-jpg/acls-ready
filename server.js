@@ -94,16 +94,37 @@ function requireAdmin(req, res, next) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
+// Hilfsfunktion: Berliner Datumsteile auslesen
+function _berlinParts() {
+  const now = new Date();
+  const p = new Intl.DateTimeFormat('en', {
+    timeZone: 'Europe/Berlin',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false
+  }).formatToParts(now);
+  const get = t => +p.find(x => x.type === t).value;
+  const y = get('year'), m = get('month'), d = get('day'), h = get('hour');
+  const weekday = new Date(y, m - 1, d).getDay(); // 0=So…6=Sa
+  return { y, m, d, h, weekday };
+}
+
+// ISO-Montag einer Berliner Woche als "YYYY-MM-DD"
+function _mondayKey(y, m, d) {
+  const isoDay = (new Date(y, m - 1, d).getDay() + 6) % 7; // Mo=0…So=6
+  const mon = new Date(y, m - 1, d - isoDay);
+  return `${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,'0')}-${String(mon.getDate()).padStart(2,'0')}`;
+}
+
+// Aktuelle ISO-Woche in Berliner Zeit (für Auswertung)
 function weekKey() {
-  const d = new Date();
-  // ISO week: Mon=start, Sun=end → Sonntag gehört zur selben Woche wie Mo-Sa
-  const dow = (d.getDay() + 6) % 7; // Mon=0 … Sun=6
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - dow);
-  const y = monday.getFullYear();
-  const m = String(monday.getMonth() + 1).padStart(2, '0');
-  const day = String(monday.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`; // z.B. "2026-05-18" für Mo 18.05 – So 24.05
+  const { y, m, d } = _berlinParts();
+  return _mondayKey(y, m, d);
+}
+
+// Abstimmungs-Wochenschlüssel: nach Sonntag 18:00 Berliner Zeit → nächste Woche
+function votingWeekKey() {
+  const { y, m, d, h, weekday } = _berlinParts();
+  if (weekday === 0 && h >= 18) return _mondayKey(y, m, d + 1); // nächster Montag
+  return _mondayKey(y, m, d);
 }
 
 const DISCORD_API      = 'https://discord.com/api/v10';
@@ -294,7 +315,7 @@ app.delete('/api/users/:id', requireAdmin, (req, res) => {
 //  EMPLOYEE OF THE WEEK
 // ════════════════════════════════════════════════════════════════
 app.get('/api/eow', requireAuth, (req, res) => {
-  const wk   = weekKey();
+  const wk   = votingWeekKey();
   const user = getUser(req);
 
   const winner = db.prepare(`
@@ -340,14 +361,14 @@ app.get('/api/eow', requireAuth, (req, res) => {
 });
 
 app.post('/api/eow/reset', requireAdmin, (req, res) => {
-  const wk = weekKey();
+  const wk = votingWeekKey();
   db.prepare('DELETE FROM eow_votes WHERE week = ?').run(wk);
   db.prepare('DELETE FROM citizen_votes WHERE week = ?').run(wk);
   res.json({ ok: true });
 });
 
 app.post('/api/eow/vote', requireAuth, (req, res) => {
-  const wk   = weekKey();
+  const wk   = votingWeekKey();
   const user = getUser(req);
   const { nominee_id } = req.body;
   if (+nominee_id === user.id) return res.status(400).json({ error: 'Keine Selbstnominierung' });
@@ -702,7 +723,7 @@ app.post('/api/ic-log/reset', requireAdmin, (req, res) => {
 //  CITIZEN VOTES (öffentlich — jeder Discord-Nutzer)
 // ════════════════════════════════════════════════════════════════
 app.get('/api/citizen-votes', (req, res) => {
-  const wk = weekKey();
+  const wk = votingWeekKey();
   const counts = db.prepare('SELECT nominee_id, COUNT(*) as votes FROM citizen_votes WHERE week = ? GROUP BY nominee_id').all(wk);
   const discordId = req.session.voterDiscordId || (req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null);
   const myVote = discordId ? db.prepare('SELECT nominee_id FROM citizen_votes WHERE voter_discord_id = ? AND week = ?').get(discordId, wk) : null;
@@ -719,7 +740,7 @@ app.post('/api/citizen-vote', (req, res) => {
 
   try {
     db.prepare('INSERT INTO citizen_votes (voter_discord_id, voter_username, nominee_id, week) VALUES (?, ?, ?, ?)')
-      .run(discordId, username, +nominee_id, weekKey());
+      .run(discordId, username, +nominee_id, votingWeekKey());
     res.json({ ok: true });
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Diese Woche bereits abgestimmt' });
@@ -861,7 +882,7 @@ app.get('/api/dashboard', requireAuth, (req, res) => {
     ORDER BY r.registered_at DESC LIMIT 5
   `).all();
 
-  const wk         = weekKey();
+  const wk         = votingWeekKey();
   const eowWinner  = db.prepare(`SELECT w.*, u.username, u.avatar, u.discord_id FROM eow_winners w JOIN users u ON u.id=w.user_id WHERE w.week=?`).get(wk);
   const lastWinner = eowWinner || db.prepare(`SELECT w.*, u.username, u.avatar, u.discord_id FROM eow_winners w JOIN users u ON u.id=w.user_id ORDER BY w.announced_at DESC LIMIT 1`).get();
 
