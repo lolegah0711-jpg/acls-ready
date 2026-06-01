@@ -297,7 +297,8 @@ async function renderVoterScreen() {
       </div>
       </div>
       <div style="margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border)">
-        <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem">Minispiele</div>
+        <div id="twitch-widget"><div class="twitch-card"><div class="twitch-offline-dot"></div><div style="font-size:.8rem;color:#9ca3af;margin-left:.5rem">Wird geladen…</div></div></div>
+        <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem;margin-top:1rem">Minispiele</div>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap">
           <a href="/game"  target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center"><i class="fas fa-car"></i> Autorennen</a>
           <a href="/game2" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center"><i class="fas fa-th-large"></i> Brick Breaker</a>
@@ -313,6 +314,7 @@ async function renderVoterScreen() {
       </div>
     </div>`;
   loadVoterPrices();
+  loadTwitchWidget();
 }
 
 window.voterTab = tab => {
