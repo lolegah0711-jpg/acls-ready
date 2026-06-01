@@ -307,6 +307,8 @@ async function renderVoterScreen() {
           <a href="/game6" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#fbbf24"><i class="fas fa-dice" style="color:#fbbf24"></i> Book of Ra</a>
           <a href="/game7" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#60a5fa"><i class="fas fa-helicopter" style="color:#60a5fa"></i> Sky Cop</a>
           <a href="/game8" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#4ade80"><i class="fas fa-frog" style="color:#4ade80"></i> Doodle Jump</a>
+          <a href="/game9" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#f97316"><i class="fas fa-shield-alt" style="color:#f97316"></i> Tower Defense</a>
+          <a href="/game10" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#a855f7"><i class="fas fa-spell-check" style="color:#a855f7"></i> Wordle</a>
         </div>
       </div>
     </div>`;
