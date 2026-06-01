@@ -85,7 +85,7 @@
 </div>
 
 <!-- 2. Quiz -->
-<div id="screen-quiz">
+<div id="screen-quiz" style="display:none">
   <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
   <div class="q-meta">
     <span id="q-counter">Frage 1 / 15</span>
@@ -94,11 +94,11 @@
   <div class="q-text" id="q-text"></div>
   <div class="options" id="options"></div>
   <div class="feedback" id="feedback" style="display:none"></div>
-  <button id="btn-next" onclick="nextQuestion()">Weiter →</button>
+  <button id="btn-next" onclick="nextQuestion()" style="display:none">Weiter →</button>
 </div>
 
 <!-- 3. Ergebnis -->
-<div id="screen-result">
+<div id="screen-result" style="display:none">
   <div class="score-circle" id="score-circle">
     <span id="score-frac"></span>
     <span class="score-pct" id="score-pct"></span>
@@ -114,29 +114,48 @@ const ICONS = {PKW:'🚗',Motorrad:'🏍️',Boot:'⛵',LKW:'🚛',Flugschein:'�
 let questions = [], current = 0, answers = [], catName = '';
 
 async function init() {
-  const cats = await (await fetch('/api/exam-categories')).json().catch(() => []);
-  document.getElementById('cat-grid').innerHTML = cats.length
-    ? cats.map(c => `
-      <div class="cat-btn" onclick="startQuiz(${c.id},'${c.name}')">
-        <div class="cat-icon">${ICONS[c.name]||'📋'}</div>
-        <div class="cat-name">${c.name}</div>
-        <div class="cat-count">${c.question_count||''} Fragen</div>
-      </div>`).join('')
-    : '<div style="color:#888;grid-column:1/-1;text-align:center;padding:2rem">Keine Kategorien verfügbar</div>';
+  try {
+    const res = await fetch('/api/exam-categories');
+    const cats = res.ok ? await res.json() : [];
+    document.getElementById('cat-grid').innerHTML = Array.isArray(cats) && cats.length
+      ? cats.map(c => `
+        <div class="cat-btn" onclick="startQuiz(${c.id},this.dataset.name)" data-name="${c.name}">
+          <div class="cat-icon">${ICONS[c.name]||'📋'}</div>
+          <div class="cat-name">${c.name}</div>
+          <div class="cat-count">${c.question_count||0} Fragen</div>
+        </div>`).join('')
+      : '<div style="color:#888;grid-column:1/-1;text-align:center;padding:2rem">Keine Kategorien verfügbar</div>';
+  } catch(e) {
+    document.getElementById('cat-grid').innerHTML = '<div style="color:#888;grid-column:1/-1;text-align:center;padding:2rem">Fehler beim Laden</div>';
+  }
 }
 
 async function startQuiz(catId, name) {
   catName = name;
-  const data = await (await fetch(`/api/practice-questions/${catId}`)).json().catch(() => []);
-  if (!data.length) { alert('Keine Fragen für diese Kategorie verfügbar.'); return; }
-  questions = data;
-  current = 0;
-  answers = [];
-  document.getElementById('screen-pick').style.display = 'none';
-  document.getElementById('screen-result').style.display = 'none';
-  document.getElementById('screen-quiz').style.display = '';
-  document.getElementById('q-cat').textContent = name;
-  showQuestion();
+  const errEl = document.getElementById('cat-error');
+  if (errEl) errEl.remove();
+  try {
+    const res = await fetch(`/api/practice-questions/${catId}`);
+    const data = res.ok ? await res.json() : [];
+    if (!Array.isArray(data) || !data.length) {
+      const msg = document.createElement('div');
+      msg.id = 'cat-error';
+      msg.style.cssText = 'color:#ef4444;text-align:center;margin-top:12px;font-size:13px;font-weight:600';
+      msg.textContent = 'Noch keine Fragen für diese Kategorie verfügbar.';
+      document.getElementById('cat-grid').after(msg);
+      return;
+    }
+    questions = data;
+    current = 0;
+    answers = [];
+    document.getElementById('screen-pick').style.display = 'none';
+    document.getElementById('screen-result').style.display = 'none';
+    document.getElementById('screen-quiz').style.display = '';
+    document.getElementById('q-cat').textContent = name;
+    showQuestion();
+  } catch(e) {
+    console.error('startQuiz error:', e);
+  }
 }
 
 function showQuestion() {
