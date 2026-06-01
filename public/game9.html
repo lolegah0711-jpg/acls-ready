@@ -68,6 +68,21 @@
     .ov-btn{padding:12px 28px;border:none;border-radius:10px;font-size:15px;font-weight:800;
       font-family:inherit;cursor:pointer;background:linear-gradient(135deg,#b45309,#f59e0b);color:#fff;}
 
+    /* Leaderboard */
+    .lb-card{background:#161b22;border:2px solid #30363d;border-radius:16px;padding:24px 28px;
+      max-width:420px;width:92%;max-height:88vh;overflow-y:auto;text-align:left;}
+    .lb-card-title{font-size:20px;font-weight:800;margin-bottom:4px;color:#f97316;}
+    .lb-card-sub{font-size:12px;color:#8b949e;margin-bottom:16px;}
+    .lb-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #21262d;font-size:13px;}
+    .lb-rank{width:26px;text-align:center;font-weight:700;font-size:15px;}
+    .lb-av{width:28px;height:28px;border-radius:50%;background:#1f2937;display:flex;align-items:center;
+      justify-content:center;font-size:10px;font-weight:700;overflow:hidden;flex-shrink:0;}
+    .lb-av img{width:100%;height:100%;object-fit:cover;}
+    .lb-name{flex:1;font-weight:600;}
+    .lb-score{font-weight:700;color:#fbbf24;}
+    .lb-close{margin-top:14px;padding:9px 22px;border:none;border-radius:8px;background:#1f2937;
+      color:#9ca3af;border:1px solid #374151;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;}
+
     #msg{position:absolute;top:8px;left:50%;transform:translateX(-50%);
       background:rgba(0,0,0,.8);padding:5px 14px;border-radius:20px;font-size:13px;
       font-weight:700;white-space:nowrap;opacity:0;transition:opacity .3s;pointer-events:none;}
@@ -129,6 +144,17 @@
     <button class="ctrl-btn" id="btn-start" onclick="startWave()">▶ Welle starten</button>
     <button class="ctrl-btn" id="btn-speed" onclick="toggleSpeed()">⚡ Geschwindigkeit: 1×</button>
     <button class="ctrl-btn" id="btn-sell" onclick="sellSelected()">🗑️ Verkaufen</button>
+    <button class="ctrl-btn" style="background:#1f2937;color:#fbbf24;border:1px solid #374151" onclick="openLb()">🏆 Rangliste</button>
+  </div>
+</div>
+
+<!-- LEADERBOARD OVERLAY -->
+<div class="ov hidden" id="ov-lb">
+  <div class="lb-card">
+    <div class="lb-card-title">🏆 Rangliste – Tower Defense</div>
+    <div class="lb-card-sub">Höchste Punktzahl pro Spieler</div>
+    <div id="lb-list"></div>
+    <button class="lb-close" onclick="document.getElementById('ov-lb').classList.add('hidden')">Schließen ✕</button>
   </div>
 </div>
 
@@ -168,6 +194,7 @@ const TOWER_DEFS = {
 
 // ── STATE ──────────────────────────────────────────────────────────────────────
 let canvas, ctx;
+let currentUser = null;
 let towers = [], enemies = [], bullets = [], particles = [];
 let lives = 20, gold = 150, score = 0, kills = 0, wave = 0;
 let waveActive = false, speed = 1;
@@ -615,9 +642,43 @@ function triggerGameOver() {
   if (gameOverFlag) return;
   gameOverFlag = true;
   cancelAnimationFrame(animId);
+  submitScore();
   document.getElementById('ov-title').textContent = '💀 Game Over';
   document.getElementById('ov-sub').textContent = `Welle ${wave} · Punkte: ${score} · Kills: ${kills}`;
   document.getElementById('ov-end').classList.remove('hidden');
+}
+
+async function submitScore() {
+  if (!currentUser || score <= 0) return;
+  try {
+    await fetch('/api/game-scores/towerdefense', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({score})
+    });
+  } catch {}
+}
+
+async function openLb() {
+  document.getElementById('ov-lb').classList.remove('hidden');
+  const el = document.getElementById('lb-list');
+  el.innerHTML = '<div style="text-align:center;padding:14px;color:#8b949e">Laden…</div>';
+  try {
+    const data = await (await fetch('/api/game-scores/towerdefense')).json();
+    if (!data.length) { el.innerHTML = '<div style="text-align:center;padding:14px;color:#8b949e">Noch keine Einträge</div>'; return; }
+    el.innerHTML = data.map((row, i) => {
+      const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+      const me = currentUser && row.discord_id === currentUser.discord_id;
+      const av = row.avatar
+        ? `<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`
+        : (row.username||'?').slice(0,2).toUpperCase();
+      return `<div class="lb-row" style="${me?'background:#1a0e00;border-radius:6px;':''}">
+        <div class="lb-rank">${medal}</div>
+        <div class="lb-av">${av}</div>
+        <div class="lb-name">${row.username||'Unbekannt'}</div>
+        <div class="lb-score">${row.score.toLocaleString('de-DE')} Pkt.</div>
+      </div>`;
+    }).join('');
+  } catch { el.innerHTML = '<div style="text-align:center;color:#ef4444">Fehler beim Laden</div>'; }
 }
 
 function restartGame() {
@@ -658,6 +719,7 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+(async () => { try { const r = await fetch('/auth/me'); if (r.ok) currentUser = await r.json(); } catch {} })();
 init();
 </script>
 </body>

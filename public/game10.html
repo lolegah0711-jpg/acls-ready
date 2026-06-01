@@ -87,6 +87,24 @@
     .stat-pill span{color:#fbbf24;font-weight:700;}
 
     #hint{font-size:11px;color:#4b5563;margin-top:8px;}
+
+    /* Leaderboard overlay */
+    .lb-ov{position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;
+      justify-content:center;z-index:200;}
+    .lb-ov.hidden{display:none;}
+    .lb-card{background:#161b22;border:2px solid #30363d;border-radius:16px;padding:24px 28px;
+      max-width:420px;width:92%;max-height:90vh;overflow-y:auto;}
+    .lb-card-title{font-size:20px;font-weight:800;margin-bottom:4px;color:#fbbf24;}
+    .lb-card-sub{font-size:12px;color:#8b949e;margin-bottom:16px;}
+    .lb-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #21262d;font-size:13px;}
+    .lb-rank{width:26px;text-align:center;font-weight:700;font-size:15px;}
+    .lb-av{width:28px;height:28px;border-radius:50%;background:#1f2937;display:flex;align-items:center;
+      justify-content:center;font-size:10px;font-weight:700;overflow:hidden;flex-shrink:0;}
+    .lb-av img{width:100%;height:100%;object-fit:cover;}
+    .lb-name{flex:1;font-weight:600;}
+    .lb-score{font-weight:700;color:#fbbf24;}
+    .lb-close{margin-top:14px;padding:9px 22px;border:none;border-radius:8px;background:#1f2937;
+      color:#9ca3af;border:1px solid #374151;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;}
   </style>
 </head>
 <body>
@@ -99,6 +117,7 @@
   <div class="score-box"><div class="score-label">Bestleistung</div><div class="score-val" id="best">0</div></div>
   <button class="top-btn" id="btn-new" onclick="newGame()">Neu ↺</button>
   <button class="top-btn" id="btn-undo" onclick="undo()" disabled>Rückgängig ↩</button>
+  <button class="top-btn" style="background:#1f2937;color:#fbbf24;border:1px solid #374151" onclick="openLb()">🏆 Rangliste</button>
 </div>
 
 <div id="win-banner">🎉 Du hast <b>2048</b> erreicht! Weiterspielen?</div>
@@ -119,6 +138,16 @@
 </div>
 <div id="hint">← → ↑ ↓ oder WASD · Wischen auf Mobilgeräten</div>
 
+<!-- LEADERBOARD OVERLAY -->
+<div class="lb-ov hidden" id="ov-lb">
+  <div class="lb-card">
+    <div class="lb-card-title">🏆 Rangliste – 2048</div>
+    <div class="lb-card-sub">Bester Score pro Spieler</div>
+    <div id="lb-list"></div>
+    <button class="lb-close" onclick="document.getElementById('ov-lb').classList.add('hidden')">Schließen ✕</button>
+  </div>
+</div>
+
 <script>
 // ── STATE ──────────────────────────────────────────────────────────────────────
 let board, score, moveCount;
@@ -126,6 +155,7 @@ let history = [];   // [{board, score, moveCount}]
 let bestScore = +localStorage.getItem('2048_best') || 0;
 let stats = JSON.parse(localStorage.getItem('2048_stats') || '{"games":0,"wins":0}');
 let won = false, gameOver = false;
+let currentUser = null;
 
 // ── BOARD SIZE ─────────────────────────────────────────────────────────────────
 const N = 4;
@@ -295,6 +325,7 @@ function showWin() {
 
 function showLose() {
   gameOver = true;
+  submitScore();
   const ov = document.getElementById('overlay');
   document.getElementById('ov-title').textContent = '😔 Game Over';
   document.getElementById('ov-sub').textContent = `Punkte: ${score.toLocaleString('de-DE')} · Züge: ${moveCount}`;
@@ -302,6 +333,40 @@ function showLose() {
 }
 
 function saveStats() { localStorage.setItem('2048_stats', JSON.stringify(stats)); }
+
+async function submitScore() {
+  if (!currentUser) return;
+  try {
+    await fetch('/api/game-scores/2048', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({score: bestScore})
+    });
+  } catch {}
+}
+
+async function openLb() {
+  await submitScore();
+  document.getElementById('ov-lb').classList.remove('hidden');
+  const el = document.getElementById('lb-list');
+  el.innerHTML = '<div style="text-align:center;padding:14px;color:#8b949e">Laden…</div>';
+  try {
+    const data = await (await fetch('/api/game-scores/2048')).json();
+    if (!data.length) { el.innerHTML = '<div style="text-align:center;padding:14px;color:#8b949e">Noch keine Einträge</div>'; return; }
+    el.innerHTML = data.map((row, i) => {
+      const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+      const me = currentUser && row.discord_id === currentUser.discord_id;
+      const av = row.avatar
+        ? `<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`
+        : (row.username||'?').slice(0,2).toUpperCase();
+      return `<div class="lb-row" style="${me?'background:#1a1200;border-radius:6px;':''}">
+        <div class="lb-rank">${medal}</div>
+        <div class="lb-av">${av}</div>
+        <div class="lb-name">${row.username||'Unbekannt'}</div>
+        <div class="lb-score">${row.score.toLocaleString('de-DE')}</div>
+      </div>`;
+    }).join('');
+  } catch { el.innerHTML = '<div style="text-align:center;color:#ef4444">Fehler beim Laden</div>'; }
+}
 
 // ── INPUT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
@@ -327,6 +392,7 @@ document.getElementById('board-wrap').addEventListener('touchend',e=>{
 window.addEventListener('resize',()=>render());
 
 // ── START ──────────────────────────────────────────────────────────────────────
+(async () => { try { const r = await fetch('/auth/me'); if (r.ok) currentUser = await r.json(); } catch {} })();
 newGame();
 </script>
 </body>
