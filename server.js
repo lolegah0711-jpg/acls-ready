@@ -417,7 +417,7 @@ app.post('/api/eow/count', requireAdmin, (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  EXAMS
 // ════════════════════════════════════════════════════════════════
-app.get('/api/exam-categories', requireAuth, (req, res) => {
+app.get('/api/exam-categories', (req, res) => {
   res.json(db.prepare(`
     SELECT ec.*, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count
     FROM exam_categories ec
@@ -1673,6 +1673,9 @@ app.get('/game8', (req, res) => res.sendFile(path.join(__dirname, 'public', 'gam
 app.get('/game9', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game9.html')));
 app.get('/game10', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game10.html')));
 app.get('/quiz',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'quiz.html')));
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('*', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 app.listen(PORT, () => console.log(`[ACLS] Server läuft auf http://localhost:${PORT}`));
