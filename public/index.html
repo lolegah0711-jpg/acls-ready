@@ -80,11 +80,11 @@
             var open=localStorage.getItem('games-open')!=='0';
             list.style.overflow='hidden';
             list.style.transition='max-height .22s ease';
-            list.style.maxHeight=open?'400px':'0';
+            list.style.maxHeight=open?'700px':'0';
             chev.style.transform=open?'':'rotate(-90deg)';
             window.toggleGames=function(){
               open=!open;
-              list.style.maxHeight=open?'400px':'0';
+              list.style.maxHeight=open?'700px':'0';
               chev.style.transform=open?'':'rotate(-90deg)';
               localStorage.setItem('games-open',open?'1':'0');
             };
