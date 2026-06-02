@@ -121,33 +121,27 @@ function hide(id) { document.getElementById(id).style.display = 'none'; }
 function el(id)   { return document.getElementById(id); }
 
 function init() {
-  fetch('/api/exam-categories')
-    .then(function(r) { return r.json(); })
-    .then(function(cats) {
-      if (!cats || !cats.length) {
-        el('cat-grid').innerHTML = '<p style="color:#888;text-align:center;padding:2rem">Keine Kategorien verfügbar</p>';
-        return;
-      }
-      var html = '';
-      for (var i = 0; i < cats.length; i++) {
-        var c = cats[i];
-        html += '<div class="cat-btn" data-id="' + c.id + '" data-name="' + c.name + '">';
-        html += '<div class="cat-icon"><i class="fas ' + c.icon + '"></i></div>';
-        html += '<div class="cat-name">' + c.name + '</div>';
-        html += '<div class="cat-count">' + (c.question_count || 0) + ' Fragen</div>';
-        html += '</div>';
-      }
-      el('cat-grid').innerHTML = html;
-      var btns = document.querySelectorAll('.cat-btn');
-      for (var j = 0; j < btns.length; j++) {
-        btns[j].addEventListener('click', function() {
-          startQuiz(this.dataset.id, this.dataset.name);
-        });
-      }
-    })
-    .catch(function(e) {
-      el('cat-grid').innerHTML = '<p style="color:#ef4444;text-align:center;padding:2rem">Fehler beim Laden der Kategorien</p>';
+  var cats = window.__CATS__ || [];
+  if (!cats.length) {
+    el('cat-grid').innerHTML = '<p style="color:#888;text-align:center;padding:2rem">Keine Kategorien verfügbar</p>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < cats.length; i++) {
+    var c = cats[i];
+    html += '<div class="cat-btn" data-id="' + c.id + '" data-name="' + c.name + '">';
+    html += '<div class="cat-icon"><i class="fas ' + c.icon + '"></i></div>';
+    html += '<div class="cat-name">' + c.name + '</div>';
+    html += '<div class="cat-count">' + (c.question_count || 0) + ' Fragen</div>';
+    html += '</div>';
+  }
+  el('cat-grid').innerHTML = html;
+  var btns = document.querySelectorAll('.cat-btn');
+  for (var j = 0; j < btns.length; j++) {
+    btns[j].addEventListener('click', function() {
+      startQuiz(this.dataset.id, this.dataset.name);
     });
+  }
 }
 
 function startQuiz(catId, name) {

@@ -1672,7 +1672,15 @@ app.get('/game7', (req, res) => res.sendFile(path.join(__dirname, 'public', 'gam
 app.get('/game8', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game8.html')));
 app.get('/game9', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game9.html')));
 app.get('/game10', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game10.html')));
-app.get('/quiz',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'quiz.html')));
+app.get('/quiz', (req, res) => {
+  const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
+  const fs = require('fs');
+  const html = fs.readFileSync(path.join(__dirname, 'public', 'quiz.html'), 'utf8');
+  const injected = html.replace('</head>', '<script>window.__CATS__=' + JSON.stringify(cats) + ';</script></head>');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(injected);
+});
 app.get('*', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
