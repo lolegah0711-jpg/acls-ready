@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Prüfungsquiz – ACLS</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
     *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
     body{background:#0f0f0f;font-family:'Inter',sans-serif;color:#f0f0f0;min-height:100vh;
@@ -110,86 +111,109 @@
 </div>
 
 <script>
-const ICONS = {PKW:'🚗',Motorrad:'🏍️',Boot:'⛵',LKW:'🚛',Flugschein:'✈️'};
-let questions = [], current = 0, answers = [], catName = '';
+var questions = [];
+var current = 0;
+var answers = [];
+var catName = '';
 
-async function init() {
-  try {
-    const res = await fetch('/api/exam-categories');
-    const cats = res.ok ? await res.json() : [];
-    document.getElementById('cat-grid').innerHTML = Array.isArray(cats) && cats.length
-      ? cats.map(c => `
-        <div class="cat-btn" onclick="startQuiz(${c.id},this.dataset.name)" data-name="${c.name}">
-          <div class="cat-icon">${ICONS[c.name]||'📋'}</div>
-          <div class="cat-name">${c.name}</div>
-          <div class="cat-count">${c.question_count||0} Fragen</div>
-        </div>`).join('')
-      : '<div style="color:#888;grid-column:1/-1;text-align:center;padding:2rem">Keine Kategorien verfügbar</div>';
-  } catch(e) {
-    document.getElementById('cat-grid').innerHTML = '<div style="color:#888;grid-column:1/-1;text-align:center;padding:2rem">Fehler beim Laden</div>';
-  }
+function show(id) { document.getElementById(id).style.display = ''; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+function el(id)   { return document.getElementById(id); }
+
+function init() {
+  fetch('/api/exam-categories')
+    .then(function(r) { return r.json(); })
+    .then(function(cats) {
+      if (!cats || !cats.length) {
+        el('cat-grid').innerHTML = '<p style="color:#888;text-align:center;padding:2rem">Keine Kategorien verfügbar</p>';
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < cats.length; i++) {
+        var c = cats[i];
+        html += '<div class="cat-btn" data-id="' + c.id + '" data-name="' + c.name + '">';
+        html += '<div class="cat-icon"><i class="fas ' + c.icon + '"></i></div>';
+        html += '<div class="cat-name">' + c.name + '</div>';
+        html += '<div class="cat-count">' + (c.question_count || 0) + ' Fragen</div>';
+        html += '</div>';
+      }
+      el('cat-grid').innerHTML = html;
+      var btns = document.querySelectorAll('.cat-btn');
+      for (var j = 0; j < btns.length; j++) {
+        btns[j].addEventListener('click', function() {
+          startQuiz(this.dataset.id, this.dataset.name);
+        });
+      }
+    })
+    .catch(function(e) {
+      el('cat-grid').innerHTML = '<p style="color:#ef4444;text-align:center;padding:2rem">Fehler beim Laden der Kategorien</p>';
+    });
 }
 
-async function startQuiz(catId, name) {
+function startQuiz(catId, name) {
   catName = name;
-  const errEl = document.getElementById('cat-error');
-  if (errEl) errEl.remove();
-  try {
-    const res = await fetch(`/api/practice-questions/${catId}`);
-    const data = res.ok ? await res.json() : [];
-    if (!Array.isArray(data) || !data.length) {
-      const msg = document.createElement('div');
-      msg.id = 'cat-error';
-      msg.style.cssText = 'color:#ef4444;text-align:center;margin-top:12px;font-size:13px;font-weight:600';
-      msg.textContent = 'Noch keine Fragen für diese Kategorie verfügbar.';
-      document.getElementById('cat-grid').after(msg);
-      return;
-    }
-    questions = data;
-    current = 0;
-    answers = [];
-    document.getElementById('screen-pick').style.display = 'none';
-    document.getElementById('screen-result').style.display = 'none';
-    document.getElementById('screen-quiz').style.display = '';
-    document.getElementById('q-cat').textContent = name;
-    showQuestion();
-  } catch(e) {
-    console.error('startQuiz error:', e);
-  }
+  fetch('/api/practice-questions/' + catId)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data || !data.length) {
+        el('cat-grid').innerHTML += '<p style="color:#ef4444;text-align:center;margin-top:12px;font-size:13px">Noch keine Fragen verfügbar.</p>';
+        return;
+      }
+      questions = data;
+      current = 0;
+      answers = [];
+      hide('screen-pick');
+      hide('screen-result');
+      show('screen-quiz');
+      el('q-cat').textContent = name;
+      showQuestion();
+    })
+    .catch(function(e) {
+      el('cat-grid').innerHTML += '<p style="color:#ef4444;text-align:center;margin-top:12px">Fehler beim Laden der Fragen.</p>';
+    });
 }
 
 function showQuestion() {
-  const q = questions[current];
-  const total = questions.length;
-  document.getElementById('progress-fill').style.width = `${(current / total) * 100}%`;
-  document.getElementById('q-counter').textContent = `Frage ${current + 1} / ${total}`;
-  document.getElementById('q-text').textContent = q.question;
-  document.getElementById('feedback').style.display = 'none';
-  document.getElementById('btn-next').style.display = 'none';
+  var q = questions[current];
+  var total = questions.length;
+  el('progress-fill').style.width = ((current / total) * 100) + '%';
+  el('q-counter').textContent = 'Frage ' + (current + 1) + ' / ' + total;
+  el('q-text').textContent = q.question;
+  hide('feedback');
+  hide('btn-next');
 
-  const opts = [q.option_a, q.option_b, q.option_c, q.option_d].filter(Boolean);
-  document.getElementById('options').innerHTML = opts.map((o, i) =>
-    `<button class="opt" onclick="answer(${i})">${String.fromCharCode(65+i)}. ${o}</button>`
-  ).join('');
+  var opts = [q.option_a, q.option_b, q.option_c, q.option_d].filter(function(o) { return !!o; });
+  var html = '';
+  for (var i = 0; i < opts.length; i++) {
+    html += '<button class="opt" data-idx="' + i + '">' + String.fromCharCode(65 + i) + '. ' + opts[i] + '</button>';
+  }
+  el('options').innerHTML = html;
+  var optBtns = document.querySelectorAll('.opt');
+  for (var j = 0; j < optBtns.length; j++) {
+    optBtns[j].addEventListener('click', function() {
+      answer(parseInt(this.dataset.idx));
+    });
+  }
 }
 
 function answer(idx) {
-  const q = questions[current];
-  const correct = q.correct_answer; // 0-indexed
-  const btns = document.querySelectorAll('.opt');
-  btns.forEach(b => b.disabled = true);
+  var q = questions[current];
+  var correct = q.correct_answer;
+  var btns = document.querySelectorAll('.opt');
+  for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
   btns[idx].classList.add(idx === correct ? 'correct' : 'wrong');
   if (idx !== correct) btns[correct].classList.add('correct');
 
-  const ok = idx === correct;
-  answers.push({ q, chosen: idx, correct, ok });
+  var ok = idx === correct;
+  answers.push({ q: q, chosen: idx, correct: correct, ok: ok });
 
-  const fb = document.getElementById('feedback');
-  fb.className = `feedback ${ok ? 'ok' : 'err'}`;
-  fb.textContent = ok ? '✓ Richtig!' : `✗ Falsch — Richtige Antwort: ${String.fromCharCode(65+correct)}`;
-  fb.style.display = '';
-  document.getElementById('btn-next').style.display = '';
-  document.getElementById('btn-next').textContent = current < questions.length - 1 ? 'Weiter →' : 'Auswertung anzeigen';
+  var fb = el('feedback');
+  fb.className = 'feedback ' + (ok ? 'ok' : 'err');
+  fb.textContent = ok ? 'Richtig!' : 'Falsch — Richtige Antwort: ' + String.fromCharCode(65 + correct);
+  show('feedback');
+  var nb = el('btn-next');
+  nb.textContent = current < questions.length - 1 ? 'Weiter' : 'Auswertung anzeigen';
+  show('btn-next');
 }
 
 function nextQuestion() {
@@ -199,35 +223,42 @@ function nextQuestion() {
 }
 
 function showResult() {
-  document.getElementById('screen-quiz').style.display = 'none';
-  document.getElementById('screen-result').style.display = '';
-  const total = answers.length;
-  const correct = answers.filter(a => a.ok).length;
-  const pct = Math.round((correct / total) * 100);
-  const pass = pct >= 70;
+  hide('screen-quiz');
+  show('screen-result');
+  var total = answers.length;
+  var correct = 0;
+  for (var i = 0; i < answers.length; i++) { if (answers[i].ok) correct++; }
+  var pct = Math.round((correct / total) * 100);
+  var pass = pct >= 70;
 
-  const circle = document.getElementById('score-circle');
-  circle.className = `score-circle ${pass ? 'pass' : 'fail'}`;
-  document.getElementById('score-frac').textContent = `${correct}/${total}`;
-  document.getElementById('score-pct').textContent = `${pct}%`;
-  document.getElementById('result-title').textContent = pass ? '🎉 Bestanden!' : '😔 Nicht bestanden';
-  document.getElementById('result-sub').textContent = pass
-    ? `${pct}% — Du bist bereit für die echte Prüfung!`
-    : `${pct}% — Mindestens 70% erforderlich. Weiter üben!`;
+  var circle = el('score-circle');
+  circle.className = 'score-circle ' + (pass ? 'pass' : 'fail');
+  el('score-frac').textContent = correct + '/' + total;
+  el('score-pct').textContent = pct + '%';
+  el('result-title').textContent = pass ? 'Bestanden!' : 'Nicht bestanden';
+  el('result-sub').textContent = pass
+    ? pct + '% — Du bist bereit fuer die echte Pruefung!'
+    : pct + '% — Mindestens 70% erforderlich. Weiter ueben!';
 
-  const opts = q => [q.option_a, q.option_b, q.option_c, q.option_d].filter(Boolean);
-  document.getElementById('result-list').innerHTML = answers.map((a, i) => `
-    <div class="r-item ${a.ok ? 'ok' : 'err'}">
-      <div class="r-q">${i+1}. ${a.q.question}</div>
-      ${!a.ok ? `<div class="r-ans">Deine Antwort: ${String.fromCharCode(65+a.chosen)}. ${opts(a.q)[a.chosen]||'–'}</div>` : ''}
-      ${!a.ok ? `<div class="r-correct">✓ Richtig: ${String.fromCharCode(65+a.correct)}. ${opts(a.q)[a.correct]||'–'}</div>` : ''}
-    </div>`).join('');
+  var html = '';
+  for (var i = 0; i < answers.length; i++) {
+    var a = answers[i];
+    var opts = [a.q.option_a, a.q.option_b, a.q.option_c, a.q.option_d].filter(function(o) { return !!o; });
+    html += '<div class="r-item ' + (a.ok ? 'ok' : 'err') + '">';
+    html += '<div class="r-q">' + (i + 1) + '. ' + a.q.question + '</div>';
+    if (!a.ok) {
+      html += '<div class="r-ans">Deine Antwort: ' + String.fromCharCode(65 + a.chosen) + '. ' + (opts[a.chosen] || '') + '</div>';
+      html += '<div class="r-correct">Richtig: ' + String.fromCharCode(65 + a.correct) + '. ' + (opts[a.correct] || '') + '</div>';
+    }
+    html += '</div>';
+  }
+  el('result-list').innerHTML = html;
 }
 
 function showPick() {
-  document.getElementById('screen-result').style.display = 'none';
-  document.getElementById('screen-quiz').style.display = 'none';
-  document.getElementById('screen-pick').style.display = '';
+  hide('screen-result');
+  hide('screen-quiz');
+  show('screen-pick');
 }
 
 init();
