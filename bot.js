@@ -14,6 +14,7 @@ const EOW_CHANNEL_ID      = process.env.EOW_CHANNEL_ID      || '';
 const THEORY_CHANNEL_ID   = process.env.THEORY_CHANNEL_ID   || '';
 const PRACTICAL_CHANNEL_ID = process.env.PRACTICAL_CHANNEL_ID || '';
 const IC_LOG_CHANNEL_ID   = process.env.IC_LOG_CHANNEL_ID   || '';
+const COMMANDS_CHANNEL_ID = process.env.COMMANDS_CHANNEL_ID || '';
 
 const BADGE_LABELS = {
   ic_10: '10h IC-Zeit', ic_50: '50h IC-Zeit', ic_100: '100h IC-Zeit',
@@ -299,11 +300,60 @@ async function sendEowReminder() {
 // Jeden Freitag um 18:00 Berliner Zeit
 cron.schedule('0 18 * * 5', sendEowReminder, { timezone: 'Europe/Berlin' });
 
+// ── Befehls-Kanal: Embed posten + alle 5 Min clearen ─────────────
+function buildCommandsEmbed() {
+  return new EmbedBuilder()
+    .setColor(0xf97316)
+    .setTitle('📋 Bot-Befehle — Automobil Club Los Santos')
+    .setDescription('Alle verfügbaren Slash-Commands des ACLS-Bots:')
+    .addFields(
+      { name: '`/stats [mitarbeiter]`',  value: 'Prüfungsstatistiken eines Mitarbeiters anzeigen.\nOhne Angabe werden deine eigenen Stats gezeigt.', inline: false },
+      { name: '`/ic`',                   value: 'Deine IC-Zeit dieser Woche, dieses Monats und gesamt.', inline: false },
+      { name: '`/dienst`',               value: 'Zeigt welche Mitarbeiter gerade im Voice-Kanal aktiv sind.', inline: false },
+      { name: '`/rangliste [spiel]`',    value: 'Top-10 Rangliste eines Minispiels.\nSpiele: Book of Ra · Tower Defense · 2048', inline: false },
+    )
+    .setFooter({ text: 'ACLS Bot · Befehle werden laufend erweitert' })
+    .setTimestamp();
+}
+
+async function setupCommandsChannel() {
+  if (!COMMANDS_CHANNEL_ID) return;
+  try {
+    const ch = await client.channels.fetch(COMMANDS_CHANNEL_ID);
+    if (!ch) return;
+
+    // Alle bestehenden Nachrichten löschen
+    const msgs = await ch.messages.fetch({ limit: 100 });
+    if (msgs.size > 0) await ch.bulkDelete(msgs, true).catch(() => {});
+
+    // Neues Embed posten und anpinnen
+    const msg = await ch.send({ embeds: [buildCommandsEmbed()] });
+    await msg.pin().catch(() => {});
+    console.log('[Bot] Befehls-Kanal eingerichtet');
+  } catch (e) { console.error('[Bot] Befehls-Kanal Fehler:', e.message); }
+}
+
+async function clearCommandsChannel() {
+  if (!COMMANDS_CHANNEL_ID) return;
+  try {
+    const ch   = await client.channels.fetch(COMMANDS_CHANNEL_ID);
+    if (!ch) return;
+    const msgs = await ch.messages.fetch({ limit: 100 });
+    // Alle nicht-angehefteten Nachrichten löschen
+    const toDelete = msgs.filter(m => !m.pinned);
+    if (toDelete.size > 0) await ch.bulkDelete(toDelete, true).catch(() => {});
+  } catch (e) { /* Kanal nicht erreichbar, ignorieren */ }
+}
+
+// Alle 5 Minuten nicht-angeheftete Nachrichten löschen
+cron.schedule('*/5 * * * *', clearCommandsChannel);
+
 client.on(Events.InteractionCreate, handleInteraction);
 
 client.once(Events.ClientReady, async c => {
   console.log(`[Bot] Eingeloggt als ${c.user.tag}`);
   await registerSlashCommands();
+  await setupCommandsChannel();
   console.log(`[Bot] IC-Schlüsselwörter: ${IC_KEYWORDS.join(', ')}`);
   console.log(`[Bot] Alle Kanäle tracken: ${TRACK_ALL}`);
   console.log(`[Bot] Badge-Kanal: ${BADGE_CHANNEL_ID || 'nicht konfiguriert'}`);
