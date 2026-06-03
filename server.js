@@ -1098,7 +1098,7 @@ function requireAuthOrBot(req, res, next) {
 }
 
 app.get('/api/profile/:id', requireAuthOrBot, (req, res) => {
-  const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank, created_at FROM users WHERE id = ?').get(req.params.id);
+  const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank, ic_weekly_goal, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!u) return res.status(404).json({ error: 'Nicht gefunden' });
   const examStats   = db.prepare('SELECT COUNT(*) as total, COALESCE(SUM(passed),0) as passed FROM exam_sessions WHERE user_id=?').get(u.id);
   const conducted   = db.prepare('SELECT COUNT(*) as c FROM registry WHERE examiner_id=?').get(u.id).c;
