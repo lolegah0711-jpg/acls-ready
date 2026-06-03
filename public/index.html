@@ -47,7 +47,6 @@
       </div>
       <nav class="sidebar-nav" id="sidebarNav">
         <a class="nav-item active" data-page="dashboard"><i class="fas fa-th-large"></i><span>Dashboard</span></a>
-        <a class="nav-item" data-page="search"><i class="fas fa-search"></i><span>Suche</span></a>
         <a class="nav-item" data-page="activity"><i class="fas fa-chart-line"></i><span>Aktivität</span></a>
         <a class="nav-item" data-page="eow"><i class="fas fa-trophy"></i><span>Mitarbeiter der Woche</span></a>
         <a class="nav-item" data-page="exams"><i class="fas fa-play-circle"></i><span>Prüfung starten</span></a>
@@ -110,7 +109,12 @@
           <h1 id="pageTitle">Dashboard</h1>
           <p id="pageSubtitle">Willkommen zurück</p>
         </div>
-        <div class="user-widget" id="userWidget"></div>
+        <div style="display:flex;align-items:center;gap:.6rem">
+          <button onclick="navigate('search')" title="Suche" style="background:none;border:1px solid var(--border);color:var(--muted);width:36px;height:36px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .15s,border-color .15s;flex-shrink:0" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--orange)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
+            <i class="fas fa-search" style="font-size:.85rem"></i>
+          </button>
+          <div class="user-widget" id="userWidget"></div>
+        </div>
       </header>
       <main id="pageContent"><div class="loader-wrap"><div class="loader"></div></div></main>
     </div>
