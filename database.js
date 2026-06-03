@@ -297,9 +297,10 @@ function initDb() {
     );
   `);
 
-  // Admin-Response Spalte nachrüsten falls nicht vorhanden
+  // Migrations — Spalten nachrüsten falls nicht vorhanden
   try { db.exec(`ALTER TABLE complaints ADD COLUMN admin_response TEXT`); } catch {}
   try { db.exec(`ALTER TABLE complaints ADD COLUMN admin_response_at DATETIME`); } catch {}
+  try { db.exec(`ALTER TABLE users ADD COLUMN ic_weekly_goal REAL DEFAULT 0`); } catch {}
 
   // Seed admin users from env vars on first start (Railway: set ADMIN_DISCORD_IDS and ADMIN_USERNAMES)
   const adminIds  = (process.env.ADMIN_DISCORD_IDS  || '').split(',').map(s => s.trim()).filter(Boolean);

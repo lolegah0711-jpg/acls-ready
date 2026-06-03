@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mitarbeiter-Profil – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#0f0f0f;font-family:'Inter',sans-serif;color:#f0f0f0;min-height:100vh;padding:16px 12px 40px;}
+    #back{position:fixed;top:10px;left:10px;z-index:99;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;backdrop-filter:blur(4px);}
+    .container{max-width:700px;margin:52px auto 0;}
+    .card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem;}
+    .badge-chip{display:inline-flex;align-items:center;gap:.4rem;background:#252525;border:1px solid #333;border-radius:20px;padding:.3rem .75rem;font-size:.75rem;font-weight:600;margin:.2rem;}
+    .stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.75rem;margin-top:1rem;}
+    .stat-box{background:#252525;border-radius:10px;padding:.85rem 1rem;text-align:center;}
+    .stat-val{font-size:1.5rem;font-weight:800;color:#f97316;}
+    .stat-lbl{font-size:.7rem;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-top:.2rem;}
+    .bar-wrap{height:5px;background:#2a2a2a;border-radius:3px;margin-top:.4rem;overflow:hidden;}
+    .bar-fill{height:100%;background:#f97316;border-radius:3px;}
+    .exam-row{display:flex;align-items:center;gap:.75rem;padding:.6rem 0;border-bottom:1px solid #252525;font-size:.85rem;}
+    .pass{color:#22c55e;} .fail{color:#ef4444;}
+    .cat-row{display:flex;justify-content:space-between;align-items:center;padding:.5rem 0;border-bottom:1px solid #252525;font-size:.85rem;}
+    h3{font-size:.8rem;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem;}
+    .avatar{width:80px;height:80px;border-radius:50%;background:#333;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;flex-shrink:0;overflow:hidden;}
+    .avatar img{width:100%;height:100%;object-fit:cover;}
+    .role-badge{display:inline-block;padding:.2rem .6rem;border-radius:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;}
+    .role-admin{background:rgba(239,68,68,.15);color:#ef4444;}
+    .role-ausbilder{background:rgba(168,85,247,.15);color:#a855f7;}
+    .role-member{background:rgba(34,197,94,.15);color:#22c55e;}
+    #error{text-align:center;padding:3rem;color:#888;}
+    .skeleton{background:linear-gradient(90deg,#1a1a1a 25%,#252525 50%,#1a1a1a 75%);background-size:200%;animation:skel 1.2s infinite;border-radius:8px;height:20px;margin:.4rem 0;}
+    @keyframes skel{0%{background-position:200%}100%{background-position:-200%}}
+  </style>
+</head>
+<body>
+<a id="back" href="/" onclick="window.close()">← Portal</a>
+<div class="container" id="root">
+  <div class="card"><div class="skeleton" style="height:80px;width:80px;border-radius:50%;float:left;margin-right:1rem"></div><div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:40%"></div></div>
+</div>
+<script>
+const BADGE_LABELS = {
+  ic_10:'10h IC-Zeit', ic_50:'50h IC-Zeit', ic_100:'100h IC-Zeit', ic_250:'250h IC-Zeit', ic_500:'500h IC-Zeit',
+  exams_10:'10 Prüfungen', exams_50:'50 Prüfungen', exams_100:'100 Prüfungen',
+  eow_1:'1× MdW', eow_3:'3× MdW', eow_5:'5× MdW',
+  cat_pkw:'PKW-Prüfer', cat_motorrad:'Motorrad-Prüfer', cat_boot:'Boot-Prüfer', cat_lkw:'LKW-Prüfer', cat_flugschein:'Flugschein-Prüfer',
+};
+const BADGE_ICONS = {
+  ic_10:'fa-clock', ic_50:'fa-hourglass-half', ic_100:'fa-hourglass-end', ic_250:'fa-star', ic_500:'fa-crown',
+  exams_10:'fa-clipboard-check', exams_50:'fa-clipboard-check', exams_100:'fa-clipboard-check',
+  eow_1:'fa-trophy', eow_3:'fa-trophy', eow_5:'fa-trophy',
+  cat_pkw:'fa-car', cat_motorrad:'fa-motorcycle', cat_boot:'fa-ship', cat_lkw:'fa-truck', cat_flugschein:'fa-plane',
+};
+
+const id = window.location.pathname.split('/').pop();
+
+async function load() {
+  const res = await fetch('/api/profile/' + id);
+  if (!res.ok) {
+    document.getElementById('root').innerHTML = '<div id="error"><i class="fas fa-user-slash" style="font-size:2rem;margin-bottom:1rem;display:block;color:#555"></i>Profil nicht gefunden oder kein Zugriff.</div>';
+    return;
+  }
+  const d = await res.json();
+  const u = d.user, s = d.stats;
+  const av = u.avatar && u.discord_id
+    ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png" onerror="this.parentElement.textContent='${u.username.slice(0,2).toUpperCase()}'>`
+    : u.username.slice(0,2).toUpperCase();
+  const roleClass = {admin:'role-admin', ausbilder:'role-ausbilder', member:'role-member'}[u.role] || 'role-member';
+  const roleLabel = {admin:'Admin', ausbilder:'Ausbilder', member:'Mitarbeiter'}[u.role] || u.role;
+  const passRate = s.conducted > 0 ? Math.round((s.passed_exams / s.total_exams) * 100) : 0;
+  const memberSince = new Date(u.created_at).toLocaleDateString('de-DE', {day:'2-digit',month:'long',year:'numeric'});
+
+  document.title = u.username + ' – ACLS';
+  document.getElementById('root').innerHTML = `
+    <!-- Header -->
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap">
+        <div class="avatar">${av}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.4rem">
+            <h1 style="font-size:1.4rem;font-weight:800">${u.username}</h1>
+            <span class="role-badge ${roleClass}">${roleLabel}</span>
+            ${u.rank ? `<span style="background:#2a2a2a;color:#f0f0f0;padding:.2rem .6rem;border-radius:6px;font-size:.72rem;font-weight:600">${u.rank}</span>` : ''}
+          </div>
+          <div style="font-size:.8rem;color:#888">Dabei seit ${memberSince}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stat-grid" style="margin-bottom:1rem">
+      <div class="stat-box"><div class="stat-val">${s.conducted}</div><div class="stat-lbl">Prüfungen abgen.</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:#22c55e">${s.eow_wins}</div><div class="stat-lbl">MdW-Titel</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:#60a5fa">${(+s.ic_total).toFixed(1)}h</div><div class="stat-lbl">IC-Zeit gesamt</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:#fbbf24">${(+s.ic_week).toFixed(1)}h</div><div class="stat-lbl">IC-Zeit Woche</div></div>
+    </div>
+
+    <!-- Prüfungsquote -->
+    ${s.conducted > 0 ? `
+    <div class="card">
+      <h3>Prüfungsquote</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">
+        <span style="font-size:.88rem">${passRate}% Bestehensquote</span>
+        <span style="font-size:.78rem;color:#888">${s.total_exams} Prüfungen total</span>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:${passRate}%;background:${passRate>=70?'#22c55e':'#f97316'}"></div></div>
+      ${d.byCategory?.length ? `
+      <div style="margin-top:1rem">
+        ${d.byCategory.map(c => `<div class="cat-row"><span>${c.category}</span><span style="color:#f97316;font-weight:700">${c.count}×</span></div>`).join('')}
+      </div>` : ''}
+    </div>` : ''}
+
+    <!-- Letzte Prüfungen -->
+    ${d.recentExams?.length ? `
+    <div class="card">
+      <h3>Letzte eigene Prüfungsversuche</h3>
+      ${d.recentExams.map(e => `
+      <div class="exam-row">
+        <i class="fas ${e.passed ? 'fa-check-circle pass' : 'fa-times-circle fail'}"></i>
+        <div style="flex:1"><div style="font-weight:600">${e.category_name}</div></div>
+        <div style="font-size:.75rem;color:#888">${e.score}/${e.total} · ${Math.round(e.score/e.total*100)}%</div>
+      </div>`).join('')}
+    </div>` : ''}
+
+    <!-- Badges -->
+    ${d.badges?.length ? `
+    <div class="card">
+      <h3>Abzeichen (${d.badges.length})</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:.3rem">
+        ${d.badges.map(b => `
+        <div class="badge-chip" title="${new Date(b.earned_at).toLocaleDateString('de-DE')}">
+          <i class="fas ${BADGE_ICONS[b.badge_type]||'fa-award'}" style="color:#f97316;font-size:.8rem"></i>
+          ${BADGE_LABELS[b.badge_type]||b.badge_type}
+        </div>`).join('')}
+      </div>
+    </div>` : ''}
+  `;
+}
+
+load();
+</script>
+</body>
+</html>

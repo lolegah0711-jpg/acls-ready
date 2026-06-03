@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Events, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Events, EmbedBuilder, SlashCommandBuilder, REST, Routes } = require('discord.js');
 const fetch = require('node-fetch');
 const cron  = require('node-cron');
 
@@ -156,6 +156,111 @@ async function pollNotifications() {
   } catch (e) { console.error('[Bot] Poll-Fehler:', e.message); }
 }
 
+// ── Slash-Commands ───────────────────────────────────────────────
+const SLASH_COMMANDS = [
+  new SlashCommandBuilder().setName('stats').setDescription('Prüfungsstatistiken anzeigen')
+    .addStringOption(o => o.setName('mitarbeiter').setDescription('Discord-ID oder Name (leer = eigene Stats)').setRequired(false)),
+  new SlashCommandBuilder().setName('ic').setDescription('Deine IC-Zeit diese Woche anzeigen'),
+  new SlashCommandBuilder().setName('dienst').setDescription('Wer ist gerade im Dienst?'),
+  new SlashCommandBuilder().setName('rangliste').setDescription('Spielrangliste anzeigen')
+    .addStringOption(o => o.setName('spiel').setDescription('Spielname').setRequired(true)
+      .addChoices(
+        { name: 'Book of Ra',    value: 'bookofra' },
+        { name: 'Tower Defense', value: 'towerdefense' },
+        { name: '2048',          value: '2048' },
+      )),
+].map(c => c.toJSON());
+
+async function registerSlashCommands() {
+  const appId = process.env.DISCORD_CLIENT_ID;
+  if (!appId || !process.env.DISCORD_BOT_TOKEN) return;
+  try {
+    const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN);
+    const route = GUILD_ID ? Routes.applicationGuildCommands(appId, GUILD_ID) : Routes.applicationCommands(appId);
+    await rest.put(route, { body: SLASH_COMMANDS });
+    console.log('[Bot] Slash-Commands registriert');
+  } catch (e) { console.error('[Bot] Slash-Command Registrierung Fehler:', e.message); }
+}
+
+async function handleInteraction(interaction) {
+  if (!interaction.isChatInputCommand()) return;
+  const { commandName } = interaction;
+  await interaction.deferReply({ ephemeral: commandName !== 'dienst' });
+
+  if (commandName === 'ic') {
+    try {
+      const res  = await fetch(`${SERVER_URL}/api/ic-stats`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+      const list = res?.ok ? await res.json() : null;
+      const mine = list?.find(u => u.discord_id === interaction.user.id);
+      if (!mine) return interaction.editReply({ content: 'Kein IC-Zeit-Eintrag gefunden. Bist du im System registriert?' });
+      const embed = new EmbedBuilder()
+        .setColor(0xf97316)
+        .setTitle(`⏱️ IC-Zeit – ${mine.username}`)
+        .addFields(
+          { name: 'Diese Woche',   value: `${(+mine.week).toFixed(1)}h`,  inline: true },
+          { name: 'Dieser Monat',  value: `${(+mine.month).toFixed(1)}h`, inline: true },
+          { name: 'Gesamt',        value: `${(+mine.total).toFixed(1)}h`, inline: true },
+        ).setTimestamp();
+      await interaction.editReply({ embeds: [embed] });
+    } catch (e) { await interaction.editReply({ content: 'Fehler beim Laden der IC-Zeit.' }); }
+  }
+
+  if (commandName === 'dienst') {
+    try {
+      const res  = await fetch(`${SERVER_URL}/api/active-sessions`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+      const list = res?.ok ? await res.json() : [];
+      if (!list.length) return interaction.editReply({ content: 'Aktuell ist kein Mitarbeiter im Dienst.' });
+      const embed = new EmbedBuilder()
+        .setColor(0x22c55e)
+        .setTitle('🟢 Mitarbeiter im Dienst')
+        .setDescription(list.map(s => `• **${s.username}** – ${s.channelName} (${s.minutesSince} Min)`).join('\n'))
+        .setTimestamp();
+      await interaction.editReply({ embeds: [embed] });
+    } catch (e) { await interaction.editReply({ content: 'Fehler beim Abrufen der aktiven Dienste.' }); }
+  }
+
+  if (commandName === 'rangliste') {
+    const game = interaction.options.getString('spiel');
+    try {
+      const res  = await fetch(`${SERVER_URL}/api/game-scores/${game}`).catch(() => null);
+      const data = res?.ok ? await res.json() : [];
+      if (!data.length) return interaction.editReply({ content: 'Noch keine Einträge in dieser Rangliste.' });
+      const medals = ['🥇', '🥈', '🥉'];
+      const embed = new EmbedBuilder()
+        .setColor(0xfbbf24)
+        .setTitle(`🏆 Rangliste – ${game}`)
+        .setDescription(data.slice(0,10).map((r,i) => `${medals[i]||`**${i+1}.**`} **${r.username||'Unbekannt'}** — ${r.score.toLocaleString('de-DE')}`).join('\n'))
+        .setTimestamp();
+      await interaction.editReply({ embeds: [embed] });
+    } catch (e) { await interaction.editReply({ content: 'Fehler beim Laden der Rangliste.' }); }
+  }
+
+  if (commandName === 'stats') {
+    const query = interaction.options.getString('mitarbeiter') || interaction.user.id;
+    try {
+      const usersRes = await fetch(`${SERVER_URL}/api/users`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+      const users    = usersRes?.ok ? await usersRes.json() : [];
+      const target   = users.find(u => u.discord_id === query || u.username.toLowerCase().includes(query.toLowerCase()));
+      if (!target) return interaction.editReply({ content: 'Mitarbeiter nicht gefunden.' });
+      const res  = await fetch(`${SERVER_URL}/api/profile/${target.id}`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+      const d    = res?.ok ? await res.json() : null;
+      if (!d) return interaction.editReply({ content: 'Profil konnte nicht geladen werden.' });
+      const s = d.stats;
+      const embed = new EmbedBuilder()
+        .setColor(0xf97316)
+        .setTitle(`📋 Stats – ${d.user.username}`)
+        .addFields(
+          { name: 'Prüfungen abgenommen', value: `${s.conducted}`, inline: true },
+          { name: 'MdW-Titel',            value: `${s.eow_wins}`,  inline: true },
+          { name: 'IC-Zeit gesamt',        value: `${(+s.ic_total).toFixed(1)}h`, inline: true },
+          { name: 'IC-Zeit Woche',         value: `${(+s.ic_week).toFixed(1)}h`,  inline: true },
+          { name: 'Rang',                  value: d.user.rank || '—', inline: true },
+        ).setTimestamp();
+      await interaction.editReply({ embeds: [embed] });
+    } catch (e) { await interaction.editReply({ content: 'Fehler beim Laden der Statistiken.' }); }
+  }
+}
+
 // ── EOW-Freitags-Erinnerung (18:00 Berliner Zeit) ────────────────
 async function sendEowReminder() {
   if (!EOW_CHANNEL_ID) {
@@ -190,8 +295,11 @@ async function sendEowReminder() {
 // Jeden Freitag um 18:00 Berliner Zeit
 cron.schedule('0 18 * * 5', sendEowReminder, { timezone: 'Europe/Berlin' });
 
+client.on(Events.InteractionCreate, handleInteraction);
+
 client.once(Events.ClientReady, async c => {
   console.log(`[Bot] Eingeloggt als ${c.user.tag}`);
+  await registerSlashCommands();
   console.log(`[Bot] IC-Schlüsselwörter: ${IC_KEYWORDS.join(', ')}`);
   console.log(`[Bot] Alle Kanäle tracken: ${TRACK_ALL}`);
   console.log(`[Bot] Badge-Kanal: ${BADGE_CHANNEL_ID || 'nicht konfiguriert'}`);

@@ -299,7 +299,7 @@ app.get('/auth/me', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  USERS
 // ════════════════════════════════════════════════════════════════
-app.get('/api/users', requireAuth, (req, res) => {
+app.get('/api/users', requireAuthOrBot, (req, res) => {
   res.json(db.prepare('SELECT id, discord_id, username, avatar, role, rank, is_active, created_at FROM users WHERE is_active = 1 ORDER BY username').all());
 });
 
@@ -401,6 +401,7 @@ app.post('/api/eow/vote', requireAuth, (req, res) => {
   if (+nominee_id === user.id) return res.status(400).json({ error: 'Keine Selbstnominierung' });
   try {
     db.prepare('INSERT INTO eow_votes (voter_id, nominee_id, week) VALUES (?, ?, ?)').run(user.id, nominee_id, wk);
+    sseEmit('eow_vote', {});
     res.json({ ok: true });
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Diese Woche bereits abgestimmt' });
@@ -464,6 +465,8 @@ app.get('/api/bans/check', requireAuth, (req, res) => {
 });
 
 app.post('/api/exams/start', requireAuth, (req, res) => {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+  if (rateLimit(`exam:${ip}`, 10, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
   const { category_id, mode, citizen_name, citizen_id } = req.body;
   const limit = mode === 'flash' ? 5 : 10;
   const qSql = `SELECT id, question, option_a, option_b, option_c, option_d,
@@ -535,6 +538,7 @@ app.post('/api/exams/submit', requireAuth, (req, res) => {
     percentage: Math.round((score / total) * 100),
     date: new Date().toISOString().split('T')[0],
   });
+  sseEmit('exam', { passed, category: exam.categoryName });
   res.json({ score, total, passed, percentage: Math.round((score / total) * 100), results, registryId, banId });
 });
 
@@ -721,7 +725,7 @@ app.get('/api/ic-log', requireAuth, (req, res) => {
   `).all());
 });
 
-app.get('/api/ic-stats', requireAuth, (req, res) => {
+app.get('/api/ic-stats', requireAuthOrBot, (req, res) => {
   res.json(db.prepare(`
     SELECT u.id, u.username, u.avatar, u.discord_id,
       COALESCE(SUM(l.hours), 0) as total,
@@ -865,7 +869,7 @@ app.post('/api/active-session', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/active-sessions', requireAuth, (req, res) => {
+app.get('/api/active-sessions', requireAuthOrBot, (req, res) => {
   const now = Date.now();
   const rows = db.prepare('SELECT * FROM active_bot_sessions').all();
   const result = rows.map(s => {
@@ -1055,6 +1059,8 @@ app.get('/api/badges/:userId', requireAuth, (req, res) => {
 //  COMPLAINTS
 // ════════════════════════════════════════════════════════════════
 app.post('/api/complaints', (req, res) => {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+  if (rateLimit(`complaint:${ip}`, 3, 5 * 60_000)) return res.status(429).json({ error: 'Bitte warte etwas bevor du eine weitere Beschwerde einreichst' });
   const { citizen_name, citizen_discord_id, subject, message } = req.body;
   if (!citizen_name?.trim() || !subject?.trim() || !message?.trim()) return res.status(400).json({ error: 'Pflichtfelder fehlen' });
   db.prepare('INSERT INTO complaints (citizen_name, citizen_discord_id, subject, message) VALUES (?, ?, ?, ?)').run(citizen_name.trim(), citizen_discord_id || null, subject.trim(), message.trim());
@@ -1084,7 +1090,14 @@ app.patch('/api/complaints/:id', requireAdmin, (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  PROFILE
 // ════════════════════════════════════════════════════════════════
-app.get('/api/profile/:id', requireAuth, (req, res) => {
+function requireAuthOrBot(req, res, next) {
+  if (req.headers['x-bot-secret'] === (process.env.BOT_API_SECRET || 'acls-bot-secret')) return next();
+  const u = getUser(req);
+  if (!u) return res.status(401).json({ error: 'Nicht angemeldet' });
+  next();
+}
+
+app.get('/api/profile/:id', requireAuthOrBot, (req, res) => {
   const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!u) return res.status(404).json({ error: 'Nicht gefunden' });
   const examStats   = db.prepare('SELECT COUNT(*) as total, COALESCE(SUM(passed),0) as passed FROM exam_sessions WHERE user_id=?').get(u.id);
@@ -1094,7 +1107,60 @@ app.get('/api/profile/:id', requireAuth, (req, res) => {
   const icWeek      = db.prepare("SELECT COALESCE(SUM(hours),0) as h FROM ic_log WHERE user_id=? AND date>=date('now','-7 days')").get(u.id)?.h || 0;
   const recentExams = db.prepare(`SELECT s.*, ec.name as category_name FROM exam_sessions s JOIN exam_categories ec ON ec.id=s.category_id WHERE s.user_id=? ORDER BY s.taken_at DESC LIMIT 5`).all(u.id);
   const badges      = db.prepare('SELECT badge_type, earned_at FROM user_badges WHERE user_id = ? ORDER BY earned_at ASC').all(u.id);
-  res.json({ user: u, stats: { total_exams: examStats.total, passed_exams: examStats.passed, conducted, eow_wins: eowWins, ic_total: +icTotal.toFixed(2), ic_week: +icWeek.toFixed(2) }, recentExams, badges });
+  const icGoal = u.ic_weekly_goal || 0;
+  const byCategory = db.prepare(`SELECT ec.name as category, COUNT(*) as count FROM registry r JOIN exam_categories ec ON ec.id=r.category_id WHERE r.examiner_id=? GROUP BY r.category_id`).all(u.id);
+  res.json({ user: u, stats: { total_exams: examStats.total, passed_exams: examStats.passed, conducted, eow_wins: eowWins, ic_total: +icTotal.toFixed(2), ic_week: +icWeek.toFixed(2), ic_goal: icGoal }, recentExams, badges, byCategory });
+});
+
+// ── Globale Suche ────────────────────────────────────────────────
+app.get('/api/search', requireAuth, (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (q.length < 2) return res.json({ bans: [], users: [], registry: [] });
+  const like = `%${q}%`;
+  const bans = db.prepare(`
+    SELECT b.*, u.username as issued_by_name FROM bans b
+    JOIN users u ON u.id = b.issued_by
+    WHERE b.person_name LIKE ? OR b.person_id LIKE ? OR b.reason LIKE ?
+    ORDER BY b.is_active DESC, b.issued_at DESC LIMIT 20
+  `).all(like, like, like);
+  const users = db.prepare(`
+    SELECT id, discord_id, username, avatar, role, rank, is_active FROM users
+    WHERE (username LIKE ? OR discord_id LIKE ?) AND is_active = 1 LIMIT 20
+  `).all(like, like);
+  const registry = db.prepare(`
+    SELECT r.*, ec.name as category_name, u.username as examiner_name
+    FROM registry r JOIN exam_categories ec ON ec.id=r.category_id JOIN users u ON u.id=r.examiner_id
+    WHERE r.citizen_name LIKE ? OR r.citizen_id LIKE ?
+    ORDER BY r.registered_at DESC LIMIT 20
+  `).all(like, like);
+  res.json({ bans, users, registry });
+});
+
+// ── IC-Zeit Wochenziel ───────────────────────────────────────────
+app.patch('/api/users/me/goal', requireAuth, (req, res) => {
+  const { goal } = req.body;
+  const user = getUser(req);
+  if (typeof goal !== 'number' || goal < 0 || goal > 200) return res.status(400).json({ error: 'Ungültiges Ziel' });
+  db.prepare('UPDATE users SET ic_weekly_goal = ? WHERE id = ?').run(goal, user.id);
+  res.json({ ok: true });
+});
+
+// ── SSE Echtzeit-Events ──────────────────────────────────────────
+const sseClients = new Set();
+function sseEmit(event, data) {
+  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  sseClients.forEach(res => { try { res.write(msg); } catch {} });
+}
+
+app.get('/api/sse', requireAuth, (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+  res.write('event: connected\ndata: {}\n\n');
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -1115,6 +1181,26 @@ cron.schedule('0 18 * * 0', () => {
 cron.schedule('0 3 * * *', async () => {
   const n = await syncGuildMembers();
   if (n > 0) console.log(`[Cron] ${n} Mitglieder-Namen synchronisiert`);
+}, { timezone: 'Europe/Berlin' });
+
+// Täglich 03:30 — SQLite Datenbank-Backup (letzte 7 Tage behalten)
+cron.schedule('30 3 * * *', () => {
+  try {
+    const fs   = require('fs');
+    const dir  = path.join(__dirname, 'backups');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+    const date = new Date().toISOString().slice(0, 10);
+    const src  = process.env.DB_PATH || path.join(__dirname, 'acls.db');
+    const dest = path.join(dir, `acls_${date}.db`);
+    fs.copyFileSync(src, dest);
+    console.log(`[Backup] ${dest}`);
+    // Backups älter als 7 Tage löschen
+    const files = fs.readdirSync(dir).filter(f => f.startsWith('acls_') && f.endsWith('.db')).sort();
+    files.slice(0, Math.max(0, files.length - 7)).forEach(f => {
+      fs.unlinkSync(path.join(dir, f));
+      console.log(`[Backup] Gelöscht: ${f}`);
+    });
+  } catch (e) { console.error('[Backup] Fehler:', e.message); }
 }, { timezone: 'Europe/Berlin' });
 
 // ════════════════════════════════════════════════════════════════
@@ -1698,6 +1784,10 @@ app.get('/quiz', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(injected);
+});
+app.get('/profil/:id', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(path.join(__dirname, 'public', 'profil.html'));
 });
 app.get('*', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');

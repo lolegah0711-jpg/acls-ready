@@ -801,7 +801,107 @@ async function dashboard() {
   loadTwitchWidget();
   clearInterval(dashboard._twitchPoll);
   dashboard._twitchPoll = setInterval(loadTwitchWidget, 2 * 60 * 1000);
+  connectSSE();
 }
+
+// ════════════════════════════════════════════════════════════════
+//  SSE — Echtzeit-Updates
+// ════════════════════════════════════════════════════════════════
+let _sseSource = null;
+function connectSSE() {
+  if (_sseSource) { _sseSource.close(); _sseSource = null; }
+  try {
+    _sseSource = new EventSource('/api/sse');
+    _sseSource.addEventListener('exam', () => {
+      // Zähler im Dashboard aktualisieren ohne full reload
+      const el = document.querySelector('[data-countup]');
+      if (el && _activePage === 'dashboard') dashboard();
+    });
+    _sseSource.addEventListener('eow_vote', () => {
+      if (_activePage === 'eow') eow();
+    });
+    _sseSource.onerror = () => { _sseSource.close(); _sseSource = null; setTimeout(connectSSE, 30_000); };
+  } catch {}
+}
+
+// ════════════════════════════════════════════════════════════════
+//  GLOBALE SUCHE
+// ════════════════════════════════════════════════════════════════
+async function search() {
+  $('pageContent').innerHTML = `
+    <div class="pg-header"><div class="pg-header-left"><h2>Globale Suche</h2><p>Durchsuche Sperren, Mitarbeiter und Prüfungsregister</p></div></div>
+    <div style="display:flex;gap:.75rem;margin-bottom:1.5rem">
+      <input class="form-control" id="search-input" placeholder="Name, Discord-ID, Sperrgrund…" style="max-width:480px;flex:1" oninput="runSearch(this.value)">
+    </div>
+    <div id="search-results"><div style="color:var(--muted);font-size:.9rem;padding:1rem 0">Mindestens 2 Zeichen eingeben…</div></div>`;
+  setTimeout(() => $('search-input')?.focus(), 50);
+}
+
+let _searchTimer = null;
+window.runSearch = q => {
+  clearTimeout(_searchTimer);
+  if (q.length < 2) { $('search-results').innerHTML = '<div style="color:var(--muted);font-size:.9rem;padding:1rem 0">Mindestens 2 Zeichen eingeben…</div>'; return; }
+  $('search-results').innerHTML = '<div style="color:var(--muted);font-size:.9rem;padding:1rem 0"><i class="fas fa-spinner fa-spin"></i> Suche läuft…</div>';
+  _searchTimer = setTimeout(async () => {
+    const data = await api(`/api/search?q=${encodeURIComponent(q)}`);
+    if (!data) return;
+    const banColor = b => b.is_active ? '#ef4444' : '#6b7280';
+    let html = '';
+
+    if (data.bans.length) {
+      html += `<div style="margin-bottom:1.25rem">
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">
+          <i class="fas fa-ban" style="color:#ef4444;margin-right:.4rem"></i>Sperren (${data.bans.length})
+        </div>
+        ${data.bans.map(b => `
+        <div style="display:flex;align-items:center;gap:.75rem;padding:.65rem .9rem;background:var(--surface);border:1px solid ${b.is_active ? 'rgba(239,68,68,.3)' : 'var(--border)'};border-left:3px solid ${banColor(b)};border-radius:8px;margin-bottom:.4rem">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:.9rem">${b.person_name}${b.person_id ? ` <span style="color:var(--muted);font-weight:400;font-size:.8rem">${b.person_id}</span>` : ''}</div>
+            <div style="font-size:.78rem;color:var(--muted);margin-top:.15rem">${b.reason}</div>
+          </div>
+          <span class="badge ${b.is_active ? 'badge-r' : ''}" style="${!b.is_active ? 'background:var(--surface2);color:var(--muted)' : ''}">${b.is_active ? 'Aktiv' : 'Aufgehoben'}</span>
+          <span style="font-size:.75rem;color:var(--muted);white-space:nowrap">von ${b.issued_by_name}</span>
+        </div>`).join('')}
+      </div>`;
+    }
+
+    if (data.users.length) {
+      html += `<div style="margin-bottom:1.25rem">
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">
+          <i class="fas fa-users" style="color:var(--blue);margin-right:.4rem"></i>Mitarbeiter (${data.users.length})
+        </div>
+        ${data.users.map(u => `
+        <div style="display:flex;align-items:center;gap:.75rem;padding:.55rem .9rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:.4rem;cursor:pointer" onclick="window.open('/profil/${u.id}','_blank')">
+          ${avatarEl(u, 28)}
+          <div style="flex:1"><div style="font-weight:600;font-size:.9rem">${u.username}</div><div style="font-size:.75rem;color:var(--muted)">${u.role} · ${u.rank || '—'}</div></div>
+          <i class="fas fa-external-link-alt" style="color:var(--muted);font-size:.75rem"></i>
+        </div>`).join('')}
+      </div>`;
+    }
+
+    if (data.registry.length) {
+      html += `<div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">
+          <i class="fas fa-clipboard-list" style="color:var(--green);margin-right:.4rem"></i>Prüfungsregister (${data.registry.length})
+        </div>
+        ${data.registry.map(r => `
+        <div style="display:flex;align-items:center;gap:.75rem;padding:.55rem .9rem;background:var(--surface);border:1px solid var(--border);border-left:3px solid ${r.passed ? '#22c55e' : '#ef4444'};border-radius:8px;margin-bottom:.4rem">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:.9rem">${r.citizen_name}${r.citizen_id ? ` <span style="color:var(--muted);font-weight:400">${r.citizen_id}</span>` : ''}</div>
+            <div style="font-size:.75rem;color:var(--muted)">${r.category_name} · ${r.exam_type} · Prüfer: ${r.examiner_name}</div>
+          </div>
+          <span class="badge ${r.passed ? 'badge-g' : 'badge-r'}">${r.passed ? 'Bestanden' : 'Nicht bestanden'}</span>
+          <span style="font-size:.75rem;color:var(--muted);white-space:nowrap">${new Date(r.registered_at).toLocaleDateString('de-DE')}</span>
+        </div>`).join('')}
+      </div>`;
+    }
+
+    if (!data.bans.length && !data.users.length && !data.registry.length) {
+      html = '<div style="color:var(--muted);font-size:.9rem;padding:1rem 0">Keine Ergebnisse gefunden.</div>';
+    }
+    $('search-results').innerHTML = html;
+  }, 300);
+};
 
 // ════════════════════════════════════════════════════════════════
 //  ACTIVITY
@@ -1665,15 +1765,36 @@ window.deleteSpot = async id => {
 //  IC-ZEIT
 // ════════════════════════════════════════════════════════════════
 async function iczeit() {
-  const [stats, log, active] = await Promise.all([api('/api/ic-stats'), api('/api/ic-log'), api('/api/active-sessions')]);
+  const [stats, log, active, me] = await Promise.all([api('/api/ic-stats'), api('/api/ic-log'), api('/api/active-sessions'), api('/api/profile/' + currentUser?.id)]);
   if (!stats) return;
 
   const maxWeek = Math.max(...stats.map(s => +s.week), 0.01);
   const totalH  = stats.reduce((s, u) => s + +u.week, 0);
+  const myWeek  = +(stats.find(s => s.user_id === currentUser?.id)?.week || 0);
+  const myGoal  = me?.stats?.ic_goal || 0;
+  const goalPct = myGoal > 0 ? Math.min(Math.round((myWeek / myGoal) * 100), 100) : 0;
 
   $('pageContent').innerHTML = `
     <div class="pg-header">
       <div class="pg-header-left"><h2>IC-Zeit Tracking</h2><p>Discord Voice-Kanal Anwesenheit – automatisch via Bot</p></div></div>
+
+    <div class="card" style="margin-bottom:1.1rem;border:1px solid rgba(249,115,22,.2)">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px">
+          <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.25rem">Mein Wochenziel</div>
+          <div style="display:flex;align-items:baseline;gap:.5rem">
+            <span style="font-size:1.5rem;font-weight:800;color:var(--orange)">${myWeek.toFixed(1)}h</span>
+            <span style="color:var(--muted);font-size:.85rem">/ ${myGoal > 0 ? myGoal + 'h' : 'kein Ziel'}</span>
+          </div>
+          ${myGoal > 0 ? `
+          <div style="height:6px;background:var(--surface2);border-radius:3px;margin-top:.5rem;overflow:hidden">
+            <div style="height:100%;width:${goalPct}%;background:${goalPct >= 100 ? '#22c55e' : 'var(--orange)'};border-radius:3px;transition:width .6s"></div>
+          </div>
+          <div style="font-size:.72rem;color:${goalPct >= 100 ? '#22c55e' : 'var(--muted)'};margin-top:.25rem">${goalPct >= 100 ? '✓ Ziel erreicht!' : goalPct + '% erreicht'}</div>` : ''}
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="openGoalModal(${myGoal})"><i class="fas fa-target"></i> Ziel setzen</button>
+      </div>
+    </div>
     <div style="display:flex;align-items:center;gap:.6rem;background:rgba(250,204,21,.07);border:1px solid rgba(250,204,21,.25);border-radius:10px;padding:.6rem 1rem;margin-bottom:1.1rem;font-size:.88rem;color:var(--text)">
       <i class="fas fa-info-circle" style="color:#facc15;font-size:1rem;flex-shrink:0"></i>
       <span>Damit die IC-Zeit automatisch getrackt wird, müssen Mitarbeiter einem <strong>„Im Dienst"</strong>-Voice-Kanal auf dem Discord-Server beitreten. Die Zeit wird beim Verlassen des Kanals automatisch eingetragen.</span>
@@ -1794,6 +1915,27 @@ window.openLogTime = async () => {
         <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
       </div>
     </form>`);
+};
+
+window.openGoalModal = (current) => openModal(`
+  <div class="modal-head"><div class="modal-title"><i class="fas fa-bullseye" style="color:var(--orange);margin-right:.5rem"></i>Wochenziel setzen</div>
+  <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem">Wie viele Stunden möchtest du diese Woche als IC-Zeit erreichen?</p>
+  <form onsubmit="saveGoal(event)">
+    <div class="form-group"><label>Stunden pro Woche</label>
+      <input type="number" class="form-control" id="goalInput" value="${current || ''}" min="0" max="200" step="0.5" placeholder="z.B. 10">
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
+    </div>
+  </form>`);
+
+window.saveGoal = async e => {
+  e.preventDefault();
+  const goal = parseFloat($('goalInput').value) || 0;
+  const r = await api('/api/users/me/goal', { method: 'PATCH', body: { goal } });
+  if (r) { closeModal(); toast('Ziel gespeichert!', 'ok'); iczeit(); }
 };
 
 window.submitIcTime = async e => {
