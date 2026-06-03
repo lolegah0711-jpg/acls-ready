@@ -176,9 +176,11 @@ async function registerSlashCommands() {
   if (!appId || !process.env.DISCORD_BOT_TOKEN) return;
   try {
     const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN);
-    const route = GUILD_ID ? Routes.applicationGuildCommands(appId, GUILD_ID) : Routes.applicationCommands(appId);
-    await rest.put(route, { body: SLASH_COMMANDS });
-    console.log('[Bot] Slash-Commands registriert');
+    // Global registrieren → erscheint im Bot-Profil überall sichtbar
+    await rest.put(Routes.applicationCommands(appId), { body: SLASH_COMMANDS });
+    // Zusätzlich Guild-spezifisch für sofortige Verfügbarkeit im Server
+    if (GUILD_ID) await rest.put(Routes.applicationGuildCommands(appId, GUILD_ID), { body: SLASH_COMMANDS });
+    console.log('[Bot] Slash-Commands registriert (global + guild)');
   } catch (e) { console.error('[Bot] Slash-Command Registrierung Fehler:', e.message); }
 }
 
