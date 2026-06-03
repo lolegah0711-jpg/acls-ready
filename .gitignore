@@ -4,10 +4,13 @@ node_modules/
 # Secrets
 .env
 
-# Database — keep in Git for initial seed data
-# *.db
+# Database — nie in Git, Produktionsdaten liegen nur auf dem Server
+acls.db
 *.db-shm
 *.db-wal
+
+# Backups
+backups/
 
 # Claude AI
 .claude/
