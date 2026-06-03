@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, Events, EmbedBuilder } = require('discord.js');
 const fetch = require('node-fetch');
+const cron  = require('node-cron');
 
 const SERVER_URL      = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`;
 const BOT_SECRET      = process.env.BOT_API_SECRET || 'acls-bot-secret';
@@ -154,6 +155,40 @@ async function pollNotifications() {
     }
   } catch (e) { console.error('[Bot] Poll-Fehler:', e.message); }
 }
+
+// ── EOW-Freitags-Erinnerung (18:00 Berliner Zeit) ────────────────
+async function sendEowReminder() {
+  if (!EOW_CHANNEL_ID) {
+    console.warn('[Bot] EOW-Erinnerung: EOW_CHANNEL_ID nicht gesetzt');
+    return;
+  }
+  try {
+    const res    = await fetch(`${SERVER_URL}/api/bot/eow-standings`, { headers: { 'x-bot-secret': BOT_SECRET } });
+    const data   = res.ok ? await res.json() : { standings: [], totalVotes: 0 };
+    const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+    const standingsText = data.standings.length
+      ? data.standings.map((s, i) => `${medals[i]} **${s.username}** — ${s.votes} Stimme${s.votes !== 1 ? 'n' : ''}`).join('\n')
+      : '_Noch keine Stimmen abgegeben_';
+    const embed = new EmbedBuilder()
+      .setColor(0xf59e0b)
+      .setTitle('🗳️ Abstimmung läuft — Mitarbeiter der Woche!')
+      .setDescription('Stimme jetzt für den besten Mitarbeiter dieser Woche!\nDie Abstimmung endet **Sonntag um 18:00 Uhr**.')
+      .addFields(
+        { name: '📊 Aktuelle Führung', value: standingsText },
+        { name: '🗳️ Stimmen gesamt', value: `${data.totalVotes} Stimme${data.totalVotes !== 1 ? 'n' : ''}` },
+      )
+      .setFooter({ text: 'Abstimmen auf der ACLS-Website' })
+      .setTimestamp();
+    const ch = await client.channels.fetch(EOW_CHANNEL_ID);
+    await ch.send({ embeds: [embed] });
+    console.log('[Bot] Freitags-EOW-Erinnerung gesendet');
+  } catch (e) {
+    console.error('[Bot] Freitags-Erinnerung Fehler:', e.message);
+  }
+}
+
+// Jeden Freitag um 18:00 Berliner Zeit
+cron.schedule('0 18 * * 5', sendEowReminder, { timezone: 'Europe/Berlin' });
 
 client.once(Events.ClientReady, async c => {
   console.log(`[Bot] Eingeloggt als ${c.user.tag}`);

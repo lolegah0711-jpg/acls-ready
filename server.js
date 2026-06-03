@@ -1416,6 +1416,24 @@ app.get('/api/rank-exams/:id/certificate', requireAusbilder, (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  BOT NOTIFICATIONS
 // ════════════════════════════════════════════════════════════════
+// EOW-Standings für Bot-Erinnerung (Bot-Secret geschützt)
+app.get('/api/bot/eow-standings', (req, res) => {
+  if (req.headers['x-bot-secret'] !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(401).end();
+  const wk = votingWeekKey();
+  const standings = db.prepare(`
+    SELECT u.username, u.discord_id, COUNT(*) as votes
+    FROM (
+      SELECT nominee_id FROM eow_votes WHERE week = ?
+      UNION ALL
+      SELECT nominee_id FROM citizen_votes WHERE week = ?
+    ) v JOIN users u ON u.id = v.nominee_id
+    GROUP BY v.nominee_id ORDER BY votes DESC LIMIT 5
+  `).all(wk, wk);
+  const staffVotes   = db.prepare('SELECT COUNT(DISTINCT voter_id) as c FROM eow_votes WHERE week = ?').get(wk)?.c || 0;
+  const citizenVotes = db.prepare('SELECT COUNT(DISTINCT voter_discord_id) as c FROM citizen_votes WHERE week = ?').get(wk)?.c || 0;
+  res.json({ standings, staffVotes, citizenVotes, totalVotes: staffVotes + citizenVotes, week: wk });
+});
+
 app.get('/api/bot-notifications', (req, res) => {
   if (req.headers['x-bot-secret'] !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(401).end();
   const rows = db.prepare('SELECT * FROM bot_notifications WHERE sent = 0 ORDER BY created_at ASC').all();
