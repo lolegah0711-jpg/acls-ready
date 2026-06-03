@@ -124,6 +124,7 @@ const PAGES = {
   admin:      { title: 'Admin-Panel',            sub: 'Verwaltung & Kontrolle' },
   ausbildung: { title: 'Ausbildung',             sub: 'Gesellen- & Meisterprüfungen' },
   bans:       { title: 'Aktive Sperren',         sub: 'Hausverbot-Verwaltung' },
+  search:     { title: 'Globale Suche',          sub: 'Sperren, Mitarbeiter & Register durchsuchen' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -516,7 +517,7 @@ function navigate(page) {
   $('pageSubtitle').textContent = p.sub;
   $('pageContent').innerHTML    = loading();
 
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, admin, ausbildung, bans };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, admin, ausbildung, bans, search };
   (renders[page] || dashboard)();
 }
 
