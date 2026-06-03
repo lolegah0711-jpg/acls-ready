@@ -726,10 +726,12 @@ app.get('/api/ic-log', requireAuth, (req, res) => {
 });
 
 app.get('/api/ic-stats', requireAuthOrBot, (req, res) => {
+  // ISO-Wochenstart = Montag: (wochentag + 6) % 7 Tage zurück
   res.json(db.prepare(`
     SELECT u.id, u.username, u.avatar, u.discord_id,
       COALESCE(SUM(l.hours), 0) as total,
-      COALESCE(SUM(CASE WHEN l.date >= date('now', 'weekday 0', '-7 days') THEN l.hours ELSE 0 END), 0) as week,
+      COALESCE(SUM(CASE WHEN l.date >= date('now', '-' || CAST((CAST(strftime('%w','now') AS INTEGER) + 6) % 7 AS TEXT) || ' days')
+        THEN l.hours ELSE 0 END), 0) as week,
       COALESCE(SUM(CASE WHEN strftime('%Y-%m', l.date) = strftime('%Y-%m', 'now') THEN l.hours ELSE 0 END), 0) as month
     FROM users u LEFT JOIN ic_log l ON l.user_id = u.id
     WHERE u.is_active = 1 GROUP BY u.id ORDER BY week DESC
@@ -752,7 +754,7 @@ app.delete('/api/ic-log/:id', requireAdmin, (req, res) => {
 app.post('/api/ic-log/reset', requireAdmin, (req, res) => {
   const { scope } = req.body;
   if (scope === 'week')
-    db.prepare("DELETE FROM ic_log WHERE date >= date('now','weekday 0','-7 days')").run();
+    db.prepare("DELETE FROM ic_log WHERE date >= date('now', '-' || CAST((CAST(strftime('%w','now') AS INTEGER) + 6) % 7 AS TEXT) || ' days')").run();
   else if (scope === 'month')
     db.prepare("DELETE FROM ic_log WHERE strftime('%Y-%m',date)=strftime('%Y-%m','now')").run();
   else if (scope === 'all')
