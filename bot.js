@@ -185,7 +185,9 @@ async function registerSlashCommands() {
 async function handleInteraction(interaction) {
   if (!interaction.isChatInputCommand()) return;
   const { commandName } = interaction;
-  await interaction.deferReply({ ephemeral: commandName !== 'dienst' });
+  try {
+    await interaction.deferReply({ flags: commandName !== 'dienst' ? 64 : 0 });
+  } catch { return; } // Interaction abgelaufen oder bereits beantwortet
 
   if (commandName === 'ic') {
     try {
