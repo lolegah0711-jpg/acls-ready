@@ -1581,10 +1581,18 @@ app.post('/api/car-listings', requireLogin, (req, res) => {
   if (!name?.trim() || !phone?.trim() || !car?.trim() || !price?.trim())
     return res.status(400).json({ error: 'Fehlende Felder' });
   const u = getUser(req);
-  const r = db.prepare(
-    'INSERT INTO car_listings (name, phone, car, price, notes, listing_type, duration, owner_discord_id, owner_user_id, image_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, u?.discord_id || null, u?.id || null, image_data || null);
-  res.json({ ok: true, id: r.lastInsertRowid });
+  try {
+    const r = db.prepare(
+      'INSERT INTO car_listings (name, phone, car, price, notes, listing_type, duration, owner_discord_id, owner_user_id, image_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, u?.discord_id || null, u?.id || null, image_data || null);
+    res.json({ ok: true, id: r.lastInsertRowid });
+  } catch {
+    // Fallback ohne image_data (falls Spalte noch nicht existiert)
+    const r2 = db.prepare(
+      'INSERT INTO car_listings (name, phone, car, price, notes, listing_type, duration, owner_discord_id, owner_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, u?.discord_id || null, u?.id || null);
+    res.json({ ok: true, id: r2.lastInsertRowid });
+  }
 });
 
 app.patch('/api/car-listings/:id', requireLogin, (req, res) => {

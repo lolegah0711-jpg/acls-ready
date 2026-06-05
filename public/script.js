@@ -200,7 +200,8 @@ function compressImage(file, maxW, quality, cb) {
 window.previewListingImage = (inputId, thumbId, wrapId, clearId) => {
   const file = document.getElementById(inputId)?.files?.[0];
   if (!file) return;
-  compressImage(file, 900, 0.8, b64 => {
+  compressImage(file, 600, 0.65, b64 => {
+    if (b64.length > 900000) { toast('Bild zu groß – bitte kleineres Foto wählen.', 'err'); return; }
     const t = document.getElementById(thumbId);
     const w = document.getElementById(wrapId);
     const c = document.getElementById(clearId);
@@ -298,6 +299,7 @@ async function renderVoterScreen() {
         <a class="nav-item"        id="vnVote"      onclick="voterTab('vote')"     style="cursor:pointer"><i class="fas fa-trophy"></i><span>MdW-Abstimmung</span></a>
         <a class="nav-item"        id="vnComplaint" onclick="voterTab('complaint')" style="cursor:pointer"><i class="fas fa-comment-alt"></i><span>Beschwerde</span></a>
         <a class="nav-item"        id="vnMarket"    onclick="voterTab('market')"   style="cursor:pointer;color:var(--muted)"><i class="fas fa-car-side" style="color:#f97316"></i><span>Fahrzeugmarkt</span></a>
+        <a class="nav-item" href="/quiz" target="_blank" style="color:#22c55e"><i class="fas fa-graduation-cap" style="color:#22c55e"></i><span>Prüfungsvorbereitung</span></a>
 
         <!-- Minispiele -->
         <div id="vGamesToggle" onclick="(function(){var l=document.getElementById('vGamesList'),o=l.style.maxHeight!=='0px';l.style.maxHeight=o?'0px':'700px';document.getElementById('vGamesChev').style.transform=o?'rotate(-90deg)':'';})()" style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
@@ -315,7 +317,6 @@ async function renderVoterScreen() {
           <a class="nav-item" href="/game8"  target="_blank" style="color:#4ade80"><i class="fas fa-frog" style="color:#4ade80"></i><span>Doodle Jump</span></a>
           <a class="nav-item" href="/game9"  target="_blank" style="color:#f97316"><i class="fas fa-shield-alt" style="color:#f97316"></i><span>Tower Defense</span></a>
           <a class="nav-item" href="/game10" target="_blank" style="color:#f59e0b"><i class="fas fa-th" style="color:#f59e0b"></i><span>2048</span></a>
-          <a class="nav-item" href="/quiz"   target="_blank" style="color:#22c55e"><i class="fas fa-graduation-cap" style="color:#22c55e"></i><span>Prüfungsquiz</span></a>
         </div>
       </nav>
       <div class="sidebar-bottom">
