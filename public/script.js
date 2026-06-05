@@ -3142,21 +3142,15 @@ async function admin() {
             <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">${a.content.slice(0,80)}${a.content.length>80?'…':''}</div>
           </div>`).join('') : '<div class="empty" style="padding:1rem"><p>Keine Ankündigungen</p></div>'}
       </div>
-    </div><!-- /col-right -->
-    </div>
-    <!-- Umfrage-Widget -->
-    <div class="card" style="margin-top:1rem">
-      <div class="card-head">
-        <div class="card-head-icon" style="background:rgba(99,102,241,.15)"><i class="fas fa-poll" style="color:#818cf8"></i></div>
-        <div><div class="card-title">Umfrage-Widget</div><div class="card-sub">Frage der Woche verwalten</div></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start">
-        <div>
-          <div style="font-weight:600;font-size:.82rem;margin-bottom:.6rem">Aktuelle Umfrage</div>
-          <div id="pollAdminContent"><div style="color:var(--muted);font-size:.82rem">Wird geladen…</div></div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-icon" style="background:rgba(99,102,241,.15)"><i class="fas fa-poll" style="color:#818cf8"></i></div>
+          <div><div class="card-title">Umfrage-Widget</div><div class="card-sub">Frage der Woche verwalten</div></div>
         </div>
-        <div>
-          <div style="font-weight:600;font-size:.82rem;margin-bottom:.6rem">Neue Umfrage starten</div>
+        <div id="pollAdminContent" style="margin-bottom:.85rem"><div style="color:var(--muted);font-size:.82rem">Wird geladen…</div></div>
+        <div style="border-top:1px solid var(--border);padding-top:.85rem">
+          <div style="font-weight:600;font-size:.82rem;margin-bottom:.5rem">Neue Umfrage starten</div>
           <input class="form-control" id="pollQuestion" placeholder="Frage eingeben…" style="margin-bottom:.35rem">
           <input class="form-control" id="pollOpt1" placeholder="Option 1" style="margin-bottom:.35rem">
           <input class="form-control" id="pollOpt2" placeholder="Option 2" style="margin-bottom:.35rem">
@@ -3165,6 +3159,7 @@ async function admin() {
           <button class="btn btn-primary btn-sm" style="width:100%" onclick="submitPollAdmin()"><i class="fas fa-plus"></i> Umfrage starten</button>
         </div>
       </div>
+    </div><!-- /col-right -->
     </div>
     <!-- Audit-Log -->
     <div class="card" style="margin-top:1rem">
