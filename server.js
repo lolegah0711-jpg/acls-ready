@@ -1576,22 +1576,25 @@ app.get('/api/car-listings', (req, res) => {
   res.json(db.prepare('SELECT * FROM car_listings ORDER BY created_at DESC').all());
 });
 
+// Stellt sicher dass image_data-Spalte existiert (kein Server-Neustart nötig)
+function ensureImageCol() {
+  try { db.exec('ALTER TABLE car_listings ADD COLUMN image_data TEXT'); } catch {}
+}
+
 app.post('/api/car-listings', requireLogin, (req, res) => {
   const { name, phone, car, price, notes, listing_type, duration, image_data } = req.body;
   if (!name?.trim() || !phone?.trim() || !car?.trim() || !price?.trim())
     return res.status(400).json({ error: 'Fehlende Felder' });
+  ensureImageCol();
   const u = getUser(req);
   try {
     const r = db.prepare(
       'INSERT INTO car_listings (name, phone, car, price, notes, listing_type, duration, owner_discord_id, owner_user_id, image_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, u?.discord_id || null, u?.id || null, image_data || null);
     res.json({ ok: true, id: r.lastInsertRowid });
-  } catch {
-    // Fallback ohne image_data (falls Spalte noch nicht existiert)
-    const r2 = db.prepare(
-      'INSERT INTO car_listings (name, phone, car, price, notes, listing_type, duration, owner_discord_id, owner_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, u?.discord_id || null, u?.id || null);
-    res.json({ ok: true, id: r2.lastInsertRowid });
+  } catch (err) {
+    console.error('car-listing insert:', err.message);
+    res.status(500).json({ error: 'Datenbankfehler: ' + err.message });
   }
 });
 
@@ -1603,10 +1606,16 @@ app.patch('/api/car-listings/:id', requireLogin, (req, res) => {
     return res.status(400).json({ error: 'Fehlende Felder' });
   const item = db.prepare('SELECT id FROM car_listings WHERE id = ?').get(+req.params.id);
   if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
+  ensureImageCol();
   const { listing_type, duration, image_data } = req.body;
-  db.prepare('UPDATE car_listings SET name=?, phone=?, car=?, price=?, notes=?, listing_type=?, duration=?, image_data=? WHERE id=?')
-    .run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, image_data ?? null, +req.params.id);
-  res.json({ ok: true });
+  try {
+    db.prepare('UPDATE car_listings SET name=?, phone=?, car=?, price=?, notes=?, listing_type=?, duration=?, image_data=? WHERE id=?')
+      .run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, image_data ?? null, +req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('car-listing update:', err.message);
+    res.status(500).json({ error: 'Datenbankfehler: ' + err.message });
+  }
 });
 
 app.delete('/api/car-listings/:id', requireLogin, (req, res) => {
