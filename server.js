@@ -58,7 +58,14 @@ app.use(session({
     secure:   process.env.NODE_ENV === 'production',
   },
 }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false,
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  },
+}));
 
 // ── Auth helpers ────────────────────────────────────────────────
 function getUser(req) {
