@@ -335,6 +335,8 @@ function initDb() {
   try { db.exec("ALTER TABLE car_listings ADD COLUMN listing_type TEXT DEFAULT 'verkauf'"); } catch(e) {}
   try { db.exec("ALTER TABLE car_listings ADD COLUMN duration TEXT"); } catch(e) {}
   try { db.exec("ALTER TABLE car_listings ADD COLUMN image_data TEXT"); } catch(e) {}
+  try { db.exec("ALTER TABLE eow_votes ADD COLUMN has_changed INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.exec("ALTER TABLE citizen_votes ADD COLUMN has_changed INTEGER DEFAULT 0"); } catch(e) {}
 
   // Always re-seed rank questions (uses old schema columns as fallback for servers with SQLite < 3.35)
   db.prepare('DELETE FROM rank_questions').run();

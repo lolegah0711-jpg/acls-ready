@@ -286,7 +286,9 @@ async function renderVoterScreen() {
     fetch('/api/users/public').then(r => r.json()),
     fetch('/api/citizen-votes').then(r => r.json()),
   ]);
-  const myVote = cv.myVoteFor;
+  const myVote       = cv.myVoteFor;
+  const myHasChanged = cv.myHasChanged;
+  const canChange    = myVote && !myHasChanged;
   const tally  = {};
   cv.counts.forEach(c => { tally[c.nominee_id] = c.votes; });
 
@@ -364,15 +366,20 @@ async function renderVoterScreen() {
         <!-- MdW-Abstimmung -->
         <div id="voteSection" style="display:none">
           <p style="color:var(--muted);font-size:.85rem;margin-bottom:1.25rem">
-            ${myVote ? 'Du hast diese Woche bereits abgestimmt.' : 'Wähle einen ACLS-Mitarbeiter dieser Woche.'}
+            ${!myVote
+              ? 'Wähle einen ACLS-Mitarbeiter dieser Woche.'
+              : canChange
+                ? '<i class="fas fa-info-circle" style="margin-right:.35rem;color:var(--orange)"></i>Du hast bereits abgestimmt. Du kannst deine Stimme noch <strong>einmalig</strong> ändern.'
+                : '<i class="fas fa-lock" style="margin-right:.35rem;color:var(--muted)"></i>Du hast deine Stimme bereits geändert. Keine weitere Änderung möglich.'}
           </p>
           <div style="display:flex;flex-direction:column;gap:.6rem;max-width:640px">
           ${(users || []).map(u => {
             const av = (u.avatar && u.discord_id)
               ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64` : null;
-            const voted = myVote === u.id;
-            const votes = tally[u.id] || 0;
-            return `<div class="vote-item${voted ? ' voted' : ''}" ${!myVote ? `onclick="castCitizenVote(${u.id})"` : ''} style="cursor:${!myVote ? 'pointer' : 'default'}">
+            const voted    = myVote === u.id;
+            const clickable = !myVote || canChange;
+            const votes    = tally[u.id] || 0;
+            return `<div class="vote-item${voted ? ' voted' : ''}" ${clickable ? `onclick="castCitizenVote(${u.id})"` : ''} style="cursor:${clickable ? 'pointer' : 'default'}">
               ${av
                 ? `<img src="${av}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">`
                 : `<div style="width:40px;height:40px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;flex-shrink:0">${(u.username||'?')[0].toUpperCase()}</div>`}
@@ -381,8 +388,8 @@ async function renderVoterScreen() {
                 <div class="vote-count">${votes} Bürgerstimme${votes !== 1 ? 'n' : ''}</div>
               </div>
               ${voted
-                ? '<span style="background:#f9731622;color:var(--orange);font-size:.72rem;font-weight:700;padding:.2rem .65rem;border-radius:20px;flex-shrink:0"><i class="fas fa-check"></i> Gewählt</span>'
-                : (!myVote ? '<i class="fas fa-chevron-right" style="color:var(--muted);font-size:.75rem;flex-shrink:0"></i>' : '')}
+                ? `<span style="background:#f9731622;color:var(--orange);font-size:.72rem;font-weight:700;padding:.2rem .65rem;border-radius:20px;flex-shrink:0"><i class="fas fa-check"></i> ${canChange ? 'Aktuelle Wahl' : 'Gewählt'}</span>`
+                : (clickable ? '<i class="fas fa-chevron-right" style="color:var(--muted);font-size:.75rem;flex-shrink:0"></i>' : '')}
             </div>`;
           }).join('')}
           </div>
@@ -567,8 +574,10 @@ window.castCitizenVote = async nominee_id => {
     body: JSON.stringify({ nominee_id }),
   });
   const data = await r.json();
-  if (r.ok) { toast('Stimme abgegeben!', 'ok'); renderVoterScreen(); }
-  else toast(data.error || 'Fehler', 'err');
+  if (r.ok) {
+    toast(data.changed ? 'Stimme geändert!' : 'Stimme abgegeben!', 'ok');
+    renderVoterScreen();
+  } else toast(data.error || 'Fehler', 'err');
 };
 
 window.voterLogout = async () => {
@@ -1051,9 +1060,12 @@ async function eow() {
   const [data, users] = await Promise.all([api('/api/eow'), api('/api/users')]);
   if (!data) return;
 
-  const candidates = (users || []).filter(u => u.is_active);
-  const myVote     = data.myVoteFor;
-  const tally      = {};
+  const candidates   = (users || []).filter(u => u.is_active);
+  const myVote       = data.myVoteFor;
+  const myHasChanged = data.myHasChanged;
+  const canChange    = myVote && !myHasChanged;
+  window._eowMyVote  = myVote;
+  const tally        = {};
   data.standings.forEach(s => { tally[s.id] = s.votes; });
   const citTally   = {};
   (data.citizenVotes || []).forEach(c => { citTally[c.nominee_id] = c.votes; });
@@ -1098,7 +1110,7 @@ async function eow() {
           <div class="card-head-icon orange"><i class="fas fa-vote-yea"></i></div>
           <div>
             <div class="card-title">Abstimmung – KW ${isoWeek(data.week)}</div>
-            <div class="card-sub">${myVote ? 'Du hast bereits abgestimmt' : 'Klicke auf einen Mitarbeiter um deine Stimme abzugeben'} · Auszählung: Sonntag 18:00 Uhr</div>
+            <div class="card-sub">${!myVote ? 'Klicke auf einen Mitarbeiter um deine Stimme abzugeben' : canChange ? '<i class="fas fa-rotate-left" style="margin-right:.3rem"></i>Du kannst deine Stimme noch einmalig ändern' : 'Du hast abgestimmt und deine Stimme bereits geändert'} · Auszählung: Sonntag 18:00 Uhr</div>
           </div>
           ${isAdmin() ? `<div style="display:flex;gap:.5rem;margin-left:auto;flex-wrap:wrap">
             <button class="btn btn-primary btn-sm" onclick="countEow()"><i class="fas fa-calculator"></i> Auszählen</button>
@@ -1110,7 +1122,7 @@ async function eow() {
           ${candidates.map(u => {
             const isSelf  = u.id === currentUser.id;
             const isVoted = myVote === u.id;
-            const canVote = !myVote && !isSelf;
+            const canVote = (!myVote || canChange) && !isSelf;
             const total   = (tally[u.id] || 0) + (citTally[u.id] || 0);
             return `
             <div onclick="${canVote ? `confirmVote(${u.id},'${u.username.replace(/'/g,"\\'")}')` : ''}"
@@ -1142,25 +1154,25 @@ async function eow() {
 }
 
 window.confirmVote = (nominee_id, username) => {
+  const isChange = !!window._eowMyVote;
   openModal(`
     <div class="modal-head">
-      <div class="modal-title"><i class="fas fa-vote-yea" style="margin-right:.5rem;color:var(--orange)"></i>Stimme abgeben</div>
+      <div class="modal-title"><i class="fas fa-vote-yea" style="margin-right:.5rem;color:var(--orange)"></i>${isChange ? 'Stimme ändern' : 'Stimme abgeben'}</div>
       <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
     </div>
     <div style="padding:.75rem 0;text-align:center">
-      <p style="font-size:1rem;margin-bottom:.5rem">Möchtest du <strong>${username}</strong> als</p>
-      <p style="font-size:1rem">Mitarbeiter der Woche wählen?</p>
-      <p style="font-size:.8rem;color:var(--muted);margin-top:.75rem">Diese Entscheidung kann nicht rückgängig gemacht werden.</p>
+      <p style="font-size:1rem;margin-bottom:.5rem">${isChange ? 'Möchtest du deine Stimme auf' : 'Möchtest du'} <strong>${username}</strong> ${isChange ? 'ändern?' : 'als Mitarbeiter der Woche wählen?'}</p>
+      <p style="font-size:.8rem;color:var(--muted);margin-top:.75rem">${isChange ? 'Achtung: Du kannst deine Stimme danach nicht mehr ändern.' : 'Du kannst deine Stimme danach noch einmalig ändern.'}</p>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
-      <button class="btn btn-primary" onclick="castVote(${nominee_id})"><i class="fas fa-check"></i> Ja, wählen</button>
+      <button class="btn btn-primary" onclick="castVote(${nominee_id})"><i class="fas fa-check"></i> Ja, ${isChange ? 'ändern' : 'wählen'}</button>
     </div>`);
 };
 window.castVote = async nominee_id => {
   closeModal();
   const r = await api('/api/eow/vote', { method: 'POST', body: { nominee_id } });
-  if (r) { toast('Stimme abgegeben!', 'ok'); eow(); }
+  if (r) { toast(r.changed ? 'Stimme geändert!' : 'Stimme abgegeben!', 'ok'); eow(); }
 };
 window.countEow = async () => {
   const r = await api('/api/eow/count', { method: 'POST' });

@@ -373,7 +373,7 @@ app.get('/api/eow', requireAuth, (req, res) => {
     JOIN users u ON u.id = w.user_id ORDER BY w.announced_at DESC LIMIT 10
   `).all();
 
-  const myVote = db.prepare('SELECT nominee_id FROM eow_votes WHERE voter_id = ? AND week = ?').get(user.id, wk);
+  const myVoteRow = db.prepare('SELECT nominee_id, has_changed FROM eow_votes WHERE voter_id = ? AND week = ?').get(user.id, wk);
 
   const citizenVotes = db.prepare(`
     SELECT nominee_id, COUNT(*) as votes FROM citizen_votes WHERE week = ? GROUP BY nominee_id
@@ -383,7 +383,7 @@ app.get('/api/eow', requireAuth, (req, res) => {
     SELECT nominee_id, voter_username FROM citizen_votes WHERE week = ? ORDER BY rowid ASC
   `).all(wk);
 
-  res.json({ week: wk, currentWinner: winner, displayWinner: lastWinner, standings, history, myVoteFor: myVote?.nominee_id || null, citizenVotes, citizenVoterNames });
+  res.json({ week: wk, currentWinner: winner, displayWinner: lastWinner, standings, history, myVoteFor: myVoteRow?.nominee_id || null, myHasChanged: myVoteRow?.has_changed === 1, citizenVotes, citizenVoterNames });
 });
 
 app.post('/api/eow/reset', requireAdmin, (req, res) => {
@@ -399,12 +399,18 @@ app.post('/api/eow/vote', requireAuth, (req, res) => {
   const user = getUser(req);
   const { nominee_id } = req.body;
   if (+nominee_id === user.id) return res.status(400).json({ error: 'Keine Selbstnominierung' });
+  const existing = db.prepare('SELECT id, has_changed FROM eow_votes WHERE voter_id = ? AND week = ?').get(user.id, wk);
+  if (existing) {
+    if (existing.has_changed) return res.status(409).json({ error: 'Stimme wurde bereits geändert' });
+    db.prepare('UPDATE eow_votes SET nominee_id = ?, has_changed = 1 WHERE id = ?').run(+nominee_id, existing.id);
+    sseEmit('eow_vote', {});
+    return res.json({ ok: true, changed: true });
+  }
   try {
-    db.prepare('INSERT INTO eow_votes (voter_id, nominee_id, week) VALUES (?, ?, ?)').run(user.id, nominee_id, wk);
+    db.prepare('INSERT INTO eow_votes (voter_id, nominee_id, week) VALUES (?, ?, ?)').run(user.id, +nominee_id, wk);
     sseEmit('eow_vote', {});
     res.json({ ok: true });
   } catch (e) {
-    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Diese Woche bereits abgestimmt' });
     res.status(500).json({ error: 'Fehler' });
   }
 });
@@ -770,8 +776,8 @@ app.get('/api/citizen-votes', (req, res) => {
   const wk = votingWeekKey();
   const counts = db.prepare('SELECT nominee_id, COUNT(*) as votes FROM citizen_votes WHERE week = ? GROUP BY nominee_id').all(wk);
   const discordId = req.session.voterDiscordId || (req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null);
-  const myVote = discordId ? db.prepare('SELECT nominee_id FROM citizen_votes WHERE voter_discord_id = ? AND week = ?').get(discordId, wk) : null;
-  res.json({ counts, myVoteFor: myVote?.nominee_id || null });
+  const myVote = discordId ? db.prepare('SELECT nominee_id, has_changed FROM citizen_votes WHERE voter_discord_id = ? AND week = ?').get(discordId, wk) : null;
+  res.json({ counts, myVoteFor: myVote?.nominee_id || null, myHasChanged: myVote?.has_changed === 1 });
 });
 
 app.post('/api/citizen-vote', (req, res) => {
@@ -785,12 +791,18 @@ app.post('/api/citizen-vote', (req, res) => {
   const { nominee_id } = req.body;
   if (!nominee_id) return res.status(400).json({ error: 'Fehlende Felder' });
 
+  const wk = votingWeekKey();
+  const existing = db.prepare('SELECT id, has_changed FROM citizen_votes WHERE voter_discord_id = ? AND week = ?').get(discordId, wk);
+  if (existing) {
+    if (existing.has_changed) return res.status(409).json({ error: 'Stimme wurde bereits geändert' });
+    db.prepare('UPDATE citizen_votes SET nominee_id = ?, has_changed = 1 WHERE id = ?').run(+nominee_id, existing.id);
+    return res.json({ ok: true, changed: true });
+  }
   try {
     db.prepare('INSERT INTO citizen_votes (voter_discord_id, voter_username, nominee_id, week) VALUES (?, ?, ?, ?)')
-      .run(discordId, username, +nominee_id, votingWeekKey());
+      .run(discordId, username, +nominee_id, wk);
     res.json({ ok: true });
   } catch (e) {
-    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Diese Woche bereits abgestimmt' });
     res.status(500).json({ error: 'Fehler' });
   }
 });
