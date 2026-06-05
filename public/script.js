@@ -485,6 +485,7 @@ async function loadVoterMarket() {
   const el = document.getElementById('voterListings');
   if (!el) return;
   const rows = await fetch('/api/car-listings').then(r => r.json()).catch(() => []);
+  console.log('[img-debug] GET listings:', rows.map(l => ({ id: l.id, car: l.car, hasImg: !!l.image_data, imgLen: l.image_data?.length })));
   window._listingsCache = new Map(rows.map(l => [l.id, l]));
   if (!rows.length) {
     el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--muted)"><i class="fas fa-car-side" style="font-size:2rem;display:block;margin-bottom:.75rem;opacity:.3"></i>Noch keine Inserate vorhanden.</div>';
@@ -2308,7 +2309,7 @@ window.deletePrice = async id => {
 async function carmarket() {
   const rows = await api('/api/car-listings');
   if (rows === null) return;
-
+  console.log('[img-debug] carmarket GET:', rows.map(l => ({ id: l.id, car: l.car, hasImg: !!l.image_data, imgLen: l.image_data?.length })));
   window._listingsCache = new Map(rows.map(l => [l.id, l]));
   const canEditAny = isAdmin();
 
@@ -2491,6 +2492,7 @@ window.setListingType = type => {
 window.submitListing = async e => {
   e.preventDefault();
   const imgData = window._listingImg || null;
+  console.log('[img-debug] imgData:', imgData ? `${imgData.length} Zeichen, Anfang: ${imgData.substring(0,40)}` : 'null');
   const res = await fetch('/api/car-listings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
