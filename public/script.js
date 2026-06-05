@@ -162,7 +162,7 @@ function openModal(html) {
   $('modalBox').innerHTML = html;
   $('modalOverlay').classList.remove('hidden');
 }
-function closeModal() { $('modalOverlay').classList.add('hidden'); }
+function closeModal() { $('modalOverlay').classList.add('hidden'); window._listingImg = null; }
 $('modalOverlay').addEventListener('click', e => { if (e.target === $('modalOverlay')) closeModal(); });
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -199,27 +199,33 @@ function compressImage(file, maxW, quality, cb) {
   };
   reader.readAsDataURL(file);
 }
+// Globale Variable – kein DOM-Lookup nötig
+window._listingImg = null;
+
 window.previewListingImage = (inputId, thumbId, wrapId, clearId) => {
   const file = document.getElementById(inputId)?.files?.[0];
   if (!file) return;
-  compressImage(file, 600, 0.65, b64 => {
-    if (b64.length > 900000) { toast('Bild zu groß – bitte kleineres Foto wählen.', 'err'); return; }
+  compressImage(file, 480, 0.6, b64 => {
+    if (b64.length > 700000) { toast('Bild zu groß – bitte kleineres Foto wählen.', 'err'); return; }
+    window._listingImg = b64;
     const t = document.getElementById(thumbId);
     const w = document.getElementById(wrapId);
     const c = document.getElementById(clearId);
-    if (t) { t.src = b64; if (w) w.style.display = ''; }
+    if (t) t.src = b64;
+    if (w) w.style.display = 'block';
     if (c) c.style.display = '';
-    document.getElementById(inputId + 'Data').value = b64;
+    const kb = Math.round(b64.length * 0.75 / 1024);
+    toast(`Foto bereit (${kb} KB)`, 'ok');
   });
 };
 window.clearListingImage = (inputId, thumbId, wrapId, clearId) => {
+  window._listingImg = null;
   const inp = document.getElementById(inputId);
   const w   = document.getElementById(wrapId);
   const c   = document.getElementById(clearId);
   if (inp) inp.value = '';
   if (w) w.style.display = 'none';
   if (c) c.style.display = 'none';
-  document.getElementById(inputId + 'Data').value = '';
 };
 
 const avatarUrl = u => (u?.avatar && u?.discord_id)
@@ -2484,7 +2490,7 @@ window.setListingType = type => {
 
 window.submitListing = async e => {
   e.preventDefault();
-  const imgData = document.getElementById('lImageData')?.value || null;
+  const imgData = window._listingImg || null;
   const res = await fetch('/api/car-listings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2573,7 +2579,7 @@ window.setEditListingType = type => {
 
 window.submitEditListing = async (e, id) => {
   e.preventDefault();
-  const imgData = document.getElementById('elImageData')?.value || undefined;
+  const imgData = window._listingImg;
   const r = await api(`/api/car-listings/${id}`, { method: 'PATCH', body: {
     car:          document.getElementById('elCar').value,
     price:        document.getElementById('elPrice').value,
@@ -2582,7 +2588,7 @@ window.submitEditListing = async (e, id) => {
     notes:        document.getElementById('elNotes').value,
     listing_type: document.getElementById('elTypeVal').value,
     duration:     document.getElementById('elDuration')?.value || null,
-    ...(imgData !== undefined && { image_data: imgData || null }),
+    ...(imgData !== null && imgData !== undefined && { image_data: imgData }),
   }});
   if (r) { closeModal(); toast('Gespeichert!', 'ok'); carmarket(); }
 };
