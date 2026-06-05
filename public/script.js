@@ -180,6 +180,45 @@ const ago = dt => {
   if (s < 86400) return `vor ${Math.floor(s / 3600)} Std`;
   return `vor ${Math.floor(s / 86400)} Tagen`;
 };
+// ── Image helpers ────────────────────────────────────────────────
+function compressImage(file, maxW, quality, cb) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      cb(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+window.previewListingImage = (inputId, thumbId, wrapId, clearId) => {
+  const file = document.getElementById(inputId)?.files?.[0];
+  if (!file) return;
+  compressImage(file, 900, 0.8, b64 => {
+    const t = document.getElementById(thumbId);
+    const w = document.getElementById(wrapId);
+    const c = document.getElementById(clearId);
+    if (t) { t.src = b64; if (w) w.style.display = ''; }
+    if (c) c.style.display = '';
+    document.getElementById(inputId + 'Data').value = b64;
+  });
+};
+window.clearListingImage = (inputId, thumbId, wrapId, clearId) => {
+  const inp = document.getElementById(inputId);
+  const w   = document.getElementById(wrapId);
+  const c   = document.getElementById(clearId);
+  if (inp) inp.value = '';
+  if (w) w.style.display = 'none';
+  if (c) c.style.display = 'none';
+  document.getElementById(inputId + 'Data').value = '';
+};
+
 const avatarUrl = u => (u?.avatar && u?.discord_id)
   ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64`
   : null;
@@ -235,90 +274,149 @@ async function renderVoterScreen() {
   const tally  = {};
   cv.counts.forEach(c => { tally[c.nominee_id] = c.votes; });
 
-  const url = (currentUser.avatar && currentUser.discord_id)
+  const avUrl = (currentUser.avatar && currentUser.discord_id)
     ? `https://cdn.discordapp.com/avatars/${currentUser.discord_id}/${currentUser.avatar}.png?size=64`
     : null;
 
   $('voterScreen').innerHTML = `
-    <div class="login-card" style="max-width:520px;width:100%">
-      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem">
-        ${url ? `<img src="${url}" style="width:44px;height:44px;border-radius:50%;object-fit:cover">` : `<div style="width:44px;height:44px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700">${(currentUser.username||'?')[0].toUpperCase()}</div>`}
-        <div>
-          <div style="font-weight:700">${currentUser.username}</div>
-          <div style="font-size:.78rem;color:var(--muted)">Bürgerstimme</div>
+  <div class="voter-app">
+
+    <!-- Topbar -->
+    <header class="voter-topbar">
+      <div class="voter-topbar-inner">
+        <div class="voter-brand">
+          <div class="voter-brand-logo">AC</div>
+          <div>
+            <div style="font-weight:700;font-size:.9rem;line-height:1.15">ACLS Bürgerportal</div>
+            <div style="font-size:.68rem;color:var(--muted)">Automobil-Club Los Santos</div>
+          </div>
         </div>
-        <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="voterLogout()"><i class="fas fa-sign-out-alt"></i> Abmelden</button>
+        <div style="display:flex;align-items:center;gap:.6rem">
+          <div class="voter-user-pill">
+            ${avUrl
+              ? `<img src="${avUrl}" style="width:24px;height:24px;border-radius:50%;object-fit:cover">`
+              : `<div style="width:24px;height:24px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800">${(currentUser.username||'?')[0].toUpperCase()}</div>`}
+            <span style="font-weight:600">${currentUser.username}</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="voterLogout()" title="Abmelden">
+            <i class="fas fa-sign-out-alt"></i>
+          </button>
+        </div>
       </div>
-      <div style="display:flex;gap:.5rem;margin-bottom:1.25rem;flex-wrap:wrap">
-        <button class="btn btn-primary btn-sm" id="tabPrice" onclick="voterTab('price')" style="flex:1"><i class="fas fa-tags"></i> Preise</button>
-        <button class="btn btn-ghost btn-sm" id="tabVote" onclick="voterTab('vote')" style="flex:1"><i class="fas fa-vote-yea"></i> Abstimmung</button>
-        <button class="btn btn-ghost btn-sm" id="tabComplaint" onclick="voterTab('complaint')" style="flex:1"><i class="fas fa-comment-alt"></i> Beschwerde</button>
-        <button class="btn btn-ghost btn-sm" id="tabMarket" onclick="voterTab('market')" style="flex:1"><i class="fas fa-car-side"></i> Markt</button>
-      </div>
-      <div id="voterTabContent">
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="voter-tabs">
+      <button class="vtab active" id="tabPrice"     onclick="voterTab('price')">
+        <i class="fas fa-tags"></i> Preise
+      </button>
+      <button class="vtab" id="tabVote"      onclick="voterTab('vote')">
+        <i class="fas fa-trophy"></i> MdW-Wahl
+      </button>
+      <button class="vtab" id="tabComplaint" onclick="voterTab('complaint')">
+        <i class="fas fa-comment-alt"></i> Beschwerde
+      </button>
+      <button class="vtab" id="tabMarket"   onclick="voterTab('market')">
+        <i class="fas fa-car-side"></i> Fahrzeugmarkt
+      </button>
+    </nav>
+
+    <!-- Content -->
+    <div class="voter-content">
+
+      <!-- Preise -->
       <div id="priceSection">
+        <div class="voter-section-head">
+          <div><h2>Preisliste</h2><p>Aktuelle Fahrschul- und Servicepreise</p></div>
+        </div>
         <div id="voterPrices"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
       </div>
+
+      <!-- MdW-Abstimmung -->
       <div id="voteSection" style="display:none">
-      <h2 style="margin-bottom:.25rem">Mitarbeiter der Woche</h2>
-      <p style="color:var(--muted);font-size:.85rem;margin-bottom:1.25rem">
-        ${myVote ? 'Du hast bereits abgestimmt.' : 'Wähle einen ACLS-Mitarbeiter dieser Woche.'}
-      </p>
-      ${(users || []).map(u => {
-        const av = (u.avatar && u.discord_id) ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64` : null;
-        const voted = myVote === u.id;
-        return `<div class="vote-item${voted ? ' voted' : ''}" ${!myVote ? `onclick="castCitizenVote(${u.id})"` : ''} style="cursor:${!myVote ? 'pointer' : 'default'}">
-          ${av ? `<img src="${av}" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">` : `<div style="width:38px;height:38px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">${(u.username||'?')[0].toUpperCase()}</div>`}
-          <div style="flex:1">
-            <div class="vote-name">${u.username}</div>
-            <div class="vote-count">${tally[u.id] || 0} Bürgerstimmen</div>
+        <div class="voter-section-head">
+          <div>
+            <h2>Mitarbeiter der Woche</h2>
+            <p>${myVote ? 'Du hast bereits abgestimmt.' : 'Wähle den ACLS-Mitarbeiter dieser Woche.'}</p>
           </div>
-          ${voted ? '<i class="fas fa-check-circle" style="color:var(--orange)"></i>' : ''}
-        </div>`;
-      }).join('')}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.6rem">
+        ${(users || []).map(u => {
+          const av = (u.avatar && u.discord_id)
+            ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64` : null;
+          const voted = myVote === u.id;
+          const votes = tally[u.id] || 0;
+          return `<div class="vote-item${voted ? ' voted' : ''}" ${!myVote ? `onclick="castCitizenVote(${u.id})"` : ''} style="cursor:${!myVote ? 'pointer' : 'default'}">
+            ${av
+              ? `<img src="${av}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">`
+              : `<div style="width:40px;height:40px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;flex-shrink:0">${(u.username||'?')[0].toUpperCase()}</div>`}
+            <div style="flex:1;min-width:0">
+              <div class="vote-name">${u.username}</div>
+              <div class="vote-count">${votes} Bürgerstimme${votes !== 1 ? 'n' : ''}</div>
+            </div>
+            ${voted ? '<span style="background:#f9731622;color:var(--orange);font-size:.72rem;font-weight:700;padding:.2rem .6rem;border-radius:20px"><i class="fas fa-check"></i> Gewählt</span>' : (!myVote ? '<i class="fas fa-chevron-right" style="color:var(--muted);font-size:.75rem"></i>' : '')}
+          </div>`;
+        }).join('')}
+        </div>
       </div>
+
+      <!-- Beschwerde -->
       <div id="complaintSection" style="display:none">
-        <h2 style="margin-bottom:.25rem">Beschwerde einreichen</h2>
-        <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem">Schildere dein Anliegen — ein Admin wird sich darum kümmern.</p>
-        <form onsubmit="submitComplaintForm(event)">
-          <div class="form-group"><label>Dein Name (IC)</label><input class="form-control" id="cName" value="${currentUser.username||''}" required></div>
-          <div class="form-group"><label>Betreff</label><input class="form-control" id="cSubject" placeholder="Kurze Zusammenfassung" required></div>
-          <div class="form-group"><label>Nachricht</label><textarea class="form-control" id="cMessage" rows="4" placeholder="Beschreibe dein Anliegen..." required style="resize:vertical"></textarea></div>
-          <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-paper-plane"></i> Absenden</button>
-        </form>
-        <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border)">
-          <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.75rem">Meine Beschwerden</div>
-          <div id="my-complaints-list"><div style="color:var(--muted);font-size:.85rem">Wird geladen…</div></div>
+        <div class="voter-section-head">
+          <div><h2>Beschwerde einreichen</h2><p>Ein Admin wird sich so schnell wie möglich darum kümmern.</p></div>
         </div>
+        <div class="card" style="margin-bottom:1.25rem">
+          <form onsubmit="submitComplaintForm(event)">
+            <div class="form-group"><label>Dein Name (IC)</label><input class="form-control" id="cName" value="${currentUser.username||''}" required></div>
+            <div class="form-group"><label>Betreff</label><input class="form-control" id="cSubject" placeholder="Kurze Zusammenfassung" required></div>
+            <div class="form-group"><label>Nachricht</label><textarea class="form-control" id="cMessage" rows="4" placeholder="Beschreibe dein Anliegen ausführlich…" required style="resize:vertical"></textarea></div>
+            <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-paper-plane"></i> Absenden</button>
+          </form>
+        </div>
+        <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem">Meine Beschwerden</div>
+        <div id="my-complaints-list"><div style="color:var(--muted);font-size:.85rem">Wird geladen…</div></div>
       </div>
+
+      <!-- Fahrzeugmarkt -->
       <div id="marketSection" style="display:none">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
-          <h2 style="margin:0">Fahrzeugmarkt</h2>
-          <button class="btn btn-primary btn-sm" onclick="openAddListing()"><i class="fas fa-plus"></i> Inserat</button>
+        <div class="voter-section-head">
+          <div><h2>Fahrzeugmarkt</h2><p>Private Inserate von Bürgern</p></div>
+          <button class="btn btn-primary btn-sm" onclick="openAddListing()"><i class="fas fa-plus"></i> Inserat erstellen</button>
         </div>
-        <div id="voterListings" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:.65rem">
+        <div id="voterListings" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem">
           <div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div>
         </div>
       </div>
-      </div>
-      <div style="margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border)">
-        <div id="twitch-widget"><div class="twitch-card"><div class="twitch-offline-dot"></div><div style="font-size:.8rem;color:#9ca3af;margin-left:.5rem">Wird geladen…</div></div></div>
-        <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem;margin-top:1rem">Minispiele</div>
-        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-          <a href="/game"  target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center"><i class="fas fa-car"></i> Autorennen</a>
-          <a href="/game2" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center"><i class="fas fa-th-large"></i> Brick Breaker</a>
-          <a href="/game3" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#ef4444"><i class="fas fa-biohazard" style="color:#ef4444"></i> Dead Zone</a>
-          <a href="/game4" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center"><i class="fas fa-snake"></i> Snake</a>
-          <a href="/game5" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center"><i class="fas fa-th-large"></i> Tetris</a>
-          <a href="/game6" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#fbbf24"><i class="fas fa-dice" style="color:#fbbf24"></i> Book of Ra</a>
-          <a href="/game7" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#60a5fa"><i class="fas fa-helicopter" style="color:#60a5fa"></i> Sky Cop</a>
-          <a href="/game8" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#4ade80"><i class="fas fa-frog" style="color:#4ade80"></i> Doodle Jump</a>
-          <a href="/game9" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#f97316"><i class="fas fa-shield-alt" style="color:#f97316"></i> Tower Defense</a>
-          <a href="/game10" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#f59e0b"><i class="fas fa-th" style="color:#f59e0b"></i> 2048</a>
-          <a href="/quiz" target="_blank" class="btn btn-ghost btn-sm" style="flex:1;min-width:45%;text-align:center;color:#22c55e"><i class="fas fa-graduation-cap" style="color:#22c55e"></i> Prüfungsquiz</a>
+
+    </div><!-- /voter-content -->
+
+    <!-- Footer: Twitch + Games -->
+    <footer class="voter-footer">
+      <div class="voter-footer-inner">
+        <div id="twitch-widget" style="margin-bottom:1.25rem">
+          <div class="twitch-card"><div class="twitch-offline-dot"></div><div style="font-size:.8rem;color:#9ca3af;margin-left:.5rem">Wird geladen…</div></div>
+        </div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;margin-bottom:.6rem">
+          <i class="fas fa-gamepad" style="margin-right:.4rem"></i>Minispiele
+        </div>
+        <div class="voter-games-grid">
+          <a href="/game"   target="_blank" class="voter-game-btn"><i class="fas fa-car"></i> Autorennen</a>
+          <a href="/game2"  target="_blank" class="voter-game-btn"><i class="fas fa-th-large"></i> Brick Breaker</a>
+          <a href="/game3"  target="_blank" class="voter-game-btn" style="color:#ef4444"><i class="fas fa-biohazard" style="color:#ef4444"></i> Dead Zone</a>
+          <a href="/game4"  target="_blank" class="voter-game-btn"><i class="fas fa-snake"></i> Snake</a>
+          <a href="/game5"  target="_blank" class="voter-game-btn"><i class="fas fa-th-large"></i> Tetris</a>
+          <a href="/game6"  target="_blank" class="voter-game-btn" style="color:#fbbf24"><i class="fas fa-dice" style="color:#fbbf24"></i> Book of Ra</a>
+          <a href="/game7"  target="_blank" class="voter-game-btn" style="color:#60a5fa"><i class="fas fa-helicopter" style="color:#60a5fa"></i> Sky Cop</a>
+          <a href="/game8"  target="_blank" class="voter-game-btn" style="color:#4ade80"><i class="fas fa-frog" style="color:#4ade80"></i> Doodle Jump</a>
+          <a href="/game9"  target="_blank" class="voter-game-btn" style="color:#f97316"><i class="fas fa-shield-alt" style="color:#f97316"></i> Tower Defense</a>
+          <a href="/game10" target="_blank" class="voter-game-btn" style="color:#f59e0b"><i class="fas fa-th" style="color:#f59e0b"></i> 2048</a>
+          <a href="/quiz"   target="_blank" class="voter-game-btn" style="color:#22c55e"><i class="fas fa-graduation-cap" style="color:#22c55e"></i> Prüfungsquiz</a>
         </div>
       </div>
-    </div>`;
+    </footer>
+
+  </div>`;
+
   loadVoterPrices();
   loadTwitchWidget();
 }
@@ -330,7 +428,7 @@ window.voterTab = tab => {
   document.getElementById('marketSection').style.display    = tab === 'market'    ? '' : 'none';
   ['price','vote','complaint','market'].forEach(t => {
     const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
-    if (el) el.className = `btn btn-sm ${t === tab ? 'btn-primary' : 'btn-ghost'}`;
+    if (el) el.classList.toggle('active', t === tab);
   });
   if (tab === 'market')    loadVoterMarket();
   if (tab === 'price')     loadVoterPrices();
@@ -381,7 +479,7 @@ async function loadVoterMarket() {
   if (!el) return;
   const rows = await fetch('/api/car-listings').then(r => r.json()).catch(() => []);
   if (!rows.length) {
-    el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--muted)">Noch keine Inserate vorhanden.</div>';
+    el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--muted)"><i class="fas fa-car-side" style="font-size:2rem;display:block;margin-bottom:.75rem;opacity:.3"></i>Noch keine Inserate vorhanden.</div>';
     return;
   }
   el.innerHTML = rows.map(l => {
@@ -390,21 +488,26 @@ async function loadVoterMarket() {
     const isRent  = l.listing_type === 'vermietung';
     const dur     = l.duration === '7_tage' ? '7 Tage' : l.duration === '1_monat' ? '1 Monat' : '';
     return `
-    <div style="background:var(--surface2);border-radius:10px;padding:.85rem">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-bottom:.4rem">
-        <div style="min-width:0;flex:1">
-          <div style="font-weight:700;font-size:.95rem">${l.car}</div>
-          <div style="font-weight:800;color:#f97316;font-size:.95rem">${l.price}$${isRent && dur ? `<span style="font-size:.72rem;font-weight:600;color:var(--muted);margin-left:.3rem">/ ${dur}</span>` : ''}</div>
+    <div class="card" style="display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden">
+      ${l.image_data
+        ? `<div class="listing-img-wrap"><img class="listing-img" src="${l.image_data}" alt="${l.car}" loading="lazy"></div>`
+        : `<div class="listing-no-img"><i class="fas fa-${isRent ? 'key' : 'car-side'}" style="color:var(--orange);font-size:1.6rem;opacity:.5"></i></div>`}
+      <div style="padding:.85rem;display:flex;flex-direction:column;gap:.4rem;flex:1">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem">
+          <div style="min-width:0;flex:1">
+            <div style="font-weight:800;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${l.car}">${l.car}</div>
+            <div style="font-size:1.05rem;font-weight:800;color:#f97316">${l.price}$${isRent && dur ? `<span style="font-size:.72rem;font-weight:600;color:var(--muted);margin-left:.35rem">/ ${dur}</span>` : ''}</div>
+          </div>
+          ${canDel ? `<button class="btn btn-danger btn-sm" onclick="voterDeleteListing(${l.id})" title="Löschen"><i class="fas fa-trash" style="font-size:.7rem"></i></button>` : ''}
         </div>
-        ${canDel ? `<button class="btn btn-danger btn-sm" onclick="voterDeleteListing(${l.id})"><i class="fas fa-trash"></i></button>` : ''}
+        <div>${listingTypeBadge(l)}</div>
+        <div style="font-size:.8rem;color:var(--muted);display:flex;flex-direction:column;gap:.2rem;margin-top:.15rem">
+          <div><i class="fas fa-user" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.name}</div>
+          <div><i class="fas fa-phone" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.phone}</div>
+          ${l.notes ? `<div style="font-style:italic;margin-top:.15rem;color:var(--text)">${l.notes}</div>` : ''}
+        </div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:auto;padding-top:.5rem;border-top:1px solid var(--border)">${ago(l.created_at)}</div>
       </div>
-      <div style="margin-bottom:.45rem">${listingTypeBadge(l)}</div>
-      <div style="font-size:.8rem;color:var(--muted);display:flex;flex-direction:column;gap:.15rem">
-        <div><i class="fas fa-user" style="width:13px;text-align:center;margin-right:.3rem"></i>${l.name}</div>
-        <div><i class="fas fa-phone" style="width:13px;text-align:center;margin-right:.3rem"></i>${l.phone}</div>
-        ${l.notes ? `<div style="font-style:italic;margin-top:.2rem">${l.notes}</div>` : ''}
-      </div>
-      <div style="font-size:.7rem;color:var(--muted);margin-top:.4rem">${ago(l.created_at)}</div>
     </div>`;
   }).join('');
 }
@@ -2229,27 +2332,29 @@ function listingCard(l, canEditAny) {
   const isRent  = l.listing_type === 'vermietung';
   const dur     = l.duration === '7_tage' ? '7 Tage' : l.duration === '1_monat' ? '1 Monat' : '';
   return `
-  <div class="card" style="display:flex;flex-direction:column;gap:.5rem">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem">
-      <div style="min-width:0;flex:1">
-        <div style="font-weight:800;font-size:1.05rem;margin-bottom:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${l.car}">${l.car}</div>
-        <div style="font-size:1.1rem;font-weight:800;color:#f97316">${l.price}$${isRent && dur ? `<span style="font-size:.75rem;font-weight:600;color:var(--muted);margin-left:.3rem">/ ${dur}</span>` : ''}</div>
+  <div class="card" style="display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden">
+    ${l.image_data
+      ? `<div class="listing-img-wrap"><img class="listing-img" src="${l.image_data}" alt="${l.car}" loading="lazy"></div>`
+      : `<div class="listing-no-img"><i class="fas fa-${isRent ? 'key' : 'car-side'}" style="color:var(--orange);font-size:1.6rem;opacity:.45"></i></div>`}
+    <div style="padding:.9rem;display:flex;flex-direction:column;gap:.45rem;flex:1">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem">
+        <div style="min-width:0;flex:1">
+          <div style="font-weight:800;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${l.car}">${l.car}</div>
+          <div style="font-size:1.1rem;font-weight:800;color:#f97316">${l.price}$${isRent && dur ? `<span style="font-size:.75rem;font-weight:600;color:var(--muted);margin-left:.3rem">/ ${dur}</span>` : ''}</div>
+        </div>
       </div>
-      <div style="flex-shrink:0;width:44px;height:44px;border-radius:10px;background:#f9731618;display:flex;align-items:center;justify-content:center">
-        <i class="fas fa-${isRent ? 'key' : 'car-side'}" style="color:#f97316;font-size:1.1rem"></i>
+      <div>${listingTypeBadge(l)}</div>
+      <div style="display:flex;flex-direction:column;gap:.25rem;font-size:.83rem;color:var(--muted)">
+        <div><i class="fas fa-user" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.name}</div>
+        <div><i class="fas fa-phone" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.phone}</div>
+        ${l.notes ? `<div style="margin-top:.2rem;font-style:italic;color:var(--text)">${l.notes}</div>` : ''}
       </div>
-    </div>
-    <div>${listingTypeBadge(l)}</div>
-    <div style="display:flex;flex-direction:column;gap:.25rem;font-size:.83rem;color:var(--muted)">
-      <div><i class="fas fa-user" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.name}</div>
-      <div><i class="fas fa-phone" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.phone}</div>
-      ${l.notes ? `<div style="margin-top:.2rem;font-style:italic;color:var(--text-2,var(--muted))">${l.notes}</div>` : ''}
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:.5rem;border-top:1px solid var(--border)">
-      <div style="font-size:.72rem;color:var(--muted)">${ago(l.created_at)}</div>
-      <div style="display:flex;gap:.35rem">
-        ${canEditAny ? `<button class="btn btn-ghost btn-sm" title="Bearbeiten" onclick="openEditListing(${l.id},'${encodeURIComponent(JSON.stringify(l))}')"><i class="fas fa-pen" style="font-size:.7rem"></i></button>` : ''}
-        ${canDel ? `<button class="btn btn-danger btn-sm" title="Löschen" onclick="deleteListing(${l.id})"><i class="fas fa-trash" style="font-size:.7rem"></i></button>` : ''}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:.5rem;border-top:1px solid var(--border)">
+        <div style="font-size:.72rem;color:var(--muted)">${ago(l.created_at)}</div>
+        <div style="display:flex;gap:.35rem">
+          ${canEditAny ? `<button class="btn btn-ghost btn-sm" title="Bearbeiten" onclick="openEditListing(${l.id},'${encodeURIComponent(JSON.stringify({...l, image_data: null}))}')"><i class="fas fa-pen" style="font-size:.7rem"></i></button>` : ''}
+          ${canDel ? `<button class="btn btn-danger btn-sm" title="Löschen" onclick="deleteListing(${l.id})"><i class="fas fa-trash" style="font-size:.7rem"></i></button>` : ''}
+        </div>
       </div>
     </div>
   </div>`;
@@ -2289,6 +2394,23 @@ window.openAddListing = () => {
       </div>
       <div class="form-group"><label>Dein Name *</label><input class="form-control" id="lName" placeholder="Vor- und Nachname (IC)" required value="${currentUser?.username || ''}"></div>
       <div class="form-group"><label>Notizen (optional)</label><textarea class="form-control" id="lNotes" rows="3" placeholder="Zustand, Ausstattung, besondere Merkmale…" style="resize:vertical"></textarea></div>
+      <div class="form-group">
+        <label>Fahrzeugfoto (optional)</label>
+        <input type="hidden" id="lImageData" value="">
+        <div id="lImgPreview" style="display:none;margin-bottom:.5rem">
+          <img id="lImgThumb" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+        </div>
+        <div style="display:flex;gap:.5rem">
+          <div class="img-upload-area" style="flex:1" onclick="document.getElementById('lImage').click()">
+            <i class="fas fa-camera" style="color:var(--orange);margin-bottom:.3rem;display:block;font-size:1.1rem"></i>
+            <div style="font-size:.8rem;color:var(--muted)">Foto auswählen</div>
+          </div>
+          <button type="button" id="lImgClear" class="btn btn-ghost btn-sm" style="display:none;color:#ef4444;align-self:center" onclick="clearListingImage('lImage','lImgThumb','lImgPreview','lImgClear')">
+            <i class="fas fa-times"></i> Entfernen
+          </button>
+        </div>
+        <input type="file" id="lImage" accept="image/*" style="display:none" onchange="previewListingImage('lImage','lImgThumb','lImgPreview','lImgClear')">
+      </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
         <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i> Inserieren</button>
@@ -2307,6 +2429,7 @@ window.setListingType = type => {
 
 window.submitListing = async e => {
   e.preventDefault();
+  const imgData = document.getElementById('lImageData')?.value || null;
   const res = await fetch('/api/car-listings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2318,13 +2441,13 @@ window.submitListing = async e => {
       notes:        document.getElementById('lNotes').value,
       listing_type: document.getElementById('lTypeVal').value,
       duration:     document.getElementById('lDuration')?.value || null,
+      image_data:   imgData || null,
     }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) { toast(data.error || 'Fehler', 'err'); return; }
   closeModal();
   toast('Inserat erstellt!', 'ok');
-  // Refresh whichever view is active
   if (document.getElementById('listingGrid')) carmarket();
   else if (document.getElementById('voterListings')) loadVoterMarket();
 };
@@ -2360,6 +2483,23 @@ window.openEditListing = (id, encoded) => {
       </div>
       <div class="form-group"><label>Name *</label><input class="form-control" id="elName" value="${l.name}" required></div>
       <div class="form-group"><label>Notizen</label><textarea class="form-control" id="elNotes" rows="3" style="resize:vertical">${l.notes || ''}</textarea></div>
+      <div class="form-group">
+        <label>Fahrzeugfoto</label>
+        <input type="hidden" id="elImageData" value="">
+        <div id="elImgPreview" style="display:none;margin-bottom:.5rem">
+          <img id="elImgThumb" style="width:100%;max-height:140px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+        </div>
+        <div style="display:flex;gap:.5rem">
+          <div class="img-upload-area" style="flex:1" onclick="document.getElementById('elImage').click()">
+            <i class="fas fa-camera" style="color:var(--orange);margin-bottom:.3rem;display:block;font-size:1rem"></i>
+            <div style="font-size:.78rem;color:var(--muted)">Neues Foto hochladen</div>
+          </div>
+          <button type="button" id="elImgClear" class="btn btn-ghost btn-sm" style="display:none;color:#ef4444;align-self:center" onclick="clearListingImage('elImage','elImgThumb','elImgPreview','elImgClear')">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <input type="file" id="elImage" accept="image/*" style="display:none" onchange="previewListingImage('elImage','elImgThumb','elImgPreview','elImgClear')">
+      </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
         <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
@@ -2378,6 +2518,7 @@ window.setEditListingType = type => {
 
 window.submitEditListing = async (e, id) => {
   e.preventDefault();
+  const imgData = document.getElementById('elImageData')?.value || undefined;
   const r = await api(`/api/car-listings/${id}`, { method: 'PATCH', body: {
     car:          document.getElementById('elCar').value,
     price:        document.getElementById('elPrice').value,
@@ -2386,6 +2527,7 @@ window.submitEditListing = async (e, id) => {
     notes:        document.getElementById('elNotes').value,
     listing_type: document.getElementById('elTypeVal').value,
     duration:     document.getElementById('elDuration')?.value || null,
+    ...(imgData !== undefined && { image_data: imgData || null }),
   }});
   if (r) { closeModal(); toast('Gespeichert!', 'ok'); carmarket(); }
 };
@@ -2393,7 +2535,11 @@ window.submitEditListing = async (e, id) => {
 window.deleteListing = async id => {
   if (!confirm('Inserat löschen?')) return;
   const r = await api(`/api/car-listings/${id}`, { method: 'DELETE' });
-  if (r) { toast('Inserat gelöscht.', 'ok'); carmarket(); }
+  if (r) {
+    toast('Inserat gelöscht.', 'ok');
+    if (document.getElementById('listingGrid')) carmarket();
+    else loadVoterMarket();
+  }
 };
 
 // ════════════════════════════════════════════════════════════════

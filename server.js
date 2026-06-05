@@ -45,8 +45,8 @@ class SQLiteStore extends session.Store {
 
 // ── Middleware ──────────────────────────────────────────────────
 app.set('trust proxy', 1);
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '8mb' }));
+app.use(express.urlencoded({ extended: true, limit: '8mb' }));
 app.use(session({
   store: new SQLiteStore(db),
   secret: process.env.SESSION_SECRET || 'acls-dev-secret',
@@ -1577,14 +1577,13 @@ app.get('/api/car-listings', (req, res) => {
 });
 
 app.post('/api/car-listings', requireLogin, (req, res) => {
-  const { name, phone, car, price, notes } = req.body;
+  const { name, phone, car, price, notes, listing_type, duration, image_data } = req.body;
   if (!name?.trim() || !phone?.trim() || !car?.trim() || !price?.trim())
     return res.status(400).json({ error: 'Fehlende Felder' });
   const u = getUser(req);
-  const { listing_type, duration } = req.body;
   const r = db.prepare(
-    'INSERT INTO car_listings (name, phone, car, price, notes, listing_type, duration, owner_discord_id, owner_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, u?.discord_id || null, u?.id || null);
+    'INSERT INTO car_listings (name, phone, car, price, notes, listing_type, duration, owner_discord_id, owner_user_id, image_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, u?.discord_id || null, u?.id || null, image_data || null);
   res.json({ ok: true, id: r.lastInsertRowid });
 });
 
@@ -1596,9 +1595,9 @@ app.patch('/api/car-listings/:id', requireLogin, (req, res) => {
     return res.status(400).json({ error: 'Fehlende Felder' });
   const item = db.prepare('SELECT id FROM car_listings WHERE id = ?').get(+req.params.id);
   if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
-  const { listing_type, duration } = req.body;
-  db.prepare('UPDATE car_listings SET name=?, phone=?, car=?, price=?, notes=?, listing_type=?, duration=? WHERE id=?')
-    .run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, +req.params.id);
+  const { listing_type, duration, image_data } = req.body;
+  db.prepare('UPDATE car_listings SET name=?, phone=?, car=?, price=?, notes=?, listing_type=?, duration=?, image_data=? WHERE id=?')
+    .run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, image_data ?? null, +req.params.id);
   res.json({ ok: true });
 });
 
