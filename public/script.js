@@ -485,7 +485,6 @@ async function loadVoterMarket() {
   const el = document.getElementById('voterListings');
   if (!el) return;
   const rows = await fetch('/api/car-listings').then(r => r.json()).catch(() => []);
-  console.log('[img-debug] GET listings:', rows.map(l => ({ id: l.id, car: l.car, hasImg: !!l.image_data, imgLen: l.image_data?.length })));
   window._listingsCache = new Map(rows.map(l => [l.id, l]));
   if (!rows.length) {
     el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--muted)"><i class="fas fa-car-side" style="font-size:2rem;display:block;margin-bottom:.75rem;opacity:.3"></i>Noch keine Inserate vorhanden.</div>';
@@ -2309,7 +2308,6 @@ window.deletePrice = async id => {
 async function carmarket() {
   const rows = await api('/api/car-listings');
   if (rows === null) return;
-  console.log('[img-debug] carmarket GET:', rows.map(l => ({ id: l.id, car: l.car, hasImg: !!l.image_data, imgLen: l.image_data?.length })));
   window._listingsCache = new Map(rows.map(l => [l.id, l]));
   const canEditAny = isAdmin();
 
@@ -2492,7 +2490,6 @@ window.setListingType = type => {
 window.submitListing = async e => {
   e.preventDefault();
   const imgData = window._listingImg || null;
-  console.log('[img-debug] imgData:', imgData ? `${imgData.length} Zeichen, Anfang: ${imgData.substring(0,40)}` : 'null');
   const res = await fetch('/api/car-listings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2518,6 +2515,9 @@ window.submitListing = async e => {
 window.openEditListing = (id, encoded) => {
   const l = JSON.parse(decodeURIComponent(encoded));
   const isRent = l.listing_type === 'vermietung';
+  // Load existing image from cache so it's preserved on save
+  const cached = window._listingsCache?.get(id);
+  window._listingImg = cached?.image_data || null;
   openModal(`
     <div class="modal-head">
       <div class="modal-title"><i class="fas fa-pen" style="color:var(--orange);margin-right:.5rem"></i>Inserat bearbeiten</div>
@@ -2548,16 +2548,15 @@ window.openEditListing = (id, encoded) => {
       <div class="form-group"><label>Notizen</label><textarea class="form-control" id="elNotes" rows="3" style="resize:vertical">${l.notes || ''}</textarea></div>
       <div class="form-group">
         <label>Fahrzeugfoto</label>
-        <input type="hidden" id="elImageData" value="">
-        <div id="elImgPreview" style="display:none;margin-bottom:.5rem">
-          <img id="elImgThumb" style="width:100%;max-height:140px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+        <div id="elImgPreview" style="${cached?.image_data ? '' : 'display:none'};margin-bottom:.5rem">
+          <img id="elImgThumb" src="${cached?.image_data || ''}" style="width:100%;max-height:140px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
         </div>
         <div style="display:flex;gap:.5rem">
           <div class="img-upload-area" style="flex:1" onclick="document.getElementById('elImage').click()">
             <i class="fas fa-camera" style="color:var(--orange);margin-bottom:.3rem;display:block;font-size:1rem"></i>
-            <div style="font-size:.78rem;color:var(--muted)">Neues Foto hochladen</div>
+            <div style="font-size:.78rem;color:var(--muted)">${cached?.image_data ? 'Foto ersetzen' : 'Foto hochladen'}</div>
           </div>
-          <button type="button" id="elImgClear" class="btn btn-ghost btn-sm" style="display:none;color:#ef4444;align-self:center" onclick="clearListingImage('elImage','elImgThumb','elImgPreview','elImgClear')">
+          <button type="button" id="elImgClear" class="btn btn-ghost btn-sm" style="${cached?.image_data ? '' : 'display:none'};color:#ef4444;align-self:center" onclick="clearListingImage('elImage','elImgThumb','elImgPreview','elImgClear')">
             <i class="fas fa-times"></i>
           </button>
         </div>
@@ -2581,7 +2580,6 @@ window.setEditListingType = type => {
 
 window.submitEditListing = async (e, id) => {
   e.preventDefault();
-  const imgData = window._listingImg;
   const r = await api(`/api/car-listings/${id}`, { method: 'PATCH', body: {
     car:          document.getElementById('elCar').value,
     price:        document.getElementById('elPrice').value,
@@ -2590,7 +2588,7 @@ window.submitEditListing = async (e, id) => {
     notes:        document.getElementById('elNotes').value,
     listing_type: document.getElementById('elTypeVal').value,
     duration:     document.getElementById('elDuration')?.value || null,
-    ...(imgData !== null && imgData !== undefined && { image_data: imgData }),
+    image_data:   window._listingImg,
   }});
   if (r) { closeModal(); toast('Gespeichert!', 'ok'); carmarket(); }
 };
