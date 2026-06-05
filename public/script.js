@@ -366,9 +366,8 @@ async function renderVoterScreen() {
 
         <!-- Preisliste -->
         <div id="priceSection">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem">
+          <div style="margin-bottom:1.25rem">
             <div id="vPollWidget"></div>
-            <div id="vChallengesWidget"></div>
           </div>
           <div id="voterPrices"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
         </div>
@@ -454,7 +453,6 @@ async function renderVoterScreen() {
   loadVoterTeam();
   loadVoterApply();
   loadPollWidget('vPollWidget');
-  loadChallengesWidget('vChallengesWidget');
 }
 
 async function loadVoterTeam() {
@@ -698,7 +696,7 @@ window.voterTab = tab => {
     if (sEl) sEl.textContent = p.sub;
   }
   if (tab === 'market')    loadVoterMarket();
-  if (tab === 'price')     { loadVoterPrices(); loadPollWidget('vPollWidget'); loadChallengesWidget('vChallengesWidget'); }
+  if (tab === 'price')     { loadVoterPrices(); loadPollWidget('vPollWidget'); }
   if (tab === 'complaint') loadMyComplaints();
 };
 
