@@ -1876,6 +1876,92 @@ app.delete('/api/applications/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ── UMFRAGEN (Poll-Widget) ─────────────────────────────────────────
+app.get('/api/poll/active', (req, res) => {
+  const discordId = req.session.voterDiscordId ||
+    (req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null);
+  const poll = db.prepare('SELECT * FROM polls WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1').get();
+  if (!poll) return res.json(null);
+  const options = JSON.parse(poll.options);
+  const votes = db.prepare('SELECT option_idx, COUNT(*) as count FROM poll_votes WHERE poll_id = ? GROUP BY option_idx').all(poll.id);
+  const totalVotes = votes.reduce((s, v) => s + v.count, 0);
+  const myVoteRow = discordId ? db.prepare('SELECT option_idx FROM poll_votes WHERE poll_id = ? AND discord_id = ?').get(poll.id, discordId) : null;
+  res.json({
+    id: poll.id, question: poll.question,
+    options: options.map((label, i) => ({ idx: i, label, count: votes.find(v => v.option_idx === i)?.count || 0 })),
+    totalVotes, myVote: myVoteRow?.option_idx ?? null,
+  });
+});
+
+app.post('/api/poll/vote', (req, res) => {
+  const discordId = req.session.voterDiscordId ||
+    (req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null);
+  if (!discordId) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const { poll_id, option_idx } = req.body;
+  const poll = db.prepare('SELECT * FROM polls WHERE id = ? AND is_active = 1').get(+poll_id);
+  if (!poll) return res.status(404).json({ error: 'Umfrage nicht gefunden' });
+  const options = JSON.parse(poll.options);
+  if (+option_idx < 0 || +option_idx >= options.length) return res.status(400).json({ error: 'Ungültige Option' });
+  const existing = db.prepare('SELECT id FROM poll_votes WHERE poll_id = ? AND discord_id = ?').get(+poll_id, discordId);
+  if (existing) return res.status(409).json({ error: 'Du hast bereits abgestimmt' });
+  db.prepare('INSERT INTO poll_votes (poll_id, discord_id, option_idx) VALUES (?,?,?)').run(+poll_id, discordId, +option_idx);
+  res.json({ ok: true });
+});
+
+app.post('/api/polls', requireAdmin, (req, res) => {
+  const { question, options } = req.body;
+  const opts = (Array.isArray(options) ? options : []).map(o => String(o).trim()).filter(Boolean);
+  if (!question?.trim() || opts.length < 2) return res.status(400).json({ error: 'Frage und mindestens 2 Optionen erforderlich' });
+  db.prepare('UPDATE polls SET is_active = 0').run();
+  const r = db.prepare('INSERT INTO polls (question, options, created_by) VALUES (?,?,?)').run(question.trim(), JSON.stringify(opts), req.adminUser.id);
+  auditLog(req, 'poll_created', `q=${question.trim().slice(0, 50)}`);
+  res.json({ ok: true, id: r.lastInsertRowid });
+});
+
+app.delete('/api/polls/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM poll_votes WHERE poll_id = ?').run(+req.params.id);
+  db.prepare('DELETE FROM polls WHERE id = ?').run(+req.params.id);
+  auditLog(req, 'poll_deleted', `id=${req.params.id}`);
+  res.json({ ok: true });
+});
+
+app.patch('/api/polls/:id/deactivate', requireAdmin, (req, res) => {
+  db.prepare('UPDATE polls SET is_active = 0 WHERE id = ?').run(+req.params.id);
+  res.json({ ok: true });
+});
+
+// ── WÖCHENTLICHE CHALLENGES ────────────────────────────────────────
+app.get('/api/challenges', (req, res) => {
+  const wk = votingWeekKey();
+  const userId = req.session.userId;
+  const voterDiscordId = req.session.voterDiscordId;
+
+  const now = new Date();
+  const day = now.getUTCDay();
+  const daysToMon = day === 0 ? 6 : day - 1;
+  const mon = new Date(now);
+  mon.setUTCDate(now.getUTCDate() - daysToMon);
+  const mondayDate = mon.toISOString().split('T')[0];
+
+  const challenges = [];
+
+  if (userId) {
+    const voted = db.prepare('SELECT 1 FROM eow_votes WHERE voter_id = ? AND week = ?').get(userId, wk);
+    challenges.push({ id: 'eow_vote', icon: 'fa-trophy', title: 'MdW abstimmen', desc: 'Stimme für den Mitarbeiter der Woche ab', progress: voted ? 1 : 0, target: 1 });
+
+    const exam = db.prepare('SELECT 1 FROM rank_exams WHERE examiner_id = ? AND date(taken_at) >= ?').get(userId, mondayDate);
+    challenges.push({ id: 'conduct_exam', icon: 'fa-clipboard-check', title: 'Prüfung abhalten', desc: 'Halte diese Woche eine Rang-Prüfung ab', progress: exam ? 1 : 0, target: 1 });
+  } else if (voterDiscordId) {
+    const voted = db.prepare('SELECT 1 FROM citizen_votes WHERE voter_discord_id = ? AND week = ?').get(voterDiscordId, wk);
+    challenges.push({ id: 'citizen_vote', icon: 'fa-trophy', title: 'MdW abstimmen', desc: 'Stimme für einen ACLS-Mitarbeiter ab', progress: voted ? 1 : 0, target: 1 });
+
+    const listing = db.prepare('SELECT 1 FROM car_listings WHERE owner_discord_id = ? AND date(created_at) >= ?').get(voterDiscordId, mondayDate);
+    challenges.push({ id: 'create_listing', icon: 'fa-car-side', title: 'Inserat erstellen', desc: 'Erstelle ein Inserat im Fahrzeugmarkt', progress: listing ? 1 : 0, target: 1 });
+  }
+
+  res.json(challenges);
+});
+
 app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'public', 'profil.html'));

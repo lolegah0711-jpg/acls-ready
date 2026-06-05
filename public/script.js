@@ -366,6 +366,10 @@ async function renderVoterScreen() {
 
         <!-- Preisliste -->
         <div id="priceSection">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem">
+            <div id="vPollWidget"></div>
+            <div id="vChallengesWidget"></div>
+          </div>
           <div id="voterPrices"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
         </div>
 
@@ -449,6 +453,8 @@ async function renderVoterScreen() {
   loadTwitchWidget();
   loadVoterTeam();
   loadVoterApply();
+  loadPollWidget('vPollWidget');
+  loadChallengesWidget('vChallengesWidget');
 }
 
 async function loadVoterTeam() {
@@ -577,6 +583,106 @@ window.submitVoterApplication = async e => {
   else toast(data.error || 'Fehler', 'err');
 };
 
+// ── UMFRAGE-WIDGET ────────────────────────────────────────────────
+async function loadPollWidget(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const poll = await fetch('/api/poll/active').then(r => r.json()).catch(() => null);
+  if (!poll) { el.style.display = 'none'; return; }
+  el.style.display = '';
+
+  const voted = poll.myVote !== null;
+  const hdr = `<div style="display:flex;align-items:center;gap:.65rem;margin-bottom:.9rem">
+    <div style="width:28px;height:28px;border-radius:7px;background:rgba(99,102,241,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <i class="fas fa-poll" style="color:#818cf8;font-size:.82rem"></i>
+    </div>
+    <div>
+      <div style="font-weight:700;font-size:.9rem">Frage der Woche</div>
+      <div style="font-size:.7rem;color:var(--muted)">${poll.totalVotes} Stimme${poll.totalVotes !== 1 ? 'n' : ''} abgegeben</div>
+    </div>
+  </div>
+  <div style="font-size:.88rem;font-weight:600;margin-bottom:.85rem;line-height:1.4">${poll.question}</div>`;
+
+  if (voted) {
+    el.innerHTML = `<div class="card" style="height:100%;box-sizing:border-box">${hdr}
+      ${poll.options.map(opt => {
+        const pct = poll.totalVotes ? Math.round(opt.count / poll.totalVotes * 100) : 0;
+        const mine = poll.myVote === opt.idx;
+        return `<div style="margin-bottom:.6rem">
+          <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:.25rem">
+            <span style="font-weight:${mine?'700':'500'};color:${mine?'#818cf8':'var(--text)'}">
+              ${mine?'<i class="fas fa-check" style="margin-right:.3rem;color:#818cf8"></i>':''}${opt.label}
+            </span>
+            <span style="color:var(--muted);font-weight:600">${pct}%</span>
+          </div>
+          <div style="height:6px;background:var(--input);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:${mine?'#818cf8':'var(--border)'};border-radius:3px;transition:width .5s ease"></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  } else {
+    el.innerHTML = `<div class="card" style="height:100%;box-sizing:border-box">${hdr}
+      <div style="display:flex;flex-direction:column;gap:.4rem">
+        ${poll.options.map(opt => `
+        <button onclick="castPollVote(${poll.id},${opt.idx})"
+          style="width:100%;text-align:left;padding:.55rem .75rem;border:1px solid var(--border);border-radius:8px;background:var(--input);color:var(--text);cursor:pointer;font-size:.82rem;font-family:inherit;font-weight:500;transition:border-color .15s,background .15s"
+          onmouseover="this.style.borderColor='#818cf8';this.style.background='rgba(99,102,241,.06)'"
+          onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--input)'">${opt.label}</button>`).join('')}
+      </div>
+    </div>`;
+  }
+}
+
+window.castPollVote = async (pollId, optionIdx) => {
+  const r = await fetch('/api/poll/vote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ poll_id: pollId, option_idx: optionIdx }) });
+  const data = await r.json().catch(() => ({}));
+  if (r.ok) {
+    toast('Stimme abgegeben!', 'ok');
+    const cid = document.getElementById('vPollWidget') ? 'vPollWidget' : 'staffPollWidget';
+    loadPollWidget(cid);
+  } else toast(data.error || 'Fehler', 'err');
+};
+
+// ── CHALLENGES-WIDGET ─────────────────────────────────────────────
+async function loadChallengesWidget(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const challenges = await fetch('/api/challenges').then(r => r.json()).catch(() => []);
+  if (!challenges?.length) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.innerHTML = `<div class="card" style="height:100%;box-sizing:border-box">
+    <div style="display:flex;align-items:center;gap:.65rem;margin-bottom:.9rem">
+      <div style="width:28px;height:28px;border-radius:7px;background:rgba(249,115,22,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <i class="fas fa-star" style="color:var(--orange);font-size:.82rem"></i>
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:.9rem">Wöchentliche Challenges</div>
+        <div style="font-size:.7rem;color:var(--muted)">Diese Woche · Setzt sich jeden Montag zurück</div>
+      </div>
+    </div>
+    ${challenges.map(c => {
+      const done = c.progress >= c.target;
+      const pct  = Math.min(100, Math.round(c.progress / c.target * 100));
+      return `<div style="margin-bottom:.85rem">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.35rem">
+          <div style="width:24px;height:24px;border-radius:6px;background:${done?'rgba(34,197,94,.2)':'rgba(255,255,255,.06)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="fas ${done?'fa-check':c.icon}" style="color:${done?'#22c55e':'var(--muted)'};font-size:.72rem"></i>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.82rem;font-weight:600;${done?'color:#22c55e':''}">${c.title}</div>
+            <div style="font-size:.7rem;color:var(--muted)">${c.desc}</div>
+          </div>
+          <div style="font-size:.72rem;font-weight:700;color:${done?'#22c55e':'var(--muted)'};flex-shrink:0">${c.progress}/${c.target}</div>
+        </div>
+        <div style="height:4px;background:var(--input);border-radius:2px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${done?'#22c55e':'var(--orange)'};border-radius:2px;transition:width .4s ease"></div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
 window.voterTab = tab => {
   ['price','vote','complaint','market','team','apply'].forEach(t => {
     const sec = document.getElementById(t + 'Section');
@@ -592,7 +698,7 @@ window.voterTab = tab => {
     if (sEl) sEl.textContent = p.sub;
   }
   if (tab === 'market')    loadVoterMarket();
-  if (tab === 'price')     loadVoterPrices();
+  if (tab === 'price')     { loadVoterPrices(); loadPollWidget('vPollWidget'); loadChallengesWidget('vChallengesWidget'); }
   if (tab === 'complaint') loadMyComplaints();
 };
 
@@ -917,6 +1023,12 @@ async function dashboard() {
       ${voteCard}
     </div>
 
+    <!-- Wöchentliche Challenges + Umfrage-Widget -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0" id="staffWidgetRow">
+      <div id="staffPollWidget"></div>
+      <div id="staffChallengesWidget"></div>
+    </div>
+
     <!-- Twitch -->
     <div id="twitch-widget">
       <div class="twitch-card">
@@ -1069,6 +1181,8 @@ async function dashboard() {
   loadTwitchWidget();
   clearInterval(dashboard._twitchPoll);
   dashboard._twitchPoll = setInterval(loadTwitchWidget, 2 * 60 * 1000);
+  loadPollWidget('staffPollWidget');
+  loadChallengesWidget('staffChallengesWidget');
   connectSSE();
 }
 
@@ -3028,6 +3142,20 @@ async function admin() {
             <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">${a.content.slice(0,80)}${a.content.length>80?'…':''}</div>
           </div>`).join('') : '<div class="empty" style="padding:1rem"><p>Keine Ankündigungen</p></div>'}
       </div>
+      <div class="card">
+        <div class="card-head"><div class="card-head-icon" style="background:rgba(99,102,241,.15)"><i class="fas fa-poll" style="color:#818cf8"></i></div>
+        <div><div class="card-title">Umfrage-Widget</div><div class="card-sub">Frage der Woche verwalten</div></div></div>
+        <div id="pollAdminContent"><div style="text-align:center;padding:.75rem;color:var(--muted);font-size:.82rem">Wird geladen…</div></div>
+        <div style="margin-top:.85rem;padding-top:.85rem;border-top:1px solid var(--border)">
+          <div style="font-weight:600;font-size:.82rem;margin-bottom:.5rem">Neue Umfrage starten</div>
+          <input class="form-control" id="pollQuestion" placeholder="Frage eingeben…" style="margin-bottom:.35rem">
+          <input class="form-control" id="pollOpt1" placeholder="Option 1" style="margin-bottom:.35rem">
+          <input class="form-control" id="pollOpt2" placeholder="Option 2" style="margin-bottom:.35rem">
+          <input class="form-control" id="pollOpt3" placeholder="Option 3 (optional)" style="margin-bottom:.35rem">
+          <input class="form-control" id="pollOpt4" placeholder="Option 4 (optional)" style="margin-bottom:.65rem">
+          <button class="btn btn-primary btn-sm" style="width:100%" onclick="submitPollAdmin()"><i class="fas fa-plus"></i> Umfrage starten</button>
+        </div>
+      </div>
     </div><!-- /col-right -->
     </div>
     <!-- Audit-Log -->
@@ -3040,7 +3168,65 @@ async function admin() {
       <div id="audit-log-list"><div style="text-align:center;padding:1rem;color:var(--muted);font-size:.85rem">Wird geladen…</div></div>
     </div>`;
   loadAuditLog();
+  loadPollAdmin();
 }
+
+async function loadPollAdmin() {
+  const el = document.getElementById('pollAdminContent');
+  if (!el) return;
+  const poll = await fetch('/api/poll/active').then(r => r.json()).catch(() => null);
+  if (!poll) {
+    el.innerHTML = '<div style="font-size:.82rem;color:var(--muted)">Keine aktive Umfrage.</div>';
+    return;
+  }
+  const totalVotes = poll.totalVotes;
+  el.innerHTML = `
+    <div style="font-size:.82rem;font-weight:600;margin-bottom:.4rem">${poll.question}</div>
+    ${poll.options.map(opt => {
+      const pct = totalVotes ? Math.round(opt.count / totalVotes * 100) : 0;
+      return `<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;font-size:.78rem">
+        <span style="flex:1;color:var(--muted)">${opt.label}</span>
+        <span style="font-weight:700">${opt.count}</span>
+        <span style="color:var(--muted)">(${pct}%)</span>
+      </div>`;
+    }).join('')}
+    <div style="font-size:.75rem;color:var(--muted);margin-top:.3rem">${totalVotes} Stimmen gesamt</div>
+    <div style="display:flex;gap:.4rem;margin-top:.65rem">
+      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="deactivatePollAdmin(${poll.id})"><i class="fas fa-stop"></i> Beenden</button>
+      <button class="btn btn-danger btn-sm" onclick="deletePollAdmin(${poll.id})"><i class="fas fa-trash"></i></button>
+    </div>`;
+}
+
+window.submitPollAdmin = async () => {
+  const q = document.getElementById('pollQuestion')?.value.trim();
+  const opts = ['pollOpt1','pollOpt2','pollOpt3','pollOpt4']
+    .map(id => document.getElementById(id)?.value.trim()).filter(Boolean);
+  if (!q || opts.length < 2) { toast('Frage und mindestens 2 Optionen eingeben', 'err'); return; }
+  const r = await api('/api/polls', { method: 'POST', body: { question: q, options: opts } });
+  if (r) {
+    toast('Umfrage gestartet!', 'ok');
+    ['pollQuestion','pollOpt1','pollOpt2','pollOpt3','pollOpt4'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    loadPollAdmin();
+    loadPollWidget('staffPollWidget');
+  }
+};
+
+window.deactivatePollAdmin = async id => {
+  await api(`/api/polls/${id}/deactivate`, { method: 'PATCH', body: {} });
+  toast('Umfrage beendet', 'ok');
+  loadPollAdmin();
+  const cid = document.getElementById('staffPollWidget') ? 'staffPollWidget' : 'vPollWidget';
+  loadPollWidget(cid);
+};
+
+window.deletePollAdmin = async id => {
+  if (!confirm('Umfrage und alle Stimmen löschen?')) return;
+  await api(`/api/polls/${id}`, { method: 'DELETE' });
+  toast('Umfrage gelöscht', 'ok');
+  loadPollAdmin();
+  const cid = document.getElementById('staffPollWidget') ? 'staffPollWidget' : 'vPollWidget';
+  loadPollWidget(cid);
+};
 
 async function loadAuditLog() {
   const el = document.getElementById('audit-log-list');

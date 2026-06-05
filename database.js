@@ -311,6 +311,24 @@ function initDb() {
       ip          TEXT,
       created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS polls (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      question    TEXT NOT NULL,
+      options     TEXT NOT NULL,
+      created_by  INTEGER REFERENCES users(id),
+      is_active   INTEGER DEFAULT 1,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS poll_votes (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      poll_id     INTEGER NOT NULL REFERENCES polls(id),
+      discord_id  TEXT NOT NULL,
+      option_idx  INTEGER NOT NULL,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(poll_id, discord_id)
+    );
   `);
 
   // Migrations — Spalten nachrüsten falls nicht vorhanden
