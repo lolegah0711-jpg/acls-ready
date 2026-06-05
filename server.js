@@ -61,7 +61,7 @@ app.use(session({
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
   setHeaders(res, filePath) {
-    if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+    if (filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.html')) {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
   },
