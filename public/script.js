@@ -295,7 +295,7 @@ async function renderVoterScreen() {
     : null;
 
   $('voterScreen').innerHTML = `
-  <div class="app" style="height:100vh">
+  <div class="app">
 
     <!-- ===== SIDEBAR ===== -->
     <aside class="sidebar">
@@ -354,7 +354,7 @@ async function renderVoterScreen() {
         <div class="twitch-card"><div class="twitch-offline-dot"></div><div style="font-size:.8rem;color:#9ca3af;margin-left:.5rem">Wird geladen…</div></div>
       </div>
 
-      <main style="flex:1;overflow-y:auto;padding:1.25rem 1.5rem 5rem">
+      <main id="pageContent">
 
         <!-- Preisliste -->
         <div id="priceSection">
@@ -366,7 +366,7 @@ async function renderVoterScreen() {
           <p style="color:var(--muted);font-size:.85rem;margin-bottom:1.25rem">
             ${myVote ? 'Du hast diese Woche bereits abgestimmt.' : 'Wähle einen ACLS-Mitarbeiter dieser Woche.'}
           </p>
-          <div style="display:flex;flex-direction:column;gap:.6rem;max-width:600px">
+          <div style="display:flex;flex-direction:column;gap:.6rem;max-width:640px">
           ${(users || []).map(u => {
             const av = (u.avatar && u.discord_id)
               ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64` : null;
@@ -406,8 +406,11 @@ async function renderVoterScreen() {
 
         <!-- Fahrzeugmarkt -->
         <div id="marketSection" style="display:none">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:.75rem">
-            <div></div>
+          <div class="pg-header">
+            <div class="pg-header-left">
+              <h2 class="pg-title">Fahrzeugmarkt</h2>
+              <p class="pg-sub">Fahrzeuge kaufen & vermieten</p>
+            </div>
             <button class="btn btn-primary btn-sm" onclick="openAddListing()"><i class="fas fa-plus"></i> Inserat erstellen</button>
           </div>
           <div id="voterListings" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem">

@@ -607,9 +607,13 @@ input, select, textarea { font-family: inherit; }
   z-index: 9999;
 }
 #voterScreen.login-screen {
-  align-items: stretch;
+  display: block;
   overflow: hidden;
   padding: 0;
+}
+#voterScreen.login-screen > .app {
+  width: 100%;
+  height: 100vh;
 }
 /* Listing image */
 .listing-img-wrap { margin:-1px -1px 0; border-radius:var(--r) var(--r) 0 0; overflow:hidden; line-height:0; }
