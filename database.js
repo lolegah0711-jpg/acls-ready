@@ -147,6 +147,22 @@ function initDb() {
       UNIQUE(voter_discord_id, week)
     );
 
+    CREATE TABLE IF NOT EXISTS applications (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id        TEXT NOT NULL,
+      discord_username  TEXT NOT NULL,
+      ic_name           TEXT NOT NULL,
+      ic_age            TEXT,
+      experience        TEXT NOT NULL,
+      motivation        TEXT NOT NULL,
+      availability      TEXT NOT NULL,
+      status            TEXT DEFAULT 'pending',
+      admin_note        TEXT,
+      reviewed_by       INTEGER REFERENCES users(id),
+      created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+      reviewed_at       DATETIME
+    );
+
     CREATE TABLE IF NOT EXISTS announcements (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       title       TEXT NOT NULL,

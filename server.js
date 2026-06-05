@@ -1815,9 +1815,74 @@ app.get('/quiz', (req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(injected);
 });
+// ── ORGANIGRAMM (öffentlich) ──────────────────────────────────────
+app.get('/api/organigramm', (req, res) => {
+  const staff = db.prepare(`
+    SELECT id, username, avatar, discord_id, role, rank
+    FROM users WHERE is_active = 1
+    ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'ausbilder' THEN 1 ELSE 2 END, username
+  `).all();
+  res.json(staff);
+});
+
+// ── BEWERBUNGEN ────────────────────────────────────────────────────
+app.get('/api/applications/mine', (req, res) => {
+  const discordId = req.session.voterDiscordId ||
+    (req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null);
+  if (!discordId) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const row = db.prepare('SELECT * FROM applications WHERE discord_id = ? ORDER BY created_at DESC LIMIT 1').get(discordId);
+  res.json(row || null);
+});
+
+app.post('/api/applications', (req, res) => {
+  const discordId = req.session.voterDiscordId ||
+    (req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null);
+  const username  = req.session.voterUsername ||
+    (req.session.userId ? db.prepare('SELECT username FROM users WHERE id = ?').get(req.session.userId)?.username : null);
+  if (!discordId) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const user = req.session.userId ? db.prepare('SELECT role FROM users WHERE id = ? AND is_active = 1').get(req.session.userId) : null;
+  if (user && user.role && user.role !== 'citizen') return res.status(400).json({ error: 'Du bist bereits Mitarbeiter' });
+  const existing = db.prepare('SELECT id FROM applications WHERE discord_id = ? AND status = ?').get(discordId, 'pending');
+  if (existing) return res.status(409).json({ error: 'Du hast bereits eine offene Bewerbung' });
+  const { ic_name, ic_age, experience, motivation, availability } = req.body;
+  if (!ic_name?.trim() || !experience?.trim() || !motivation?.trim() || !availability?.trim())
+    return res.status(400).json({ error: 'Bitte alle Pflichtfelder ausfüllen' });
+  const r = db.prepare(
+    'INSERT INTO applications (discord_id, discord_username, ic_name, ic_age, experience, motivation, availability) VALUES (?,?,?,?,?,?,?)'
+  ).run(discordId, username || 'Unbekannt', ic_name.trim(), ic_age?.trim() || null, experience.trim(), motivation.trim(), availability.trim());
+  res.json({ ok: true, id: r.lastInsertRowid });
+});
+
+app.get('/api/applications', requireAuth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT a.*, u.username as reviewer_name FROM applications a
+    LEFT JOIN users u ON u.id = a.reviewed_by
+    ORDER BY CASE a.status WHEN 'pending' THEN 0 ELSE 1 END, a.created_at DESC
+  `).all();
+  res.json(rows);
+});
+
+app.patch('/api/applications/:id', requireAdmin, (req, res) => {
+  const { status, admin_note } = req.body;
+  if (!['accepted', 'rejected'].includes(status)) return res.status(400).json({ error: 'Ungültiger Status' });
+  db.prepare('UPDATE applications SET status=?, admin_note=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP WHERE id=?')
+    .run(status, admin_note?.trim() || null, req.adminUser.id, +req.params.id);
+  auditLog(req, 'application_' + status, `id=${req.params.id}`);
+  res.json({ ok: true });
+});
+
+app.delete('/api/applications/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM applications WHERE id = ?').run(+req.params.id);
+  res.json({ ok: true });
+});
+
 app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'public', 'profil.html'));
+});
+app.get('/team', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(path.join(__dirname, 'public', 'team.html'));
 });
 app.get('*', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');

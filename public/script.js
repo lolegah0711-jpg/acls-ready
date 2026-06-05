@@ -111,20 +111,22 @@ let activeQuiz  = null;
 
 const $ = id => document.getElementById(id);
 const PAGES = {
-  dashboard: { title: 'Dashboard',              sub: 'Willkommen zurück' },
-  activity:  { title: 'Aktivität',              sub: 'Letzte Ereignisse' },
-  eow:       { title: 'Mitarbeiter der Woche',  sub: 'Wöchentliche Abstimmung' },
-  exams:     { title: 'Prüfung starten',        sub: 'Theorie & Praxis' },
-  registry:  { title: 'Bürgerregister',          sub: 'Alle Führerschein-Inhaber' },
-  factions:  { title: 'Fraktionsfarben',        sub: 'Fahrzeugfarben der Fraktionen' },
-  map:       { title: 'Abschlepphöfe',          sub: 'Interaktive GTA V Karte' },
-  iczeit:    { title: 'IC-Zeit Tracking',       sub: 'Discord Voice-Kanal Anwesenheit' },
-  prices:    { title: 'Preisliste',             sub: 'Fahrschule & Servicepreise' },
-  carmarket: { title: 'Fahrzeugmarkt',          sub: 'Private Fahrzeuginserate' },
-  admin:      { title: 'Admin-Panel',            sub: 'Verwaltung & Kontrolle' },
-  ausbildung: { title: 'Ausbildung',             sub: 'Gesellen- & Meisterprüfungen' },
-  bans:       { title: 'Aktive Sperren',         sub: 'Hausverbot-Verwaltung' },
-  search:     { title: 'Globale Suche',          sub: 'Sperren, Mitarbeiter & Register durchsuchen' },
+  dashboard:    { title: 'Dashboard',              sub: 'Willkommen zurück' },
+  activity:     { title: 'Aktivität',              sub: 'Letzte Ereignisse' },
+  eow:          { title: 'Mitarbeiter der Woche',  sub: 'Wöchentliche Abstimmung' },
+  exams:        { title: 'Prüfung starten',        sub: 'Theorie & Praxis' },
+  registry:     { title: 'Bürgerregister',         sub: 'Alle Führerschein-Inhaber' },
+  factions:     { title: 'Fraktionsfarben',        sub: 'Fahrzeugfarben der Fraktionen' },
+  map:          { title: 'Abschlepphöfe',          sub: 'Interaktive GTA V Karte' },
+  iczeit:       { title: 'IC-Zeit Tracking',       sub: 'Discord Voice-Kanal Anwesenheit' },
+  prices:       { title: 'Preisliste',             sub: 'Fahrschule & Servicepreise' },
+  carmarket:    { title: 'Fahrzeugmarkt',          sub: 'Private Fahrzeuginserate' },
+  organigramm:  { title: 'Unser Team',             sub: 'ACLS Mitarbeiter & Organigramm' },
+  applications: { title: 'Bewerbungen',            sub: 'Eingehende Bewerbungen verwalten' },
+  admin:        { title: 'Admin-Panel',            sub: 'Verwaltung & Kontrolle' },
+  ausbildung:   { title: 'Ausbildung',             sub: 'Gesellen- & Meisterprüfungen' },
+  bans:         { title: 'Aktive Sperren',         sub: 'Hausverbot-Verwaltung' },
+  search:       { title: 'Globale Suche',          sub: 'Sperren, Mitarbeiter & Register durchsuchen' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -279,6 +281,8 @@ const _voterPageMeta = {
   vote:      { title: 'MdW-Abstimmung',   sub: 'Mitarbeiter der Woche wählen' },
   complaint: { title: 'Beschwerde',       sub: 'Anliegen an einen Admin senden' },
   market:    { title: 'Fahrzeugmarkt',    sub: 'Private Fahrzeuginserate von Bürgern' },
+  team:      { title: 'Unser Team',       sub: 'ACLS Mitarbeiter & Organigramm' },
+  apply:     { title: 'Bewerben',         sub: 'Bewirb dich beim ACLS Automobil-Club' },
 };
 
 async function renderVoterScreen() {
@@ -308,8 +312,10 @@ async function renderVoterScreen() {
         <a class="nav-item active" id="vnPrice"     onclick="voterTab('price')"    style="cursor:pointer"><i class="fas fa-tags"></i><span>Preisliste</span></a>
         <a class="nav-item"        id="vnVote"      onclick="voterTab('vote')"     style="cursor:pointer"><i class="fas fa-trophy"></i><span>MdW-Abstimmung</span></a>
         <a class="nav-item"        id="vnComplaint" onclick="voterTab('complaint')" style="cursor:pointer"><i class="fas fa-comment-alt"></i><span>Beschwerde</span></a>
-        <a class="nav-item"        id="vnMarket"    onclick="voterTab('market')"   style="cursor:pointer;color:var(--muted)"><i class="fas fa-car-side" style="color:#f97316"></i><span>Fahrzeugmarkt</span></a>
+        <a class="nav-item"        id="vnMarket"    onclick="voterTab('market')"   style="cursor:pointer"><i class="fas fa-car-side" style="color:#f97316"></i><span>Fahrzeugmarkt</span></a>
         <a class="nav-item" href="/quiz" target="_blank" style="color:#22c55e"><i class="fas fa-graduation-cap" style="color:#22c55e"></i><span>Prüfungsvorbereitung</span></a>
+        <a class="nav-item"        id="vnTeam"      onclick="voterTab('team')"     style="cursor:pointer"><i class="fas fa-users"></i><span>Unser Team</span></a>
+        <a class="nav-item"        id="vnApply"     onclick="voterTab('apply')"    style="cursor:pointer"><i class="fas fa-file-alt" style="color:#a78bfa"></i><span style="color:#a78bfa">Bewerben</span></a>
 
         <!-- Minispiele -->
         <div id="vGamesToggle" onclick="(function(){var l=document.getElementById('vGamesList'),o=l.style.maxHeight!=='0px';l.style.maxHeight=o?'0px':'700px';document.getElementById('vGamesChev').style.transform=o?'rotate(-90deg)':'';})()" style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
@@ -411,6 +417,16 @@ async function renderVoterScreen() {
           </div>
         </div>
 
+        <!-- Team / Organigramm -->
+        <div id="teamSection" style="display:none">
+          <div id="voterTeamContent"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
+        </div>
+
+        <!-- Bewerben -->
+        <div id="applySection" style="display:none">
+          <div id="voterApplyContent"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
+        </div>
+
         <!-- Fahrzeugmarkt -->
         <div id="marketSection" style="display:none">
           <div class="pg-header">
@@ -431,10 +447,138 @@ async function renderVoterScreen() {
 
   loadVoterPrices();
   loadTwitchWidget();
+  loadVoterTeam();
+  loadVoterApply();
 }
 
+async function loadVoterTeam() {
+  const el = document.getElementById('voterTeamContent');
+  if (!el) return;
+  const staff = await fetch('/api/organigramm').then(r => r.json()).catch(() => []);
+  const admins     = staff.filter(u => u.role === 'admin');
+  const ausbilder  = staff.filter(u => u.role === 'ausbilder');
+  const mitarbeiter = staff.filter(u => u.role !== 'admin' && u.role !== 'ausbilder');
+  function av(u) {
+    return (u.avatar && u.discord_id)
+      ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:56px;height:56px;border-radius:50%;object-fit:cover" onerror="this.outerHTML='<div style=&quot;width:56px;height:56px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700&quot;>${(u.username||'?')[0].toUpperCase()}</div>'">`
+      : `<div style="width:56px;height:56px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700">${(u.username||'?')[0].toUpperCase()}</div>`;
+  }
+  function card(u) {
+    const rc = u.role==='admin'?'#f97316':u.role==='ausbilder'?'#60a5fa':'var(--muted)';
+    const rn = u.role==='admin'?'Administration':u.role==='ausbilder'?'Ausbilder':'Mitarbeiter';
+    const rb = u.role==='admin'?'rgba(249,115,22,.15)':u.role==='ausbilder'?'rgba(96,165,250,.12)':'rgba(255,255,255,.06)';
+    const bc = u.role==='admin'?'rgba(249,115,22,.3)':u.role==='ausbilder'?'rgba(96,165,250,.2)':'var(--border)';
+    return `<div style="background:var(--surface);border:1px solid ${bc};border-radius:var(--r);padding:1rem .85rem;display:flex;flex-direction:column;align-items:center;gap:.5rem;text-align:center">
+      ${av(u)}
+      <div style="font-weight:700;font-size:.9rem">${u.username}</div>
+      <span style="font-size:.68rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;background:${rb};color:${rc}">${rn}</span>
+      ${(u.rank&&u.rank!=='Mitarbeiter')?`<div style="font-size:.68rem;color:var(--muted)">${u.rank}</div>`:''}
+    </div>`;
+  }
+  function tier(label, icon, color, members) {
+    if (!members.length) return '';
+    return `<div style="margin-bottom:1.75rem">
+      <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${color};margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem">
+        <i class="fas ${icon}"></i>${label}<div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.75rem">${members.map(card).join('')}</div>
+    </div>`;
+  }
+  el.innerHTML = (staff.length ? '' : '<div style="text-align:center;padding:2rem;color:var(--muted)">Keine Mitarbeiter gefunden.</div>')
+    + tier('Administration','fa-shield-alt','#f97316',admins)
+    + tier('Ausbilder','fa-graduation-cap','#60a5fa',ausbilder)
+    + tier('Mitarbeiter','fa-users','var(--muted)',mitarbeiter);
+}
+
+async function loadVoterApply() {
+  const el = document.getElementById('voterApplyContent');
+  if (!el) return;
+  const app = await fetch('/api/applications/mine').then(r => r.json()).catch(() => null);
+
+  if (app?.status === 'pending') {
+    el.innerHTML = `<div class="card" style="max-width:540px">
+      <div style="text-align:center;padding:1rem 0">
+        <i class="fas fa-clock" style="font-size:2rem;color:#fbbf24;display:block;margin-bottom:.75rem"></i>
+        <div style="font-weight:700;font-size:1.1rem;margin-bottom:.35rem">Bewerbung ausstehend</div>
+        <div style="color:var(--muted);font-size:.85rem">Deine Bewerbung wird aktuell geprüft. Du wirst über Discord informiert.</div>
+        <div style="margin-top:1rem;font-size:.75rem;color:var(--muted)">Eingereicht: ${new Date(app.created_at).toLocaleDateString('de-DE')}</div>
+      </div>
+    </div>`;
+    return;
+  }
+  if (app?.status === 'accepted') {
+    el.innerHTML = `<div class="card" style="max-width:540px">
+      <div style="text-align:center;padding:1rem 0">
+        <i class="fas fa-check-circle" style="font-size:2rem;color:#22c55e;display:block;margin-bottom:.75rem"></i>
+        <div style="font-weight:700;font-size:1.1rem;margin-bottom:.35rem">Bewerbung angenommen!</div>
+        <div style="color:var(--muted);font-size:.85rem">Herzlichen Glückwunsch! Du wurdest in das ACLS-Team aufgenommen.</div>
+        ${app.admin_note ? `<div style="margin-top:.75rem;padding:.5rem .75rem;background:var(--surface2);border-radius:6px;font-size:.82rem;text-align:left"><b>Nachricht:</b> ${app.admin_note}</div>` : ''}
+      </div>
+    </div>`;
+    return;
+  }
+  if (app?.status === 'rejected') {
+    el.innerHTML = `<div class="card" style="max-width:540px">
+      <div style="text-align:center;padding:1rem 0">
+        <i class="fas fa-times-circle" style="font-size:2rem;color:#ef4444;display:block;margin-bottom:.75rem"></i>
+        <div style="font-weight:700;font-size:1.1rem;margin-bottom:.35rem">Bewerbung abgelehnt</div>
+        <div style="color:var(--muted);font-size:.85rem">Leider wurde deine Bewerbung diesmal nicht angenommen.</div>
+        ${app.admin_note ? `<div style="margin-top:.75rem;padding:.5rem .75rem;background:var(--surface2);border-radius:6px;font-size:.82rem;text-align:left"><b>Begründung:</b> ${app.admin_note}</div>` : ''}
+      </div>
+    </div>`;
+    return;
+  }
+
+  // Kein Antrag → Formular anzeigen
+  el.innerHTML = `<div class="card" style="max-width:560px">
+    <div style="margin-bottom:1.25rem">
+      <div style="font-weight:700;font-size:1rem;margin-bottom:.25rem">Bewerbung beim ACLS</div>
+      <div style="font-size:.82rem;color:var(--muted)">Fülle alle Felder aus. Wir melden uns über Discord.</div>
+    </div>
+    <form onsubmit="submitVoterApplication(event)">
+      <div class="form-row">
+        <div class="form-group"><label>IC-Name *</label><input class="form-control" id="appIcName" placeholder="Dein Name im Spiel" required></div>
+        <div class="form-group"><label>IC-Alter</label><input class="form-control" id="appIcAge" placeholder="z.B. 28"></div>
+      </div>
+      <div class="form-group">
+        <label>Vorerfahrung *</label>
+        <textarea class="form-control" id="appExperience" rows="3" placeholder="Was weißt du über Fahrzeuge, Verkehrsregeln, Roleplay?" required style="resize:vertical"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Motivation *</label>
+        <textarea class="form-control" id="appMotivation" rows="3" placeholder="Warum möchtest du Teil des ACLS werden?" required style="resize:vertical"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Verfügbarkeit *</label>
+        <input class="form-control" id="appAvailability" placeholder="z.B. Mo–Fr abends, Wochenende" required>
+      </div>
+      <div class="modal-footer" style="padding:0;margin-top:1rem">
+        <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-paper-plane"></i> Bewerbung absenden</button>
+      </div>
+    </form>
+  </div>`;
+}
+
+window.submitVoterApplication = async e => {
+  e.preventDefault();
+  const r = await fetch('/api/applications', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ic_name:      document.getElementById('appIcName').value.trim(),
+      ic_age:       document.getElementById('appIcAge').value.trim(),
+      experience:   document.getElementById('appExperience').value.trim(),
+      motivation:   document.getElementById('appMotivation').value.trim(),
+      availability: document.getElementById('appAvailability').value.trim(),
+    }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (r.ok) { toast('Bewerbung eingereicht!', 'ok'); loadVoterApply(); }
+  else toast(data.error || 'Fehler', 'err');
+};
+
 window.voterTab = tab => {
-  ['price','vote','complaint','market'].forEach(t => {
+  ['price','vote','complaint','market','team','apply'].forEach(t => {
     const sec = document.getElementById(t + 'Section');
     if (sec) sec.style.display = t === tab ? '' : 'none';
     const nav = document.getElementById('vn' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -592,8 +736,9 @@ function bootApp() {
   $('app').classList.remove('hidden');
   initSidebar();
   renderUserWidget();
-  $('adminNavItem').style.display     = isAdmin()     ? '' : 'none';
-  $('ausbildungNavItem').style.display = isAusbilder() ? '' : 'none';
+  $('adminNavItem').style.display        = isAdmin()     ? '' : 'none';
+  $('ausbildungNavItem').style.display   = isAusbilder() ? '' : 'none';
+  $('applicationsNavItem').style.display = isAdmin()     ? '' : 'none';
   document.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', e => {
       if (el.getAttribute('href') && !el.dataset.page) return; // external links open normally
@@ -639,7 +784,7 @@ function navigate(page) {
   $('pageSubtitle').textContent = p.sub;
   $('pageContent').innerHTML    = loading();
 
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, admin, ausbildung, bans, search };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search };
   (renders[page] || dashboard)();
 }
 
@@ -2319,6 +2464,155 @@ window.deletePrice = async id => {
 
 // ════════════════════════════════════════════════════════════════
 //  FAHRZEUGMARKT
+// ════════════════════════════════════════════════════════════════
+//  ORGANIGRAMM
+// ════════════════════════════════════════════════════════════════
+async function organigramm() {
+  const staff = await api('/api/organigramm');
+  if (!staff) return;
+  const admins      = staff.filter(u => u.role === 'admin');
+  const ausbilder   = staff.filter(u => u.role === 'ausbilder');
+  const mitarbeiter = staff.filter(u => u.role !== 'admin' && u.role !== 'ausbilder');
+
+  function memberCard(u) {
+    const av = (u.avatar && u.discord_id)
+      ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:64px;height:64px;border-radius:50%;object-fit:cover" onerror="this.outerHTML='<div style=\'width:64px;height:64px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700\'>${(u.username||'?')[0].toUpperCase()}</div>'">`
+      : `<div style="width:64px;height:64px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700">${(u.username||'?')[0].toUpperCase()}</div>`;
+    const roleColor = u.role === 'admin' ? '#f97316' : u.role === 'ausbilder' ? '#60a5fa' : 'var(--muted)';
+    const roleName  = u.role === 'admin' ? 'Administration' : u.role === 'ausbilder' ? 'Ausbilder' : 'Mitarbeiter';
+    const roleBg    = u.role === 'admin' ? 'rgba(249,115,22,.15)' : u.role === 'ausbilder' ? 'rgba(96,165,250,.12)' : 'rgba(255,255,255,.06)';
+    const borderCol = u.role === 'admin' ? 'rgba(249,115,22,.35)' : u.role === 'ausbilder' ? 'rgba(96,165,250,.25)' : 'var(--border)';
+    const rank = (u.rank && u.rank !== 'Mitarbeiter') ? `<div style="font-size:.7rem;color:var(--muted)">${u.rank}</div>` : '';
+    return `<div style="background:var(--surface);border:1px solid ${borderCol};border-radius:var(--r);padding:1.25rem 1rem;display:flex;flex-direction:column;align-items:center;gap:.55rem;text-align:center;transition:transform .12s,box-shadow .12s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(0,0,0,.25)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
+      ${av}
+      <div style="font-weight:700;font-size:.95rem">${u.username}</div>
+      <span style="font-size:.7rem;font-weight:700;padding:.18rem .6rem;border-radius:20px;background:${roleBg};color:${roleColor}">${roleName}</span>
+      ${rank}
+    </div>`;
+  }
+
+  function tier(label, icon, color, members) {
+    if (!members.length) return '';
+    return `<div style="margin-bottom:2rem">
+      <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${color};margin-bottom:.85rem;display:flex;align-items:center;gap:.6rem">
+        <i class="fas ${icon}"></i>${label}
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.85rem">
+        ${members.map(memberCard).join('')}
+      </div>
+    </div>`;
+  }
+
+  $('pageContent').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem">
+      <div></div>
+      <a href="/team" target="_blank" class="btn btn-ghost btn-sm"><i class="fas fa-external-link-alt"></i> Öffentliche Seite</a>
+    </div>
+    ${tier('Administration', 'fa-shield-alt', '#f97316', admins)}
+    ${tier('Ausbilder', 'fa-graduation-cap', '#60a5fa', ausbilder)}
+    ${tier('Mitarbeiter', 'fa-users', 'var(--muted)', mitarbeiter)}
+    ${!staff.length ? '<div class="empty"><i class="fas fa-users"></i><p>Keine aktiven Mitarbeiter</p></div>' : ''}`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  BEWERBUNGEN (Staff)
+// ════════════════════════════════════════════════════════════════
+async function applications() {
+  const rows = await api('/api/applications');
+  if (!rows) return;
+  const pending  = rows.filter(r => r.status === 'pending');
+  const decided  = rows.filter(r => r.status !== 'pending');
+
+  function statusBadge(s) {
+    if (s === 'pending')  return '<span style="background:rgba(251,191,36,.15);color:#fbbf24;font-size:.7rem;font-weight:700;padding:.18rem .55rem;border-radius:20px"><i class="fas fa-clock" style="margin-right:.3rem"></i>Ausstehend</span>';
+    if (s === 'accepted') return '<span style="background:rgba(34,197,94,.12);color:#22c55e;font-size:.7rem;font-weight:700;padding:.18rem .55rem;border-radius:20px"><i class="fas fa-check" style="margin-right:.3rem"></i>Angenommen</span>';
+    return '<span style="background:rgba(239,68,68,.12);color:#ef4444;font-size:.7rem;font-weight:700;padding:.18rem .55rem;border-radius:20px"><i class="fas fa-times" style="margin-right:.3rem"></i>Abgelehnt</span>';
+  }
+
+  function appCard(a, showActions) {
+    return `<div class="card" style="display:flex;flex-direction:column;gap:.75rem">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:700;font-size:1rem">${a.discord_username} <span style="font-size:.8rem;font-weight:400;color:var(--muted)">· ${a.ic_name}${a.ic_age ? ', ' + a.ic_age + ' J.' : ''}</span></div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:.15rem">${new Date(a.created_at).toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:.5rem">${statusBadge(a.status)}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+        <div>
+          <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:.3rem">Vorerfahrung</div>
+          <div style="font-size:.85rem;line-height:1.5;color:var(--text)">${a.experience}</div>
+        </div>
+        <div>
+          <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:.3rem">Verfügbarkeit</div>
+          <div style="font-size:.85rem;line-height:1.5;color:var(--text)">${a.availability}</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:.3rem">Motivation</div>
+        <div style="font-size:.85rem;line-height:1.5;color:var(--text)">${a.motivation}</div>
+      </div>
+      ${a.admin_note ? `<div style="background:var(--surface2);border-left:3px solid var(--orange);border-radius:0 6px 6px 0;padding:.5rem .75rem;font-size:.82rem"><span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase">Admin-Notiz:</span><br>${a.admin_note}</div>` : ''}
+      ${showActions && isAdmin() ? `<div style="display:flex;gap:.5rem;padding-top:.5rem;border-top:1px solid var(--border)">
+        <button class="btn btn-primary btn-sm" style="flex:1" onclick="decideApplication(${a.id},'accepted')"><i class="fas fa-check"></i> Annehmen</button>
+        <button class="btn btn-danger btn-sm" style="flex:1" onclick="decideApplication(${a.id},'rejected')"><i class="fas fa-times"></i> Ablehnen</button>
+        <button class="btn btn-ghost btn-sm" title="Löschen" onclick="deleteApplication(${a.id})"><i class="fas fa-trash"></i></button>
+      </div>` : (isAdmin() ? `<div style="padding-top:.5rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end"><button class="btn btn-ghost btn-sm" style="color:#ef4444" title="Löschen" onclick="deleteApplication(${a.id})"><i class="fas fa-trash"></i> Löschen</button></div>` : '')}
+    </div>`;
+  }
+
+  $('pageContent').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:1.5rem">
+      ${pending.length ? `
+      <div>
+        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#fbbf24;margin-bottom:.85rem;display:flex;align-items:center;gap:.5rem">
+          <i class="fas fa-clock"></i>Ausstehend (${pending.length})
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.75rem">${pending.map(a => appCard(a, true)).join('')}</div>
+      </div>` : '<div class="empty"><i class="fas fa-inbox"></i><p>Keine offenen Bewerbungen</p></div>'}
+      ${decided.length ? `
+      <div>
+        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:.85rem;display:flex;align-items:center;gap:.5rem">
+          <i class="fas fa-history"></i>Entschieden (${decided.length})
+          <div style="flex:1;height:1px;background:var(--border);margin-left:.25rem"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.75rem">${decided.map(a => appCard(a, false)).join('')}</div>
+      </div>` : ''}
+    </div>`;
+}
+
+window.decideApplication = (id, status) => {
+  const isAccept = status === 'accepted';
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-${isAccept ? 'check' : 'times'}" style="color:${isAccept ? '#22c55e' : '#ef4444'};margin-right:.5rem"></i>Bewerbung ${isAccept ? 'annehmen' : 'ablehnen'}</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="padding:.5rem 0">
+      <div class="form-group">
+        <label>Notiz für den Bewerber (optional)</label>
+        <textarea class="form-control" id="appNote" rows="3" placeholder="${isAccept ? 'Willkommensnachricht…' : 'Begründung…'}" style="resize:vertical"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn ${isAccept ? 'btn-primary' : 'btn-danger'}" onclick="submitDecision(${id},'${status}')">
+        <i class="fas fa-${isAccept ? 'check' : 'times'}"></i> ${isAccept ? 'Annehmen' : 'Ablehnen'}
+      </button>
+    </div>`);
+};
+window.submitDecision = async (id, status) => {
+  const note = document.getElementById('appNote')?.value || '';
+  const r = await api(`/api/applications/${id}`, { method: 'PATCH', body: { status, admin_note: note } });
+  if (r) { closeModal(); toast(status === 'accepted' ? 'Angenommen!' : 'Abgelehnt.', 'ok'); applications(); }
+};
+window.deleteApplication = async id => {
+  if (!confirm('Bewerbung löschen? Der Bewerber kann dann erneut bewerben.')) return;
+  const r = await api(`/api/applications/${id}`, { method: 'DELETE' });
+  if (r) { toast('Gelöscht.', 'ok'); applications(); }
+};
+
 // ════════════════════════════════════════════════════════════════
 async function carmarket() {
   const rows = await api('/api/car-listings');

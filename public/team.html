@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>ACLS – Unser Team</title>
+  <link rel="icon" type="image/png" href="/logo.png"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f0f; --surface: #1a1a1a; --surface2: #222;
+      --border: rgba(255,255,255,.08); --text: #f0f0f0; --muted: #6b7280;
+      --orange: #f97316; --r: 10px;
+    }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo { display: flex; align-items: center; gap: .75rem; }
+    .logo-icon { width: 38px; height: 38px; background: var(--orange); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1rem; color: #fff; }
+    .logo-name { font-weight: 800; font-size: 1.05rem; }
+    .logo-sub  { font-size: .72rem; color: var(--muted); margin-top: .05rem; }
+    header a { color: var(--muted); font-size: .82rem; text-decoration: none; transition: color .15s; }
+    header a:hover { color: var(--orange); }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
+    .page-title { font-size: 1.6rem; font-weight: 800; margin-bottom: .35rem; }
+    .page-sub   { color: var(--muted); font-size: .9rem; margin-bottom: 2.5rem; }
+
+    .tier { margin-bottom: 2.5rem; }
+    .tier-label {
+      font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em;
+      color: var(--muted); margin-bottom: 1rem; display: flex; align-items: center; gap: .6rem;
+    }
+    .tier-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    .tier-label.admin-label { color: var(--orange); }
+    .tier-label.ausbilder-label { color: #60a5fa; }
+
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; }
+
+    .member-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+      padding: 1.25rem 1rem; display: flex; flex-direction: column; align-items: center; gap: .6rem;
+      text-align: center; transition: transform .12s, box-shadow .12s;
+    }
+    .member-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+    .member-card.is-admin { border-color: rgba(249,115,22,.3); }
+    .member-card.is-ausbilder { border-color: rgba(96,165,250,.2); }
+
+    .avatar {
+      width: 64px; height: 64px; border-radius: 50%; object-fit: cover;
+      background: var(--surface2); display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; font-weight: 700; color: var(--text); flex-shrink: 0;
+    }
+    .avatar img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; }
+    .member-name { font-weight: 700; font-size: .95rem; }
+    .member-role {
+      font-size: .7rem; font-weight: 700; padding: .18rem .6rem; border-radius: 20px;
+    }
+    .role-admin     { background: rgba(249,115,22,.15); color: var(--orange); }
+    .role-ausbilder { background: rgba(96,165,250,.12); color: #60a5fa; }
+    .role-staff     { background: rgba(255,255,255,.06); color: var(--muted); }
+    .member-rank    { font-size: .72rem; color: var(--muted); }
+
+    .loader { text-align: center; padding: 4rem; color: var(--muted); }
+    .error  { text-align: center; padding: 3rem; color: #ef4444; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <div class="logo-icon">AC</div>
+      <div>
+        <div class="logo-name">ACLS Automobil-Club</div>
+        <div class="logo-sub">Los Santos</div>
+      </div>
+    </div>
+    <a href="/"><i class="fas fa-arrow-left" style="margin-right:.4rem"></i>Zur Website</a>
+  </header>
+
+  <main>
+    <div class="page-title"><i class="fas fa-users" style="color:var(--orange);margin-right:.5rem"></i>Unser Team</div>
+    <p class="page-sub">Alle aktiven ACLS-Mitarbeiter auf einen Blick</p>
+    <div id="content"><div class="loader"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;margin-bottom:.75rem;display:block"></i>Wird geladen…</div></div>
+  </main>
+
+  <script>
+    function avatar(u) {
+      if (u.avatar && u.discord_id) {
+        return `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" onerror="this.parentNode.innerHTML='${(u.username||'?')[0].toUpperCase()}'" alt="">`;
+      }
+      return (u.username || '?')[0].toUpperCase();
+    }
+    function roleBadge(role) {
+      if (role === 'admin')     return '<span class="member-role role-admin"><i class="fas fa-shield-alt" style="margin-right:.3rem"></i>Administration</span>';
+      if (role === 'ausbilder') return '<span class="member-role role-ausbilder"><i class="fas fa-graduation-cap" style="margin-right:.3rem"></i>Ausbilder</span>';
+      return '<span class="member-role role-staff"><i class="fas fa-user" style="margin-right:.3rem"></i>Mitarbeiter</span>';
+    }
+    function card(u) {
+      const cls = u.role === 'admin' ? 'is-admin' : u.role === 'ausbilder' ? 'is-ausbilder' : '';
+      const rank = (u.rank && u.rank !== 'Mitarbeiter') ? `<div class="member-rank">${u.rank}</div>` : '';
+      return `<div class="member-card ${cls}">
+        <div class="avatar">${avatar(u)}</div>
+        <div class="member-name">${u.username}</div>
+        ${roleBadge(u.role)}
+        ${rank}
+      </div>`;
+    }
+    async function load() {
+      try {
+        const staff = await fetch('/api/organigramm').then(r => r.json());
+        const admins     = staff.filter(u => u.role === 'admin');
+        const ausbilder  = staff.filter(u => u.role === 'ausbilder');
+        const mitarbeiter = staff.filter(u => u.role !== 'admin' && u.role !== 'ausbilder');
+        let html = '';
+        if (admins.length) html += `<div class="tier"><div class="tier-label admin-label"><i class="fas fa-shield-alt"></i>Administration</div><div class="cards">${admins.map(card).join('')}</div></div>`;
+        if (ausbilder.length) html += `<div class="tier"><div class="tier-label ausbilder-label"><i class="fas fa-graduation-cap"></i>Ausbilder</div><div class="cards">${ausbilder.map(card).join('')}</div></div>`;
+        if (mitarbeiter.length) html += `<div class="tier"><div class="tier-label"><i class="fas fa-users"></i>Mitarbeiter</div><div class="cards">${mitarbeiter.map(card).join('')}</div></div>`;
+        if (!staff.length) html = '<div class="loader">Keine Mitarbeiter gefunden.</div>';
+        document.getElementById('content').innerHTML = html;
+      } catch(e) {
+        document.getElementById('content').innerHTML = '<div class="error"><i class="fas fa-exclamation-triangle"></i> Fehler beim Laden.</div>';
+      }
+    }
+    load();
+  </script>
+</body>
+</html>
