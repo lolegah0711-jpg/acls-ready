@@ -2338,7 +2338,7 @@ window.openListingDetail = id => {
   <div style="overflow:hidden;border-radius:var(--rl)">
     ${l.image_data ? `
       <div style="position:relative;line-height:0">
-        <img src="${l.image_data}" style="width:100%;max-height:290px;object-fit:cover;display:block;border-radius:var(--rl) var(--rl) 0 0">
+        <img src="${l.image_data}" style="width:100%;max-height:320px;object-fit:contain;background:#000;display:block;border-radius:var(--rl) var(--rl) 0 0">
         <button onclick="closeModal()" style="position:absolute;top:.65rem;right:.65rem;background:rgba(0,0,0,.55);border:none;color:#fff;width:34px;height:34px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.9rem;backdrop-filter:blur(4px)"><i class="fas fa-times"></i></button>
       </div>` : `
       <div class="modal-head">
