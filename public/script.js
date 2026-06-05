@@ -157,6 +157,8 @@ function toast(msg, type = '') {
 
 // ── Modal ────────────────────────────────────────────────────────
 function openModal(html) {
+  $('modalBox').style.maxWidth = '';
+  $('modalBox').style.padding = '';
   $('modalBox').innerHTML = html;
   $('modalOverlay').classList.remove('hidden');
 }
@@ -477,6 +479,7 @@ async function loadVoterMarket() {
   const el = document.getElementById('voterListings');
   if (!el) return;
   const rows = await fetch('/api/car-listings').then(r => r.json()).catch(() => []);
+  window._listingsCache = new Map(rows.map(l => [l.id, l]));
   if (!rows.length) {
     el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--muted)"><i class="fas fa-car-side" style="font-size:2rem;display:block;margin-bottom:.75rem;opacity:.3"></i>Noch keine Inserate vorhanden.</div>';
     return;
@@ -487,25 +490,24 @@ async function loadVoterMarket() {
     const isRent  = l.listing_type === 'vermietung';
     const dur     = l.duration === '7_tage' ? '7 Tage' : l.duration === '1_monat' ? '1 Monat' : '';
     return `
-    <div class="card" style="display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden">
+    <div class="card" onclick="openListingDetail(${l.id})" style="display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;cursor:pointer;transition:transform .12s,box-shadow .12s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 24px rgba(0,0,0,.18)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
       ${l.image_data
         ? `<div class="listing-img-wrap"><img class="listing-img" src="${l.image_data}" alt="${l.car}" loading="lazy"></div>`
         : `<div class="listing-no-img"><i class="fas fa-${isRent ? 'key' : 'car-side'}" style="color:var(--orange);font-size:1.6rem;opacity:.5"></i></div>`}
       <div style="padding:.85rem;display:flex;flex-direction:column;gap:.4rem;flex:1">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem">
-          <div style="min-width:0;flex:1">
-            <div style="font-weight:800;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${l.car}">${l.car}</div>
-            <div style="font-size:1.05rem;font-weight:800;color:#f97316">${l.price}$${isRent && dur ? `<span style="font-size:.72rem;font-weight:600;color:var(--muted);margin-left:.35rem">/ ${dur}</span>` : ''}</div>
-          </div>
-          ${canDel ? `<button class="btn btn-danger btn-sm" onclick="voterDeleteListing(${l.id})" title="Löschen"><i class="fas fa-trash" style="font-size:.7rem"></i></button>` : ''}
+        <div>
+          <div style="font-weight:800;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${l.car}">${l.car}</div>
+          <div style="font-size:1.05rem;font-weight:800;color:#f97316">${l.price}$${isRent && dur ? `<span style="font-size:.72rem;font-weight:600;color:var(--muted);margin-left:.35rem">/ ${dur}</span>` : ''}</div>
         </div>
         <div>${listingTypeBadge(l)}</div>
-        <div style="font-size:.8rem;color:var(--muted);display:flex;flex-direction:column;gap:.2rem;margin-top:.15rem">
+        <div style="font-size:.8rem;color:var(--muted);display:flex;flex-direction:column;gap:.2rem">
           <div><i class="fas fa-user" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.name}</div>
           <div><i class="fas fa-phone" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.phone}</div>
-          ${l.notes ? `<div style="font-style:italic;margin-top:.15rem;color:var(--text)">${l.notes}</div>` : ''}
         </div>
-        <div style="font-size:.7rem;color:var(--muted);margin-top:auto;padding-top:.5rem;border-top:1px solid var(--border)">${ago(l.created_at)}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:.5rem;border-top:1px solid var(--border)">
+          <div style="font-size:.7rem;color:var(--muted)">${ago(l.created_at)}</div>
+          ${canDel ? `<div onclick="event.stopPropagation()"><button class="btn btn-danger btn-sm" onclick="voterDeleteListing(${l.id})" title="Löschen"><i class="fas fa-trash" style="font-size:.7rem"></i></button></div>` : ''}
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -2301,6 +2303,7 @@ async function carmarket() {
   const rows = await api('/api/car-listings');
   if (rows === null) return;
 
+  window._listingsCache = new Map(rows.map(l => [l.id, l]));
   const canEditAny = isAdmin();
 
   $('pageContent').innerHTML = `
@@ -2317,6 +2320,62 @@ async function carmarket() {
     </div>`}`;
 }
 
+window.openListingDetail = id => {
+  const l = window._listingsCache?.get(id);
+  if (!l) return;
+  const isOwner = currentUser?.discord_id === l.owner_discord_id;
+  const canDel  = isOwner || isAdmin();
+  const canEdit = isAdmin();
+  const isRent  = l.listing_type === 'vermietung';
+  const dur     = l.duration === '7_tage' ? '7 Tage' : l.duration === '1_monat' ? '1 Monat' : '';
+
+  openModal(`
+  <div style="overflow:hidden;border-radius:var(--rl)">
+    ${l.image_data ? `
+      <div style="position:relative;line-height:0">
+        <img src="${l.image_data}" style="width:100%;max-height:290px;object-fit:cover;display:block;border-radius:var(--rl) var(--rl) 0 0">
+        <button onclick="closeModal()" style="position:absolute;top:.65rem;right:.65rem;background:rgba(0,0,0,.55);border:none;color:#fff;width:34px;height:34px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.9rem;backdrop-filter:blur(4px)"><i class="fas fa-times"></i></button>
+      </div>` : `
+      <div class="modal-head">
+        <div class="modal-title"><i class="fas fa-car-side" style="color:var(--orange);margin-right:.5rem"></i>${l.car}</div>
+        <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+      </div>`}
+    <div style="padding:1.25rem 1.5rem 1.5rem">
+      ${l.image_data ? `<h2 style="font-size:1.25rem;font-weight:800;margin:0 0 .2rem;padding-right:1rem">${l.car}</h2>` : ''}
+      <div style="font-size:1.45rem;font-weight:800;color:#f97316;margin-bottom:.5rem">
+        ${l.price}$${isRent && dur ? `<span style="font-size:.85rem;font-weight:600;color:var(--muted);margin-left:.4rem">/ ${dur}</span>` : ''}
+      </div>
+      <div style="margin-bottom:1rem">${listingTypeBadge(l)}</div>
+      <div style="display:flex;flex-direction:column;gap:.7rem;border-top:1px solid var(--border);padding-top:1rem">
+        <div style="display:flex;align-items:center;gap:.85rem">
+          <div style="width:36px;height:36px;border-radius:9px;background:#f9731618;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-user" style="color:#f97316;font-size:.85rem"></i></div>
+          <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.1rem">Anbieter</div><div style="font-weight:700">${l.name}</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:.85rem">
+          <div style="width:36px;height:36px;border-radius:9px;background:#f9731618;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-phone" style="color:#f97316;font-size:.85rem"></i></div>
+          <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.1rem">Telefon</div><div style="font-weight:700">${l.phone}</div></div>
+        </div>
+        ${l.notes ? `
+        <div style="display:flex;align-items:flex-start;gap:.85rem">
+          <div style="width:36px;height:36px;border-radius:9px;background:#f9731618;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-align-left" style="color:#f97316;font-size:.85rem"></i></div>
+          <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.1rem">Beschreibung</div><div style="line-height:1.55">${l.notes}</div></div>
+        </div>` : ''}
+        <div style="display:flex;align-items:center;gap:.85rem">
+          <div style="width:36px;height:36px;border-radius:9px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-clock" style="color:var(--muted);font-size:.85rem"></i></div>
+          <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.1rem">Eingestellt</div><div>${ago(l.created_at)}</div></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:.5rem;margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <button class="btn btn-ghost" style="flex:1" onclick="closeModal()"><i class="fas fa-arrow-left"></i> Zurück</button>
+        ${canEdit ? `<button class="btn btn-ghost btn-sm" style="padding:.45rem .9rem" title="Bearbeiten" onclick="closeModal();setTimeout(()=>openEditListing(${l.id},'${encodeURIComponent(JSON.stringify({...l, image_data: null}))}'),60)"><i class="fas fa-pen"></i></button>` : ''}
+        ${canDel  ? `<button class="btn btn-danger btn-sm" style="padding:.45rem .9rem" title="Löschen" onclick="closeModal();setTimeout(()=>deleteListing(${l.id}),60)"><i class="fas fa-trash"></i></button>` : ''}
+      </div>
+    </div>
+  </div>`);
+  $('modalBox').style.maxWidth = '620px';
+  $('modalBox').style.padding = '0';
+};
+
 function listingTypeBadge(l) {
   const isRent = l.listing_type === 'vermietung';
   const dur = l.duration === '7_tage' ? '7 Tage' : l.duration === '1_monat' ? '1 Monat' : '';
@@ -2331,26 +2390,23 @@ function listingCard(l, canEditAny) {
   const isRent  = l.listing_type === 'vermietung';
   const dur     = l.duration === '7_tage' ? '7 Tage' : l.duration === '1_monat' ? '1 Monat' : '';
   return `
-  <div class="card" style="display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden">
+  <div class="card" onclick="openListingDetail(${l.id})" style="display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;cursor:pointer;transition:transform .12s,box-shadow .12s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 24px rgba(0,0,0,.18)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
     ${l.image_data
       ? `<div class="listing-img-wrap"><img class="listing-img" src="${l.image_data}" alt="${l.car}" loading="lazy"></div>`
       : `<div class="listing-no-img"><i class="fas fa-${isRent ? 'key' : 'car-side'}" style="color:var(--orange);font-size:1.6rem;opacity:.45"></i></div>`}
     <div style="padding:.9rem;display:flex;flex-direction:column;gap:.45rem;flex:1">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem">
-        <div style="min-width:0;flex:1">
-          <div style="font-weight:800;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${l.car}">${l.car}</div>
-          <div style="font-size:1.1rem;font-weight:800;color:#f97316">${l.price}$${isRent && dur ? `<span style="font-size:.75rem;font-weight:600;color:var(--muted);margin-left:.3rem">/ ${dur}</span>` : ''}</div>
-        </div>
+      <div>
+        <div style="font-weight:800;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${l.car}">${l.car}</div>
+        <div style="font-size:1.1rem;font-weight:800;color:#f97316">${l.price}$${isRent && dur ? `<span style="font-size:.75rem;font-weight:600;color:var(--muted);margin-left:.3rem">/ ${dur}</span>` : ''}</div>
       </div>
       <div>${listingTypeBadge(l)}</div>
-      <div style="display:flex;flex-direction:column;gap:.25rem;font-size:.83rem;color:var(--muted)">
+      <div style="display:flex;flex-direction:column;gap:.2rem;font-size:.83rem;color:var(--muted)">
         <div><i class="fas fa-user" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.name}</div>
         <div><i class="fas fa-phone" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.phone}</div>
-        ${l.notes ? `<div style="margin-top:.2rem;font-style:italic;color:var(--text)">${l.notes}</div>` : ''}
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:.5rem;border-top:1px solid var(--border)">
         <div style="font-size:.72rem;color:var(--muted)">${ago(l.created_at)}</div>
-        <div style="display:flex;gap:.35rem">
+        <div style="display:flex;gap:.35rem" onclick="event.stopPropagation()">
           ${canEditAny ? `<button class="btn btn-ghost btn-sm" title="Bearbeiten" onclick="openEditListing(${l.id},'${encodeURIComponent(JSON.stringify({...l, image_data: null}))}')"><i class="fas fa-pen" style="font-size:.7rem"></i></button>` : ''}
           ${canDel ? `<button class="btn btn-danger btn-sm" title="Löschen" onclick="deleteListing(${l.id})"><i class="fas fa-trash" style="font-size:.7rem"></i></button>` : ''}
         </div>
