@@ -265,6 +265,13 @@ async function bootVoterApp() {
   renderVoterScreen();
 }
 
+const _voterPageMeta = {
+  price:     { title: 'Preisliste',       sub: 'Aktuelle Fahrschul- & Servicepreise' },
+  vote:      { title: 'MdW-Abstimmung',   sub: 'Mitarbeiter der Woche wählen' },
+  complaint: { title: 'Beschwerde',       sub: 'Anliegen an einen Admin senden' },
+  market:    { title: 'Fahrzeugmarkt',    sub: 'Private Fahrzeuginserate von Bürgern' },
+};
+
 async function renderVoterScreen() {
   const [users, cv] = await Promise.all([
     fetch('/api/users/public').then(r => r.json()),
@@ -279,142 +286,128 @@ async function renderVoterScreen() {
     : null;
 
   $('voterScreen').innerHTML = `
-  <div class="voter-app">
+  <div class="app" style="height:100vh">
 
-    <!-- Topbar -->
-    <header class="voter-topbar">
-      <div class="voter-topbar-inner">
-        <div class="voter-brand">
-          <div class="voter-brand-logo">AC</div>
-          <div>
-            <div style="font-weight:700;font-size:.9rem;line-height:1.15">ACLS Bürgerportal</div>
-            <div style="font-size:.68rem;color:var(--muted)">Automobil-Club Los Santos</div>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:.6rem">
-          <div class="voter-user-pill">
-            ${avUrl
-              ? `<img src="${avUrl}" style="width:24px;height:24px;border-radius:50%;object-fit:cover">`
-              : `<div style="width:24px;height:24px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800">${(currentUser.username||'?')[0].toUpperCase()}</div>`}
-            <span style="font-weight:600">${currentUser.username}</span>
-          </div>
-          <button class="btn btn-ghost btn-sm" onclick="voterLogout()" title="Abmelden">
-            <i class="fas fa-sign-out-alt"></i>
-          </button>
-        </div>
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-label">Navigation</span>
       </div>
-    </header>
+      <nav class="sidebar-nav">
+        <a class="nav-item active" id="vnPrice"     onclick="voterTab('price')"    style="cursor:pointer"><i class="fas fa-tags"></i><span>Preisliste</span></a>
+        <a class="nav-item"        id="vnVote"      onclick="voterTab('vote')"     style="cursor:pointer"><i class="fas fa-trophy"></i><span>MdW-Abstimmung</span></a>
+        <a class="nav-item"        id="vnComplaint" onclick="voterTab('complaint')" style="cursor:pointer"><i class="fas fa-comment-alt"></i><span>Beschwerde</span></a>
+        <a class="nav-item"        id="vnMarket"    onclick="voterTab('market')"   style="cursor:pointer;color:var(--muted)"><i class="fas fa-car-side" style="color:#f97316"></i><span>Fahrzeugmarkt</span></a>
 
-    <!-- Tab Navigation -->
-    <nav class="voter-tabs">
-      <button class="vtab active" id="tabPrice"     onclick="voterTab('price')">
-        <i class="fas fa-tags"></i> Preise
-      </button>
-      <button class="vtab" id="tabVote"      onclick="voterTab('vote')">
-        <i class="fas fa-trophy"></i> MdW-Wahl
-      </button>
-      <button class="vtab" id="tabComplaint" onclick="voterTab('complaint')">
-        <i class="fas fa-comment-alt"></i> Beschwerde
-      </button>
-      <button class="vtab" id="tabMarket"   onclick="voterTab('market')">
-        <i class="fas fa-car-side"></i> Fahrzeugmarkt
-      </button>
-    </nav>
-
-    <!-- Content -->
-    <div class="voter-content">
-
-      <!-- Preise -->
-      <div id="priceSection">
-        <div class="voter-section-head">
-          <div><h2>Preisliste</h2><p>Aktuelle Fahrschul- und Servicepreise</p></div>
+        <!-- Minispiele -->
+        <div id="vGamesToggle" onclick="(function(){var l=document.getElementById('vGamesList'),o=l.style.maxHeight!=='0px';l.style.maxHeight=o?'0px':'700px';document.getElementById('vGamesChev').style.transform=o?'rotate(-90deg)':'';})()" style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
+          <span>Minispiele</span>
+          <i id="vGamesChev" class="fas fa-chevron-down" style="font-size:.55rem;transition:transform .2s"></i>
         </div>
-        <div id="voterPrices"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
+        <div id="vGamesList" style="overflow:hidden;transition:max-height .22s ease;max-height:700px">
+          <a class="nav-item" href="/game"   target="_blank"><i class="fas fa-car"></i><span>Autorennen</span></a>
+          <a class="nav-item" href="/game2"  target="_blank"><i class="fas fa-th-large"></i><span>Brick Breaker</span></a>
+          <a class="nav-item" href="/game3"  target="_blank" style="color:#ef4444"><i class="fas fa-biohazard" style="color:#ef4444"></i><span>Dead Zone</span></a>
+          <a class="nav-item" href="/game4"  target="_blank"><i class="fas fa-snake"></i><span>Snake</span></a>
+          <a class="nav-item" href="/game5"  target="_blank"><i class="fas fa-th-large"></i><span>Tetris</span></a>
+          <a class="nav-item" href="/game6"  target="_blank" style="color:#fbbf24"><i class="fas fa-dice" style="color:#fbbf24"></i><span>Book of Ra</span></a>
+          <a class="nav-item" href="/game7"  target="_blank" style="color:#60a5fa"><i class="fas fa-helicopter" style="color:#60a5fa"></i><span>Sky Cop</span></a>
+          <a class="nav-item" href="/game8"  target="_blank" style="color:#4ade80"><i class="fas fa-frog" style="color:#4ade80"></i><span>Doodle Jump</span></a>
+          <a class="nav-item" href="/game9"  target="_blank" style="color:#f97316"><i class="fas fa-shield-alt" style="color:#f97316"></i><span>Tower Defense</span></a>
+          <a class="nav-item" href="/game10" target="_blank" style="color:#f59e0b"><i class="fas fa-th" style="color:#f59e0b"></i><span>2048</span></a>
+          <a class="nav-item" href="/quiz"   target="_blank" style="color:#22c55e"><i class="fas fa-graduation-cap" style="color:#22c55e"></i><span>Prüfungsquiz</span></a>
+        </div>
+      </nav>
+      <div class="sidebar-bottom">
+        <a class="nav-item" onclick="voterLogout()" style="cursor:pointer"><i class="fas fa-sign-out-alt"></i><span>Abmelden</span></a>
       </div>
+    </aside>
 
-      <!-- MdW-Abstimmung -->
-      <div id="voteSection" style="display:none">
-        <div class="voter-section-head">
-          <div>
-            <h2>Mitarbeiter der Woche</h2>
-            <p>${myVote ? 'Du hast bereits abgestimmt.' : 'Wähle den ACLS-Mitarbeiter dieser Woche.'}</p>
+    <!-- ===== MAIN ===== -->
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div>
+          <h1 id="vPageTitle">Preisliste</h1>
+          <p id="vPageSubtitle">Aktuelle Fahrschul- & Servicepreise</p>
+        </div>
+        <div class="user-widget">
+          ${avUrl
+            ? `<img class="u-avatar" src="${avUrl}" style="object-fit:cover" onerror="this.outerHTML='<div class=u-avatar>${(currentUser.username||'?')[0].toUpperCase()}</div>'">`
+            : `<div class="u-avatar">${(currentUser.username||'?')[0].toUpperCase()}</div>`}
+          <div class="u-info">
+            <div class="u-name">${currentUser.username}</div>
+            <div class="u-role">Bürger</div>
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:.6rem">
-        ${(users || []).map(u => {
-          const av = (u.avatar && u.discord_id)
-            ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64` : null;
-          const voted = myVote === u.id;
-          const votes = tally[u.id] || 0;
-          return `<div class="vote-item${voted ? ' voted' : ''}" ${!myVote ? `onclick="castCitizenVote(${u.id})"` : ''} style="cursor:${!myVote ? 'pointer' : 'default'}">
-            ${av
-              ? `<img src="${av}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">`
-              : `<div style="width:40px;height:40px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;flex-shrink:0">${(u.username||'?')[0].toUpperCase()}</div>`}
-            <div style="flex:1;min-width:0">
-              <div class="vote-name">${u.username}</div>
-              <div class="vote-count">${votes} Bürgerstimme${votes !== 1 ? 'n' : ''}</div>
+      </header>
+
+      <div id="twitch-widget" style="padding:.6rem 1.5rem;border-bottom:1px solid var(--border);background:var(--surface)">
+        <div class="twitch-card"><div class="twitch-offline-dot"></div><div style="font-size:.8rem;color:#9ca3af;margin-left:.5rem">Wird geladen…</div></div>
+      </div>
+
+      <main style="flex:1;overflow-y:auto;padding:1.25rem 1.5rem 5rem">
+
+        <!-- Preisliste -->
+        <div id="priceSection">
+          <div id="voterPrices"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
+        </div>
+
+        <!-- MdW-Abstimmung -->
+        <div id="voteSection" style="display:none">
+          <p style="color:var(--muted);font-size:.85rem;margin-bottom:1.25rem">
+            ${myVote ? 'Du hast diese Woche bereits abgestimmt.' : 'Wähle einen ACLS-Mitarbeiter dieser Woche.'}
+          </p>
+          <div style="display:flex;flex-direction:column;gap:.6rem;max-width:600px">
+          ${(users || []).map(u => {
+            const av = (u.avatar && u.discord_id)
+              ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64` : null;
+            const voted = myVote === u.id;
+            const votes = tally[u.id] || 0;
+            return `<div class="vote-item${voted ? ' voted' : ''}" ${!myVote ? `onclick="castCitizenVote(${u.id})"` : ''} style="cursor:${!myVote ? 'pointer' : 'default'}">
+              ${av
+                ? `<img src="${av}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">`
+                : `<div style="width:40px;height:40px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;flex-shrink:0">${(u.username||'?')[0].toUpperCase()}</div>`}
+              <div style="flex:1;min-width:0">
+                <div class="vote-name">${u.username}</div>
+                <div class="vote-count">${votes} Bürgerstimme${votes !== 1 ? 'n' : ''}</div>
+              </div>
+              ${voted
+                ? '<span style="background:#f9731622;color:var(--orange);font-size:.72rem;font-weight:700;padding:.2rem .65rem;border-radius:20px;flex-shrink:0"><i class="fas fa-check"></i> Gewählt</span>'
+                : (!myVote ? '<i class="fas fa-chevron-right" style="color:var(--muted);font-size:.75rem;flex-shrink:0"></i>' : '')}
+            </div>`;
+          }).join('')}
+          </div>
+        </div>
+
+        <!-- Beschwerde -->
+        <div id="complaintSection" style="display:none">
+          <div style="max-width:600px">
+            <div class="card" style="margin-bottom:1.25rem">
+              <form onsubmit="submitComplaintForm(event)">
+                <div class="form-group"><label>Dein Name (IC)</label><input class="form-control" id="cName" value="${currentUser.username||''}" required></div>
+                <div class="form-group"><label>Betreff</label><input class="form-control" id="cSubject" placeholder="Kurze Zusammenfassung" required></div>
+                <div class="form-group"><label>Nachricht</label><textarea class="form-control" id="cMessage" rows="4" placeholder="Beschreibe dein Anliegen ausführlich…" required style="resize:vertical"></textarea></div>
+                <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-paper-plane"></i> Absenden</button>
+              </form>
             </div>
-            ${voted ? '<span style="background:#f9731622;color:var(--orange);font-size:.72rem;font-weight:700;padding:.2rem .6rem;border-radius:20px"><i class="fas fa-check"></i> Gewählt</span>' : (!myVote ? '<i class="fas fa-chevron-right" style="color:var(--muted);font-size:.75rem"></i>' : '')}
-          </div>`;
-        }).join('')}
+            <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem">Meine Beschwerden</div>
+            <div id="my-complaints-list"><div style="color:var(--muted);font-size:.85rem">Wird geladen…</div></div>
+          </div>
         </div>
-      </div>
 
-      <!-- Beschwerde -->
-      <div id="complaintSection" style="display:none">
-        <div class="voter-section-head">
-          <div><h2>Beschwerde einreichen</h2><p>Ein Admin wird sich so schnell wie möglich darum kümmern.</p></div>
+        <!-- Fahrzeugmarkt -->
+        <div id="marketSection" style="display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:.75rem">
+            <div></div>
+            <button class="btn btn-primary btn-sm" onclick="openAddListing()"><i class="fas fa-plus"></i> Inserat erstellen</button>
+          </div>
+          <div id="voterListings" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem">
+            <div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div>
+          </div>
         </div>
-        <div class="card" style="margin-bottom:1.25rem">
-          <form onsubmit="submitComplaintForm(event)">
-            <div class="form-group"><label>Dein Name (IC)</label><input class="form-control" id="cName" value="${currentUser.username||''}" required></div>
-            <div class="form-group"><label>Betreff</label><input class="form-control" id="cSubject" placeholder="Kurze Zusammenfassung" required></div>
-            <div class="form-group"><label>Nachricht</label><textarea class="form-control" id="cMessage" rows="4" placeholder="Beschreibe dein Anliegen ausführlich…" required style="resize:vertical"></textarea></div>
-            <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-paper-plane"></i> Absenden</button>
-          </form>
-        </div>
-        <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem">Meine Beschwerden</div>
-        <div id="my-complaints-list"><div style="color:var(--muted);font-size:.85rem">Wird geladen…</div></div>
-      </div>
 
-      <!-- Fahrzeugmarkt -->
-      <div id="marketSection" style="display:none">
-        <div class="voter-section-head">
-          <div><h2>Fahrzeugmarkt</h2><p>Private Inserate von Bürgern</p></div>
-          <button class="btn btn-primary btn-sm" onclick="openAddListing()"><i class="fas fa-plus"></i> Inserat erstellen</button>
-        </div>
-        <div id="voterListings" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem">
-          <div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div>
-        </div>
-      </div>
-
-    </div><!-- /voter-content -->
-
-    <!-- Footer: Twitch + Games -->
-    <footer class="voter-footer">
-      <div class="voter-footer-inner">
-        <div id="twitch-widget" style="margin-bottom:1.25rem">
-          <div class="twitch-card"><div class="twitch-offline-dot"></div><div style="font-size:.8rem;color:#9ca3af;margin-left:.5rem">Wird geladen…</div></div>
-        </div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;margin-bottom:.6rem">
-          <i class="fas fa-gamepad" style="margin-right:.4rem"></i>Minispiele
-        </div>
-        <div class="voter-games-grid">
-          <a href="/game"   target="_blank" class="voter-game-btn"><i class="fas fa-car"></i> Autorennen</a>
-          <a href="/game2"  target="_blank" class="voter-game-btn"><i class="fas fa-th-large"></i> Brick Breaker</a>
-          <a href="/game3"  target="_blank" class="voter-game-btn" style="color:#ef4444"><i class="fas fa-biohazard" style="color:#ef4444"></i> Dead Zone</a>
-          <a href="/game4"  target="_blank" class="voter-game-btn"><i class="fas fa-snake"></i> Snake</a>
-          <a href="/game5"  target="_blank" class="voter-game-btn"><i class="fas fa-th-large"></i> Tetris</a>
-          <a href="/game6"  target="_blank" class="voter-game-btn" style="color:#fbbf24"><i class="fas fa-dice" style="color:#fbbf24"></i> Book of Ra</a>
-          <a href="/game7"  target="_blank" class="voter-game-btn" style="color:#60a5fa"><i class="fas fa-helicopter" style="color:#60a5fa"></i> Sky Cop</a>
-          <a href="/game8"  target="_blank" class="voter-game-btn" style="color:#4ade80"><i class="fas fa-frog" style="color:#4ade80"></i> Doodle Jump</a>
-          <a href="/game9"  target="_blank" class="voter-game-btn" style="color:#f97316"><i class="fas fa-shield-alt" style="color:#f97316"></i> Tower Defense</a>
-          <a href="/game10" target="_blank" class="voter-game-btn" style="color:#f59e0b"><i class="fas fa-th" style="color:#f59e0b"></i> 2048</a>
-          <a href="/quiz"   target="_blank" class="voter-game-btn" style="color:#22c55e"><i class="fas fa-graduation-cap" style="color:#22c55e"></i> Prüfungsquiz</a>
-        </div>
-      </div>
-    </footer>
-
+      </main>
+    </div><!-- /main-wrapper -->
   </div>`;
 
   loadVoterPrices();
@@ -422,14 +415,19 @@ async function renderVoterScreen() {
 }
 
 window.voterTab = tab => {
-  document.getElementById('priceSection').style.display     = tab === 'price'     ? '' : 'none';
-  document.getElementById('voteSection').style.display      = tab === 'vote'      ? '' : 'none';
-  document.getElementById('complaintSection').style.display = tab === 'complaint' ? '' : 'none';
-  document.getElementById('marketSection').style.display    = tab === 'market'    ? '' : 'none';
   ['price','vote','complaint','market'].forEach(t => {
-    const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
-    if (el) el.classList.toggle('active', t === tab);
+    const sec = document.getElementById(t + 'Section');
+    if (sec) sec.style.display = t === tab ? '' : 'none';
+    const nav = document.getElementById('vn' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (nav) nav.classList.toggle('active', t === tab);
   });
+  const p = _voterPageMeta[tab];
+  if (p) {
+    const tEl = document.getElementById('vPageTitle');
+    const sEl = document.getElementById('vPageSubtitle');
+    if (tEl) tEl.textContent = p.title;
+    if (sEl) sEl.textContent = p.sub;
+  }
   if (tab === 'market')    loadVoterMarket();
   if (tab === 'price')     loadVoterPrices();
   if (tab === 'complaint') loadMyComplaints();
