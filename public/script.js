@@ -2504,7 +2504,7 @@ window.openRechnungModal = () => {
       </div>
       ${items.map(item => `
       <label style="display:flex;align-items:center;gap:.65rem;padding:.45rem .6rem;border-radius:8px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
-        <input type="checkbox" class="rech-check" data-id="${item.id}" data-name="${item.name.replace(/"/g,'&quot;')}" data-price="${item.price}" onchange="rechUpdateTotal()" style="width:16px;height:16px;accent-color:var(--orange);flex-shrink:0">
+        <input type="checkbox" class="rech-check" data-id="${item.id}" data-name="${item.name.replace(/"/g,'&quot;')}" data-price="${item.price}" data-notes="${(item.notes||'').replace(/"/g,'&quot;')}" data-cat="${cat.replace(/"/g,'&quot;')}" onchange="rechUpdateTotal()" style="width:16px;height:16px;accent-color:var(--orange);flex-shrink:0">
         <div style="flex:1;min-width:0">
           <div style="font-size:.85rem;font-weight:600">${item.name}</div>
           ${item.notes ? `<div style="font-size:.7rem;color:var(--muted)">${item.notes}</div>` : ''}
@@ -2522,15 +2522,15 @@ window.openRechnungModal = () => {
       <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
     </div>
     <div class="form-group" style="margin-bottom:1rem">
-      <label>Kundenname (optional)</label>
-      <input class="form-control" id="rechKunde" placeholder="z.B. Max Mustermann / Barzahler">
+      <label>Kunde / Organisation</label>
+      <input class="form-control" id="rechKunde" placeholder="z.B. Federal Investigation Bureau (FIB)">
     </div>
-    <div style="max-height:340px;overflow-y:auto;padding-right:.25rem;margin-bottom:.75rem">
+    <div style="max-height:320px;overflow-y:auto;padding-right:.25rem;margin-bottom:.75rem">
       ${catHtml}
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:.65rem .85rem;background:var(--surface2);border-radius:8px;margin-bottom:1rem">
       <span style="font-size:.85rem;font-weight:600;color:var(--muted)">Gesamt</span>
-      <span id="rechTotal" style="font-size:1.05rem;font-weight:800;color:#22c55e">0$</span>
+      <span id="rechTotal" style="font-size:1.05rem;font-weight:800;color:#22c55e">0 $</span>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
@@ -2555,95 +2555,268 @@ window.rechUpdateTotal = () => {
     if (qtyEl) qtyEl.style.display = 'none';
   });
   const el = document.getElementById('rechTotal');
-  if (el) el.textContent = allParseable ? `${total.toLocaleString('de-DE')}$` : `${total.toLocaleString('de-DE')}$ (+)`;
+  if (el) el.textContent = allParseable ? `${total.toLocaleString('de-DE')} $` : `${total.toLocaleString('de-DE')} $ (+)`;
 };
 
 window.generateRechnung = () => {
   const checked = document.querySelectorAll('.rech-check:checked');
   if (!checked.length) { toast('Bitte mindestens eine Leistung auswählen', 'err'); return; }
 
-  const kunde = document.getElementById('rechKunde')?.value.trim() || 'Barzahler';
-  const datum = new Date().toLocaleDateString('de-DE');
-  const rechnungsNr = `ACLS-${Date.now().toString().slice(-6)}`;
+  const kunde  = document.getElementById('rechKunde')?.value.trim() || 'Barzahler';
+  const datum  = new Date().toLocaleDateString('de-DE');
+  const nr     = `ACLS-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+  const W = 210, H = 297;
+  const navy   = [26,  39,  68];
+  const gold   = [201,162,  39];
+  const white  = [255,255, 255];
+  const dark   = [30,  30,  50];
+  const muted  = [100,105, 120];
 
-  const rows = [];
-  let gesamtTotal = 0;
-  let hasUnparseable = false;
-
+  const items = [];
+  let total = 0, hasUnparseable = false;
+  let pos = 1;
   checked.forEach(cb => {
     const qty = parseInt(document.querySelector(`.rech-qty[data-id="${cb.dataset.id}"]`)?.value) || 1;
-    const priceStr = cb.dataset.price;
-    const raw = priceStr.replace(/\./g, '').replace(/,/g, '.').replace(/[^0-9.]/g, '');
-    const val = parseFloat(raw);
-    let gesamtStr;
-    if (!isNaN(val)) {
-      gesamtTotal += val * qty;
-      gesamtStr = `${(val * qty).toLocaleString('de-DE')}$`;
-    } else {
-      hasUnparseable = true;
-      gesamtStr = '—';
-    }
-    rows.push([cb.dataset.name, qty.toString(), priceStr, gesamtStr]);
+    const ps  = cb.dataset.price;
+    const val = parseFloat(ps.replace(/\./g,'').replace(/,/g,'.').replace(/[^0-9.]/g,''));
+    const gesamt = isNaN(val) ? null : val * qty;
+    if (gesamt === null) hasUnparseable = true; else total += gesamt;
+    items.push({
+      pos: pos++,
+      name: cb.dataset.name,
+      notes: cb.dataset.notes || '',
+      cat: cb.dataset.cat || '',
+      qty,
+      price: ps,
+      gesamt: gesamt === null ? '—' : `${gesamt.toLocaleString('de-DE')} $`,
+    });
   });
+
+  const totalStr = hasUnparseable ? '—' : `${total.toLocaleString('de-DE')} $`;
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
 
-  // Header background strip
-  doc.setFillColor(249, 115, 22);
-  doc.rect(0, 0, 210, 28, 'F');
+  // ── HEADER BG ────────────────────────────────────────────────────
+  doc.setFillColor(...navy);
+  doc.rect(0, 0, W, 48, 'F');
 
-  doc.setTextColor(255, 255, 255);
+  // ACLS circle logo (left)
+  doc.setDrawColor(...gold);
+  doc.setLineWidth(1);
+  doc.circle(26, 24, 18);
+  doc.setLineWidth(0.4);
+  doc.circle(26, 24, 15.5);
+  doc.setTextColor(...white);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text('ACLS Automobil-Club', 14, 12);
-  doc.setFontSize(9);
+  doc.setFontSize(15);
+  doc.text('ACLS', 26, 22, { align: 'center' });
   doc.setFont('helvetica', 'normal');
-  doc.text('Los Santos · Fahrzeugprüfung & Fahrschule', 14, 19);
-  doc.setFontSize(11);
+  doc.setFontSize(5.5);
+  doc.setTextColor(...gold);
+  doc.text('AUTOMOBIL CLUB', 26, 27.5, { align: 'center' });
+  doc.text('LOS SANTOS', 26, 31.5, { align: 'center' });
+
+  // Gold decorative lines in circle
+  doc.setDrawColor(...gold);
+  doc.setLineWidth(0.3);
+  doc.line(14, 24.5, 38, 24.5);
+
+  // Title center
+  doc.setTextColor(...white);
   doc.setFont('helvetica', 'bold');
-  doc.text('RECHNUNG', 196, 12, { align: 'right' });
+  doc.setFontSize(19);
+  doc.text('AUTOMOBIL CLUB', 56, 18);
+  doc.setFontSize(21);
+  doc.text('LOS SANTOS', 56, 27);
   doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...gold);
+  doc.text('SERVICE  ·  LEISTUNG  ·  VERTRAUEN', 56, 35);
+  doc.setDrawColor(...gold);
+  doc.setLineWidth(0.4);
+  doc.line(56, 38, 134, 38);
+
+  // "RECHNUNG" right
+  doc.setTextColor(...white);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(26);
+  doc.text('RECHNUNG', W - 14, 22, { align: 'right' });
+  doc.setDrawColor(...gold);
+  doc.setLineWidth(1.2);
+  doc.line(W - 72, 26, W - 14, 26);
+
+  // Gold bottom stripe on header
+  doc.setFillColor(...gold);
+  doc.rect(0, 48, W, 1.5, 'F');
+
+  // ── INVOICE META (right) ────────────────────────────────────────
+  const metaX = W - 14;
   doc.setFontSize(8);
-  doc.text(rechnungsNr, 196, 19, { align: 'right' });
-
-  // Reset text color
-  doc.setTextColor(30, 30, 30);
-
-  // Meta block
-  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...muted);
+  doc.text('Rechnungsnummer:', metaX, 58, { align: 'right' });
   doc.setFont('helvetica', 'normal');
-  doc.text(`Datum: ${datum}`, 14, 36);
-  doc.text(`Mitarbeiter: ${currentUser?.username || '—'}`, 14, 42);
-  doc.text(`Kunde: ${kunde}`, 14, 48);
+  doc.setTextColor(...dark);
+  doc.setFontSize(9);
+  doc.text(nr, metaX, 64, { align: 'right' });
 
-  // Table
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...muted);
+  doc.text('Rechnungsdatum:', metaX, 72, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...dark);
+  doc.setFontSize(9);
+  doc.text(datum, metaX, 78, { align: 'right' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...muted);
+  doc.text('Mitarbeiter:', metaX, 86, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...dark);
+  doc.setFontSize(9);
+  doc.text(currentUser?.username || '—', metaX, 92, { align: 'right' });
+
+  // ── BILLING ADDRESS (left) ──────────────────────────────────────
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...muted);
+  doc.text('Rechnung an:', 14, 58);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...dark);
+  doc.text(kunde, 14, 70);
+  doc.setDrawColor(...navy);
+  doc.setLineWidth(0.5);
+  doc.line(14, 73, Math.min(14 + kunde.length * 4.2 + 10, 120), 73);
+
+  // ── TABLE ───────────────────────────────────────────────────────
+  const minRows = Math.max(items.length, 6);
+  const tableBody = items.map(it => [
+    it.pos.toString(),
+    { content: it.name + (it.notes ? `\n${it.notes}` : ''), styles: it.notes ? { fontSize: 9 } : {} },
+    it.qty.toString(),
+    it.price,
+    it.gesamt,
+  ]);
+  while (tableBody.length < minRows) tableBody.push([{ content: '\n', colSpan: 1 }, '', '', '', '']);
+
   doc.autoTable({
-    startY: 56,
-    head: [['Leistung', 'Menge', 'Einzelpreis', 'Gesamt']],
-    body: rows,
-    foot: [[
-      { content: '', styles: { fontStyle: 'bold' } },
-      '',
-      { content: 'Gesamtbetrag:', styles: { fontStyle: 'bold', halign: 'right' } },
-      { content: hasUnparseable ? '—' : `${gesamtTotal.toLocaleString('de-DE')}$`, styles: { fontStyle: 'bold', textColor: [34, 197, 94] } },
-    ]],
-    headStyles: { fillColor: [249, 115, 22], textColor: 255, fontStyle: 'bold', fontSize: 9 },
-    footStyles: { fillColor: [240, 240, 240], textColor: [30, 30, 30], fontSize: 9 },
-    bodyStyles: { fontSize: 9, textColor: [50, 50, 50] },
-    columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 35, halign: 'right' }, 3: { cellWidth: 35, halign: 'right' } },
-    alternateRowStyles: { fillColor: [248, 248, 248] },
+    startY: 80,
+    head: [['POS.', 'BESCHREIBUNG', 'ANZAHL', 'EINZELPREIS', 'GESAMTPREIS']],
+    body: tableBody,
+    headStyles: {
+      fillColor: navy, textColor: white, fontStyle: 'bold',
+      fontSize: 8.5, halign: 'center',
+      cellPadding: { top: 4, bottom: 4, left: 3, right: 3 },
+    },
+    bodyStyles: {
+      fontSize: 9, textColor: dark, minCellHeight: 14,
+      cellPadding: { top: 3.5, bottom: 3.5, left: 4, right: 4 },
+    },
+    columnStyles: {
+      0: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 22, halign: 'center' },
+      3: { cellWidth: 34, halign: 'right' },
+      4: { cellWidth: 34, halign: 'right', fontStyle: 'bold' },
+    },
+    alternateRowStyles: { fillColor: [244, 246, 250] },
     margin: { left: 14, right: 14 },
-    theme: 'striped',
+    theme: 'grid',
+    tableLineColor: [210, 215, 228],
+    tableLineWidth: 0.18,
   });
 
-  // Footer
-  const pageH = doc.internal.pageSize.height;
-  doc.setFontSize(8);
-  doc.setTextColor(150, 150, 150);
-  doc.text('Vielen Dank für Ihren Auftrag! · ACLS Automobil-Club Los Santos', 105, pageH - 10, { align: 'center' });
+  const tY = doc.lastAutoTable.finalY;
 
-  doc.save(`Rechnung_${rechnungsNr}_${datum.replace(/\./g, '-')}.pdf`);
+  // ── SUMMARY BOX (bottom-right) ──────────────────────────────────
+  const bx = W - 14, bw = 72, bLeft = bx - bw;
+  let sy = tY + 6;
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...muted);
+  doc.text('Zwischensumme:', bLeft, sy);
+  doc.setTextColor(...dark);
+  doc.text(totalStr, bx, sy, { align: 'right' });
+
+  sy += 7;
+  doc.setTextColor(...muted);
+  doc.text('Mehrwertsteuer (0 %):', bLeft, sy);
+  doc.setTextColor(...dark);
+  doc.text('0 $', bx, sy, { align: 'right' });
+
+  sy += 4;
+  doc.setFillColor(...navy);
+  doc.roundedRect(bLeft - 4, sy, bw + 8, 12, 1.5, 1.5, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...white);
+  doc.text('Gesamtsumme:', bLeft, sy + 8);
+  doc.text(totalStr, bx, sy + 8, { align: 'right' });
+
+  // ── PAYMENT INFO + SIGNATURE ────────────────────────────────────
+  const botY = Math.max(sy + 22, H - 60);
+
+  // Icon circles
+  const drawIcon = (cx, cy, symbol) => {
+    doc.setDrawColor(...navy);
+    doc.setLineWidth(0.5);
+    doc.circle(cx, cy, 5);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...navy);
+    doc.text(symbol, cx, cy + 3, { align: 'center' });
+  };
+  drawIcon(20, botY + 4, '#');
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...dark);
+  doc.text('ZAHLUNGSHINWEIS:', 28, botY + 2);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...muted);
+  doc.text('Bitte uberweisen Sie den Betrag innerhalb von 14 Tagen.', 28, botY + 8);
+
+  drawIcon(20, botY + 18, 'V');
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...dark);
+  doc.text('ZAHLUNGSZIEL:', 28, botY + 16);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...muted);
+  doc.text('14 Tage nach Rechnungsdatum', 28, botY + 22);
+
+  // Signature line (right)
+  const sigMid = (bLeft + bx) / 2;
+  doc.setDrawColor(...navy);
+  doc.setLineWidth(0.4);
+  doc.line(bLeft - 4, botY + 24, bx, botY + 24);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...muted);
+  doc.text(currentUser?.username || 'Mitarbeiter', sigMid, botY + 29, { align: 'center' });
+  doc.text('Automobil Club Los Santos', sigMid, botY + 34, { align: 'center' });
+
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(9);
+  doc.setTextColor(...dark);
+  doc.text('Vielen Dank fur Ihr Vertrauen!', 14, botY + 34);
+
+  // ── FOOTER ─────────────────────────────────────────────────────
+  doc.setDrawColor(...gold);
+  doc.setLineWidth(0.6);
+  doc.line(14, H - 16, W - 14, H - 16);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...navy);
+  doc.text('WIR BEWEGEN LOS SANTOS.', W / 2, H - 10, { align: 'center' });
+  doc.setFontSize(11);
+  doc.setTextColor(...gold);
+  doc.text('★  ★  ★', W / 2, H - 5, { align: 'center' });
+
+  doc.save(`Rechnung_${nr}_${datum.replace(/\./g, '-')}.pdf`);
   closeModal();
   toast('PDF erstellt!', 'ok');
 };
