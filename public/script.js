@@ -2448,10 +2448,15 @@ async function prices() {
 
   const canEdit = isAdmin() || currentUser?.role === 'member' || currentUser?.role === 'ausbilder';
 
+  window._priceRows = rows;
+
   $('pageContent').innerHTML = `
     <div class="pg-header">
       <div class="pg-header-left"><h2>Preisliste</h2><p>${rows.length} Einträge in ${Object.keys(cats).length} Kategorien</p></div>
-      ${canEdit ? `<button class="btn btn-primary" onclick="openAddPrice()"><i class="fas fa-plus"></i> Preis hinzufügen</button>` : ''}
+      <div style="display:flex;gap:.5rem">
+        <button class="btn btn-ghost" onclick="openRechnungModal()" style="color:#22c55e;border-color:rgba(34,197,94,.3)"><i class="fas fa-file-invoice" style="margin-right:.4rem"></i>Rechnung erstellen</button>
+        ${canEdit ? `<button class="btn btn-primary" onclick="openAddPrice()"><i class="fas fa-plus"></i> Preis hinzufügen</button>` : ''}
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem">
       ${Object.entries(cats).map(([cat, items]) => {
@@ -2486,6 +2491,162 @@ async function prices() {
       }).join('')}
     </div>`;
 }
+
+window.openRechnungModal = () => {
+  const rows = window._priceRows || [];
+  const cats = {};
+  rows.forEach(r => { if (!cats[r.category]) cats[r.category] = []; cats[r.category].push(r); });
+
+  const catHtml = Object.entries(cats).map(([cat, items]) => `
+    <div style="margin-bottom:1rem">
+      <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
+        ${cat}<div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+      ${items.map(item => `
+      <label style="display:flex;align-items:center;gap:.65rem;padding:.45rem .6rem;border-radius:8px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+        <input type="checkbox" class="rech-check" data-id="${item.id}" data-name="${item.name.replace(/"/g,'&quot;')}" data-price="${item.price}" onchange="rechUpdateTotal()" style="width:16px;height:16px;accent-color:var(--orange);flex-shrink:0">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.85rem;font-weight:600">${item.name}</div>
+          ${item.notes ? `<div style="font-size:.7rem;color:var(--muted)">${item.notes}</div>` : ''}
+        </div>
+        <span style="font-size:.85rem;font-weight:700;color:#22c55e;white-space:nowrap">${item.price}</span>
+        <input type="number" class="rech-qty form-control" data-id="${item.id}" value="1" min="1" max="99"
+          style="width:52px;padding:.2rem .35rem;font-size:.82rem;text-align:center;display:none"
+          oninput="rechUpdateTotal()" onclick="event.stopPropagation()">
+      </label>`).join('')}
+    </div>`).join('');
+
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-file-invoice" style="color:#22c55e;margin-right:.5rem"></i>Rechnung erstellen</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="form-group" style="margin-bottom:1rem">
+      <label>Kundenname (optional)</label>
+      <input class="form-control" id="rechKunde" placeholder="z.B. Max Mustermann / Barzahler">
+    </div>
+    <div style="max-height:340px;overflow-y:auto;padding-right:.25rem;margin-bottom:.75rem">
+      ${catHtml}
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:.65rem .85rem;background:var(--surface2);border-radius:8px;margin-bottom:1rem">
+      <span style="font-size:.85rem;font-weight:600;color:var(--muted)">Gesamt</span>
+      <span id="rechTotal" style="font-size:1.05rem;font-weight:800;color:#22c55e">0$</span>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="generateRechnung()" style="background:#22c55e;border-color:#22c55e"><i class="fas fa-file-pdf" style="margin-right:.4rem"></i>PDF erstellen</button>
+    </div>`);
+};
+
+window.rechUpdateTotal = () => {
+  let total = 0;
+  let allParseable = true;
+  document.querySelectorAll('.rech-check:checked').forEach(cb => {
+    const qty = parseInt(document.querySelector(`.rech-qty[data-id="${cb.dataset.id}"]`)?.value) || 1;
+    const qtyEl = document.querySelector(`.rech-qty[data-id="${cb.dataset.id}"]`);
+    if (qtyEl) qtyEl.style.display = '';
+    const raw = cb.dataset.price.replace(/\./g, '').replace(/,/g, '.').replace(/[^0-9.]/g, '');
+    const val = parseFloat(raw);
+    if (!isNaN(val)) total += val * qty;
+    else allParseable = false;
+  });
+  document.querySelectorAll('.rech-check:not(:checked)').forEach(cb => {
+    const qtyEl = document.querySelector(`.rech-qty[data-id="${cb.dataset.id}"]`);
+    if (qtyEl) qtyEl.style.display = 'none';
+  });
+  const el = document.getElementById('rechTotal');
+  if (el) el.textContent = allParseable ? `${total.toLocaleString('de-DE')}$` : `${total.toLocaleString('de-DE')}$ (+)`;
+};
+
+window.generateRechnung = () => {
+  const checked = document.querySelectorAll('.rech-check:checked');
+  if (!checked.length) { toast('Bitte mindestens eine Leistung auswählen', 'err'); return; }
+
+  const kunde = document.getElementById('rechKunde')?.value.trim() || 'Barzahler';
+  const datum = new Date().toLocaleDateString('de-DE');
+  const rechnungsNr = `ACLS-${Date.now().toString().slice(-6)}`;
+
+  const rows = [];
+  let gesamtTotal = 0;
+  let hasUnparseable = false;
+
+  checked.forEach(cb => {
+    const qty = parseInt(document.querySelector(`.rech-qty[data-id="${cb.dataset.id}"]`)?.value) || 1;
+    const priceStr = cb.dataset.price;
+    const raw = priceStr.replace(/\./g, '').replace(/,/g, '.').replace(/[^0-9.]/g, '');
+    const val = parseFloat(raw);
+    let gesamtStr;
+    if (!isNaN(val)) {
+      gesamtTotal += val * qty;
+      gesamtStr = `${(val * qty).toLocaleString('de-DE')}$`;
+    } else {
+      hasUnparseable = true;
+      gesamtStr = '—';
+    }
+    rows.push([cb.dataset.name, qty.toString(), priceStr, gesamtStr]);
+  });
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+
+  // Header background strip
+  doc.setFillColor(249, 115, 22);
+  doc.rect(0, 0, 210, 28, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text('ACLS Automobil-Club', 14, 12);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Los Santos · Fahrzeugprüfung & Fahrschule', 14, 19);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('RECHNUNG', 196, 12, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text(rechnungsNr, 196, 19, { align: 'right' });
+
+  // Reset text color
+  doc.setTextColor(30, 30, 30);
+
+  // Meta block
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Datum: ${datum}`, 14, 36);
+  doc.text(`Mitarbeiter: ${currentUser?.username || '—'}`, 14, 42);
+  doc.text(`Kunde: ${kunde}`, 14, 48);
+
+  // Table
+  doc.autoTable({
+    startY: 56,
+    head: [['Leistung', 'Menge', 'Einzelpreis', 'Gesamt']],
+    body: rows,
+    foot: [[
+      { content: '', styles: { fontStyle: 'bold' } },
+      '',
+      { content: 'Gesamtbetrag:', styles: { fontStyle: 'bold', halign: 'right' } },
+      { content: hasUnparseable ? '—' : `${gesamtTotal.toLocaleString('de-DE')}$`, styles: { fontStyle: 'bold', textColor: [34, 197, 94] } },
+    ]],
+    headStyles: { fillColor: [249, 115, 22], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+    footStyles: { fillColor: [240, 240, 240], textColor: [30, 30, 30], fontSize: 9 },
+    bodyStyles: { fontSize: 9, textColor: [50, 50, 50] },
+    columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 35, halign: 'right' }, 3: { cellWidth: 35, halign: 'right' } },
+    alternateRowStyles: { fillColor: [248, 248, 248] },
+    margin: { left: 14, right: 14 },
+    theme: 'striped',
+  });
+
+  // Footer
+  const pageH = doc.internal.pageSize.height;
+  doc.setFontSize(8);
+  doc.setTextColor(150, 150, 150);
+  doc.text('Vielen Dank für Ihren Auftrag! · ACLS Automobil-Club Los Santos', 105, pageH - 10, { align: 'center' });
+
+  doc.save(`Rechnung_${rechnungsNr}_${datum.replace(/\./g, '-')}.pdf`);
+  closeModal();
+  toast('PDF erstellt!', 'ok');
+};
 
 window.openAddPrice = () => {
   openModal(`
