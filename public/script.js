@@ -166,6 +166,7 @@ function openModal(html) {
 }
 function closeModal() { $('modalOverlay').classList.add('hidden'); window._listingImg = null; }
 $('modalOverlay').addEventListener('click', e => { if (e.target === $('modalOverlay')) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 // ── Helpers ──────────────────────────────────────────────────────
 const isAdmin      = () => currentUser?.role === 'admin';
@@ -882,6 +883,7 @@ async function logout() {
 function navigate(page) {
   if (page === 'admin'     && !isAdmin())     { toast('Kein Zugriff', 'err'); return; }
   if (page === 'ausbildung' && !isAusbilder()) { toast('Kein Zugriff', 'err'); return; }
+  closeModal();
   _activePage = page;
   if (leafletMap && page !== 'map') { leafletMap.remove(); leafletMap = null; }
 
