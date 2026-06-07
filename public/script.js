@@ -459,36 +459,40 @@ async function loadVoterTeam() {
   const el = document.getElementById('voterTeamContent');
   if (!el) return;
   const staff = await fetch('/api/organigramm').then(r => r.json()).catch(() => []);
-  const admins     = staff.filter(u => u.role === 'admin');
-  const ausbilder  = staff.filter(u => u.role === 'ausbilder');
-  const mitarbeiter = staff.filter(u => u.role !== 'admin' && u.role !== 'ausbilder');
-  function av(u) {
+  const leitung    = staff.filter(u => u.rank === 'Rang 12');
+  const leitIds    = new Set(leitung.map(u => u.id));
+  const admins     = staff.filter(u => u.role === 'admin'     && !leitIds.has(u.id));
+  const ausbilder  = staff.filter(u => u.role === 'ausbilder' && !leitIds.has(u.id));
+  const mitarbeiter = staff.filter(u => u.role !== 'admin' && u.role !== 'ausbilder' && !leitIds.has(u.id));
+  function av(u, isL) {
+    const sz = isL ? 68 : 56;
     return (u.avatar && u.discord_id)
-      ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:56px;height:56px;border-radius:50%;object-fit:cover" onerror="this.outerHTML='<div style=&quot;width:56px;height:56px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700&quot;>${(u.username||'?')[0].toUpperCase()}</div>'">`
-      : `<div style="width:56px;height:56px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700">${(u.username||'?')[0].toUpperCase()}</div>`;
+      ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover${isL?';border:2px solid #c9a227':''}" onerror="this.outerHTML='<div style=&quot;width:${sz}px;height:${sz}px;border-radius:50%;background:${isL?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isL?'1.5':'1.3'}rem;font-weight:700&quot;>${(u.username||'?')[0].toUpperCase()}</div>'">`
+      : `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${isL?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isL?'1.5':'1.3'}rem;font-weight:700">${(u.username||'?')[0].toUpperCase()}</div>`;
   }
-  function card(u) {
-    const rc = u.role==='admin'?'#f97316':u.role==='ausbilder'?'#60a5fa':'var(--muted)';
-    const rn = u.role==='admin'?'Administration':u.role==='ausbilder'?'Ausbilder':'Mitarbeiter';
-    const rb = u.role==='admin'?'rgba(249,115,22,.15)':u.role==='ausbilder'?'rgba(96,165,250,.12)':'rgba(255,255,255,.06)';
-    const bc = u.role==='admin'?'rgba(249,115,22,.3)':u.role==='ausbilder'?'rgba(96,165,250,.2)':'var(--border)';
-    return `<div style="background:var(--surface);border:1px solid ${bc};border-radius:var(--r);padding:1rem .85rem;display:flex;flex-direction:column;align-items:center;gap:.5rem;text-align:center">
-      ${av(u)}
+  function card(u, isL = false) {
+    const rc = isL?'#c9a227':u.role==='admin'?'#f97316':u.role==='ausbilder'?'#60a5fa':'var(--muted)';
+    const rn = isL?'Rang 12':u.role==='admin'?'Administration':u.role==='ausbilder'?'Ausbilder':'Mitarbeiter';
+    const rb = isL?'rgba(201,162,39,.18)':u.role==='admin'?'rgba(249,115,22,.15)':u.role==='ausbilder'?'rgba(96,165,250,.12)':'rgba(255,255,255,.06)';
+    const bc = isL?'rgba(201,162,39,.45)':u.role==='admin'?'rgba(249,115,22,.3)':u.role==='ausbilder'?'rgba(96,165,250,.2)':'var(--border)';
+    return `<div style="background:var(--surface);border:1px solid ${bc};border-radius:var(--r);padding:1rem .85rem;display:flex;flex-direction:column;align-items:center;gap:.5rem;text-align:center${isL?';box-shadow:0 0 14px rgba(201,162,39,.15)':''}">
+      ${isL?'<i class="fas fa-crown" style="color:#c9a227;font-size:.8rem"></i>':''}
+      ${av(u, isL)}
       <div style="font-weight:700;font-size:.9rem">${u.username}</div>
       <span style="font-size:.68rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;background:${rb};color:${rc}">${rn}</span>
-      ${(u.rank&&u.rank!=='Mitarbeiter')?`<div style="font-size:.68rem;color:var(--muted)">${u.rank}</div>`:''}
     </div>`;
   }
-  function tier(label, icon, color, members) {
+  function tier(label, icon, color, members, isL = false) {
     if (!members.length) return '';
     return `<div style="margin-bottom:1.75rem">
       <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${color};margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem">
-        <i class="fas ${icon}"></i>${label}<div style="flex:1;height:1px;background:var(--border)"></div>
+        <i class="fas ${icon}"></i>${label}<div style="flex:1;height:1px;background:${isL?'rgba(201,162,39,.3)':'var(--border)'}"></div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.75rem">${members.map(card).join('')}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.75rem">${members.map(u=>card(u,isL)).join('')}</div>
     </div>`;
   }
   el.innerHTML = (staff.length ? '' : '<div style="text-align:center;padding:2rem;color:var(--muted)">Keine Mitarbeiter gefunden.</div>')
+    + tier('Leitung','fa-crown','#c9a227',leitung,true)
     + tier('Administration','fa-shield-alt','#f97316',admins)
     + tier('Ausbilder','fa-graduation-cap','#60a5fa',ausbilder)
     + tier('Mitarbeiter','fa-users','var(--muted)',mitarbeiter);
@@ -2916,36 +2920,38 @@ window.deletePrice = async id => {
 async function organigramm() {
   const staff = await api('/api/organigramm');
   if (!staff) return;
-  const admins      = staff.filter(u => u.role === 'admin');
-  const ausbilder   = staff.filter(u => u.role === 'ausbilder');
-  const mitarbeiter = staff.filter(u => u.role !== 'admin' && u.role !== 'ausbilder');
+  const leitung     = staff.filter(u => u.rank === 'Rang 12');
+  const leitungIds  = new Set(leitung.map(u => u.id));
+  const admins      = staff.filter(u => u.role === 'admin'     && !leitungIds.has(u.id));
+  const ausbilder   = staff.filter(u => u.role === 'ausbilder' && !leitungIds.has(u.id));
+  const mitarbeiter = staff.filter(u => u.role !== 'admin' && u.role !== 'ausbilder' && !leitungIds.has(u.id));
 
-  function memberCard(u) {
+  function memberCard(u, isLeitung = false) {
     const av = (u.avatar && u.discord_id)
-      ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:64px;height:64px;border-radius:50%;object-fit:cover" onerror="this.outerHTML='<div style=\'width:64px;height:64px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700\'>${(u.username||'?')[0].toUpperCase()}</div>'">`
-      : `<div style="width:64px;height:64px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700">${(u.username||'?')[0].toUpperCase()}</div>`;
-    const roleColor = u.role === 'admin' ? '#f97316' : u.role === 'ausbilder' ? '#60a5fa' : 'var(--muted)';
-    const roleName  = u.role === 'admin' ? 'Administration' : u.role === 'ausbilder' ? 'Ausbilder' : 'Mitarbeiter';
-    const roleBg    = u.role === 'admin' ? 'rgba(249,115,22,.15)' : u.role === 'ausbilder' ? 'rgba(96,165,250,.12)' : 'rgba(255,255,255,.06)';
-    const borderCol = u.role === 'admin' ? 'rgba(249,115,22,.35)' : u.role === 'ausbilder' ? 'rgba(96,165,250,.25)' : 'var(--border)';
-    const rank = (u.rank && u.rank !== 'Mitarbeiter') ? `<div style="font-size:.7rem;color:var(--muted)">${u.rank}</div>` : '';
-    return `<div style="background:var(--surface);border:1px solid ${borderCol};border-radius:var(--r);padding:1.25rem 1rem;display:flex;flex-direction:column;align-items:center;gap:.55rem;text-align:center;transition:transform .12s,box-shadow .12s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(0,0,0,.25)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
+      ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;object-fit:cover;${isLeitung?'border:2px solid #c9a227':''}" onerror="this.outerHTML='<div style=\'width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;background:${isLeitung?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isLeitung?'1.8':'1.5'}rem;font-weight:700\'>${(u.username||'?')[0].toUpperCase()}</div>'">`
+      : `<div style="width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;background:${isLeitung?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isLeitung?'1.8':'1.5'}rem;font-weight:700">${(u.username||'?')[0].toUpperCase()}</div>`;
+    const roleColor = isLeitung ? '#c9a227' : u.role === 'admin' ? '#f97316' : u.role === 'ausbilder' ? '#60a5fa' : 'var(--muted)';
+    const roleName  = isLeitung ? 'Rang 12' : u.role === 'admin' ? 'Administration' : u.role === 'ausbilder' ? 'Ausbilder' : 'Mitarbeiter';
+    const roleBg    = isLeitung ? 'rgba(201,162,39,.18)' : u.role === 'admin' ? 'rgba(249,115,22,.15)' : u.role === 'ausbilder' ? 'rgba(96,165,250,.12)' : 'rgba(255,255,255,.06)';
+    const borderCol = isLeitung ? 'rgba(201,162,39,.5)' : u.role === 'admin' ? 'rgba(249,115,22,.35)' : u.role === 'ausbilder' ? 'rgba(96,165,250,.25)' : 'var(--border)';
+    const crownIcon = isLeitung ? '<i class="fas fa-crown" style="color:#c9a227;font-size:.85rem"></i>' : '';
+    return `<div style="background:var(--surface);border:1px solid ${borderCol};border-radius:var(--r);padding:1.25rem 1rem;display:flex;flex-direction:column;align-items:center;gap:.55rem;text-align:center;transition:transform .12s,box-shadow .12s${isLeitung?';box-shadow:0 0 18px rgba(201,162,39,.18)':''}" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px ${isLeitung?'rgba(201,162,39,.25)':'rgba(0,0,0,.25)'}'" onmouseout="this.style.transform='';this.style.boxShadow='${isLeitung?'0 0 18px rgba(201,162,39,.18)':''}'">
+      ${crownIcon}
       ${av}
-      <div style="font-weight:700;font-size:.95rem">${u.username}</div>
+      <div style="font-weight:700;font-size:${isLeitung?'1rem':'.95rem'}">${u.username}</div>
       <span style="font-size:.7rem;font-weight:700;padding:.18rem .6rem;border-radius:20px;background:${roleBg};color:${roleColor}">${roleName}</span>
-      ${rank}
     </div>`;
   }
 
-  function tier(label, icon, color, members) {
+  function tier(label, icon, color, members, isLeitung = false) {
     if (!members.length) return '';
     return `<div style="margin-bottom:2rem">
       <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${color};margin-bottom:.85rem;display:flex;align-items:center;gap:.6rem">
         <i class="fas ${icon}"></i>${label}
-        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <div style="flex:1;height:1px;background:${isLeitung?'rgba(201,162,39,.35)':'var(--border)'}"></div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.85rem">
-        ${members.map(memberCard).join('')}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(${isLeitung?180:160}px,1fr));gap:.85rem">
+        ${members.map(u => memberCard(u, isLeitung)).join('')}
       </div>
     </div>`;
   }
@@ -2955,6 +2961,7 @@ async function organigramm() {
       <div></div>
       <a href="/team" target="_blank" class="btn btn-ghost btn-sm"><i class="fas fa-external-link-alt"></i> Öffentliche Seite</a>
     </div>
+    ${tier('Leitung', 'fa-crown', '#c9a227', leitung, true)}
     ${tier('Administration', 'fa-shield-alt', '#f97316', admins)}
     ${tier('Ausbilder', 'fa-graduation-cap', '#60a5fa', ausbilder)}
     ${tier('Mitarbeiter', 'fa-users', 'var(--muted)', mitarbeiter)}
@@ -3400,7 +3407,7 @@ async function admin() {
                     </select>
                     <select class="form-control" style="padding:.2rem .4rem;height:auto;font-size:.8rem;width:auto"
                       onchange="setRank(${u.id}, this.value)">
-                      ${['Azubi','Mitarbeiter','Senior','Führungskraft'].map(r => `<option ${(u.rank||'Mitarbeiter')===r?'selected':''}>${r}</option>`).join('')}
+                      ${['Azubi','Mitarbeiter','Senior','Führungskraft','Rang 12'].map(r => `<option ${(u.rank||'Mitarbeiter')===r?'selected':''}>${r}</option>`).join('')}
                     </select>
                   </div>
                 </td>
