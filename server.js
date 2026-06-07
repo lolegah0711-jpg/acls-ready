@@ -1008,7 +1008,7 @@ app.patch('/api/announcements/:id/pin', requireAdmin, (req, res) => {
 // ════════════════════════════════════════════════════════════════
 app.patch('/api/users/:id/rank', requireAdmin, (req, res) => {
   const { rank } = req.body;
-  const valid = ['Azubi', 'Mitarbeiter', 'Senior', 'Führungskraft'];
+  const valid = ['Azubi', 'Mitarbeiter', 'Senior', 'Führungskraft', 'Rang 12'];
   if (!valid.includes(rank)) return res.status(400).json({ error: 'Ungültiger Rang' });
   db.prepare('UPDATE users SET rank = ? WHERE id = ?').run(rank, req.params.id);
   res.json({ ok: true });
