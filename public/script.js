@@ -358,8 +358,7 @@ async function renderVoterScreen() {
         </div>
       </header>
 
-      <div id="twitch-widget" style="padding:.6rem 1.5rem;border-bottom:1px solid var(--border);background:var(--surface)">
-        <div class="twitch-card"><div class="twitch-offline-dot"></div><div style="font-size:.8rem;color:#9ca3af;margin-left:.5rem">Wird geladen…</div></div>
+      <div id="twitch-widget" style="padding:.6rem 1.5rem;border-bottom:1px solid var(--border);background:var(--surface);display:none">
       </div>
 
       <main id="pageContent">
@@ -905,6 +904,7 @@ async function loadTwitchWidget() {
     const el = document.getElementById('twitch-widget');
     if (!el) return;
     const channelUrl = `https://www.twitch.tv/${t.channel}`;
+    el.style.display = t.live ? '' : 'none';
     if (t.live) {
       el.innerHTML = `<div class="twitch-card">
         <div class="twitch-live-dot"></div>
@@ -943,7 +943,10 @@ async function loadTwitchWidget() {
         </a>
       </div>`;
     }
-  } catch {}
+  } catch {
+    const el = document.getElementById('twitch-widget');
+    if (el) el.style.display = 'none';
+  }
 }
 
 async function dashboard() {
