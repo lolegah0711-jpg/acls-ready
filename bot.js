@@ -168,6 +168,7 @@ const SLASH_COMMANDS = [
     .addStringOption(o => o.setName('mitarbeiter').setDescription('Discord-ID oder Name (leer = eigene Stats)').setRequired(false)),
   new SlashCommandBuilder().setName('ic').setDescription('Deine IC-Zeit diese Woche anzeigen'),
   new SlashCommandBuilder().setName('dienst').setDescription('Wer ist gerade im Dienst?'),
+  new SlashCommandBuilder().setName('monatsbericht').setDescription('Prüfungsstatistik dieser Woche und dieses Monats'),
   new SlashCommandBuilder().setName('rangliste').setDescription('Spielrangliste anzeigen')
     .addStringOption(o => o.setName('spiel').setDescription('Spielname').setRequired(true)
       .addChoices(
@@ -278,6 +279,39 @@ async function handleInteraction(interaction) {
     } catch (e) {
       console.error('[Bot] /stats Fehler:', e.message);
       await interaction.editReply({ content: 'Fehler beim Laden der Statistiken.' }).catch(() => {});
+    }
+  }
+
+  if (commandName === 'monatsbericht') {
+    try {
+      const res = await fetch(`${SERVER_URL}/api/monatsbericht`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+      if (!res?.ok) return interaction.editReply({ content: '❌ Daten konnten nicht geladen werden.' });
+      const d = await res.json();
+      const pct = (c, p) => c > 0 ? ` (${Math.round((p||0)/c*100)}% bestanden)` : '';
+      const now = new Date();
+      const monat = now.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
+      const embed = new EmbedBuilder()
+        .setColor(0xa855f7)
+        .setTitle(`📊 Monatsbericht – ${monat}`)
+        .addFields(
+          { name: '📅 Diese Woche',  value: `**${d.week.c}** Prüfungen${pct(d.week.c, d.week.p)}`,  inline: true },
+          { name: '📆 Dieser Monat', value: `**${d.month.c}** Prüfungen${pct(d.month.c, d.month.p)}`, inline: true },
+          { name: '📈 Gesamt',       value: `**${d.total.c}** Prüfungen${pct(d.total.c, d.total.p)}`, inline: true },
+        );
+      if (d.byExaminer?.length) {
+        embed.addFields({ name: '👮 Top Prüfer (Monat)', value: d.byExaminer.map((e,i) => `${i+1}. **${e.username}** — ${e.c} Prüfungen${pct(e.c, e.p)}`).join('\n'), inline: false });
+      }
+      if (d.byCategory?.length) {
+        embed.addFields({ name: '📋 Nach Kategorie (Monat)', value: d.byCategory.map(c => `• **${c.name}**: ${c.c}×${pct(c.c, c.p)}`).join('\n'), inline: false });
+      }
+      if (d.icWeek?.length) {
+        embed.addFields({ name: '⏱️ Top IC-Zeit (Woche)', value: d.icWeek.map((u,i) => `${i+1}. **${u.username}** — ${(+u.h).toFixed(1)}h`).join('\n'), inline: false });
+      }
+      embed.setTimestamp().setFooter({ text: 'ACLS Automobil Club Los Santos' });
+      await interaction.editReply({ embeds: [embed] });
+    } catch (e) {
+      console.error('[Bot] /monatsbericht Fehler:', e.message);
+      await interaction.editReply({ content: '❌ Fehler beim Laden des Monatsberichts.' }).catch(() => {});
     }
   }
 }

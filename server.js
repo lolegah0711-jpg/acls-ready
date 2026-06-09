@@ -776,6 +776,32 @@ app.get('/api/ic-stats', requireAuthOrBot, (req, res) => {
   `).all());
 });
 
+app.get('/api/monatsbericht', requireAuthOrBot, (req, res) => {
+  const weekStart = `date('now', '-' || CAST((CAST(strftime('%w','now') AS INTEGER) + 6) % 7 AS TEXT) || ' days')`;
+  const total = db.prepare(`SELECT COUNT(*) as c, SUM(passed) as p FROM registry`).get();
+  const week  = db.prepare(`SELECT COUNT(*) as c, SUM(passed) as p FROM registry WHERE date >= ${weekStart}`).get();
+  const month = db.prepare(`SELECT COUNT(*) as c, SUM(passed) as p FROM registry WHERE strftime('%Y-%m', date) = strftime('%Y-%m', 'now')`).get();
+  const byExaminer = db.prepare(`
+    SELECT u.username, COUNT(*) as c, SUM(r.passed) as p
+    FROM registry r JOIN users u ON u.id = r.examiner_id
+    WHERE strftime('%Y-%m', r.date) = strftime('%Y-%m', 'now')
+    GROUP BY r.examiner_id ORDER BY c DESC LIMIT 10
+  `).all();
+  const byCategory = db.prepare(`
+    SELECT ec.name, COUNT(*) as c, SUM(r.passed) as p
+    FROM registry r JOIN exam_categories ec ON ec.id = r.category_id
+    WHERE strftime('%Y-%m', r.date) = strftime('%Y-%m', 'now')
+    GROUP BY r.category_id ORDER BY c DESC
+  `).all();
+  const icWeek = db.prepare(`
+    SELECT u.username, COALESCE(SUM(l.hours),0) as h
+    FROM users u JOIN ic_log l ON l.user_id = u.id
+    WHERE u.is_active = 1 AND l.date >= ${weekStart}
+    GROUP BY u.id ORDER BY h DESC LIMIT 5
+  `).all();
+  res.json({ total, week, month, byExaminer, byCategory, icWeek });
+});
+
 app.post('/api/ic-log', requireAdmin, (req, res) => {
   const { user_id, hours, date, notes } = req.body;
   const r = db.prepare('INSERT INTO ic_log (user_id, hours, date, notes, logged_by, auto) VALUES (?, ?, ?, ?, ?, 0)')
