@@ -350,6 +350,43 @@ async function sendEowReminder() {
 // Jeden Freitag um 18:00 Berliner Zeit
 cron.schedule('0 18 * * 5', sendEowReminder, { timezone: 'Europe/Berlin' });
 
+// ── Automatischer Wochenbericht: Montag 08:00 ────────────────────
+async function sendWochenbericht() {
+  if (!EOW_CHANNEL_ID) return;
+  try {
+    const res = await fetch(`${SERVER_URL}/api/monatsbericht`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+    if (!res?.ok) return;
+    const d = await res.json();
+    const pct = (c, p) => c > 0 ? ` (${Math.round((p||0)/c*100)}% bestanden)` : '';
+    const now = new Date();
+    const monat = now.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
+    const embed = new EmbedBuilder()
+      .setColor(0xa855f7)
+      .setTitle(`📊 Wochenbericht – ${monat}`)
+      .setDescription('Guten Morgen! Hier die aktuellen Statistiken der ACLS Fahrschule:')
+      .addFields(
+        { name: '📅 Letzte Woche',  value: `**${d.week.c}** Prüfungen${pct(d.week.c, d.week.p)}`,   inline: true },
+        { name: '📆 Dieser Monat', value: `**${d.month.c}** Prüfungen${pct(d.month.c, d.month.p)}`, inline: true },
+        { name: '📈 Gesamt',       value: `**${d.total.c}** Prüfungen${pct(d.total.c, d.total.p)}`, inline: true },
+      );
+    if (d.byExaminer?.length) {
+      embed.addFields({ name: '🏆 Top Prüfer (Monat)', value: d.byExaminer.slice(0,5).map((e,i) => `${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} **${e.username}** — ${e.c} Prüfungen${pct(e.c,e.p)}`).join('\n'), inline: false });
+    }
+    if (d.icWeek?.length) {
+      embed.addFields({ name: '⏱️ Meiste IC-Zeit (letzte Woche)', value: d.icWeek.map((u,i) => `${i+1}. **${u.username}** — ${(+u.h).toFixed(1)}h`).join('\n'), inline: false });
+    }
+    embed.setTimestamp().setFooter({ text: 'ACLS Automobil Club Los Santos · Automatischer Wochenbericht' });
+    const ch = await client.channels.fetch(EOW_CHANNEL_ID);
+    await ch.send({ embeds: [embed] });
+    console.log('[Bot] Automatischer Wochenbericht gesendet');
+  } catch (e) {
+    console.error('[Bot] Wochenbericht Fehler:', e.message);
+  }
+}
+
+// Jeden Montag um 08:00 Berliner Zeit
+cron.schedule('0 8 * * 1', sendWochenbericht, { timezone: 'Europe/Berlin' });
+
 // ── Befehls-Kanal: Embed posten + alle 5 Min clearen ─────────────
 function buildCommandsEmbed() {
   return new EmbedBuilder()
@@ -361,6 +398,7 @@ function buildCommandsEmbed() {
       { name: '`/ic`',                   value: 'Deine IC-Zeit dieser Woche, dieses Monats und gesamt.', inline: false },
       { name: '`/dienst`',               value: 'Zeigt welche Mitarbeiter gerade im Voice-Kanal aktiv sind.', inline: false },
       { name: '`/rangliste [spiel]`',    value: 'Top-10 Rangliste eines Minispiels.\nSpiele: Book of Ra · Tower Defense · 2048', inline: false },
+      { name: '`/monatsbericht`',        value: 'Prüfungsstatistik dieser Woche und dieses Monats + Top Prüfer.', inline: false },
     )
     .setFooter({ text: 'ACLS Bot · Befehle werden laufend erweitert' })
     .setTimestamp();
