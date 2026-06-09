@@ -189,8 +189,11 @@ async function handleInteraction(interaction) {
   if (!interaction.isChatInputCommand()) return;
   const { commandName } = interaction;
   try {
-    await interaction.deferReply({ flags: commandName !== 'dienst' ? 64 : 0 });
-  } catch { return; } // Interaction abgelaufen oder bereits beantwortet
+    await interaction.deferReply({ ephemeral: false });
+  } catch (e) {
+    console.error('[Bot] deferReply Fehler:', e.message);
+    return;
+  }
 
   if (commandName === 'ic') {
     try {
@@ -262,7 +265,10 @@ async function handleInteraction(interaction) {
           { name: 'Rang',                  value: d.user.rank || '—', inline: true },
         ).setTimestamp();
       await interaction.editReply({ embeds: [embed] });
-    } catch (e) { await interaction.editReply({ content: 'Fehler beim Laden der Statistiken.' }); }
+    } catch (e) {
+      console.error('[Bot] /stats Fehler:', e.message);
+      await interaction.editReply({ content: 'Fehler beim Laden der Statistiken.' }).catch(() => {});
+    }
   }
 }
 
