@@ -605,31 +605,63 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
       .setColor(0x60a5fa)
       .setTitle('🔧 Rollenänderung')
       .setDescription(`<@${newMember.id}> **${newMember.displayName}**`)
+      .setThumbnail(newMember.user.displayAvatarURL())
       .setTimestamp();
     if (added.size > 0)   embed.addFields({ name: '✅ Hinzugefügt',  value: added.map(r => `\`${r.name}\``).join(', '),   inline: false });
     if (removed.size > 0) embed.addFields({ name: '❌ Entfernt',     value: removed.map(r => `\`${r.name}\``).join(', '), inline: false });
+    embed.setFooter({ text: `User-ID: ${newMember.id}` });
     await sendModLog(embed);
   }
 
   // Nickname-Änderung
-  const oldName = oldMember.nickname || oldMember.user.globalName || oldMember.user.username;
-  const newName = newMember.nickname || newMember.user.globalName || newMember.user.username;
-  if (oldName !== newName) {
+  const oldNick = oldMember.nickname || oldMember.user.globalName || oldMember.user.username;
+  const newNick = newMember.nickname || newMember.user.globalName || newMember.user.username;
+  if (oldNick !== newNick) {
     await sendModLog(new EmbedBuilder()
       .setColor(0xf59e0b)
       .setTitle('✏️ Nickname geändert')
       .setDescription(`<@${newMember.id}>`)
+      .setThumbnail(newMember.user.displayAvatarURL())
       .addFields(
-        { name: 'Vorher', value: oldName || '–', inline: true },
-        { name: 'Nachher', value: newName || '–', inline: true },
-      ).setTimestamp());
-    // Website-Sync
+        { name: 'Vorher', value: oldNick || '–', inline: true },
+        { name: 'Nachher', value: newNick || '–', inline: true },
+      )
+      .setFooter({ text: `User-ID: ${newMember.id}` })
+      .setTimestamp());
     try {
       await fetch(`${SERVER_URL}/api/sync-member`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: newMember.id, username: newName, avatar: newMember.user.avatar }),
+        body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: newMember.id, username: newNick, avatar: newMember.user.avatar }),
       });
     } catch {}
+  }
+
+  // Server-spezifisches Profilbild geändert
+  if (oldMember.avatar !== newMember.avatar) {
+    const embed = new EmbedBuilder()
+      .setColor(0xa855f7)
+      .setTitle('🖼️ Server-Profilbild geändert')
+      .setDescription(`<@${newMember.id}> **${newMember.displayName}**`)
+      .setFooter({ text: `User-ID: ${newMember.id}` })
+      .setTimestamp();
+    if (newMember.avatar) embed.setThumbnail(newMember.displayAvatarURL({ size: 256 }));
+    await sendModLog(embed);
+  }
+
+  // Timeout (Stummschalten) geändert
+  const oldT = oldMember.communicationDisabledUntilTimestamp;
+  const newT = newMember.communicationDisabledUntilTimestamp;
+  if (oldT !== newT) {
+    const isAdded = newT && newT > Date.now();
+    const embed = new EmbedBuilder()
+      .setColor(isAdded ? 0xef4444 : 0x22c55e)
+      .setTitle(isAdded ? '🔇 Timeout verhängt' : '🔊 Timeout aufgehoben')
+      .setDescription(`<@${newMember.id}> **${newMember.displayName}**`)
+      .setThumbnail(newMember.user.displayAvatarURL())
+      .setFooter({ text: `User-ID: ${newMember.id}` })
+      .setTimestamp();
+    if (isAdded) embed.addFields({ name: 'Bis', value: `<t:${Math.floor(newT / 1000)}:F>`, inline: true });
+    await sendModLog(embed);
   }
 });
 
@@ -701,6 +733,154 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
     )
     .setFooter({ text: `User-ID: ${newMessage.author?.id}` })
     .setTimestamp());
+});
+
+// ── Mod-Log: Globales Profilbild / Username geändert ─────────────
+client.on(Events.UserUpdate, async (oldUser, newUser) => {
+  if (newUser.bot) return;
+  if (GUILD_ID) {
+    const guild = client.guilds.cache.get(GUILD_ID);
+    if (!guild?.members.cache.has(newUser.id)) return;
+  }
+
+  // Profilbild geändert
+  if (oldUser.avatar !== newUser.avatar) {
+    const embed = new EmbedBuilder()
+      .setColor(0xa855f7)
+      .setTitle('🖼️ Profilbild geändert')
+      .setDescription(`<@${newUser.id}> **${newUser.username}**`)
+      .setThumbnail(newUser.displayAvatarURL({ size: 256 }))
+      .setFooter({ text: `User-ID: ${newUser.id}` })
+      .setTimestamp();
+    if (oldUser.avatar) {
+      embed.addFields({ name: 'Altes Bild', value: oldUser.displayAvatarURL({ size: 256 }), inline: false });
+    }
+    await sendModLog(embed);
+  }
+
+  // Username geändert
+  if (oldUser.username !== newUser.username) {
+    await sendModLog(new EmbedBuilder()
+      .setColor(0xf59e0b)
+      .setTitle('👤 Username geändert')
+      .setDescription(`<@${newUser.id}>`)
+      .setThumbnail(newUser.displayAvatarURL())
+      .addFields(
+        { name: 'Vorher', value: oldUser.username, inline: true },
+        { name: 'Nachher', value: newUser.username, inline: true },
+      )
+      .setFooter({ text: `User-ID: ${newUser.id}` })
+      .setTimestamp());
+  }
+});
+
+// ── Mod-Log: Ban hinzugefügt ──────────────────────────────────────
+client.on(Events.GuildBanAdd, async (ban) => {
+  if (GUILD_ID && ban.guild.id !== GUILD_ID) return;
+  let executor = null;
+  try {
+    await new Promise(r => setTimeout(r, 800));
+    const logs = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanAdd, limit: 1 });
+    const entry = logs.entries.first();
+    if (entry && Date.now() - entry.createdTimestamp < 5000) executor = entry.executor;
+  } catch {}
+
+  const embed = new EmbedBuilder()
+    .setColor(0xef4444)
+    .setTitle('🔨 Mitglied gebannt')
+    .setDescription(`<@${ban.user.id}> **${ban.user.tag}**`)
+    .setThumbnail(ban.user.displayAvatarURL())
+    .setFooter({ text: `User-ID: ${ban.user.id}` })
+    .setTimestamp();
+  if (ban.reason) embed.addFields({ name: 'Grund', value: ban.reason, inline: false });
+  if (executor)   embed.addFields({ name: 'Gebannt von', value: `<@${executor.id}> (${executor.tag})`, inline: true });
+  await sendModLog(embed);
+});
+
+// ── Mod-Log: Ban aufgehoben ───────────────────────────────────────
+client.on(Events.GuildBanRemove, async (ban) => {
+  if (GUILD_ID && ban.guild.id !== GUILD_ID) return;
+  let executor = null;
+  try {
+    await new Promise(r => setTimeout(r, 800));
+    const logs = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanRemove, limit: 1 });
+    const entry = logs.entries.first();
+    if (entry && Date.now() - entry.createdTimestamp < 5000) executor = entry.executor;
+  } catch {}
+
+  const embed = new EmbedBuilder()
+    .setColor(0x22c55e)
+    .setTitle('✅ Ban aufgehoben')
+    .setDescription(`<@${ban.user.id}> **${ban.user.tag}**`)
+    .setThumbnail(ban.user.displayAvatarURL())
+    .setFooter({ text: `User-ID: ${ban.user.id}` })
+    .setTimestamp();
+  if (executor) embed.addFields({ name: 'Aufgehoben von', value: `<@${executor.id}> (${executor.tag})`, inline: true });
+  await sendModLog(embed);
+});
+
+// ── Mod-Log: Massenhafte Löschung ────────────────────────────────
+client.on(Events.MessageBulkDelete, async (messages, channel) => {
+  if (!channel.guild) return;
+  if (GUILD_ID && channel.guild.id !== GUILD_ID) return;
+  try { if (channel.id === MOD_LOG_CHANNEL_ID) return; } catch {}
+
+  let executor = null;
+  try {
+    await new Promise(r => setTimeout(r, 800));
+    const logs = await channel.guild.fetchAuditLogs({ type: AuditLogEvent.MessageBulkDelete, limit: 1 });
+    const entry = logs.entries.first();
+    if (entry && Date.now() - entry.createdTimestamp < 5000) executor = entry.executor;
+  } catch {}
+
+  const embed = new EmbedBuilder()
+    .setColor(0xef4444)
+    .setTitle(`🗑️ ${messages.size} Nachrichten gelöscht (Bulk)`)
+    .setDescription(`In <#${channel.id}>`)
+    .setFooter({ text: `Kanal: #${channel.name}` })
+    .setTimestamp();
+  if (executor) embed.addFields({ name: 'Ausgeführt von', value: `<@${executor.id}> (${executor.tag})`, inline: true });
+
+  const preview = messages
+    .filter(m => m.content)
+    .map(m => `**${m.author?.tag || '?'}**: ${m.content.slice(0, 80)}`)
+    .slice(0, 5)
+    .join('\n');
+  if (preview) embed.addFields({ name: 'Vorschau (erste 5)', value: preview, inline: false });
+
+  await sendModLog(embed);
+});
+
+// ── Mod-Log: Mitglied verlässt Server ────────────────────────────
+client.on(Events.GuildMemberRemove, async (member) => {
+  if (GUILD_ID && member.guild.id !== GUILD_ID) return;
+  if (member.user.bot) return;
+
+  // Prüfen ob es ein Kick war
+  let kickedBy = null;
+  try {
+    await new Promise(r => setTimeout(r, 800));
+    const logs = await member.guild.fetchAuditLogs({ type: AuditLogEvent.MemberKick, limit: 1 });
+    const entry = logs.entries.first();
+    if (entry && entry.target?.id === member.id && Date.now() - entry.createdTimestamp < 5000) {
+      kickedBy = { executor: entry.executor, reason: entry.reason };
+    }
+  } catch {}
+
+  const roles = member.roles.cache.filter(r => r.name !== '@everyone').map(r => `\`${r.name}\``).join(', ') || '–';
+  const embed = new EmbedBuilder()
+    .setColor(kickedBy ? 0xef4444 : 0x6b7280)
+    .setTitle(kickedBy ? '👢 Mitglied gekickt' : '🚪 Mitglied verlassen')
+    .setDescription(`<@${member.id}> **${member.user.tag}**`)
+    .setThumbnail(member.user.displayAvatarURL())
+    .addFields({ name: 'Rollen', value: roles, inline: false })
+    .setFooter({ text: `User-ID: ${member.id}` })
+    .setTimestamp();
+  if (kickedBy) {
+    embed.addFields({ name: 'Gekickt von', value: `<@${kickedBy.executor.id}> (${kickedBy.executor.tag})`, inline: true });
+    if (kickedBy.reason) embed.addFields({ name: 'Grund', value: kickedBy.reason, inline: true });
+  }
+  await sendModLog(embed);
 });
 
 // Beim Bot-Shutdown offene Sessions speichern
