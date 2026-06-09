@@ -186,9 +186,10 @@ async function registerSlashCommands() {
 }
 
 async function handleInteraction(interaction) {
+  console.log(`[Bot] Interaction empfangen: type=${interaction.type} isChatInput=${interaction.isChatInputCommand()} cmd=${interaction.commandName||'?'} user=${interaction.user?.tag||'?'}`);
   if (!interaction.isChatInputCommand()) return;
   const { commandName } = interaction;
-  console.log(`[Bot] Slash-Command empfangen: /${commandName} von ${interaction.user.tag} in #${interaction.channel?.name || '?'}`);
+  console.log(`[Bot] Slash-Command verarbeite: /${commandName} von ${interaction.user.tag}`);
   try {
     await interaction.deferReply();
   } catch (e) {
@@ -359,6 +360,13 @@ async function clearCommandsChannel() {
 cron.schedule('*/5 * * * *', clearCommandsChannel);
 
 client.on(Events.InteractionCreate, handleInteraction);
+
+// Raw-Logger: sehen ob Discord überhaupt Interaction-Events schickt
+client.on('raw', (data) => {
+  if (data.t === 'INTERACTION_CREATE') {
+    console.log(`[Bot] RAW INTERACTION_CREATE: type=${data.d?.type} cmd=${data.d?.data?.name||'?'} user=${data.d?.member?.user?.username||data.d?.user?.username||'?'}`);
+  }
+});
 
 client.once(Events.ClientReady, async c => {
   console.log(`[Bot] Eingeloggt als ${c.user.tag}`);
