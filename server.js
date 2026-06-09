@@ -2140,6 +2140,66 @@ app.get('/api/challenges', (req, res) => {
   res.json(challenges);
 });
 
+// ════════════════════════════════════════════════════════════════
+//  CITIZEN NOTES (interne Notizen pro Bürger — nur Mitarbeiter)
+// ════════════════════════════════════════════════════════════════
+app.get('/api/citizen-notes', requireAuth, (req, res) => {
+  const { name } = req.query;
+  if (!name) return res.status(400).json({ error: 'Name erforderlich' });
+  res.json(db.prepare(`
+    SELECT cn.*, u.username as created_by_name
+    FROM citizen_notes cn JOIN users u ON u.id = cn.created_by
+    WHERE cn.citizen_name = ? ORDER BY cn.created_at DESC
+  `).all(name));
+});
+
+app.post('/api/citizen-notes', requireAuth, (req, res) => {
+  const { citizen_name, citizen_id, note } = req.body;
+  const user = getUser(req);
+  if (!citizen_name?.trim() || !note?.trim()) return res.status(400).json({ error: 'Name und Notiz erforderlich' });
+  const r = db.prepare('INSERT INTO citizen_notes (citizen_name, citizen_id, note, created_by) VALUES (?, ?, ?, ?)')
+    .run(citizen_name.trim(), citizen_id || null, note.trim(), user.id);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.delete('/api/citizen-notes/:id', requireAuth, (req, res) => {
+  const user = getUser(req);
+  const note = db.prepare('SELECT created_by FROM citizen_notes WHERE id = ?').get(req.params.id);
+  if (!note) return res.status(404).json({ error: 'Nicht gefunden' });
+  if (note.created_by !== user.id && user.role !== 'admin') return res.status(403).json({ error: 'Kein Zugriff' });
+  db.prepare('DELETE FROM citizen_notes WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  FAQ
+// ════════════════════════════════════════════════════════════════
+app.get('/api/faq', (req, res) => {
+  res.json(db.prepare('SELECT * FROM faq_items ORDER BY category, sort_order, id').all());
+});
+
+app.post('/api/faq', requireAdmin, (req, res) => {
+  const { question, answer, category, sort_order } = req.body;
+  if (!question?.trim() || !answer?.trim()) return res.status(400).json({ error: 'Frage und Antwort erforderlich' });
+  const user = getUser(req);
+  const r = db.prepare('INSERT INTO faq_items (question, answer, category, sort_order, created_by) VALUES (?, ?, ?, ?, ?)')
+    .run(question.trim(), answer.trim(), (category || 'Allgemein').trim(), sort_order || 0, user.id);
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.put('/api/faq/:id', requireAdmin, (req, res) => {
+  const { question, answer, category, sort_order } = req.body;
+  if (!question?.trim() || !answer?.trim()) return res.status(400).json({ error: 'Frage und Antwort erforderlich' });
+  db.prepare('UPDATE faq_items SET question=?, answer=?, category=?, sort_order=? WHERE id=?')
+    .run(question.trim(), answer.trim(), (category || 'Allgemein').trim(), sort_order || 0, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/faq/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM faq_items WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
 app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'public', 'profil.html'));

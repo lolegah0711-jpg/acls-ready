@@ -341,6 +341,25 @@ function initDb() {
       updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS citizen_notes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      citizen_name TEXT NOT NULL,
+      citizen_id   TEXT,
+      note         TEXT NOT NULL,
+      created_by   INTEGER NOT NULL REFERENCES users(id),
+      created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS faq_items (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      question   TEXT NOT NULL,
+      answer     TEXT NOT NULL,
+      category   TEXT NOT NULL DEFAULT 'Allgemein',
+      sort_order INTEGER DEFAULT 0,
+      created_by INTEGER REFERENCES users(id),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS rpg_saves (
       user_id   INTEGER PRIMARY KEY REFERENCES users(id),
       class     TEXT    NOT NULL DEFAULT 'mechaniker',

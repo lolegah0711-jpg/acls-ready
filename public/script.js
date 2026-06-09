@@ -127,6 +127,7 @@ const PAGES = {
   ausbildung:   { title: 'Ausbildung',             sub: 'Gesellen- & Meisterprüfungen' },
   bans:         { title: 'Aktive Sperren',         sub: 'Hausverbot-Verwaltung' },
   search:       { title: 'Globale Suche',          sub: 'Sperren, Mitarbeiter & Register durchsuchen' },
+  faq:          { title: 'FAQ',                    sub: 'Häufig gestellte Fragen verwalten' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -284,6 +285,7 @@ const _voterPageMeta = {
   market:    { title: 'Fahrzeugmarkt',    sub: 'Private Fahrzeuginserate von Bürgern' },
   team:      { title: 'Unser Team',       sub: 'ACLS Mitarbeiter & Organigramm' },
   apply:     { title: 'Bewerben',         sub: 'Bewirb dich beim ACLS Automobil-Club' },
+  faq:       { title: 'FAQ',              sub: 'Häufig gestellte Fragen' },
 };
 
 async function renderVoterScreen() {
@@ -317,6 +319,7 @@ async function renderVoterScreen() {
         <a class="nav-item" href="/quiz" target="_blank" style="color:#22c55e"><i class="fas fa-graduation-cap" style="color:#22c55e"></i><span>Prüfungsvorbereitung</span></a>
         <a class="nav-item"        id="vnTeam"      onclick="voterTab('team')"     style="cursor:pointer"><i class="fas fa-users"></i><span>Unser Team</span></a>
         <a class="nav-item"        id="vnApply"     onclick="voterTab('apply')"    style="cursor:pointer"><i class="fas fa-file-alt" style="color:#a78bfa"></i><span style="color:#a78bfa">Bewerben</span></a>
+        <a class="nav-item"        id="vnFaq"       onclick="voterTab('faq')"      style="cursor:pointer"><i class="fas fa-question-circle" style="color:#38bdf8"></i><span style="color:#38bdf8">FAQ</span></a>
 
         <!-- Minispiele -->
         <div id="vGamesToggle" onclick="(function(){var l=document.getElementById('vGamesList'),o=l.style.maxHeight!=='0px';l.style.maxHeight=o?'0px':'700px';document.getElementById('vGamesChev').style.transform=o?'rotate(-90deg)':'';})()" style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
@@ -445,6 +448,11 @@ async function renderVoterScreen() {
           <div id="voterListings" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem">
             <div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div>
           </div>
+        </div>
+
+        <!-- FAQ -->
+        <div id="faqSection" style="display:none">
+          <div id="voterFaqContent"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
         </div>
 
       </main>
@@ -689,7 +697,7 @@ async function loadChallengesWidget(containerId) {
 }
 
 window.voterTab = tab => {
-  ['price','vote','complaint','market','team','apply'].forEach(t => {
+  ['price','vote','complaint','market','team','apply','faq'].forEach(t => {
     const sec = document.getElementById(t + 'Section');
     if (sec) sec.style.display = t === tab ? '' : 'none';
     const nav = document.getElementById('vn' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -705,7 +713,29 @@ window.voterTab = tab => {
   if (tab === 'market')    loadVoterMarket();
   if (tab === 'price')     { loadVoterPrices(); loadPollWidget('vPollWidget'); }
   if (tab === 'complaint') loadMyComplaints();
+  if (tab === 'faq')       loadVoterFaq();
 };
+
+async function loadVoterFaq() {
+  const el = document.getElementById('voterFaqContent');
+  if (!el || el.dataset.loaded) return;
+  const rows = await fetch('/api/faq').then(r => r.json()).catch(() => []);
+  el.dataset.loaded = '1';
+  if (!rows.length) { el.innerHTML = '<div class="empty"><i class="fas fa-question-circle"></i><p>Noch keine FAQ-Einträge vorhanden.</p></div>'; return; }
+  const cats = [...new Set(rows.map(r => r.category))];
+  el.innerHTML = `<div style="max-width:720px">${cats.map(cat => `
+    <div style="margin-bottom:1.5rem">
+      <div style="font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">${cat}</div>
+      ${rows.filter(r => r.category === cat).map(f => `
+        <div class="card" style="margin-bottom:.5rem;cursor:pointer" onclick="this.querySelector('.faq-ans').classList.toggle('hidden')">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem">
+            <div style="font-weight:600;font-size:.92rem"><i class="fas fa-question-circle" style="color:#38bdf8;margin-right:.45rem;font-size:.8rem"></i>${f.question}</div>
+            <i class="fas fa-chevron-down" style="color:var(--muted);font-size:.7rem;flex-shrink:0"></i>
+          </div>
+          <div class="faq-ans hidden" style="margin-top:.65rem;padding-top:.65rem;border-top:1px solid var(--border);font-size:.88rem;color:var(--muted);line-height:1.6;white-space:pre-wrap">${f.answer}</div>
+        </div>`).join('')}
+    </div>`).join('')}</div>`;
+}
 
 async function loadVoterPrices() {
   const el = document.getElementById('voterPrices');
@@ -1818,13 +1848,13 @@ async function registry() {
         <button class="btn btn-primary" onclick="openAddRegistry()"><i class="fas fa-plus"></i> Eintrag hinzufügen</button>
       </div>
     </div>
-    ${citizens.length ? citizens.map(c => {
+    ${citizens.length ? citizens.map((c, idx) => {
       const passed   = c.entries.filter(e => e.passed);
       const licenses = [...new Map(passed.map(e => [e.category_name, e])).values()];
       const latest   = c.entries.reduce((a, b) => new Date(a.registered_at) > new Date(b.registered_at) ? a : b);
       return `
       <div class="card" style="margin-bottom:.75rem">
-        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;cursor:pointer" onclick="this.parentElement.querySelector('.reg-detail').classList.toggle('hidden')">
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;cursor:pointer" onclick="toggleCitizenDetail(this,${idx})">
           <div style="width:42px;height:42px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;color:var(--orange);flex-shrink:0">
             ${c.name.trim()[0].toUpperCase()}
           </div>
@@ -1864,10 +1894,21 @@ async function registry() {
               }).join('')}
             </tbody>
           </table>
+          <div style="margin-top:.85rem;border-top:1px solid var(--border);padding-top:.6rem">
+            <div style="font-size:.75rem;font-weight:700;color:var(--muted);margin-bottom:.45rem;display:flex;align-items:center;gap:.35rem">
+              <i class="fas fa-lock" style="font-size:.65rem"></i>Interne Notizen (nur Mitarbeiter)
+            </div>
+            <div id="rnl-${idx}" style="margin-bottom:.45rem;min-height:1rem"></div>
+            <div style="display:flex;gap:.45rem">
+              <input class="form-control" id="rni-${idx}" placeholder="Notiz hinzufügen…" style="flex:1;font-size:.81rem;padding:.32rem .6rem" onkeydown="if(event.key==='Enter'){event.preventDefault();addCitizenNote(${idx})}">
+              <button class="btn btn-primary btn-sm" onclick="addCitizenNote(${idx})"><i class="fas fa-plus"></i></button>
+            </div>
+          </div>
         </div>
       </div>`;
     }).join('') : `<div class="empty"><i class="fas fa-id-card"></i><p>Keine Einträge gefunden</p></div>`}`;
 
+  window._regCitizens = citizens;
   window._regCats = cats;
   const si = $('regSearch');
   if (si && document.activeElement !== si) { si.focus(); si.setSelectionRange(si.value.length, si.value.length); }
@@ -1919,6 +1960,156 @@ window.deleteRegistry = async id => {
   if (!confirm('Eintrag löschen?')) return;
   const r = await api(`/api/registry/${id}`, { method: 'DELETE' });
   if (r) { toast('Gelöscht.', 'ok'); registry(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  CITIZEN NOTES
+// ════════════════════════════════════════════════════════════════
+window.toggleCitizenDetail = (el, idx) => {
+  const detail = el.parentElement.querySelector('.reg-detail');
+  const wasHidden = detail.classList.contains('hidden');
+  detail.classList.toggle('hidden');
+  if (wasHidden) {
+    const c = window._regCitizens?.[idx];
+    if (c) loadCitizenNotes(idx, c.name);
+  }
+};
+
+window.loadCitizenNotes = async (idx, name) => {
+  const listEl = document.getElementById(`rnl-${idx}`);
+  if (!listEl || listEl.dataset.loaded) return;
+  listEl.dataset.noteName = name;
+  const notes = await api(`/api/citizen-notes?name=${encodeURIComponent(name)}`);
+  if (!notes) { listEl.textContent = 'Fehler beim Laden.'; return; }
+  listEl.dataset.loaded = '1';
+  renderCitizenNotes(idx, notes);
+};
+
+window.renderCitizenNotes = (idx, notes) => {
+  const listEl = document.getElementById(`rnl-${idx}`);
+  if (!listEl) return;
+  if (!notes.length) {
+    listEl.innerHTML = '<div style="color:var(--muted);font-size:.8rem;font-style:italic;padding:.2rem 0">Keine Notizen vorhanden.</div>';
+    return;
+  }
+  listEl.innerHTML = notes.map(n => `
+    <div style="display:flex;gap:.5rem;align-items:flex-start;padding:.4rem .6rem;background:var(--surface2);border-radius:6px;margin-bottom:.3rem">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.82rem;color:var(--fg);word-break:break-word">${n.note}</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:.12rem">${n.created_by_name} · ${fmt(n.created_at)}</div>
+      </div>
+      ${(currentUser?.id === n.created_by || isAdmin()) ? `<button class="btn btn-danger btn-sm" style="flex-shrink:0;padding:.18rem .38rem" onclick="deleteCitizenNote(${n.id},${idx})"><i class="fas fa-trash" style="font-size:.68rem"></i></button>` : ''}
+    </div>`).join('');
+};
+
+window.addCitizenNote = async idx => {
+  const input  = document.getElementById(`rni-${idx}`);
+  const listEl = document.getElementById(`rnl-${idx}`);
+  if (!input || !listEl) return;
+  const note = input.value.trim();
+  const name = listEl.dataset.noteName || window._regCitizens?.[idx]?.name;
+  if (!note || !name) return;
+  const r = await api('/api/citizen-notes', { method: 'POST', body: { citizen_name: name, note } });
+  if (r) {
+    input.value = '';
+    delete listEl.dataset.loaded;
+    await loadCitizenNotes(idx, name);
+    toast('Notiz gespeichert', 'ok');
+  }
+};
+
+window.deleteCitizenNote = async (noteId, idx) => {
+  if (!confirm('Notiz löschen?')) return;
+  const r = await api(`/api/citizen-notes/${noteId}`, { method: 'DELETE' });
+  if (r) {
+    const listEl = document.getElementById(`rnl-${idx}`);
+    const name = listEl?.dataset.noteName || window._regCitizens?.[idx]?.name;
+    if (listEl && name) { delete listEl.dataset.loaded; await loadCitizenNotes(idx, name); }
+    toast('Notiz gelöscht', 'ok');
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  FAQ (staff)
+// ════════════════════════════════════════════════════════════════
+async function faq() {
+  const rows = await api('/api/faq');
+  if (!rows) return;
+  const cats = [...new Set(rows.map(r => r.category))];
+
+  $('pageContent').innerHTML = `
+    <div class="pg-header">
+      <div class="pg-header-left"><h2>FAQ</h2><p>${rows.length} Einträge in ${cats.length} Kategorien</p></div>
+      ${isAdmin() ? `<button class="btn btn-primary" onclick="openAddFaq()"><i class="fas fa-plus"></i> Frage hinzufügen</button>` : ''}
+    </div>
+    ${rows.length ? cats.map(cat => `
+      <div style="margin-bottom:1.5rem">
+        <div style="font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">${cat}</div>
+        ${rows.filter(r => r.category === cat).map(f => `
+          <div class="card" style="margin-bottom:.5rem">
+            <div style="display:flex;align-items:flex-start;gap:.75rem">
+              <div style="flex:1;min-width:0;cursor:pointer" onclick="this.parentElement.parentElement.querySelector('.faq-ans').classList.toggle('hidden')">
+                <div style="font-weight:600;font-size:.92rem"><i class="fas fa-question-circle" style="color:#38bdf8;margin-right:.45rem;font-size:.8rem"></i>${f.question}</div>
+                <div class="faq-ans hidden" style="margin-top:.55rem;font-size:.87rem;color:var(--muted);line-height:1.6;white-space:pre-wrap">${f.answer}</div>
+              </div>
+              ${isAdmin() ? `
+                <div style="display:flex;gap:.35rem;flex-shrink:0">
+                  <button class="btn btn-ghost btn-sm" onclick="openEditFaq(${f.id},'${f.question.replace(/'/g,"\\'")}','${f.answer.replace(/'/g,"\\'")}','${f.category}',${f.sort_order||0})"><i class="fas fa-pen"></i></button>
+                  <button class="btn btn-danger btn-sm" onclick="deleteFaqItem(${f.id})"><i class="fas fa-trash"></i></button>
+                </div>` : ''}
+            </div>
+          </div>`).join('')}
+      </div>`).join('') : '<div class="empty"><i class="fas fa-question-circle"></i><p>Noch keine FAQ-Einträge.</p></div>'}`;
+}
+
+window.openAddFaq = () => openModal(`
+  <div class="modal-head"><div class="modal-title"><i class="fas fa-question-circle" style="color:#38bdf8;margin-right:.5rem"></i>FAQ-Eintrag hinzufügen</div>
+  <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+  <form onsubmit="submitFaq(event)">
+    <div class="form-group"><label>Frage</label><input class="form-control" id="faqQ" required placeholder="Wie viel kostet...?"></div>
+    <div class="form-group"><label>Antwort</label><textarea class="form-control" id="faqA" rows="4" required placeholder="Die Antwort..."></textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label>Kategorie</label><input class="form-control" id="faqCat" value="Allgemein" placeholder="Allgemein"></div>
+      <div class="form-group"><label>Reihenfolge</label><input class="form-control" id="faqSort" type="number" value="0" min="0"></div>
+    </div>
+    <input type="hidden" id="faqId" value="">
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
+    </div>
+  </form>`);
+
+window.openEditFaq = (id, q, a, cat, sort) => openModal(`
+  <div class="modal-head"><div class="modal-title"><i class="fas fa-pen" style="color:#38bdf8;margin-right:.5rem"></i>FAQ bearbeiten</div>
+  <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+  <form onsubmit="submitFaq(event)">
+    <div class="form-group"><label>Frage</label><input class="form-control" id="faqQ" required value="${q}"></div>
+    <div class="form-group"><label>Antwort</label><textarea class="form-control" id="faqA" rows="4" required>${a}</textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label>Kategorie</label><input class="form-control" id="faqCat" value="${cat}"></div>
+      <div class="form-group"><label>Reihenfolge</label><input class="form-control" id="faqSort" type="number" value="${sort}" min="0"></div>
+    </div>
+    <input type="hidden" id="faqId" value="${id}">
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
+    </div>
+  </form>`);
+
+window.submitFaq = async e => {
+  e.preventDefault();
+  const id   = $('faqId').value;
+  const body = { question: $('faqQ').value.trim(), answer: $('faqA').value.trim(), category: $('faqCat').value.trim() || 'Allgemein', sort_order: +$('faqSort').value };
+  const r = id
+    ? await api(`/api/faq/${id}`, { method: 'PUT', body })
+    : await api('/api/faq', { method: 'POST', body });
+  if (r) { closeModal(); toast('Gespeichert!', 'ok'); faq(); }
+};
+
+window.deleteFaqItem = async id => {
+  if (!confirm('FAQ-Eintrag löschen?')) return;
+  const r = await api(`/api/faq/${id}`, { method: 'DELETE' });
+  if (r) { toast('Gelöscht.', 'ok'); faq(); }
 };
 
 // ════════════════════════════════════════════════════════════════
