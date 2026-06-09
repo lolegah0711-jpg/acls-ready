@@ -329,6 +329,33 @@ function initDb() {
       created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(poll_id, discord_id)
     );
+
+    CREATE TABLE IF NOT EXISTS idle_saves (
+      user_id       INTEGER PRIMARY KEY REFERENCES users(id),
+      gold          REAL    NOT NULL DEFAULT 0,
+      total_earned  REAL    NOT NULL DEFAULT 0,
+      buildings     TEXT    NOT NULL DEFAULT '{}',
+      upgrades      TEXT    NOT NULL DEFAULT '{}',
+      prestige      INTEGER NOT NULL DEFAULT 0,
+      click_power   REAL    NOT NULL DEFAULT 1,
+      updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS rpg_saves (
+      user_id   INTEGER PRIMARY KEY REFERENCES users(id),
+      class     TEXT    NOT NULL DEFAULT 'mechaniker',
+      level     INTEGER NOT NULL DEFAULT 1,
+      xp        INTEGER NOT NULL DEFAULT 0,
+      total_xp  INTEGER NOT NULL DEFAULT 0,
+      hp        INTEGER NOT NULL DEFAULT 100,
+      max_hp    INTEGER NOT NULL DEFAULT 100,
+      gold      INTEGER NOT NULL DEFAULT 0,
+      dungeon   INTEGER NOT NULL DEFAULT 0,
+      kills     INTEGER NOT NULL DEFAULT 0,
+      equipment TEXT    NOT NULL DEFAULT '{}',
+      skills    TEXT    NOT NULL DEFAULT '[]',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Migrations — Spalten nachrüsten falls nicht vorhanden

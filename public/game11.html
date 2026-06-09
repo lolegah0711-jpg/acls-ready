@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quiz Survival – ACLS</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center}
+#back{position:fixed;top:10px;left:10px;z-index:999;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;backdrop-filter:blur(4px)}
+#wrap{width:min(600px,96vw);padding:52px 12px 32px;display:flex;flex-direction:column;align-items:center;gap:16px}
+h1{font-size:clamp(20px,5vw,30px);font-weight:800;letter-spacing:.1em;text-transform:uppercase;background:linear-gradient(90deg,#a855f7,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.card{background:#161b22;border:1px solid #30363d;border-radius:14px;padding:20px;width:100%}
+
+/* HUD */
+#hud{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%}
+.hud-pill{background:#161b22;border:1px solid #30363d;border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px}
+.hud-lbl{font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase}
+
+/* Timer bar */
+#timer-wrap{width:100%;height:8px;background:#21262d;border-radius:4px;overflow:hidden}
+#timer-bar{height:100%;background:linear-gradient(90deg,#a855f7,#ec4899);border-radius:4px;transition:width .1s linear}
+
+/* Question */
+#q-cat{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#8b949e;margin-bottom:8px}
+#q-text{font-size:clamp(15px,3.5vw,20px);font-weight:700;line-height:1.4;margin-bottom:4px}
+#q-diff{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;margin-bottom:16px}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opt{background:#0d1117;border:2px solid #30363d;border-radius:10px;padding:12px 14px;font-size:14px;font-weight:600;cursor:pointer;text-align:left;color:#e6edf3;transition:border-color .12s,background .12s;line-height:1.35}
+.opt:hover:not(:disabled){border-color:#a855f7;background:#1a0a2a}
+.opt.correct{border-color:#22c55e!important;background:#052010!important;color:#22c55e}
+.opt.wrong{border-color:#ef4444!important;background:#1a0505!important;color:#ef4444}
+.opt:disabled{cursor:default}
+
+/* Streak */
+#streak-bar{width:100%;text-align:center;font-size:13px;font-weight:700;color:#a855f7;min-height:20px}
+
+/* Screens */
+.screen{display:none;width:100%}
+.screen.active{display:flex;flex-direction:column;align-items:center;gap:14px}
+#screen-menu .desc{color:#8b949e;font-size:13px;text-align:center;line-height:1.6}
+.btn{padding:11px 28px;border:none;border-radius:10px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-primary{background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff}
+.btn-ghost{background:#21262d;color:#c9d1d9;border:1px solid #30363d}
+.class-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%}
+.class-card{background:#161b22;border:2px solid #30363d;border-radius:12px;padding:14px 10px;text-align:center;cursor:pointer;transition:border-color .15s}
+.class-card:hover,.class-card.sel{border-color:#a855f7;background:#1a0a2a}
+.class-icon{font-size:28px;margin-bottom:6px}
+.class-name{font-weight:700;font-size:13px;margin-bottom:2px}
+.class-desc{font-size:10px;color:#8b949e}
+
+/* Result */
+#res-score{font-size:48px;font-weight:800;background:linear-gradient(90deg,#a855f7,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.res-stat{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #21262d;font-size:14px}
+.res-stat span:last-child{font-weight:700;color:#a855f7}
+#lb-rows .lb-row{display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid #21262d;font-size:13px}
+.lb-rank{width:28px;text-align:center;font-weight:700}
+.lb-av{width:26px;height:26px;border-radius:50%;background:#1f2937;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;overflow:hidden;flex-shrink:0}
+.lb-av img{width:100%;height:100%;object-fit:cover}
+.lb-name{flex:1;font-weight:600}
+.lb-score{font-weight:700;color:#a855f7}
+</style>
+</head>
+<body>
+<a id="back" href="/" onclick="window.close()">← Portal</a>
+<div id="wrap">
+  <h1>🧠 Quiz Survival</h1>
+
+  <!-- MENU -->
+  <div id="screen-menu" class="screen active">
+    <div class="desc">Beantworte Fragen zu Verkehrsregeln, Fahrzeugen und Los Santos.<br>3 Leben · Zeitdruck · Streak-Multiplikator</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%">
+      <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px 16px;font-size:12px;color:#8b949e;flex:1;min-width:140px">❤️ <b style="color:#ef4444">3 Leben</b><br>Falsch = Leben weg</div>
+      <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px 16px;font-size:12px;color:#8b949e;flex:1;min-width:140px">⏱️ <b style="color:#f97316">Zeitlimit</b><br>Schneller = mehr Punkte</div>
+      <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px 16px;font-size:12px;color:#8b949e;flex:1;min-width:140px">🔥 <b style="color:#a855f7">Streak</b><br>×2 ab 5 in Folge</div>
+    </div>
+    <button class="btn btn-primary" style="font-size:16px;padding:14px 40px" onclick="startGame()">▶ Spiel starten</button>
+    <div class="card" style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px;color:#a855f7">🏆 Bestenliste</div>
+      <div id="lb-rows"><div style="color:#8b949e;font-size:13px">Laden…</div></div>
+    </div>
+  </div>
+
+  <!-- GAME -->
+  <div id="screen-game" class="screen">
+    <div id="hud">
+      <div class="hud-pill"><span class="hud-lbl">Leben</span><span id="lives-val">❤️❤️❤️</span></div>
+      <div class="hud-pill"><span class="hud-lbl">Punkte</span><span id="score-val" style="color:#a855f7">0</span></div>
+      <div class="hud-pill"><span class="hud-lbl">Frage</span><span id="q-num" style="color:#60a5fa">1/15</span></div>
+      <div class="hud-pill"><span class="hud-lbl">Streak</span><span id="streak-val" style="color:#f97316">0</span></div>
+    </div>
+    <div id="timer-wrap"><div id="timer-bar"></div></div>
+    <div class="card">
+      <div id="q-cat"></div>
+      <div id="q-text"></div>
+      <div id="q-diff"></div>
+      <div class="opts" id="opts"></div>
+    </div>
+    <div id="streak-bar"></div>
+  </div>
+
+  <!-- RESULT -->
+  <div id="screen-result" class="screen">
+    <div id="res-score">0</div>
+    <div style="color:#8b949e;font-size:14px">Punkte erreicht</div>
+    <div class="card" style="width:100%">
+      <div class="res-stat"><span>Richtige Antworten</span><span id="r-correct">0</span></div>
+      <div class="res-stat"><span>Falsche Antworten</span><span id="r-wrong">0</span></div>
+      <div class="res-stat"><span>Höchster Streak</span><span id="r-streak">0</span></div>
+      <div class="res-stat" style="border:none"><span>Genauigkeit</span><span id="r-acc">0%</span></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="startGame()">🔄 Nochmal</button>
+      <button class="btn btn-ghost" onclick="showMenu()">← Menü</button>
+    </div>
+  </div>
+</div>
+
+<script src="/game-auth.js"></script>
+<script>
+const QUESTIONS = [
+  // Verkehrsregeln
+  {q:'Was bedeutet ein rotes Stoppschild?',opts:['Langsamer werden','Anhalten und Vorfahrt gewähren','Nur bei Gegenverkehr halten','Kurz bremsen reicht'],a:1,cat:'🚦 Verkehr',diff:1},
+  {q:'Welche Höchstgeschwindigkeit gilt innerorts?',opts:['30 km/h','50 km/h','60 km/h','70 km/h'],a:1,cat:'🚦 Verkehr',diff:1},
+  {q:'Wer hat an einer Kreuzung ohne Zeichen Vorfahrt?',opts:['Wer zuerst da ist','Linkskommende Fahrzeuge','Rechtskommende Fahrzeuge','Geradeausfahrer'],a:2,cat:'🚦 Verkehr',diff:1},
+  {q:'Wie groß ist der Sicherheitsabstand bei 100 km/h?',opts:['25 Meter','35 Meter','50 Meter','80 Meter'],a:2,cat:'🚦 Verkehr',diff:2},
+  {q:'Ab welchem Blutalkohol-Wert gilt Fahrverbot für alle?',opts:['0,2 Promille','0,5 Promille','0,8 Promille','1,0 Promille'],a:1,cat:'🚦 Verkehr',diff:1},
+  {q:'Welcher Promillewert gilt für Fahranfänger in der Probezeit?',opts:['0,0 Promille','0,2 Promille','0,5 Promille','0,3 Promille'],a:0,cat:'🚦 Verkehr',diff:2},
+  {q:'Wie lange dauert die Probezeit für Fahranfänger?',opts:['1 Jahr','2 Jahre','3 Jahre','6 Monate'],a:1,cat:'🚦 Verkehr',diff:1},
+  {q:'Ab wie vielen Punkten in Flensburg wird der Führerschein entzogen?',opts:['6 Punkte','7 Punkte','8 Punkte','10 Punkte'],a:2,cat:'🚦 Verkehr',diff:2},
+  {q:'Wie bildet man auf der Autobahn eine Rettungsgasse?',opts:['Alle fahren auf den Standstreifen','Links zusammenfahren, rechts frei lassen','Zwischen linker und mittlerer Spur','Alle auf die mittlere Spur'],a:1,cat:'🚦 Verkehr',diff:2},
+  {q:'Welches Fahrlicht ist bei Sichtweite unter 50 m Pflicht?',opts:['Fernlicht','Standlicht','Nebelscheinwerfer','Nebelschlussleuchte'],a:3,cat:'🚦 Verkehr',diff:3},
+  {q:'Mindestabstand zum Halten vor einem Fußgängerüberweg?',opts:['3 Meter','5 Meter','8 Meter','10 Meter'],a:1,cat:'🚦 Verkehr',diff:2},
+  {q:'Was ist der Reaktionsweg bei 100 km/h (ca.)?',opts:['15 Meter','28 Meter','55 Meter','80 Meter'],a:1,cat:'🚦 Verkehr',diff:3},
+  {q:'Bei welchem Zeichen darf man nicht überholen?',opts:['Vorfahrtstraße','Überholverbot (Zeichen 276)','Einbahnstraße','Hauptstraße'],a:1,cat:'🚦 Verkehr',diff:1},
+  {q:'Welche Höchstgeschwindigkeit gilt außerorts (Landstraße)?',opts:['80 km/h','90 km/h','100 km/h','120 km/h'],a:2,cat:'🚦 Verkehr',diff:1},
+  {q:'Was bedeutet ein gelb blinkender Pfeil an einer Ampel?',opts:['Stop, Vorfahrt gewähren','Freie Fahrt mit erhöhter Vorsicht','Richtungsfahrt gesperrt','Straßenbahn hat Vorfahrt'],a:1,cat:'🚦 Verkehr',diff:3},
+  {q:'Wann müssen Kinder im Kindersitz sitzen?',opts:['Bis 10 Jahre','Bis 12 Jahre oder 150 cm','Bis 6 Jahre','Bis 8 Jahre oder 1,40 m'],a:1,cat:'🚦 Verkehr',diff:2},
+  {q:'Was gilt an einem Bahnübergang mit blinkendem Licht?',opts:['Langsam fahren','Anhalten und warten','Zügig überqueren','Links schauen und fahren'],a:1,cat:'🚦 Verkehr',diff:1},
+  {q:'Wann ist die Warnblinkanlage einzuschalten?',opts:['Bei Dunkelheit','Bei Regen','Bei Pannen und Unfällen','Immer auf der Autobahn'],a:2,cat:'🚦 Verkehr',diff:1},
+  // Fahrzeugkunde
+  {q:'Wofür steht ABS beim Auto?',opts:['Automatisches Brems-System','Antiblockiersystem','Anti-Beschleunigungs-System','Automatische Bremsstabilisierung'],a:1,cat:'🔧 Fahrzeug',diff:1},
+  {q:'Wofür steht ESP?',opts:['Elektronisches Stabilitätsprogramm','Elektronisches Servo-Programm','Engine Speed Protection','Extra Sicherheitspaket'],a:0,cat:'🔧 Fahrzeug',diff:1},
+  {q:'Was prüft die Hauptuntersuchung (TÜV)?',opts:['Nur die Bremsen','Technische Sicherheit des Fahrzeugs','Abgaswerte allein','Reifenzustand allein'],a:1,cat:'🔧 Fahrzeug',diff:1},
+  {q:'Wie oft findet die Hauptuntersuchung bei Pkw statt?',opts:['Jährlich','Alle 2 Jahre','Alle 3 Jahre','Alle 4 Jahre'],a:1,cat:'🔧 Fahrzeug',diff:1},
+  {q:'Was macht ein Katalysator?',opts:['Kraftstoff sparen','Abgase reinigen','Motor kühlen','Öl filtern'],a:1,cat:'🔧 Fahrzeug',diff:1},
+  {q:'Was macht ein Turbolader?',opts:['Kühlt den Motor','Filtert Öl','Verdichtet Ansaugluft für mehr Leistung','Verbessert Bremsen'],a:2,cat:'🔧 Fahrzeug',diff:2},
+  {q:'Was misst ein Drehzahlmesser?',opts:['Reisegeschwindigkeit','Motorumdrehungen pro Minute','Kraftstoffverbrauch','Kühlwassertemperatur'],a:1,cat:'🔧 Fahrzeug',diff:1},
+  {q:'Was bedeutet Allradantrieb?',opts:['Vorderräder werden angetrieben','Hinterräder werden angetrieben','Alle 4 Räder werden angetrieben','Automatisches Getriebe'],a:2,cat:'🔧 Fahrzeug',diff:1},
+  {q:'Welche Reifenbezeichnung steht für Winterreifen?',opts:['S (Summer)','W (Winter)','M+S (Matsch und Schnee)','A/T (All-Terrain)'],a:2,cat:'🔧 Fahrzeug',diff:2},
+  {q:'Was prüft die Abgasuntersuchung (AU)?',opts:['Lärmpegel','Schadstoffemissionen im Abgas','Kraftstoffqualität','Treibstoffverbrauch'],a:1,cat:'🔧 Fahrzeug',diff:2},
+  {q:'Was zeigt die Öldruckleuchte (rotes Öl-Symbol) an?',opts:['Ölwechsel fällig','Zu niedriger Öldruck – sofort anhalten!','Öl ist zu heiß','Zu viel Öl'],a:1,cat:'🔧 Fahrzeug',diff:2},
+  {q:'Was ist ein Differential (Differenzial)?',opts:['Kupplungsbestandteil','Getriebeelement das Drehzahlunterschiede ausgleicht','Bremssystem','Lenkungsdämpfer'],a:1,cat:'🔧 Fahrzeug',diff:3},
+  {q:'Was bedeutet das Reifenprofil-Minimum von 1,6 mm?',opts:['Empfehlung des Herstellers','Gesetzliche Mindestprofiltiefe','Winterreifen-Minimum','Notlauffähigkeit'],a:1,cat:'🔧 Fahrzeug',diff:2},
+  // Los Santos / ACLS
+  {q:'Wofür steht ACLS in dieser Fahrschule?',opts:['Auto Club Los Santos','Automobil Club Los Santos','Amtlicher Club für Los Santos','Auto-Check Los Santos'],a:1,cat:'🏙️ Los Santos',diff:1},
+  {q:'Auf welcher echten Stadt basiert Los Santos in GTA V?',opts:['San Francisco','Miami','Las Vegas','Los Angeles'],a:3,cat:'🏙️ Los Santos',diff:1},
+  {q:'In welchem Jahr erschien GTA V?',opts:['2011','2012','2013','2014'],a:2,cat:'🏙️ Los Santos',diff:1},
+  {q:'Wie heißt die Polizei in Los Santos?',opts:['LAPD','LSPD','LSSD','LCPD'],a:1,cat:'🏙️ Los Santos',diff:1},
+  {q:'Wie heißt der Berg in GTA V, auf dem man skydiven kann?',opts:['Mount Gordo','Mount Chilliad','Mount Davis','Mount Haan'],a:1,cat:'🏙️ Los Santos',diff:2},
+  {q:'Wofür steht FIB in GTA V?',opts:['Federal Investigation Bureau','Federal Intelligence Bureau','Federal Inspection Bureau','Federal Incident Bureau'],a:0,cat:'🏙️ Los Santos',diff:2},
+  {q:'Welcher Flughafen liegt in Los Santos?',opts:['Los Santos International','Sandy Shores Airport','Zancudo Airbase','Paleto Bay Airport'],a:0,cat:'🏙️ Los Santos',diff:1},
+  {q:'Wie heißt das Casino im Diamond Casino & Resort in GTA Online?',opts:['Lucky Star','Diamond Casino','Vinewood Casino','Los Santos Casino'],a:1,cat:'🏙️ Los Santos',diff:2},
+  {q:'Was ist der Name des Luxusviertels in Los Santos (basiert auf Beverly Hills)?',opts:['Rockford Hills','Vinewood Hills','Del Perro','Vespucci'],a:0,cat:'🏙️ Los Santos',diff:2},
+  // Allgemein / Fun
+  {q:'Wofür steht ADAC?',opts:['Allgemeiner Deutscher Automobil-Club','Automatischer Deutschen Auto-Club','Allgemeiner Deutsches Automobil-Centrum','Automobil Dienst Aller Clubs'],a:0,cat:'🌍 Allgemein',diff:1},
+  {q:'Welches Land fuhr als erstes auf der rechten Straßenseite?',opts:['England','USA','Frankreich','Deutschland'],a:2,cat:'🌍 Allgemein',diff:3},
+  {q:'Wann wurde das Automobil erfunden? (Benz Patent-Motorwagen)',opts:['1876','1886','1896','1906'],a:1,cat:'🌍 Allgemein',diff:2},
+  {q:'Welche Marke baut den Bugatti Veyron?',opts:['Ferrari','Lamborghini','Bugatti','Koenigsegg'],a:2,cat:'🌍 Allgemein',diff:1},
+  {q:'Wie lautet der Notruf für die Feuerwehr in Deutschland?',opts:['110','112','116 117','118'],a:1,cat:'🌍 Allgemein',diff:1},
+  {q:'Wie lautet der Notruf für die Polizei in Deutschland?',opts:['110','112','116 117','118'],a:0,cat:'🌍 Allgemein',diff:1},
+  {q:'Was bedeutet die grüne Umweltplakette?',opts:['Euro-3-Norm','Euro-4-Norm','Euro-5-Norm oder besser','Elektrofahrzeug'],a:1,cat:'🌍 Allgemein',diff:3},
+  {q:'Welches Land hat das längste Autobahnnetz weltweit?',opts:['Deutschland','USA','China','Japan'],a:1,cat:'🌍 Allgemein',diff:2},
+  {q:'Wie hoch ist das Bußgeld für Fahren ohne Sicherheitsgurt (Fahrer)?',opts:['15 €','30 €','50 €','100 €'],a:1,cat:'🌍 Allgemein',diff:2},
+  {q:'Was ist ein Tempomaten-System?',opts:['Automatisches Einparksystem','Geschwindigkeitsregelanlage','Kollisionswarner','Spurhalteassistent'],a:1,cat:'🔧 Fahrzeug',diff:1},
+];
+
+const DIFF_COLS  = {1:'#22c55e',2:'#f59e0b',3:'#ef4444'};
+const DIFF_NAMES = {1:'Leicht',2:'Mittel',3:'Schwer'};
+const DIFF_PTS   = {1:100,2:200,3:400};
+
+let lives, score, streak, maxStreak, qIdx, qList, correct, wrong;
+let timerStart, timerLimit, timerRaf, answered;
+let currentQ;
+
+function shuffle(arr) { return [...arr].sort(() => Math.random() - .5); }
+
+function showMenu() {
+  setScreen('menu');
+  loadLb();
+}
+
+async function startGame() {
+  lives=3; score=0; streak=0; maxStreak=0; qIdx=0; correct=0; wrong=0;
+  qList = shuffle(QUESTIONS).slice(0,15);
+  await GameAuth.init('quiz');
+  setScreen('game');
+  nextQ();
+}
+
+function nextQ() {
+  if (qIdx >= qList.length) { endGame(); return; }
+  currentQ = qList[qIdx];
+  answered = false;
+  document.getElementById('q-num').textContent = `${qIdx+1}/${qList.length}`;
+  document.getElementById('score-val').textContent = score.toLocaleString('de-DE');
+  document.getElementById('streak-val').textContent = streak;
+  updateLivesDisplay();
+  updateStreakBar();
+
+  document.getElementById('q-cat').textContent = currentQ.cat;
+  document.getElementById('q-text').textContent = currentQ.q;
+  const diff = document.getElementById('q-diff');
+  diff.textContent = DIFF_NAMES[currentQ.diff];
+  diff.style.background = DIFF_COLS[currentQ.diff]+'22';
+  diff.style.color = DIFF_COLS[currentQ.diff];
+
+  const shuffledOpts = shuffle(currentQ.opts.map((t,i)=>({t,orig:i})));
+  const correctShuffled = shuffledOpts.findIndex(o=>o.orig===currentQ.a);
+
+  document.getElementById('opts').innerHTML = shuffledOpts.map((o,i)=>
+    `<button class="opt" onclick="answer(this,${i},${correctShuffled})" data-idx="${i}">${o.t}</button>`
+  ).join('');
+
+  timerLimit = Math.max(7000, 15000 - qIdx * 400);
+  timerStart = Date.now();
+  startTimer();
+}
+
+function startTimer() {
+  cancelAnimationFrame(timerRaf);
+  function tick() {
+    const elapsed = Date.now() - timerStart;
+    const pct = Math.max(0, 100 - (elapsed / timerLimit * 100));
+    const bar = document.getElementById('timer-bar');
+    bar.style.width = pct + '%';
+    bar.style.background = pct > 50 ? 'linear-gradient(90deg,#a855f7,#ec4899)' :
+      pct > 25 ? 'linear-gradient(90deg,#f59e0b,#ef4444)' : '#ef4444';
+    if (pct <= 0) { timeOut(); return; }
+    if (!answered) timerRaf = requestAnimationFrame(tick);
+  }
+  timerRaf = requestAnimationFrame(tick);
+}
+
+function timeOut() {
+  if (answered) return;
+  answered = true;
+  cancelAnimationFrame(timerRaf);
+  wrong++;
+  streak = 0;
+  lives--;
+  highlightCorrect();
+  updateLivesDisplay();
+  document.getElementById('streak-bar').textContent = '⏱️ Zeit abgelaufen!';
+  if (lives <= 0) { setTimeout(endGame, 1200); return; }
+  setTimeout(nextQ, 1400);
+}
+
+function answer(btn, idx, correctIdx) {
+  if (answered) return;
+  answered = true;
+  cancelAnimationFrame(timerRaf);
+
+  const elapsed = Date.now() - timerStart;
+  const timeFactor = Math.max(0.3, 1 - elapsed / timerLimit * 0.7);
+  const streakMult = streak >= 10 ? 3 : streak >= 5 ? 2 : streak >= 3 ? 1.5 : 1;
+
+  document.querySelectorAll('.opt').forEach(b => b.disabled = true);
+
+  if (idx === correctIdx) {
+    btn.classList.add('correct');
+    correct++;
+    streak++;
+    maxStreak = Math.max(maxStreak, streak);
+    const pts = Math.round(DIFF_PTS[currentQ.diff] * timeFactor * streakMult);
+    score += pts;
+    updateStreakBar();
+    document.getElementById('streak-bar').textContent =
+      streak >= 3 ? `🔥 Streak ×${streakMult.toFixed(1)} — +${pts} Punkte!` : `✅ +${pts} Punkte`;
+  } else {
+    btn.classList.add('wrong');
+    highlightCorrect();
+    wrong++;
+    streak = 0;
+    lives--;
+    updateLivesDisplay();
+    document.getElementById('streak-bar').textContent = '❌ Falsch!';
+    if (lives <= 0) { setTimeout(endGame, 1200); return; }
+  }
+  qIdx++;
+  document.getElementById('score-val').textContent = score.toLocaleString('de-DE');
+  setTimeout(nextQ, 1300);
+}
+
+function highlightCorrect() {
+  const opts = document.querySelectorAll('.opt');
+  opts.forEach(b => {
+    const i = parseInt(b.dataset.idx);
+    if (b.classList.contains('correct') || b.classList.contains('wrong') ? false : false) return;
+  });
+  // find correct button by re-reading the shuffled correct index from the onclick
+  opts.forEach(b => {
+    if (b.onclick?.toString().includes(','+document.querySelector('.opt.correct,​.opt.wrong')?.getAttribute('onclick')?.match(/,(\d+)\)/)?.[1]+')')) b.classList.add('correct');
+  });
+  // simpler: mark all non-wrong as correct via data
+  document.getElementById('opts').querySelectorAll('.opt:not(.wrong)').forEach((b,i,arr) => {
+    // The correct option has onclick="answer(this,X,correctIdx)" — we parse correctIdx
+    const m = b.getAttribute('onclick')?.match(/answer\(this,(\d+),(\d+)\)/);
+    if (m && m[1]===m[2]) b.classList.add('correct');
+  });
+}
+
+function updateLivesDisplay() {
+  document.getElementById('lives-val').textContent = '❤️'.repeat(lives) + '🖤'.repeat(3-lives);
+}
+
+function updateStreakBar() {
+  const s = document.getElementById('streak-val');
+  s.textContent = streak;
+  s.style.color = streak >= 10 ? '#ec4899' : streak >= 5 ? '#a855f7' : streak >= 3 ? '#f97316' : '#8b949e';
+}
+
+async function endGame() {
+  cancelAnimationFrame(timerRaf);
+  setScreen('result');
+  document.getElementById('res-score').textContent = score.toLocaleString('de-DE');
+  document.getElementById('r-correct').textContent = correct;
+  document.getElementById('r-wrong').textContent = wrong + (3 - lives) + ' (inkl. Timeout)';
+  document.getElementById('r-streak').textContent = maxStreak;
+  const total = correct + wrong;
+  document.getElementById('r-acc').textContent = total ? Math.round(correct/total*100)+'%' : '0%';
+
+  // Submit score
+  try {
+    await fetch('/api/game-scores/quiz', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(GameAuth.body(score))
+    });
+  } catch {}
+  loadLb();
+}
+
+async function loadLb() {
+  const el = document.getElementById('lb-rows');
+  try {
+    const data = await fetch('/api/game-scores/quiz').then(r => r.json());
+    if (!data.length) { el.innerHTML = '<div style="color:#8b949e;font-size:13px">Noch keine Einträge</div>'; return; }
+    el.innerHTML = data.map((row, i) => {
+      const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+      const av = row.avatar
+        ? `<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.style.display='none'">`
+        : (row.username||'?').slice(0,2).toUpperCase();
+      return `<div class="lb-row"><div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
+        <div class="lb-name">${row.username||'?'}</div><div class="lb-score">${row.score.toLocaleString('de-DE')}</div></div>`;
+    }).join('');
+  } catch { el.innerHTML = '<div style="color:#ef4444;font-size:13px">Fehler</div>'; }
+}
+
+function setScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+}
+
+GameAuth.init('quiz');
+showMenu();
+</script>
+</body>
+</html>

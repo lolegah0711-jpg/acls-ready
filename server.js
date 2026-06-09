@@ -20,6 +20,9 @@ const GAME_LIMITS = {
   '2048':       { minSec: 30,  maxScore: 5000000 },
   bookofra:     { minSec: 20,  maxScore: 99999999},
   towerdefense: { minSec: 45,  maxScore: 999999  },
+  quiz:         { minSec: 30,  maxScore: 15000   },
+  idle:         { minSec: 60,  maxScore: 1e15    },
+  rpg:          { minSec: 60,  maxScore: 1e9     },
 };
 
 function makeGameToken(uid, game, ts) {
@@ -1844,6 +1847,94 @@ app.post('/api/game-scores/:game', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Idle Clicker Save ────────────────────────────────────────────
+app.get('/api/idle-save', (req, res) => {
+  const user = getUser(req);
+  if (!user) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const row = db.prepare('SELECT * FROM idle_saves WHERE user_id = ?').get(user.id);
+  if (!row) return res.json(null);
+  res.json({
+    gold: row.gold, totalEarned: row.total_earned,
+    buildings: JSON.parse(row.buildings), upgrades: JSON.parse(row.upgrades),
+    prestige: row.prestige, clickPower: row.click_power,
+  });
+});
+
+app.post('/api/idle-save', (req, res) => {
+  const user = getUser(req);
+  if (!user) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const { gold, totalEarned, buildings, upgrades, prestige, clickPower } = req.body;
+  if (typeof gold !== 'number' || gold < 0 || !isFinite(gold))
+    return res.status(400).json({ error: 'Ungültig' });
+
+  const row = db.prepare('SELECT * FROM idle_saves WHERE user_id = ?').get(user.id);
+  if (row) {
+    const prevBuildings = JSON.parse(row.buildings);
+    const gpsMax = Object.entries(prevBuildings).reduce((s, [id, cnt]) => {
+      const rates = { wb: 0.2, komp: 1, hb: 6, diag: 20, lack: 80, pst: 300, atw: 1000, mw: 4000, fil: 20000, konz: 100000 };
+      return s + (rates[id] || 0) * cnt;
+    }, 0);
+    const elapsed = Math.max(0, (Date.now() - new Date(row.updated_at).getTime()) / 1000);
+    const maxGold = row.gold + gpsMax * elapsed * 2.5 + 50000;
+    if (gold > maxGold && gold > row.gold + 1e6)
+      return res.status(400).json({ error: 'Ungültige Daten' });
+  }
+
+  db.prepare(`
+    INSERT INTO idle_saves (user_id, gold, total_earned, buildings, upgrades, prestige, click_power)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      gold=excluded.gold, total_earned=excluded.total_earned, buildings=excluded.buildings,
+      upgrades=excluded.upgrades, prestige=excluded.prestige, click_power=excluded.click_power,
+      updated_at=CURRENT_TIMESTAMP
+  `).run(user.id, gold, totalEarned || 0, JSON.stringify(buildings || {}),
+    JSON.stringify(upgrades || {}), prestige || 0, clickPower || 1);
+  res.json({ ok: true });
+});
+
+// ── RPG Save ─────────────────────────────────────────────────────
+app.get('/api/rpg-save', (req, res) => {
+  const user = getUser(req);
+  if (!user) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const row = db.prepare('SELECT * FROM rpg_saves WHERE user_id = ?').get(user.id);
+  if (!row) return res.json(null);
+  res.json({
+    class: row.class, level: row.level, xp: row.xp, totalXp: row.total_xp,
+    hp: row.hp, maxHp: row.max_hp, gold: row.gold,
+    dungeon: row.dungeon, kills: row.kills,
+    equipment: JSON.parse(row.equipment), skills: JSON.parse(row.skills),
+  });
+});
+
+app.post('/api/rpg-save', (req, res) => {
+  const user = getUser(req);
+  if (!user) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const { class: cls, level, xp, totalXp, hp, maxHp, gold, dungeon, kills, equipment, skills } = req.body;
+  if (!level || level < 1 || level > 50 || typeof gold !== 'number' || gold < 0)
+    return res.status(400).json({ error: 'Ungültig' });
+
+  const row = db.prepare('SELECT * FROM rpg_saves WHERE user_id = ?').get(user.id);
+  if (row) {
+    const elapsed = Math.max(0, (Date.now() - new Date(row.updated_at).getTime()) / 1000);
+    const maxXpGain = 200 * elapsed + 10000;
+    if ((totalXp || 0) > (row.total_xp + maxXpGain))
+      return res.status(400).json({ error: 'Ungültige Daten' });
+  }
+
+  db.prepare(`
+    INSERT INTO rpg_saves (user_id, class, level, xp, total_xp, hp, max_hp, gold, dungeon, kills, equipment, skills)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      class=excluded.class, level=excluded.level, xp=excluded.xp, total_xp=excluded.total_xp,
+      hp=excluded.hp, max_hp=excluded.max_hp, gold=excluded.gold, dungeon=excluded.dungeon,
+      kills=excluded.kills, equipment=excluded.equipment, skills=excluded.skills,
+      updated_at=CURRENT_TIMESTAMP
+  `).run(user.id, cls || 'mechaniker', level, xp || 0, totalXp || 0,
+    hp || maxHp || 100, maxHp || 100, gold || 0, dungeon || 0, kills || 0,
+    JSON.stringify(equipment || {}), JSON.stringify(skills || []));
+  res.json({ ok: true });
+});
+
 // ── Audit-Log ───────────────────────────────────────────────────
 app.get('/api/audit-log', requireAdmin, (req, res) => {
   const rows = db.prepare(`
@@ -1864,6 +1955,9 @@ app.get('/game7', (req, res) => res.sendFile(path.join(__dirname, 'public', 'gam
 app.get('/game8', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game8.html')));
 app.get('/game9', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game9.html')));
 app.get('/game10', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game10.html')));
+app.get('/game11', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game11.html')));
+app.get('/game12', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game12.html')));
+app.get('/game13', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game13.html')));
 app.get('/quiz', (req, res) => {
   const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
   const fs = require('fs');

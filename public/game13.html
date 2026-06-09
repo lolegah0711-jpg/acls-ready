@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ACLS Dungeon – RPG</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0c12;font-family:'Inter',sans-serif;color:#fff;min-height:100vh}
+#back{position:fixed;top:10px;left:10px;z-index:999;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;backdrop-filter:blur(4px)}
+#wrap{max-width:760px;margin:0 auto;padding:52px 10px 20px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:clamp(18px,5vw,26px);font-weight:800;text-align:center;letter-spacing:.08em;background:linear-gradient(90deg,#60a5fa,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+
+.card{background:#111520;border:1px solid #1e2433;border-radius:14px;padding:16px}
+.card h2{font-size:12px;font-weight:700;color:#4b5563;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px}
+
+/* Screen system */
+.screen{display:none;flex-direction:column;gap:12px}
+.screen.active{display:flex}
+
+/* Class select */
+.class-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.cls{background:#111520;border:2px solid #1e2433;border-radius:12px;padding:16px 10px;text-align:center;cursor:pointer;transition:border-color .15s}
+.cls:hover,.cls.sel{border-color:#60a5fa;background:#0a1020}
+.cls-icon{font-size:36px;margin-bottom:8px}
+.cls-name{font-weight:800;font-size:14px;margin-bottom:4px}
+.cls-stat{font-size:11px;color:#6b7280}
+
+/* HUD */
+#hud{display:flex;gap:8px;flex-wrap:wrap}
+.hud-pill{background:#111520;border:1px solid #1e2433;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:1px;flex:1;min-width:60px}
+.hud-lbl{font-size:9px;color:#4b5563;text-transform:uppercase}
+.bar-wrap{height:8px;background:#1e2433;border-radius:4px;overflow:hidden;width:100%}
+.bar-fill{height:100%;border-radius:4px;transition:width .3s}
+
+/* Dungeon selection */
+.dung-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.dung{background:#111520;border:2px solid #1e2433;border-radius:12px;padding:14px;cursor:pointer;transition:border-color .15s}
+.dung:hover:not(.locked){border-color:#60a5fa}
+.dung.locked{opacity:.5;cursor:not-allowed}
+.dung-icon{font-size:28px;margin-bottom:6px}
+.dung-name{font-weight:700;font-size:14px}
+.dung-diff{font-size:11px;margin-top:2px}
+
+/* Battle */
+#battle-area{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fighter{background:#0a0c12;border:1px solid #1e2433;border-radius:12px;padding:14px;text-align:center}
+.fighter-icon{font-size:48px;margin-bottom:8px;display:block}
+.fighter-name{font-weight:700;font-size:14px;margin-bottom:6px}
+.hp-text{font-size:11px;color:#6b7280;margin-top:4px}
+#battle-log{background:#0a0c12;border:1px solid #1e2433;border-radius:10px;padding:10px;height:130px;overflow-y:auto;font-size:12px;line-height:1.7}
+.log-player{color:#60a5fa}
+.log-enemy{color:#f87171}
+.log-info{color:#6b7280}
+.log-crit{color:#f59e0b;font-weight:700}
+.log-heal{color:#34d399}
+.action-btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{padding:10px 18px;border:none;border-radius:10px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;transition:opacity .12s,transform .08s}
+.btn:active{transform:scale(.96)}
+.btn:hover{opacity:.85}
+.btn-attack{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff}
+.btn-skill{background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff}
+.btn-item{background:linear-gradient(135deg,#d97706,#f59e0b);color:#000}
+.btn-flee{background:#1e2433;color:#9ca3af}
+.btn:disabled{background:#1e2433!important;color:#4b5563!important;cursor:not-allowed!important}
+.shake{animation:shake .3s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
+/* Equipment / Inventory */
+.equip-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.equip-slot{background:#0a0c12;border:1px solid #1e2433;border-radius:10px;padding:10px;display:flex;align-items:center;gap:8px}
+.equip-icon{font-size:20px}
+.equip-info{font-size:12px}
+.equip-name{font-weight:700}
+.equip-stat{color:#60a5fa;font-size:11px}
+
+/* Shop */
+.shop-item{display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #1e2433;font-size:12px}
+.shop-icon{font-size:20px}
+.shop-info{flex:1}
+.shop-name{font-weight:700;font-size:13px}
+.shop-stat{color:#60a5fa;font-size:11px}
+
+/* Skills */
+.skill-list{display:flex;gap:8px;flex-wrap:wrap}
+.skill-badge{background:#1e2433;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;border:1px solid #374151}
+.skill-badge.ready{border-color:#7c3aed;color:#a855f7}
+.skill-badge.cooldown{color:#4b5563}
+
+.btn-primary{background:linear-gradient(135deg,#2563eb,#60a5fa);color:#fff}
+.btn-ghost{background:#1e2433;color:#9ca3af;border:1px solid #374151}
+</style>
+</head>
+<body>
+<a id="back" href="/" onclick="window.close()">← Portal</a>
+<div id="wrap">
+  <h1>⚔️ ACLS Dungeon</h1>
+
+  <!-- CLASS SELECT -->
+  <div id="screen-class" class="screen active">
+    <div class="card">
+      <h2>Wähle deine Klasse</h2>
+      <div class="class-grid" id="class-grid">
+        <div class="cls" onclick="selectClass('mechaniker')">
+          <div class="cls-icon">🔧</div>
+          <div class="cls-name">Mechaniker</div>
+          <div class="cls-stat">❤️ 140 HP · ⚔️ Ausgewogen</div>
+          <div class="cls-stat" style="margin-top:4px">Skill: Werkzeug-Schlag ×2</div>
+        </div>
+        <div class="cls" onclick="selectClass('rennfahrer')">
+          <div class="cls-icon">🏎️</div>
+          <div class="cls-name">Rennfahrer</div>
+          <div class="cls-stat">❤️ 100 HP · ⚡ Schnell, Krit</div>
+          <div class="cls-stat" style="margin-top:4px">Skill: Turbo-Boost (hoher Krit)</div>
+        </div>
+        <div class="cls" onclick="selectClass('haendler')">
+          <div class="cls-icon">🤵</div>
+          <div class="cls-name">Händler</div>
+          <div class="cls-stat">❤️ 120 HP · 💰 Gold-Bonus</div>
+          <div class="cls-stat" style="margin-top:4px">Skill: Gold-Schmierer (debuff)</div>
+        </div>
+      </div>
+    </div>
+    <div style="text-align:center;color:#4b5563;font-size:12px">Gespeicherte Chars werden automatisch geladen</div>
+  </div>
+
+  <!-- MAIN / TOWN -->
+  <div id="screen-town" class="screen">
+    <div id="hud">
+      <div class="hud-pill"><div class="hud-lbl">Klasse</div><div id="h-class">–</div></div>
+      <div class="hud-pill"><div class="hud-lbl">Level</div><div id="h-lvl" style="color:#60a5fa">1</div></div>
+      <div class="hud-pill"><div class="hud-lbl">HP</div><div id="h-hp" style="color:#22c55e">100/100</div></div>
+      <div class="hud-pill"><div class="hud-lbl">Gold</div><div id="h-gold" style="color:#f59e0b">0</div></div>
+      <div class="hud-pill"><div class="hud-lbl">Kills</div><div id="h-kills" style="color:#a855f7">0</div></div>
+    </div>
+    <div class="card" style="padding:10px 16px">
+      <div style="display:flex;gap:4px;align-items:center">
+        <div style="font-size:11px;color:#4b5563;min-width:60px">XP</div>
+        <div class="bar-wrap" style="flex:1"><div class="bar-fill" id="xp-bar" style="background:linear-gradient(90deg,#7c3aed,#a855f7)"></div></div>
+        <div id="xp-txt" style="font-size:11px;color:#a855f7;min-width:60px;text-align:right">0/100</div>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center;margin-top:5px">
+        <div style="font-size:11px;color:#4b5563;min-width:60px">HP</div>
+        <div class="bar-wrap" style="flex:1"><div class="bar-fill" id="hp-bar" style="background:linear-gradient(90deg,#22c55e,#16a34a)"></div></div>
+        <div id="hp-txt" style="font-size:11px;color:#22c55e;min-width:60px;text-align:right">100/100</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🗺️ Dungeons</h2>
+      <div class="dung-grid" id="dung-grid"></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="card">
+        <h2>🛡️ Ausrüstung</h2>
+        <div class="equip-grid" id="equip-display"></div>
+      </div>
+      <div class="card">
+        <h2>🏪 Shop</h2>
+        <div id="shop-list"></div>
+        <button class="btn btn-item" style="width:100%;margin-top:8px" onclick="buyPotion()">🧪 Trank (+40 HP) – 30 G</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>⚡ Skills</h2>
+      <div class="skill-list" id="skill-list"></div>
+    </div>
+
+    <div style="display:flex;gap:8px;justify-content:center">
+      <button class="btn btn-ghost" onclick="restAtInn()">🏠 Rast (20 G)</button>
+      <button class="btn btn-ghost" onclick="saveAndShowStatus()">💾 Speichern</button>
+    </div>
+    <div id="save-status" style="text-align:center;font-size:11px;color:#4b5563"></div>
+  </div>
+
+  <!-- BATTLE -->
+  <div id="screen-battle" class="screen">
+    <div id="battle-area">
+      <div class="fighter" id="player-fighter">
+        <span class="fighter-icon" id="player-icon">🧑</span>
+        <div class="fighter-name" id="player-fname">Du</div>
+        <div class="bar-wrap"><div class="bar-fill" id="p-hp-bar" style="background:#22c55e;width:100%"></div></div>
+        <div class="hp-text" id="p-hp-txt">100/100</div>
+      </div>
+      <div class="fighter" id="enemy-fighter">
+        <span class="fighter-icon" id="enemy-icon">👾</span>
+        <div class="fighter-name" id="enemy-fname">Gegner</div>
+        <div class="bar-wrap"><div class="bar-fill" id="e-hp-bar" style="background:#ef4444;width:100%"></div></div>
+        <div class="hp-text" id="e-hp-txt">50/50</div>
+      </div>
+    </div>
+    <div id="battle-log"></div>
+    <div class="action-btns" id="action-btns">
+      <button class="btn btn-attack" id="btn-atk" onclick="doAttack()">⚔️ Angriff</button>
+      <button class="btn btn-skill" id="btn-skill" onclick="doSkill()">⚡ Skill</button>
+      <button class="btn btn-item" id="btn-item" onclick="usePotion()">🧪 Trank</button>
+      <button class="btn btn-flee" onclick="fleeBattle()">🏃 Fliehen</button>
+    </div>
+    <div id="battle-status" style="text-align:center;font-size:12px;color:#6b7280;min-height:20px"></div>
+  </div>
+
+  <!-- VICTORY / DEFEAT -->
+  <div id="screen-victory" class="screen">
+    <div style="text-align:center;font-size:60px">🎉</div>
+    <div style="text-align:center;font-size:22px;font-weight:800;color:#22c55e">Dungeon gecleart!</div>
+    <div class="card" id="victory-rewards" style="text-align:center"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="setScreen('town')">← Zurück zur Stadt</button>
+  </div>
+  <div id="screen-defeat" class="screen">
+    <div style="text-align:center;font-size:60px">💀</div>
+    <div style="text-align:center;font-size:22px;font-weight:800;color:#ef4444">Du bist gefallen…</div>
+    <div style="text-align:center;color:#6b7280;font-size:14px">Du verlierst 25% deines Goldes</div>
+    <button class="btn btn-primary" style="width:100%" onclick="revive()">🔄 Auferstehen</button>
+  </div>
+</div>
+
+<script src="/game-auth.js"></script>
+<script>
+// === DATA ===
+const CLASSES = {
+  mechaniker:{icon:'🔧',name:'Mechaniker',maxHp:140,atk:14,crit:.1,speed:1,skill:'Werkzeug-Schlag',skillDesc:'2× Angriff',skillCd:3},
+  rennfahrer:{icon:'🏎️',name:'Rennfahrer',maxHp:100,atk:18,crit:.25,speed:1.3,skill:'Turbo-Boost',skillDesc:'80% Krit-Chance x1.5 DMG',skillCd:4},
+  haendler:{icon:'🤵',name:'Händler',maxHp:120,atk:12,crit:.08,speed:1,skill:'Gold-Schmierer',skillDesc:'Gegner hat 2 Runden -30% ATK',skillCd:3,goldMult:1.5},
+};
+
+const DUNGEONS = [
+  {id:0,name:'Parkhaus-Keller',icon:'🅿️',diff:'Leicht',col:'#22c55e',req:0,enemyPool:['ratte','dieb','vandal'],rooms:3,goldMult:1},
+  {id:1,name:'Schrottplatz',icon:'🔩',diff:'Mittel',col:'#f59e0b',req:3,enemyPool:['mechanikerGang','pitBull','rustler'],rooms:5,goldMult:1.5},
+  {id:2,name:'Vinewood Studios',icon:'🎬',diff:'Schwer',col:'#ef4444',req:8,enemyPool:['sicherheit','bodyguard','fanatic'],rooms:6,goldMult:2,boss:true},
+  {id:3,name:'Fort Zancudo',icon:'🪖',diff:'Brutal',col:'#a855f7',req:15,enemyPool:['soldat','eliteSoldat','panzer'],rooms:8,goldMult:3,boss:true},
+  {id:4,name:'ACLS Hauptquartier',icon:'🏢',diff:'Legendär',col:'#ec4899',req:25,enemyPool:['eliteAgent','kybosher','drache'],rooms:10,goldMult:5,boss:true},
+];
+
+const ENEMIES = {
+  ratte:{name:'Stadtratte',icon:'🐀',hp:18,atk:4,xp:12,gold:[3,8]},
+  dieb:{name:'Straßendieb',icon:'🦹',hp:25,atk:6,xp:18,gold:[5,12]},
+  vandal:{name:'Vandal',icon:'😤',hp:30,atk:7,xp:20,gold:[6,14]},
+  mechanikerGang:{name:'Mechaniker-Gang',icon:'🔧',hp:50,atk:10,xp:35,gold:[10,20]},
+  pitBull:{name:'Wachhund',icon:'🐕',hp:40,atk:12,xp:28,gold:[8,16]},
+  rustler:{name:'Schrottjäger',icon:'🪛',hp:60,atk:11,xp:40,gold:[12,22]},
+  sicherheit:{name:'Sicherheitsmann',icon:'🕴️',hp:90,atk:16,xp:60,gold:[18,32]},
+  bodyguard:{name:'Bodyguard',icon:'👮',hp:110,atk:18,xp:75,gold:[22,38]},
+  fanatic:{name:'Promi-Fanatiker',icon:'🤩',hp:80,atk:20,xp:65,gold:[20,35]},
+  soldat:{name:'Soldat',icon:'🪖',hp:140,atk:22,xp:100,gold:[28,45]},
+  eliteSoldat:{name:'Elite-Soldat',icon:'💂',hp:170,atk:26,xp:120,gold:[35,55]},
+  panzer:{name:'Kampfpanzer',icon:'🛡️',hp:200,atk:20,xp:140,gold:[40,65],armor:.2},
+  eliteAgent:{name:'ACLS-Agent',icon:'🕵️',hp:200,atk:30,xp:160,gold:[50,80]},
+  kybosher:{name:'Cyborg',icon:'🤖',hp:250,atk:32,xp:190,gold:[60,90],armor:.15},
+  drache:{name:'Dunkel-Drache',icon:'🐲',hp:350,atk:36,xp:250,gold:[80,120],armor:.25},
+};
+
+const BOSS_ENEMIES = {
+  0:{name:'Boss: Parkhauswächter',icon:'👷',hp:150,atk:14,xp:80,gold:[30,50]},
+  1:{name:'Boss: Schrottbaron',icon:'🤑',hp:280,atk:20,xp:150,gold:[60,90]},
+  2:{name:'Boss: Filmstar-Villain',icon:'🎭',hp:400,atk:28,xp:220,gold:[100,150]},
+  3:{name:'Boss: General',icon:'⚔️',hp:600,atk:34,xp:320,gold:[160,220]},
+  4:{name:'Boss: ACLS-Overlord',icon:'👑',hp:900,atk:40,xp:500,gold:[250,350]},
+};
+
+const SHOP_ITEMS = [
+  {id:'sword1',name:'Rostiges Schwert',icon:'🗡️',cost:40,slot:'weapon',atk:5,desc:'+5 ATK'},
+  {id:'sword2',name:'Stahlklinge',icon:'⚔️',cost:120,slot:'weapon',atk:12,desc:'+12 ATK'},
+  {id:'sword3',name:'Titanklinge',icon:'🔱',cost:350,slot:'weapon',atk:25,desc:'+25 ATK'},
+  {id:'armor1',name:'Lederrüstung',icon:'🛡️',cost:50,slot:'armor',def:3,desc:'+3 Rüstung'},
+  {id:'armor2',name:'Kettenrüstung',icon:'⛓️',cost:150,slot:'armor',def:8,desc:'+8 Rüstung'},
+  {id:'armor3',name:'Plattenrüstung',icon:'🏰',cost:400,slot:'armor',def:18,desc:'+18 Rüstung'},
+  {id:'ring1',name:'Geschwindigkeitsring',icon:'💍',cost:80,slot:'ring',speed:.2,desc:'+20% Tempo'},
+  {id:'ring2',name:'Kritischer Stein',icon:'💎',cost:200,slot:'ring',crit:.15,desc:'+15% Krit'},
+];
+
+// === STATE ===
+let S = {
+  cls:'mechaniker', level:1, xp:0, totalXp:0,
+  hp:140, maxHp:140, gold:0, dungeon:0, kills:0,
+  equipment:{weapon:null,armor:null,ring:null},
+  skills:[],
+  potions:2,
+};
+let battle = null;
+let skillCd = 0;
+let enemyDebuff = 0;
+let dungeonQueue = [];
+let dungeonIdx = 0;
+let roomKills = 0;
+
+function xpForLevel(lvl){return Math.floor(100 * Math.pow(1.35, lvl-1));}
+function playerAtk(){
+  const c=CLASSES[S.cls];
+  let a=c.atk+Math.floor((S.level-1)*2.5);
+  if(S.equipment.weapon){const it=SHOP_ITEMS.find(x=>x.id===S.equipment.weapon);if(it?.atk)a+=it.atk;}
+  if(S.equipment.ring){const it=SHOP_ITEMS.find(x=>x.id===S.equipment.ring);if(it?.atk)a+=it.atk||0;}
+  return a;
+}
+function playerDef(){
+  let d=0;
+  if(S.equipment.armor){const it=SHOP_ITEMS.find(x=>x.id===S.equipment.armor);if(it?.def)d+=it.def;}
+  return d;
+}
+function playerCrit(){
+  const c=CLASSES[S.cls];
+  let cr=c.crit;
+  if(S.equipment.ring){const it=SHOP_ITEMS.find(x=>x.id===S.equipment.ring);if(it?.crit)cr+=it.crit;}
+  return cr;
+}
+function playerSpeed(){
+  const c=CLASSES[S.cls];
+  let sp=c.speed;
+  if(S.equipment.ring){const it=SHOP_ITEMS.find(x=>x.id===S.equipment.ring);if(it?.speed)sp+=it.speed;}
+  return sp;
+}
+
+// === SCREENS ===
+function setScreen(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  if(name==='town') refreshTown();
+}
+
+function selectClass(cls){
+  S.cls=cls;
+  S.hp=CLASSES[cls].maxHp;
+  S.maxHp=CLASSES[cls].maxHp;
+  loadSave(cls);
+}
+
+// === TOWN ===
+function refreshTown(){
+  const c=CLASSES[S.cls];
+  document.getElementById('h-class').textContent=c.icon+' '+c.name;
+  document.getElementById('h-lvl').textContent=S.level;
+  document.getElementById('h-hp').textContent=S.hp+'/'+S.maxHp;
+  document.getElementById('h-gold').textContent=S.gold+' G';
+  document.getElementById('h-kills').textContent=S.kills;
+  const xpN=xpForLevel(S.level);
+  const pct=Math.min(100,S.xp/xpN*100);
+  document.getElementById('xp-bar').style.width=pct+'%';
+  document.getElementById('xp-txt').textContent=S.xp+'/'+xpN+' XP';
+  const hpPct=S.hp/S.maxHp*100;
+  document.getElementById('hp-bar').style.width=hpPct+'%';
+  document.getElementById('hp-bar').style.background=hpPct>50?'linear-gradient(90deg,#22c55e,#16a34a)':hpPct>25?'linear-gradient(90deg,#f59e0b,#d97706)':'linear-gradient(90deg,#ef4444,#dc2626)';
+  document.getElementById('hp-txt').textContent=S.hp+'/'+S.maxHp;
+  renderDungeons();
+  renderEquip();
+  renderShop();
+  renderSkills();
+}
+
+function renderDungeons(){
+  const el=document.getElementById('dung-grid');
+  el.innerHTML=DUNGEONS.map(d=>{
+    const locked=S.level<d.req;
+    return `<div class="dung ${locked?'locked':''}" onclick="${locked?'':('enterDungeon('+d.id+')')}">
+      <div class="dung-icon">${d.icon}</div>
+      <div class="dung-name">${d.name}</div>
+      <div class="dung-diff" style="color:${d.col}">${d.diff}</div>
+      ${locked?`<div style="font-size:10px;color:#4b5563;margin-top:4px">Level ${d.req} benötigt</div>`:`<div style="font-size:10px;color:#4b5563;margin-top:4px">${d.rooms} Räume · ×${d.goldMult} Gold</div>`}
+    </div>`;
+  }).join('');
+}
+
+function renderEquip(){
+  const slots=[{k:'weapon',label:'Waffe'},{k:'armor',label:'Rüstung'},{k:'ring',label:'Ring'}];
+  document.getElementById('equip-display').innerHTML=slots.map(s=>{
+    const it=S.equipment[s.k]?SHOP_ITEMS.find(x=>x.id===S.equipment[s.k]):null;
+    return `<div class="equip-slot">
+      <div class="equip-icon">${it?it.icon:'⬜'}</div>
+      <div class="equip-info">
+        <div class="equip-name">${it?it.name:s.label+' (leer)'}</div>
+        <div class="equip-stat">${it?it.desc:'–'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderShop(){
+  const el=document.getElementById('shop-list');
+  el.innerHTML=SHOP_ITEMS.map(it=>{
+    const owned=Object.values(S.equipment).includes(it.id);
+    const canBuy=S.gold>=it.cost && !owned;
+    return `<div class="shop-item">
+      <div class="shop-icon">${it.icon}</div>
+      <div class="shop-info"><div class="shop-name">${it.name}</div><div class="shop-stat">${it.desc}</div></div>
+      <button class="btn ${canBuy?'btn-item':'btn-ghost'}" style="padding:5px 10px;font-size:11px" onclick="buyItem('${it.id}')" ${(!canBuy)?'disabled':''}>${owned?'✓':it.cost+' G'}</button>
+    </div>`;
+  }).join('');
+}
+
+function renderSkills(){
+  const el=document.getElementById('skill-list');
+  const c=CLASSES[S.cls];
+  el.innerHTML=`<div class="skill-badge ${skillCd<=0?'ready':'cooldown'}">${c.icon} ${c.skill} — ${c.skillDesc} ${skillCd>0?'(CD: '+skillCd+')':''}</div>`;
+}
+
+// === SHOP ACTIONS ===
+function buyItem(id){
+  const it=SHOP_ITEMS.find(x=>x.id===id);
+  if(!it||S.gold<it.cost)return;
+  S.gold-=it.cost;
+  S.equipment[it.slot]=it.id;
+  refreshTown();
+}
+function buyPotion(){
+  if(S.gold<30){alert('Zu wenig Gold!');return;}
+  S.gold-=30; S.potions++;
+  refreshTown();
+}
+function restAtInn(){
+  if(S.gold<20){alert('Zu wenig Gold!');return;}
+  S.gold-=20;
+  S.hp=Math.min(S.maxHp,S.hp+Math.floor(S.maxHp*.5));
+  addLog('🏠 Rast – HP teilweise geheilt','log-heal');
+  refreshTown();
+  saveProgress();
+}
+
+// === DUNGEON ===
+function enterDungeon(id){
+  const d=DUNGEONS[id];
+  dungeonQueue=[];
+  for(let i=0;i<d.rooms-(d.boss?1:0);i++){
+    const eid=d.enemyPool[Math.floor(Math.random()*d.enemyPool.length)];
+    dungeonQueue.push({type:'normal',eid});
+  }
+  if(d.boss) dungeonQueue.push({type:'boss',did:id});
+  dungeonIdx=0;
+  roomKills=0;
+  nextRoom(d);
+}
+
+function nextRoom(dungeon){
+  if(dungeonIdx>=dungeonQueue.length){
+    showVictory(dungeon);return;
+  }
+  const room=dungeonQueue[dungeonIdx++];
+  let eData;
+  if(room.type==='boss'){
+    eData={...BOSS_ENEMIES[room.did]};
+  } else {
+    const base=ENEMIES[room.eid];
+    const scaledHp=Math.round(base.hp*(1+S.dungeon*.08));
+    const scaledAtk=Math.round(base.atk*(1+S.dungeon*.05));
+    eData={...base,hp:scaledHp,maxHp:scaledHp,atk:scaledAtk};
+  }
+  eData.maxHp=eData.hp;
+  startBattle(eData, dungeon);
+}
+
+// === BATTLE ===
+function startBattle(enemy, dungeon){
+  battle={enemy,dungeon,playerTurn:playerSpeed()>=1,over:false};
+  enemyDebuff=0;
+  setScreen('battle');
+  document.getElementById('enemy-icon').textContent=enemy.icon;
+  document.getElementById('enemy-fname').textContent=enemy.name;
+  document.getElementById('player-icon').textContent=CLASSES[S.cls].icon;
+  document.getElementById('player-fname').textContent=CLASSES[S.cls].name;
+  document.getElementById('battle-log').innerHTML='';
+  updateBattleHp();
+  addLog(`⚔️ Kampf beginnt gegen ${enemy.name}!`,'log-info');
+  setActionBtns(true);
+  if(!battle.playerTurn) setTimeout(enemyTurn,800);
+}
+
+function addLog(msg,cls=''){
+  const el=document.getElementById('battle-log');
+  const d=document.createElement('div');
+  d.className=cls;d.textContent=msg;
+  el.appendChild(d);el.scrollTop=el.scrollHeight;
+}
+
+function updateBattleHp(){
+  const e=battle.enemy;
+  const pp=Math.max(0,S.hp/S.maxHp*100);
+  const ep=Math.max(0,e.hp/e.maxHp*100);
+  document.getElementById('p-hp-bar').style.width=pp+'%';
+  document.getElementById('p-hp-txt').textContent=S.hp+'/'+S.maxHp;
+  document.getElementById('e-hp-bar').style.width=ep+'%';
+  document.getElementById('e-hp-txt').textContent=e.hp+'/'+e.maxHp;
+  const btn=document.getElementById('btn-item');
+  btn.textContent='🧪 Trank ('+S.potions+')';
+  btn.disabled=S.potions<=0;
+  document.getElementById('btn-skill').disabled=skillCd>0;
+  document.getElementById('battle-status').textContent=skillCd>0?`Skill CD: ${skillCd}`:'';
+}
+
+function setActionBtns(on){
+  ['btn-atk','btn-skill','btn-item'].forEach(id=>{
+    const b=document.getElementById(id);
+    if(id==='btn-skill') b.disabled=!on||skillCd>0;
+    else if(id==='btn-item') b.disabled=!on||S.potions<=0;
+    else b.disabled=!on;
+  });
+}
+
+function calcDmg(baseAtk,critChance,isCrit=null){
+  const crit=isCrit!==null?isCrit:Math.random()<critChance;
+  const variance=0.85+Math.random()*.3;
+  const dmg=Math.max(1,Math.round(baseAtk*variance*(crit?1.8:1)));
+  return {dmg,crit};
+}
+
+function applyDef(dmg){
+  const def=playerDef();
+  return Math.max(1,dmg-def);
+}
+
+function doAttack(){
+  if(!battle||battle.over||!battle.playerTurn) return;
+  setActionBtns(false);
+  const {dmg,crit}=calcDmg(playerAtk(),playerCrit());
+  battle.enemy.hp-=dmg;
+  battle.enemy.hp=Math.max(0,battle.enemy.hp);
+  addLog(crit?`💥 Kritischer Treffer! -${dmg} HP`:`⚔️ Du triffst für ${dmg} Schaden`,crit?'log-crit':'log-player');
+  if(skillCd>0) skillCd--;
+  checkBattleEnd();
+}
+
+function doSkill(){
+  if(!battle||battle.over||!battle.playerTurn||skillCd>0) return;
+  setActionBtns(false);
+  const c=CLASSES[S.cls];
+  if(S.cls==='mechaniker'){
+    const {dmg:d1}=calcDmg(playerAtk(),playerCrit());
+    const {dmg:d2,crit}=calcDmg(playerAtk(),playerCrit());
+    const total=d1+d2;
+    battle.enemy.hp=Math.max(0,battle.enemy.hp-total);
+    addLog(`🔧 Werkzeug-Schlag: 2× Angriff für insgesamt ${total} Schaden!${crit?' (Krit!)':''}`,crit?'log-crit':'log-player');
+  } else if(S.cls==='rennfahrer'){
+    const {dmg,crit}=calcDmg(playerAtk()*1.5,.8);
+    battle.enemy.hp=Math.max(0,battle.enemy.hp-dmg);
+    addLog(`🏎️ Turbo-Boost: ${dmg} Schaden${crit?' – KRIT!':''}`,crit?'log-crit':'log-player');
+  } else {
+    enemyDebuff=2;
+    addLog(`🤵 Gold-Schmierer: Gegner hat 2 Runden -30% ATK!`,'log-player');
+  }
+  skillCd=c.skillCd;
+  checkBattleEnd();
+}
+
+function usePotion(){
+  if(!battle||battle.over||S.potions<=0) return;
+  S.potions--;
+  const heal=Math.min(40,S.maxHp-S.hp);
+  S.hp+=heal;
+  addLog(`🧪 Trank: +${heal} HP`,'log-heal');
+  updateBattleHp();
+  battle.playerTurn=false;
+  setTimeout(enemyTurn,500);
+}
+
+function enemyTurn(){
+  if(!battle||battle.over) return;
+  const e=battle.enemy;
+  const atkMult=enemyDebuff>0?.7:1;
+  if(enemyDebuff>0) enemyDebuff--;
+  const armor=e.armor||0;
+  let raw=Math.round(e.atk*atkMult*(0.85+Math.random()*.3));
+  const dmg=applyDef(Math.round(raw*(1-armor)));
+  S.hp=Math.max(0,S.hp-dmg);
+  addLog(`${e.icon} ${e.name} trifft für ${dmg} Schaden!`,'log-enemy');
+  if(S.hp<=0){
+    battle.over=true;
+    setTimeout(()=>setScreen('defeat'),800);
+    return;
+  }
+  battle.playerTurn=true;
+  updateBattleHp();
+  setActionBtns(true);
+}
+
+function checkBattleEnd(){
+  updateBattleHp();
+  if(battle.enemy.hp<=0){
+    battle.over=true;
+    setActionBtns(false);
+    const e=battle.enemy;
+    const goldEarned=Math.round((e.gold?Math.floor(e.gold[0]+Math.random()*(e.gold[1]-e.gold[0])):20)*(battle.dungeon?.goldMult||1)*(CLASSES[S.cls].goldMult||1));
+    S.gold+=goldEarned;
+    S.kills++;
+    roomKills++;
+    gainXp(e.xp||30);
+    addLog(`✅ ${e.name} besiegt! +${goldEarned} Gold, +${e.xp} XP`,'log-info');
+    if(S.dungeon<(battle.dungeon?.id||0)+1) S.dungeon=(battle.dungeon?.id||0);
+    setTimeout(()=>nextRoom(battle.dungeon),1200);
+    return;
+  }
+  battle.playerTurn=false;
+  setTimeout(enemyTurn,600);
+}
+
+function gainXp(amount){
+  S.xp+=amount;
+  S.totalXp+=amount;
+  const needed=xpForLevel(S.level);
+  if(S.xp>=needed){
+    S.xp-=needed;
+    S.level++;
+    S.maxHp=Math.round(CLASSES[S.cls].maxHp*(1+(S.level-1)*.08));
+    S.hp=S.maxHp;
+    addLog(`🎉 Level Up! Jetzt Level ${S.level}!`,'log-crit');
+  }
+}
+
+function fleeBattle(){
+  if(!battle||battle.over) return;
+  if(Math.random()<.35){
+    addLog('❌ Flucht fehlgeschlagen!','log-enemy');
+    battle.playerTurn=false;
+    setTimeout(enemyTurn,500);
+    return;
+  }
+  addLog('🏃 Erfolgreich geflohen!','log-info');
+  battle.over=true;
+  setTimeout(()=>setScreen('town'),800);
+  saveProgress();
+}
+
+function showVictory(dungeon){
+  setScreen('victory');
+  document.getElementById('victory-rewards').innerHTML=
+    `<div style="font-size:32px;margin-bottom:8px">🏆</div>
+    <div style="font-weight:700;font-size:18px;color:#22c55e">${dungeon?.name||'Dungeon'} gecleart!</div>
+    <div style="margin-top:10px;color:#f59e0b">${roomKills} Gegner besiegt</div>
+    <div style="color:#a855f7;font-size:13px">Level ${S.level} · ${S.gold} Gold · ${S.totalXp} Gesamt-XP</div>`;
+  saveProgress();
+  submitScore();
+}
+
+function revive(){
+  S.gold=Math.floor(S.gold*.75);
+  S.hp=Math.ceil(S.maxHp*.4);
+  setScreen('town');
+  saveProgress();
+}
+
+// === SAVE / LOAD ===
+async function saveProgress(){
+  document.getElementById('save-status').textContent='Speichern…';
+  try{
+    const body={
+      class:S.cls,level:S.level,xp:S.xp,total_xp:S.totalXp,
+      hp:S.hp,max_hp:S.maxHp,gold:S.gold,dungeon:S.dungeon,
+      kills:S.kills,equipment:S.equipment,skills:S.skills,
+    };
+    const r=await fetch('/api/rpg-save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.error||'Fehler');
+    document.getElementById('save-status').textContent=`💾 Gespeichert ${new Date().toLocaleTimeString('de-DE')}`;
+  }catch(e){
+    document.getElementById('save-status').textContent='⚠️ Speichern fehlgeschlagen';
+    console.warn(e);
+  }
+}
+
+async function saveAndShowStatus(){
+  await saveProgress();
+}
+
+async function loadSave(cls){
+  try{
+    const r=await fetch('/api/rpg-save');
+    if(r.ok){
+      const d=await r.json();
+      if(d.level){
+        // If saved class matches selected, load it; otherwise start fresh with selected class
+        if(d.class===cls){
+          S.cls=d.class||cls;
+          S.level=d.level||1;
+          S.xp=d.xp||0;
+          S.totalXp=d.total_xp||0;
+          S.hp=d.hp||CLASSES[cls].maxHp;
+          S.maxHp=d.max_hp||CLASSES[cls].maxHp;
+          S.gold=d.gold||0;
+          S.dungeon=d.dungeon||0;
+          S.kills=d.kills||0;
+          S.equipment=d.equipment||{weapon:null,armor:null,ring:null};
+          S.skills=d.skills||[];
+        } else {
+          // reset for new class
+          S={cls,level:1,xp:0,totalXp:0,hp:CLASSES[cls].maxHp,maxHp:CLASSES[cls].maxHp,gold:0,dungeon:0,kills:0,equipment:{weapon:null,armor:null,ring:null},skills:[],potions:2};
+        }
+      }
+    }
+  }catch{}
+  setScreen('town');
+}
+
+async function submitScore(){
+  try{
+    await fetch('/api/game-scores/rpg',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(GameAuth.body(S.totalXp))
+    });
+  }catch{}
+}
+
+GameAuth.init('rpg');
+</script>
+</body>
+</html>

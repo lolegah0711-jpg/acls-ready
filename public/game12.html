@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ACLS Werkstatt – Idle</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0e13;font-family:'Inter',sans-serif;color:#fff;min-height:100vh}
+#back{position:fixed;top:10px;left:10px;z-index:999;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;backdrop-filter:blur(4px)}
+
+/* Layout */
+#layout{display:grid;grid-template-columns:1fr 300px;gap:12px;max-width:960px;margin:0 auto;padding:52px 10px 20px}
+@media(max-width:700px){#layout{grid-template-columns:1fr}#sidebar{order:2}}
+
+/* Header */
+#header{grid-column:1/-1;background:#111827;border:1px solid #1f2937;border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#header h1{font-size:20px;font-weight:800;background:linear-gradient(90deg,#f59e0b,#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;flex:1}
+.stat-pill{background:#1f2937;border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;display:flex;flex-direction:column;align-items:center}
+.stat-lbl{font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em}
+.stat-val{color:#f59e0b}
+
+/* Main panel */
+#main-panel{display:flex;flex-direction:column;gap:10px}
+
+/* Click zone */
+#click-zone{background:#111827;border:2px solid #1f2937;border-radius:16px;padding:20px;text-align:center;cursor:pointer;user-select:none;transition:border-color .12s,transform .06s}
+#click-zone:active{transform:scale(.97);border-color:#f59e0b}
+#click-zone:hover{border-color:#374151}
+#car-emoji{font-size:64px;display:block;margin:0 auto 6px;transition:transform .05s}
+#click-zone:active #car-emoji{transform:scale(1.12)}
+.click-earn{font-size:14px;color:#f59e0b;font-weight:700;margin-top:4px}
+.float-text{position:fixed;pointer-events:none;font-weight:800;color:#f59e0b;font-size:16px;opacity:1;transition:none;z-index:9999}
+
+/* Buildings */
+#buildings{background:#111827;border:1px solid #1f2937;border-radius:14px;padding:14px}
+#buildings h2{font-size:13px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.building{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;background:#0a0e13;margin-bottom:6px;border:1px solid #1f2937;transition:border-color .12s}
+.building:hover{border-color:#374151}
+.b-icon{font-size:22px;width:34px;text-align:center}
+.b-info{flex:1;min-width:0}
+.b-name{font-size:13px;font-weight:700}
+.b-owned{font-size:10px;color:#6b7280}
+.b-rate{font-size:10px;color:#f59e0b}
+.b-cost{font-size:11px;font-weight:700;color:#f59e0b;text-align:right;white-space:nowrap}
+.btn-buy{background:#f59e0b;color:#000;border:none;border-radius:8px;padding:6px 12px;font-weight:800;font-size:12px;cursor:pointer;white-space:nowrap;font-family:inherit;transition:opacity .12s}
+.btn-buy:disabled{background:#374151;color:#6b7280;cursor:not-allowed}
+.btn-buy:not(:disabled):hover{opacity:.85}
+
+/* Upgrades panel */
+#upg-panel{background:#111827;border:1px solid #1f2937;border-radius:14px;padding:14px}
+#upg-panel h2{font-size:13px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.upg{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:#0a0e13;margin-bottom:6px;border:1px solid #1f2937}
+.upg-icon{font-size:20px}
+.upg-info{flex:1;font-size:12px}
+.upg-name{font-weight:700;font-size:13px}
+.upg-desc{color:#6b7280;font-size:11px}
+
+/* Sidebar */
+#sidebar{display:flex;flex-direction:column;gap:10px}
+.side-card{background:#111827;border:1px solid #1f2937;border-radius:14px;padding:14px}
+.side-title{font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.milest{display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid #111}
+.milest-icon{font-size:16px}
+.milest-done{color:#22c55e;font-weight:700}
+.milest-pend{color:#374151}
+.prest-btn{width:100%;padding:10px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border:none;border-radius:10px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;margin-top:8px}
+.prest-btn:disabled{background:#1f2937;color:#374151;cursor:not-allowed}
+.news-item{font-size:12px;color:#6b7280;padding:4px 0;border-bottom:1px solid #111;display:flex;align-items:center;gap:6px}
+.save-status{font-size:11px;color:#6b7280;text-align:center;padding:4px}
+
+/* Prestige */
+#prest-info{text-align:center}
+#prest-count{font-size:28px;font-weight:800;color:#a855f7;display:block}
+</style>
+</head>
+<body>
+<a id="back" href="/" onclick="window.close()">← Portal</a>
+
+<div id="layout">
+  <div id="header">
+    <h1>🚗 ACLS Werkstatt</h1>
+    <div class="stat-pill"><div class="stat-lbl">Geld</div><div class="stat-val" id="hud-gold">0</div></div>
+    <div class="stat-pill"><div class="stat-lbl">Pro Sekunde</div><div class="stat-val" id="hud-gps">0/s</div></div>
+    <div class="stat-pill"><div class="stat-lbl">Gesamt verdient</div><div class="stat-val" id="hud-total">0</div></div>
+    <div class="stat-pill"><div class="stat-lbl">Prestige</div><div class="stat-val" id="hud-prest">×1.0</div></div>
+  </div>
+
+  <div id="main-panel">
+    <div id="click-zone" onclick="clickCar(event)">
+      <span id="car-emoji">🚗</span>
+      <div style="font-weight:700;font-size:15px">Klick für Geld!</div>
+      <div class="click-earn" id="click-earn-txt">+1 GS / Klick</div>
+    </div>
+
+    <div id="buildings">
+      <h2>🏗️ Gebäude</h2>
+      <div id="bldg-list"></div>
+    </div>
+
+    <div id="upg-panel">
+      <h2>⚡ Upgrades</h2>
+      <div id="upg-list"><div style="color:#6b7280;font-size:12px">Kaufe Gebäude um Upgrades freizuschalten.</div></div>
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div class="side-card">
+      <div class="side-title">🏆 Meilensteine</div>
+      <div id="milest-list"></div>
+    </div>
+    <div class="side-card" id="prest-card">
+      <div class="side-title">⭐ Prestige</div>
+      <div id="prest-info">
+        <span id="prest-count">0</span>
+        <div style="font-size:11px;color:#6b7280;margin:4px 0">Prestige-Level</div>
+        <div style="font-size:11px;color:#a855f7;margin-bottom:8px" id="prest-mult-txt">Bonus: ×1.0</div>
+        <div style="font-size:11px;color:#6b7280;margin-bottom:8px" id="prest-need">Benötigt: 1 Mio. GS gesamt</div>
+      </div>
+      <button class="prest-btn" id="prest-btn" onclick="doPrestige()" disabled>🔁 Prestige!</button>
+    </div>
+    <div class="side-card">
+      <div class="side-title">📰 Nachrichten</div>
+      <div id="news-list"></div>
+    </div>
+    <div class="save-status" id="save-status">Laden…</div>
+  </div>
+</div>
+
+<script src="/game-auth.js"></script>
+<script>
+// === CONFIG ===
+const BUILDINGS = [
+  {id:'parking',name:'Parkplatz',icon:'🅿️',base:15,gps:.1,desc:'Einfache Einnahmen durch Parkgebühren'},
+  {id:'wash',name:'Autowaschanlage',icon:'🚿',base:100,gps:.5,desc:'Jedes Auto kommt blitzeblank raus'},
+  {id:'shop',name:'Zubehör Shop',icon:'🛍️',base:550,gps:4,desc:'Felgen, Sitze, Spoiler — alles da'},
+  {id:'garage',name:'Werkstatt',icon:'🔧',base:3000,gps:20,desc:'Profi-Reparaturen rund um die Uhr'},
+  {id:'tuning',name:'Tuning Studio',icon:'🎨',base:15000,gps:90,desc:'Performance-Upgrades für jeden Geldbeutel'},
+  {id:'dealer',name:'Autohaus',icon:'🏢',base:80000,gps:400,desc:'Neue und gebrauchte Fahrzeuge'},
+  {id:'speedway',name:'Rennstrecke',icon:'🏁',base:350000,gps:1800,desc:'Events, Trainings, Rennen – großes Business'},
+  {id:'logistic',name:'Fuhrpark',icon:'🚚',base:1500000,gps:7500,desc:'Lieferflotte für ganz Los Santos'},
+  {id:'factory',name:'Fahrzeugfabrik',icon:'🏭',base:8000000,gps:30000,desc:'Serienproduktion – du bist der Boss'},
+  {id:'empire',name:'ACLS Empire',icon:'👑',base:50000000,gps:150000,desc:'Das ganze Imperium läuft durch dich'},
+];
+
+const UPGRADES = [
+  {id:'u0',name:'Bessere Bürsten',icon:'🪣',cost:500,req:{wash:1},mult:{wash:2},desc:'Doppelter Gewinn Waschanlage'},
+  {id:'u1',name:'Renn-Sitze',icon:'🏎️',cost:3000,req:{shop:1},mult:{shop:2},desc:'Doppelter Gewinn Zubehör Shop'},
+  {id:'u2',name:'Profi-Schrauber',icon:'🔩',cost:20000,req:{garage:1},mult:{garage:2},desc:'Doppelter Gewinn Werkstatt'},
+  {id:'u3',name:'Click-Handschuhe',icon:'🧤',cost:500,req:{},clickMult:2,desc:'Klick-Wert ×2'},
+  {id:'u4',name:'Turbo-Waschgang',icon:'💨',cost:8000,req:{wash:10},mult:{wash:3},desc:'Waschanlage ×3 (10 Stück)'},
+  {id:'u5',name:'Renn-ECU',icon:'💻',cost:100000,req:{tuning:1},mult:{tuning:2},desc:'Doppelter Gewinn Tuning Studio'},
+  {id:'u6',name:'Luxus-Showroom',icon:'✨',cost:800000,req:{dealer:1},mult:{dealer:2},desc:'Doppelter Gewinn Autohaus'},
+  {id:'u7',name:'Gold-Schrauber',icon:'⚙️',cost:50000,req:{garage:10},mult:{garage:3},desc:'Werkstatt ×3 (10 Stück)'},
+  {id:'u8',name:'Click-Turbo',icon:'⚡',cost:40000,req:{},clickMult:3,desc:'Klick-Wert ×3 (gesamt ×6)'},
+  {id:'u9',name:'VIP-Events',icon:'🎟️',cost:5000000,req:{speedway:1},mult:{speedway:2},desc:'Rennstrecke ×2'},
+  {id:'u10',name:'Automatisierung',icon:'🤖',cost:20000000,req:{factory:1},mult:{factory:2},desc:'Fabrik ×2'},
+  {id:'u11',name:'Prestige-Boost',icon:'🌟',cost:100000,req:{},clickMult:1,prestMult:0.5,desc:'Prestige Bonus +0.5×'},
+];
+
+const MILESTONES = [
+  {id:'m0',label:'Erste 100 GS',icon:'💰',check:s=>s.totalEarned>=100},
+  {id:'m1',label:'Erste 1.000 GS',icon:'💵',check:s=>s.totalEarned>=1000},
+  {id:'m2',label:'Erste 10.000 GS',icon:'🤑',check:s=>s.totalEarned>=10000},
+  {id:'m3',label:'Erste 1 Mio GS',icon:'🏦',check:s=>s.totalEarned>=1000000},
+  {id:'m4',label:'Alle Gebäude × 10',icon:'🏗️',check:s=>BUILDINGS.every(b=>s.buildings[b.id]>=10)},
+  {id:'m5',label:'100 Prestige',icon:'⭐',check:s=>s.prestige>=100},
+  {id:'m6',label:'Werkstatt × 50',icon:'🔧',check:s=>s.buildings.garage>=50},
+  {id:'m7',label:'Empire besitzen',icon:'👑',check:s=>s.buildings.empire>=1},
+];
+
+const NEWS = ['Werkstatt brummt – Auftragslage gut!','Neue Felgen angekommen!','Los Santos Tuner fragt nach Angebot.','Rennstrecke bucht VIP-Events.','Fuhrpark wächst stetig.','Fabrik läuft auf Hochtouren!','ACLS expandiert nach Sandy Shores.','Geldfluss: positiv!','Kunden-Zufriedenheit: 98%.','Neue Mitarbeiter eingestellt.'];
+
+const PRESTIGE_THRESHOLD = 1_000_000;
+const SAVE_INTERVAL = 30000;
+
+let state = {
+  gold: 0, totalEarned: 0, prestige: 0, clickPower: 1,
+  buildings: {}, upgrades: [], lastSave: Date.now()
+};
+let calcGps = 0;
+let saveTimer, tickRaf;
+let newsIdx = 0;
+let floatQueue = [];
+
+function fmt(n) {
+  if (n >= 1e12) return (n/1e12).toFixed(2)+'B';
+  if (n >= 1e9) return (n/1e9).toFixed(2)+'Mrd';
+  if (n >= 1e6) return (n/1e6).toFixed(2)+'Mio';
+  if (n >= 1e3) return (n/1e3).toFixed(1)+'k';
+  return Math.floor(n).toLocaleString('de-DE');
+}
+
+function buildingCost(b, owned) {
+  return Math.ceil(b.base * Math.pow(1.15, owned));
+}
+
+function getClickPower() {
+  let p = state.clickPower;
+  for (const uid of state.upgrades) {
+    const u = UPGRADES.find(x=>x.id===uid);
+    if (u?.clickMult) p *= u.clickMult;
+  }
+  return p;
+}
+
+function getGps() {
+  let total = 0;
+  const prestMult = 1 + state.prestige * 0.1 + getPrestExtraMult();
+  for (const b of BUILDINGS) {
+    const owned = state.buildings[b.id] || 0;
+    if (!owned) continue;
+    let mult = 1;
+    for (const uid of state.upgrades) {
+      const u = UPGRADES.find(x=>x.id===uid);
+      if (u?.mult?.[b.id]) mult *= u.mult[b.id];
+    }
+    total += owned * b.gps * mult;
+  }
+  return total * prestMult;
+}
+
+function getPrestExtraMult() {
+  let ex = 0;
+  for (const uid of state.upgrades) {
+    const u = UPGRADES.find(x=>x.id===uid);
+    if (u?.prestMult) ex += u.prestMult;
+  }
+  return ex;
+}
+
+function clickCar(ev) {
+  const earned = getClickPower() * (1 + state.prestige * 0.05);
+  state.gold += earned;
+  state.totalEarned += earned;
+  spawnFloat(ev.clientX, ev.clientY, `+${fmt(earned)} GS`);
+  updateHud();
+}
+
+function spawnFloat(x, y, text) {
+  const el = document.createElement('div');
+  el.className = 'float-text';
+  el.textContent = text;
+  el.style.left = (x-20)+'px';
+  el.style.top = (y-10)+'px';
+  document.body.appendChild(el);
+  let t=0;
+  function anim(){
+    t+=16;
+    el.style.top=(y-10-t*.08)+'px';
+    el.style.opacity=Math.max(0,1-t/700);
+    if(t<700) requestAnimationFrame(anim);
+    else el.remove();
+  }
+  requestAnimationFrame(anim);
+}
+
+function buyBuilding(id) {
+  const b = BUILDINGS.find(x=>x.id===id);
+  const owned = state.buildings[id] || 0;
+  const cost = buildingCost(b, owned);
+  if (state.gold < cost) return;
+  state.gold -= cost;
+  state.buildings[id] = owned + 1;
+  calcGps = getGps();
+  updateAll();
+}
+
+function buyUpgrade(uid) {
+  const u = UPGRADES.find(x=>x.id===uid);
+  if (!u || state.upgrades.includes(uid) || state.gold < u.cost) return;
+  state.gold -= u.cost;
+  state.upgrades.push(uid);
+  calcGps = getGps();
+  updateAll();
+}
+
+function doPrestige() {
+  if (state.totalEarned < PRESTIGE_THRESHOLD) return;
+  if (!confirm('Prestige durchführen? Alle Gebäude und Upgrades werden zurückgesetzt, aber dein Multiplikator steigt!')) return;
+  state.prestige++;
+  state.gold = 0;
+  state.totalEarned = 0;
+  state.buildings = {};
+  state.upgrades = [];
+  calcGps = 0;
+  updateAll();
+  saveProgress();
+}
+
+function tick() {
+  const gps = getGps();
+  calcGps = gps;
+  if (gps > 0) {
+    const earned = gps / 20; // 50ms tick
+    state.gold += earned;
+    state.totalEarned += earned;
+  }
+  updateHud();
+  tickRaf = setTimeout(tick, 50);
+}
+
+function updateHud() {
+  document.getElementById('hud-gold').textContent = fmt(state.gold)+' GS';
+  document.getElementById('hud-gps').textContent = fmt(calcGps)+'/s';
+  document.getElementById('hud-total').textContent = fmt(state.totalEarned)+' GS';
+  const pm = 1 + state.prestige * 0.1 + getPrestExtraMult();
+  document.getElementById('hud-prest').textContent = '×'+pm.toFixed(1);
+  document.getElementById('click-earn-txt').textContent = `+${fmt(getClickPower()*(1+state.prestige*.05))} GS / Klick`;
+  updatePrestigeUI();
+  updateBuildingBtns();
+}
+
+function updatePrestigeUI() {
+  const canPrest = state.totalEarned >= PRESTIGE_THRESHOLD;
+  document.getElementById('prest-btn').disabled = !canPrest;
+  document.getElementById('prest-count').textContent = state.prestige;
+  const pm = 1 + state.prestige * 0.1 + getPrestExtraMult();
+  document.getElementById('prest-mult-txt').textContent = `Bonus: ×${pm.toFixed(1)}`;
+  if (canPrest) {
+    document.getElementById('prest-need').textContent = '✅ Bereit!';
+  } else {
+    const need = PRESTIGE_THRESHOLD - state.totalEarned;
+    document.getElementById('prest-need').textContent = `Noch ${fmt(need)} GS`;
+  }
+}
+
+function renderBuildings() {
+  const el = document.getElementById('bldg-list');
+  el.innerHTML = BUILDINGS.map(b => {
+    const owned = state.buildings[b.id] || 0;
+    const cost = buildingCost(b, owned);
+    const canBuy = state.gold >= cost;
+    const gps = b.gps * owned;
+    return `<div class="building">
+      <div class="b-icon">${b.icon}</div>
+      <div class="b-info">
+        <div class="b-name">${b.name} <span style="color:#a855f7;font-size:11px">${owned > 0 ? '×'+owned : ''}</span></div>
+        <div class="b-owned">${b.desc}</div>
+        <div class="b-rate">${owned>0?fmt(gps)+'/s gesamt':''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <div class="b-cost">${fmt(cost)} GS</div>
+        <button class="btn-buy" onclick="buyBuilding('${b.id}')" ${canBuy?'':'disabled'}>Kaufen</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateBuildingBtns() {
+  document.querySelectorAll('.btn-buy').forEach((btn, i) => {
+    const b = BUILDINGS[i];
+    if (!b) return;
+    const owned = state.buildings[b.id] || 0;
+    const cost = buildingCost(b, owned);
+    btn.disabled = state.gold < cost;
+    btn.previousElementSibling.textContent = fmt(cost)+' GS';
+  });
+}
+
+function renderUpgrades() {
+  const el = document.getElementById('upg-list');
+  const available = UPGRADES.filter(u => {
+    if (state.upgrades.includes(u.id)) return false;
+    for (const [bid, cnt] of Object.entries(u.req || {})) {
+      if ((state.buildings[bid]||0) < cnt) return false;
+    }
+    return true;
+  });
+  if (!available.length) {
+    el.innerHTML = '<div style="color:#6b7280;font-size:12px">Keine weiteren Upgrades verfügbar.</div>';
+    return;
+  }
+  el.innerHTML = available.map(u => `
+    <div class="upg">
+      <div class="upg-icon">${u.icon}</div>
+      <div class="upg-info">
+        <div class="upg-name">${u.name}</div>
+        <div class="upg-desc">${u.desc}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+        <div style="font-size:11px;font-weight:700;color:#f59e0b">${fmt(u.cost)} GS</div>
+        <button class="btn-buy" onclick="buyUpgrade('${u.id}')" ${state.gold>=u.cost?'':'disabled'}>Kaufen</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderMilestones() {
+  const el = document.getElementById('milest-list');
+  el.innerHTML = MILESTONES.map(m => {
+    const done = m.check(state);
+    return `<div class="milest">
+      <div class="milest-icon">${m.icon}</div>
+      <div style="flex:1;font-size:12px">${m.label}</div>
+      <div class="${done?'milest-done':'milest-pend'}">${done?'✓':'○'}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderNews() {
+  const el = document.getElementById('news-list');
+  const items = [NEWS[newsIdx%NEWS.length], NEWS[(newsIdx+1)%NEWS.length], NEWS[(newsIdx+2)%NEWS.length]];
+  el.innerHTML = items.map(n=>`<div class="news-item">📢 ${n}</div>`).join('');
+  newsIdx++;
+}
+
+function updateAll() {
+  renderBuildings();
+  renderUpgrades();
+  renderMilestones();
+  updateHud();
+}
+
+// === SAVE / LOAD ===
+async function saveProgress() {
+  document.getElementById('save-status').textContent = 'Speichern…';
+  try {
+    const body = {
+      gold: state.gold,
+      total_earned: state.totalEarned,
+      buildings: state.buildings,
+      upgrades: state.upgrades,
+      prestige: state.prestige,
+      click_power: getClickPower(),
+    };
+    const r = await fetch('/api/idle-save', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Fehler');
+    document.getElementById('save-status').textContent = `💾 Gespeichert ${new Date().toLocaleTimeString('de-DE')}`;
+  } catch(e) {
+    document.getElementById('save-status').textContent = '⚠️ Speichern fehlgeschlagen';
+    console.warn(e);
+  }
+
+  // Also submit score
+  try {
+    await fetch('/api/game-scores/idle', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(GameAuth.body(Math.floor(state.totalEarned)))
+    });
+  } catch {}
+}
+
+async function loadProgress() {
+  document.getElementById('save-status').textContent = 'Laden…';
+  try {
+    const r = await fetch('/api/idle-save');
+    if (r.ok) {
+      const d = await r.json();
+      if (d.gold !== undefined) {
+        state.gold = d.gold || 0;
+        state.totalEarned = d.total_earned || 0;
+        state.buildings = d.buildings || {};
+        state.upgrades = d.upgrades || [];
+        state.prestige = d.prestige || 0;
+      }
+      document.getElementById('save-status').textContent = `📂 Geladen`;
+    } else {
+      document.getElementById('save-status').textContent = 'Kein Spielstand';
+    }
+  } catch {
+    document.getElementById('save-status').textContent = 'Offline – neues Spiel';
+  }
+  calcGps = getGps();
+  updateAll();
+  tick();
+  setInterval(saveProgress, SAVE_INTERVAL);
+  setInterval(renderNews, 8000);
+  renderNews();
+}
+
+GameAuth.init('idle');
+loadProgress();
+</script>
+</body>
+</html>
