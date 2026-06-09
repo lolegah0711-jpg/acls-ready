@@ -384,8 +384,8 @@ async function sendWochenbericht() {
   }
 }
 
-// Jeden Montag um 08:00 Berliner Zeit
-cron.schedule('0 8 * * 1', sendWochenbericht, { timezone: 'Europe/Berlin' });
+// Jeden Montag um 18:00 Berliner Zeit
+cron.schedule('0 18 * * 1', sendWochenbericht, { timezone: 'Europe/Berlin' });
 
 // ── Befehls-Kanal: Embed posten + alle 5 Min clearen ─────────────
 function buildCommandsEmbed() {
