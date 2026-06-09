@@ -406,6 +406,30 @@ function initDb() {
     ins.run('Flugschein', 'fa-plane',      'Pilotenlizenz');
   }
 
+  if (db.prepare('SELECT COUNT(*) as c FROM faq_items').get().c === 0) {
+    const faqIns = db.prepare('INSERT INTO faq_items (question, answer, category, sort_order) VALUES (?, ?, ?, ?)');
+    // Allgemein
+    faqIns.run('Was ist der ACLS?', 'Der Automobil-Club Los Santos (ACLS) ist die offizielle Fahrschule und Kfz-Werkstatt auf dem ColdRP-Server. Wir nehmen Führerscheinprüfungen in allen Fahrzeugklassen ab und bieten darüber hinaus professionellen Fahrzeugservice an.', 'Allgemein', 0);
+    faqIns.run('Wie kann ich den ACLS kontaktieren?', 'Am schnellsten erreichst du uns über unseren Discord-Server oder direkt im Spiel, indem du einen ACLS-Mitarbeiter ansprichst. Für Beschwerden oder Anfragen kannst du auch das Formular auf dieser Website nutzen.', 'Allgemein', 1);
+    faqIns.run('Wann ist der ACLS geöffnet?', 'Der ACLS ist grundsätzlich immer dann geöffnet, wenn ein Mitarbeiter im Dienst ist. Die aktuellen Dienstzeiten werden regelmäßig auf unserem Discord bekannt gegeben.', 'Allgemein', 2);
+    // Prüfungen
+    faqIns.run('Welche Führerscheinklassen kann ich machen?', 'Wir bieten folgende Führerscheinklassen an:\n• PKW (Klasse B) – Personenkraftwagen\n• Motorrad (Klasse A) – Motorräder\n• LKW (Klasse C) – Lastkraftwagen\n• Boot – Wasserfahrzeuge\n• Flugschein – Flugzeuge & Helikopter', 'Prüfungen', 0);
+    faqIns.run('Wie läuft eine Führerscheinprüfung ab?', 'Eine Prüfung besteht in der Regel aus zwei Teilen:\n1. Theorieprüfung – Multiple-Choice-Fragen zu Verkehrsregeln und fahrzeugspezifischen Themen\n2. Praxisprüfung – Praktische Fahrübungen mit einem ACLS-Prüfer\n\nNach bestandener Prüfung wirst du automatisch im Bürgerregister eingetragen.', 'Prüfungen', 1);
+    faqIns.run('Was passiert, wenn ich die Prüfung nicht bestehe?', 'Kein Problem – du kannst die Prüfung jederzeit wiederholen. Bei häufigem Nichtbestehen (3× in Folge) verhängt das System automatisch eine 24-stündige Wartezeit. Nutze die Prüfungsvorbereitungs-App auf dieser Website zum Üben.', 'Prüfungen', 2);
+    faqIns.run('Muss ich zur Prüfung angemeldet sein?', 'Nein, eine Anmeldung ist nicht erforderlich. Du kannst dich direkt bei einem verfügbaren ACLS-Mitarbeiter melden und die Prüfung starten.', 'Prüfungen', 3);
+    // Preise
+    faqIns.run('Was kostet ein Führerschein?', 'Die aktuellen Preise findest du in der Preisliste auf dieser Website (Sidebar → Preisliste). Die Gebühren werden direkt nach bestandener Prüfung vom Konto abgebucht.', 'Preise & Zahlung', 0);
+    faqIns.run('Wie wird die Prüfungsgebühr abgerechnet?', 'Die Prüfungsgebühr wird automatisch bei bestandener Prüfung von deinem Bankkonto abgezogen. Bei nicht bestandener Prüfung fallen keine Kosten an.', 'Preise & Zahlung', 1);
+    faqIns.run('Gibt es Rabatte oder Ermäßigungen?', 'Aktuell gibt es keine dauerhaften Rabatte. Achte jedoch auf unsere Discord-Ankündigungen – gelegentlich gibt es Aktionswochen mit reduzierten Gebühren.', 'Preise & Zahlung', 2);
+    // Sperren
+    faqIns.run('Warum wurde ich vom ACLS gesperrt?', 'Sperren werden ausgesprochen bei: Betrug oder Manipulation bei Prüfungen, unangemessenem Verhalten gegenüber Mitarbeitern oder wiederholtem Regelverstoß. Die genaue Begründung findest du in der Sperrmitteilung.', 'Sperren', 0);
+    faqIns.run('Wie lange gilt eine Sperre?', 'Die Sperrdauer variiert je nach Schwere des Verstoßes – von 24 Stunden bis zu einem dauerhaften Ausschluss. Temporäre Sperren werden automatisch aufgehoben. Gegen eine Sperre kannst du über das Beschwerde-Formular Widerspruch einlegen.', 'Sperren', 1);
+    // Bewerbung
+    faqIns.run('Wie bewerbe ich mich beim ACLS?', 'Fülle das Bewerbungsformular auf dieser Website aus (Sidebar → Bewerben). Wir melden uns dann über Discord bei dir. Achte darauf, dass du auf dem Server aktiv und erreichbar bist.', 'Bewerbung', 0);
+    faqIns.run('Welche Voraussetzungen gibt es für eine Bewerbung?', 'Grundvoraussetzungen:\n• Mindestalter im RP: 18 Jahre\n• Aktive Mitgliedschaft auf dem ColdRP-Discord\n• Gute Deutschkenntnisse\n• Kenntnisse der Straßenverkehrsordnung\n• Teamfähigkeit und Zuverlässigkeit', 'Bewerbung', 1);
+    console.log('[seed] FAQ-Einträge erstellt');
+  }
+
   // Migrations
   try { db.exec('ALTER TABLE exam_questions ADD COLUMN is_ko INTEGER DEFAULT 0'); } catch(e) {}
   try { db.exec("ALTER TABLE users ADD COLUMN rank TEXT DEFAULT 'Mitarbeiter'"); } catch(e) {}
