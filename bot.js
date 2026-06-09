@@ -84,6 +84,8 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
   ],
 });
 
@@ -469,6 +471,41 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     });
     console.log(`[Bot] Namen synchronisiert: ${newMember.id} → ${newName}`);
   } catch (e) { /* Server nicht erreichbar, ignorieren */ }
+});
+
+// ── Text-Command-Handler (Fallback für !stats / .stats) ──────────
+client.on(Events.MessageCreate, async (message) => {
+  if (message.author.bot) return;
+  const content = message.content.trim();
+  const match = content.match(/^[!/.]stats(?:\s+(.+))?$/i);
+  if (!match) return;
+  console.log(`[Bot] Text-Command !stats von ${message.author.tag}: "${content}"`);
+
+  const query = (match[1] || '').trim() || message.author.id;
+  try {
+    const usersRes = await fetch(`${SERVER_URL}/api/users`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+    const users    = usersRes?.ok ? await usersRes.json() : [];
+    const target   = users.find(u => u.discord_id === query || u.username.toLowerCase().includes(query.toLowerCase()));
+    if (!target) return message.reply(`❌ Mitarbeiter "${query}" nicht gefunden.`);
+    const res = await fetch(`${SERVER_URL}/api/profile/${target.id}`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+    const d   = res?.ok ? await res.json() : null;
+    if (!d) return message.reply('❌ Profil konnte nicht geladen werden.');
+    const s = d.stats;
+    const embed = new EmbedBuilder()
+      .setColor(0xf97316)
+      .setTitle(`📋 Stats – ${d.user.username}`)
+      .addFields(
+        { name: 'Prüfungen abgenommen', value: `${s.conducted}`,               inline: true },
+        { name: 'MdW-Titel',            value: `${s.eow_wins}`,                 inline: true },
+        { name: 'IC-Zeit gesamt',        value: `${(+s.ic_total).toFixed(1)}h`, inline: true },
+        { name: 'IC-Zeit Woche',         value: `${(+s.ic_week).toFixed(1)}h`,  inline: true },
+        { name: 'Rang',                  value: d.user.rank || '—',             inline: true },
+      ).setTimestamp();
+    await message.reply({ embeds: [embed] });
+  } catch (e) {
+    console.error('[Bot] !stats Fehler:', e.message);
+    await message.reply('❌ Fehler beim Laden der Statistiken.').catch(() => {});
+  }
 });
 
 // Beim Bot-Shutdown offene Sessions speichern
