@@ -315,6 +315,7 @@ function edgePos(){
 // ── BOOT ────────────────────────────────────────────────────────────────────
 async function init(){
   try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  await GameAuth.init('deadzone');
   try{const r=await fetch('/api/game-char');if(r.ok)char=await r.json();}catch{}
   renderCharInfo();
   lastT=performance.now();
@@ -821,7 +822,7 @@ async function endGame(){
   if(gameState==='dead')return;
   gameState='dead';
   document.getElementById('boss-bar-wrap').style.display='none';
-  try{await fetch('/api/game-scores/deadzone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score})});}catch{}
+  try{await fetch('/api/game-scores/deadzone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(GameAuth.body(score))});}catch{}
   try{
     const r=await fetch('/api/game-char/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kills:sessionKills,xp:sessionXp})});
     if(r.ok){const d=await r.json();char=d.char;renderCharInfo();}
@@ -892,5 +893,6 @@ document.addEventListener('contextmenu',e=>e.preventDefault());
 
 init();
 </script>
+<script src="/game-auth.js"></script>
 </body>
 </html>

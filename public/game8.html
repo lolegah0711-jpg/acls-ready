@@ -452,6 +452,7 @@ function updateScoreDisplay() {
 }
 
 document.getElementById('best-display').textContent = 'Best: ' + best;
+GameAuth.init('doodlejump');
 
 // ── Game Over ──
 async function gameOver() {
@@ -463,7 +464,7 @@ async function gameOver() {
     await fetch('/api/game-scores/doodlejump', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ score })
+      body: JSON.stringify(GameAuth.body(score))
     });
   } catch {}
 
@@ -513,5 +514,6 @@ async function gameOver() {
   } catch {}
 })();
 </script>
+<script src="/game-auth.js"></script>
 </body>
 </html>

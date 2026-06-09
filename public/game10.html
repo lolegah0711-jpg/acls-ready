@@ -259,6 +259,7 @@ var localBest = +localStorage.getItem('2048_best') || 0;
 
 (function() {
   fetch('/auth/me').then(function(r) { if (r.ok) r.json().then(function(u) { currentUser = u; }); }).catch(function(){});
+  GameAuth.init('2048');
 })();
 
 function submitScore(score) {
@@ -266,7 +267,7 @@ function submitScore(score) {
   fetch('/api/game-scores/2048', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ score: score })
+    body: JSON.stringify(GameAuth.body(score))
   }).catch(function(){});
 }
 
@@ -626,5 +627,6 @@ function Tile(position, value) {
 Tile.prototype.savePosition   = function () { this.previousPosition = { x: this.x, y: this.y }; };
 Tile.prototype.updatePosition = function (position) { this.x = position.x; this.y = position.y; };
 </script>
+<script src="/game-auth.js"></script>
 </body>
 </html>

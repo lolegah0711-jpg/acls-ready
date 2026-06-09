@@ -99,6 +99,7 @@ window.addEventListener('resize',resize);resize();
 
 async function init(){
   try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  await GameAuth.init('tetris');
   requestAnimationFrame(gameLoop);
 }
 
@@ -288,7 +289,7 @@ async function endGame(){
   gameState='dead';
   document.getElementById('go-stats').textContent=`Score: ${score.toLocaleString()} · Level ${level} · ${lines} Linien`;
   document.getElementById('ov-dead').classList.remove('hidden');
-  try{await fetch('/api/game-scores/tetris',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score})});}catch{}
+  try{await fetch('/api/game-scores/tetris',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(GameAuth.body(score))});}catch{}
 }
 
 function startGame(){
@@ -336,5 +337,6 @@ window.addEventListener('keyup',e=>{
 
 init();
 </script>
+<script src="/game-auth.js"></script>
 </body>
 </html>

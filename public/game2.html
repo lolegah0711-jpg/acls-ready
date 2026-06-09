@@ -446,7 +446,7 @@
       await fetch('/api/game-scores/brick', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ score }),
+        body: JSON.stringify(GameAuth.body(score)),
       }).catch(() => {});
       refreshLeaderboard();
     }
@@ -454,8 +454,10 @@
     (async () => {
       const me = await fetch('/auth/me').then(r => r.ok ? r.json() : null).catch(() => null);
       if (me && me.id) currentUserId = me.id;
+      await GameAuth.init('brick');
       refreshLeaderboard();
     })();
   </script>
+  <script src="/game-auth.js"></script>
 </body>
 </html>

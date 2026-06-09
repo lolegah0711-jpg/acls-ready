@@ -307,6 +307,7 @@ let autoplayActive = false, autoplayRemaining = 0;
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
   try { const r = await fetch('/auth/me'); if (r.ok) currentUser = await r.json(); } catch {}
+  await GameAuth.init('bookofra');
   buildReels();
   updateUI();
   buildPaytable();
@@ -700,7 +701,7 @@ async function openLb() {
   try {
     await fetch('/api/game-scores/bookofra', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({score: highScore})
+      body: JSON.stringify(GameAuth.body(highScore))
     });
   } catch {}
   document.getElementById('ov-lb').classList.remove('hidden');
@@ -806,7 +807,7 @@ async function submitAndReset() {
   try {
     await fetch('/api/game-scores/bookofra', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({score: highScore})
+      body: JSON.stringify(GameAuth.body(highScore))
     });
   } catch {}
   alert(`Kein Guthaben mehr!\nHöchster Stand: ${highScore.toLocaleString('de-DE')} Coins`);
@@ -823,5 +824,6 @@ window.addEventListener('keydown', e => {
 
 init();
 </script>
+<script src="/game-auth.js"></script>
 </body>
 </html>

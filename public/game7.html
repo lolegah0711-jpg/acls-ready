@@ -83,6 +83,7 @@ window.addEventListener('resize',resize);resize();
 
 async function init(){
   try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  await GameAuth.init('skycop');
   drawIdle();
 }
 
@@ -391,7 +392,7 @@ canvas.addEventListener('touchstart',e=>{e.preventDefault();if(gameState!=='dead
 
 // ── SCORE ──
 async function submitScore(s){
-  try{await fetch('/api/game-scores/skycop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score:s})});}catch{}
+  try{await fetch('/api/game-scores/skycop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(GameAuth.body(s))});}catch{}
 }
 
 // ── LEADERBOARD ──
@@ -418,5 +419,6 @@ function closeLb(){document.getElementById('ov-lb').classList.add('hidden');}
 
 init();
 </script>
+<script src="/game-auth.js"></script>
 </body>
 </html>

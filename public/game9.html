@@ -795,7 +795,7 @@ function restartGame() {
 // ── LEADERBOARD ───────────────────────────────────────────────────
 async function submitScore() {
   if(!currentUser||wave<1) return;
-  try { await fetch('/api/game-scores/towerdefense',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score})}); } catch {}
+  try { await fetch('/api/game-scores/towerdefense',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(GameAuth.body(score))}); } catch {}
 }
 
 async function openLb() {
@@ -832,9 +832,10 @@ function roundRect(ctx,x,y,w,h,r){
 }
 
 // ── INIT ──────────────────────────────────────────────────────────
-(async()=>{try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}})();
+(async()=>{try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{};await GameAuth.init('towerdefense');})();
 buildMapPicker();
 window.addEventListener('resize',()=>{if(canvas)resize();});
 </script>
+<script src="/game-auth.js"></script>
 </body>
 </html>

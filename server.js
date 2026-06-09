@@ -4,7 +4,29 @@ const session  = require('express-session');
 const path     = require('path');
 const cron     = require('node-cron');
 const fetch    = require('node-fetch');
+const crypto   = require('crypto');
 const { initDb } = require('./database');
+
+const GAME_SECRET = process.env.GAME_SECRET || 'acls-game-hmac-secret-2024';
+
+const GAME_LIMITS = {
+  race:         { minSec: 25,  maxScore: 999999  },
+  brick:        { minSec: 25,  maxScore: 999999  },
+  deadzone:     { minSec: 15,  maxScore: 9999999 },
+  tetris:       { minSec: 20,  maxScore: 9999999 },
+  snake:        { minSec: 10,  maxScore: 100000  },
+  skycop:       { minSec: 15,  maxScore: 9999999 },
+  doodlejump:   { minSec: 15,  maxScore: 9999999 },
+  '2048':       { minSec: 30,  maxScore: 5000000 },
+  bookofra:     { minSec: 20,  maxScore: 99999999},
+  towerdefense: { minSec: 45,  maxScore: 999999  },
+};
+
+function makeGameToken(uid, game, ts) {
+  return crypto.createHmac('sha256', GAME_SECRET)
+    .update(`${uid}:${game}:${ts}`)
+    .digest('hex').slice(0, 32);
+}
 
 const app  = express();
 const db   = initDb();
@@ -1765,31 +1787,60 @@ app.get('/api/game-scores/:game', (req, res) => {
   res.json(merged.slice(0, 15));
 });
 
+app.get('/api/game-token/:game', (req, res) => {
+  const user      = getUser(req);
+  const discordId = req.session?.voterDiscordId;
+  const uid = user ? `u:${user.id}` : discordId ? `v:${discordId}` : null;
+  if (!uid) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const ts    = Date.now();
+  const token = makeGameToken(uid, req.params.game, ts);
+  res.json({ token, ts });
+});
+
 app.post('/api/game-scores/:game', (req, res) => {
-  const { score } = req.body;
-  if (typeof score !== 'number' || score < 0) return res.status(400).json({ error: 'Ungültiger Score' });
-  const user = getUser(req);
+  const { score, token, ts } = req.body;
+  if (typeof score !== 'number' || score < 0 || !isFinite(score))
+    return res.status(400).json({ error: 'Ungültiger Score' });
+
+  const user      = getUser(req);
+  const discordId = req.session?.voterDiscordId;
+  const uid = user ? `u:${user.id}` : discordId ? `v:${discordId}` : null;
+  if (!uid) return res.status(401).json({ error: 'Nicht angemeldet' });
+
+  const game   = req.params.game;
+  const limits = GAME_LIMITS[game];
+
+  // Token-Validierung
+  if (!token || typeof ts !== 'number') return res.status(400).json({ error: 'Kein Spieltoken' });
+  const expected = makeGameToken(uid, game, ts);
+  if (!crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected)))
+    return res.status(403).json({ error: 'Ungültiges Token' });
+
+  const elapsedSec = (Date.now() - ts) / 1000;
+  if (elapsedSec < (limits?.minSec ?? 10))
+    return res.status(400).json({ error: 'Spielzeit zu kurz' });
+  if (elapsedSec > 86400)
+    return res.status(400).json({ error: 'Token abgelaufen' });
+  if (limits && score > limits.maxScore)
+    return res.status(400).json({ error: 'Score ungültig' });
+
   if (user) {
-    // Eingeloggter Mitarbeiter
     db.prepare(`
       INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(user_id, game) DO UPDATE SET
         score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
         updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END
-    `).run(user.id, req.params.game, score);
+    `).run(user.id, game, score);
     return res.json({ ok: true });
   }
-  // Bürger mit Voter-Session
-  const discordId = req.session.voterDiscordId;
-  const username  = req.session.voterUsername || 'Bürger';
-  if (!discordId) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const username = req.session.voterUsername || 'Bürger';
   db.prepare(`
     INSERT INTO visitor_game_scores (discord_id, username, game, score, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(discord_id, game) DO UPDATE SET
       score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
       updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END,
       username   = excluded.username
-  `).run(discordId, username, req.params.game, score);
+  `).run(discordId, username, game, score);
   res.json({ ok: true });
 });
 
