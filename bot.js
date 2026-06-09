@@ -190,7 +190,7 @@ async function handleInteraction(interaction) {
   const { commandName } = interaction;
   console.log(`[Bot] Slash-Command empfangen: /${commandName} von ${interaction.user.tag} in #${interaction.channel?.name || '?'}`);
   try {
-    await interaction.deferReply({ ephemeral: false });
+    await interaction.deferReply();
   } catch (e) {
     console.error('[Bot] deferReply Fehler:', e.message);
     return;
