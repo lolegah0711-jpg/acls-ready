@@ -334,6 +334,9 @@ async function renderVoterScreen() {
           <a class="nav-item" href="/game8"  target="_blank" style="color:#4ade80"><i class="fas fa-frog" style="color:#4ade80"></i><span>Doodle Jump</span></a>
           <a class="nav-item" href="/game9"  target="_blank" style="color:#f97316"><i class="fas fa-shield-alt" style="color:#f97316"></i><span>Tower Defense</span></a>
           <a class="nav-item" href="/game10" target="_blank" style="color:#f59e0b"><i class="fas fa-th" style="color:#f59e0b"></i><span>2048</span></a>
+          <a class="nav-item" href="/game11" target="_blank" style="color:#a855f7"><i class="fas fa-brain" style="color:#a855f7"></i><span>Quiz Survival</span></a>
+          <a class="nav-item" href="/game12" target="_blank" style="color:#f97316"><i class="fas fa-wrench" style="color:#f97316"></i><span>ACLS Werkstatt</span></a>
+          <a class="nav-item" href="/game13" target="_blank" style="color:#60a5fa"><i class="fas fa-dungeon" style="color:#60a5fa"></i><span>Dungeon RPG</span></a>
         </div>
       </nav>
       <div class="sidebar-bottom">
