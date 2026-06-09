@@ -188,6 +188,7 @@ async function registerSlashCommands() {
 async function handleInteraction(interaction) {
   if (!interaction.isChatInputCommand()) return;
   const { commandName } = interaction;
+  console.log(`[Bot] Slash-Command empfangen: /${commandName} von ${interaction.user.tag} in #${interaction.channel?.name || '?'}`);
   try {
     await interaction.deferReply({ ephemeral: false });
   } catch (e) {
@@ -245,11 +246,14 @@ async function handleInteraction(interaction) {
 
   if (commandName === 'stats') {
     const query = interaction.options.getString('mitarbeiter') || interaction.user.id;
+    console.log(`[Bot] /stats query: "${query}"`);
     try {
-      const usersRes = await fetch(`${SERVER_URL}/api/users`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+      const usersRes = await fetch(`${SERVER_URL}/api/users`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(e => { console.error('[Bot] /api/users Fehler:', e.message); return null; });
       const users    = usersRes?.ok ? await usersRes.json() : [];
+      console.log(`[Bot] /stats users geladen: ${users.length}, Status: ${usersRes?.status}`);
       const target   = users.find(u => u.discord_id === query || u.username.toLowerCase().includes(query.toLowerCase()));
-      if (!target) return interaction.editReply({ content: 'Mitarbeiter nicht gefunden.' });
+      console.log(`[Bot] /stats target: ${target ? target.username : 'NICHT GEFUNDEN'}`);
+      if (!target) return interaction.editReply({ content: `❌ Mitarbeiter "${query}" nicht gefunden.` });
       const res  = await fetch(`${SERVER_URL}/api/profile/${target.id}`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
       const d    = res?.ok ? await res.json() : null;
       if (!d) return interaction.editReply({ content: 'Profil konnte nicht geladen werden.' });
