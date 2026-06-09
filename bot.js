@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Events, EmbedBuilder, SlashCommandBuilder, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Events, EmbedBuilder, SlashCommandBuilder, REST, Routes, Partials, AuditLogEvent } = require('discord.js');
 const fetch = require('node-fetch');
 const cron  = require('node-cron');
 
@@ -90,6 +90,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildModeration,
   ],
+  partials: [Partials.Message, Partials.Channel, Partials.User],
 });
 
 async function pollNotifications() {
@@ -637,21 +638,44 @@ client.on(Events.MessageDelete, async (message) => {
   if (!message.guild) return;
   if (GUILD_ID && message.guild.id !== GUILD_ID) return;
   if (message.author?.bot) return;
-  if (message.channel.id === MOD_LOG_CHANNEL_ID) return; // eigene Logs nicht loggen
+  try { if (message.channel.id === MOD_LOG_CHANNEL_ID) return; } catch {}
+
+  // Audit-Log kurz abwarten damit Discord es eingetragen hat
+  let deletedBy = null;
+  try {
+    await new Promise(r => setTimeout(r, 1200));
+    const logs = await message.guild.fetchAuditLogs({ type: AuditLogEvent.MessageDelete, limit: 1 });
+    const entry = logs.entries.first();
+    if (entry && Date.now() - entry.createdTimestamp < 6000 &&
+        (!message.author || entry.target?.id === message.author.id)) {
+      deletedBy = entry.executor;
+    }
+  } catch {}
+
+  const authorTag  = message.author ? `<@${message.author.id}> (${message.author.tag})` : '*(unbekannt)*';
+  const channelTag = message.channel?.name ? `#${message.channel.name}` : '?';
 
   const embed = new EmbedBuilder()
     .setColor(0xef4444)
     .setTitle('🗑️ Nachricht gelöscht')
-    .setDescription(`In <#${message.channel.id}> von <@${message.author?.id || '?'}>`)
+    .setDescription(`In <#${message.channel.id}> von ${authorTag}`)
     .setTimestamp();
 
-  if (message.content) {
-    embed.addFields({ name: 'Inhalt', value: message.content.slice(0, 1024) || '–', inline: false });
-  }
+  embed.addFields({
+    name: 'Inhalt',
+    value: message.content?.slice(0, 1024) || '*(nicht gecacht – Nachricht zu alt)*',
+    inline: false,
+  });
+
   if (message.attachments?.size > 0) {
-    embed.addFields({ name: 'Anhänge', value: message.attachments.map(a => a.url).join('\n').slice(0, 512), inline: false });
+    embed.addFields({ name: 'Anhänge', value: [...message.attachments.values()].map(a => a.url).join('\n').slice(0, 512), inline: false });
   }
-  embed.setFooter({ text: `User-ID: ${message.author?.id || '?'} · Kanal: #${message.channel.name}` });
+
+  if (deletedBy) {
+    embed.addFields({ name: 'Gelöscht von', value: `<@${deletedBy.id}> (${deletedBy.tag})`, inline: true });
+  }
+
+  embed.setFooter({ text: `User-ID: ${message.author?.id || '?'} · Kanal: ${channelTag}` });
 
   await sendModLog(embed);
 });
@@ -661,8 +685,11 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   if (!newMessage.guild) return;
   if (GUILD_ID && newMessage.guild.id !== GUILD_ID) return;
   if (newMessage.author?.bot) return;
-  if (newMessage.channel.id === MOD_LOG_CHANNEL_ID) return;
+  try { if (newMessage.channel.id === MOD_LOG_CHANNEL_ID) return; } catch {}
+  if (!oldMessage.content && !newMessage.content) return;
   if (oldMessage.content === newMessage.content) return;
+  // Partials: Nachricht ggf. nachladen
+  if (newMessage.partial) { try { await newMessage.fetch(); } catch { return; } }
 
   await sendModLog(new EmbedBuilder()
     .setColor(0xf59e0b)
