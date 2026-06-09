@@ -15,6 +15,8 @@ const THEORY_CHANNEL_ID   = process.env.THEORY_CHANNEL_ID   || '';
 const PRACTICAL_CHANNEL_ID = process.env.PRACTICAL_CHANNEL_ID || '';
 const IC_LOG_CHANNEL_ID   = process.env.IC_LOG_CHANNEL_ID   || '';
 const COMMANDS_CHANNEL_ID = process.env.COMMANDS_CHANNEL_ID || '';
+const MOD_LOG_CHANNEL_ID  = process.env.MOD_LOG_CHANNEL_ID  || '1476285851402113182';
+const AUTO_ROLE_NAME      = process.env.AUTO_ROLE_NAME       || 'ACLS Member';
 
 const BADGE_LABELS = {
   ic_10: '10h IC-Zeit', ic_50: '50h IC-Zeit', ic_100: '100h IC-Zeit',
@@ -86,6 +88,7 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildModeration,
   ],
 });
 
@@ -452,26 +455,6 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   }
 });
 
-// Server-Nickname geändert → Namen auf der Website synchronisieren
-client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
-  if (GUILD_ID && newMember.guild.id !== GUILD_ID) return;
-  const oldName = oldMember.nickname || oldMember.user.globalName || oldMember.user.username;
-  const newName = newMember.nickname || newMember.user.globalName || newMember.user.username;
-  if (oldName === newName && oldMember.user.avatar === newMember.user.avatar) return;
-  try {
-    await fetch(`${SERVER_URL}/api/sync-member`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bot_secret:  BOT_SECRET,
-        discord_id:  newMember.id,
-        username:    newName,
-        avatar:      newMember.user.avatar,
-      }),
-    });
-    console.log(`[Bot] Namen synchronisiert: ${newMember.id} → ${newName}`);
-  } catch (e) { /* Server nicht erreichbar, ignorieren */ }
-});
 
 // ── Text-Command-Handler (Fallback für !stats / .stats) ──────────
 client.on(Events.MessageCreate, async (message) => {
@@ -506,6 +489,119 @@ client.on(Events.MessageCreate, async (message) => {
     console.error('[Bot] !stats Fehler:', e.message);
     await message.reply('❌ Fehler beim Laden der Statistiken.').catch(() => {});
   }
+});
+
+// ── Hilfsfunktion: Mod-Log senden ────────────────────────────────
+async function sendModLog(embed) {
+  if (!MOD_LOG_CHANNEL_ID) return;
+  try {
+    const ch = await client.channels.fetch(MOD_LOG_CHANNEL_ID);
+    if (ch) await ch.send({ embeds: [embed] });
+  } catch (e) { console.error('[Bot] Mod-Log Fehler:', e.message); }
+}
+
+// ── Auto-Rolle: Neues Mitglied bekommt ACLS Member ───────────────
+client.on(Events.GuildMemberAdd, async (member) => {
+  if (GUILD_ID && member.guild.id !== GUILD_ID) return;
+  try {
+    const role = member.guild.roles.cache.find(r => r.name === AUTO_ROLE_NAME)
+              || (await member.guild.roles.fetch()).find(r => r.name === AUTO_ROLE_NAME);
+    if (!role) { console.warn(`[Bot] Auto-Rolle "${AUTO_ROLE_NAME}" nicht gefunden!`); return; }
+    await member.roles.add(role);
+    console.log(`[Bot] Auto-Rolle "${AUTO_ROLE_NAME}" vergeben an ${member.user.tag}`);
+    await sendModLog(new EmbedBuilder()
+      .setColor(0x22c55e)
+      .setTitle('👋 Neues Mitglied')
+      .setDescription(`<@${member.id}> ist dem Server beigetreten`)
+      .addFields({ name: 'Rolle vergeben', value: `\`${AUTO_ROLE_NAME}\``, inline: true })
+      .setThumbnail(member.user.displayAvatarURL())
+      .setTimestamp());
+  } catch (e) { console.error('[Bot] Auto-Rolle Fehler:', e.message); }
+});
+
+// ── Mod-Log: Rollenänderung ───────────────────────────────────────
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+  if (GUILD_ID && newMember.guild.id !== GUILD_ID) return;
+
+  // Rollen-Diff
+  const added   = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id));
+  const removed = oldMember.roles.cache.filter(r => !newMember.roles.cache.has(r.id));
+
+  if (added.size > 0 || removed.size > 0) {
+    const embed = new EmbedBuilder()
+      .setColor(0x60a5fa)
+      .setTitle('🔧 Rollenänderung')
+      .setDescription(`<@${newMember.id}> **${newMember.displayName}**`)
+      .setTimestamp();
+    if (added.size > 0)   embed.addFields({ name: '✅ Hinzugefügt',  value: added.map(r => `\`${r.name}\``).join(', '),   inline: false });
+    if (removed.size > 0) embed.addFields({ name: '❌ Entfernt',     value: removed.map(r => `\`${r.name}\``).join(', '), inline: false });
+    await sendModLog(embed);
+  }
+
+  // Nickname-Änderung
+  const oldName = oldMember.nickname || oldMember.user.globalName || oldMember.user.username;
+  const newName = newMember.nickname || newMember.user.globalName || newMember.user.username;
+  if (oldName !== newName) {
+    await sendModLog(new EmbedBuilder()
+      .setColor(0xf59e0b)
+      .setTitle('✏️ Nickname geändert')
+      .setDescription(`<@${newMember.id}>`)
+      .addFields(
+        { name: 'Vorher', value: oldName || '–', inline: true },
+        { name: 'Nachher', value: newName || '–', inline: true },
+      ).setTimestamp());
+    // Website-Sync
+    try {
+      await fetch(`${SERVER_URL}/api/sync-member`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: newMember.id, username: newName, avatar: newMember.user.avatar }),
+      });
+    } catch {}
+  }
+});
+
+// ── Mod-Log: Nachricht gelöscht ───────────────────────────────────
+client.on(Events.MessageDelete, async (message) => {
+  if (!message.guild) return;
+  if (GUILD_ID && message.guild.id !== GUILD_ID) return;
+  if (message.author?.bot) return;
+  if (message.channel.id === MOD_LOG_CHANNEL_ID) return; // eigene Logs nicht loggen
+
+  const embed = new EmbedBuilder()
+    .setColor(0xef4444)
+    .setTitle('🗑️ Nachricht gelöscht')
+    .setDescription(`In <#${message.channel.id}> von <@${message.author?.id || '?'}>`)
+    .setTimestamp();
+
+  if (message.content) {
+    embed.addFields({ name: 'Inhalt', value: message.content.slice(0, 1024) || '–', inline: false });
+  }
+  if (message.attachments?.size > 0) {
+    embed.addFields({ name: 'Anhänge', value: message.attachments.map(a => a.url).join('\n').slice(0, 512), inline: false });
+  }
+  embed.setFooter({ text: `User-ID: ${message.author?.id || '?'} · Kanal: #${message.channel.name}` });
+
+  await sendModLog(embed);
+});
+
+// ── Mod-Log: Nachricht bearbeitet ────────────────────────────────
+client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
+  if (!newMessage.guild) return;
+  if (GUILD_ID && newMessage.guild.id !== GUILD_ID) return;
+  if (newMessage.author?.bot) return;
+  if (newMessage.channel.id === MOD_LOG_CHANNEL_ID) return;
+  if (oldMessage.content === newMessage.content) return;
+
+  await sendModLog(new EmbedBuilder()
+    .setColor(0xf59e0b)
+    .setTitle('✏️ Nachricht bearbeitet')
+    .setDescription(`In <#${newMessage.channel.id}> von <@${newMessage.author?.id}>  [→ Springe zur Nachricht](${newMessage.url})`)
+    .addFields(
+      { name: 'Vorher', value: (oldMessage.content || '–').slice(0, 512), inline: false },
+      { name: 'Nachher', value: (newMessage.content || '–').slice(0, 512), inline: false },
+    )
+    .setFooter({ text: `User-ID: ${newMessage.author?.id}` })
+    .setTimestamp());
 });
 
 // Beim Bot-Shutdown offene Sessions speichern
