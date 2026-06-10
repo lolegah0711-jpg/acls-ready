@@ -312,14 +312,16 @@ function runEowEvaluation() {
 app.get('/auth/discord', (req, res) => {
   const state = crypto.randomBytes(16).toString('hex');
   req.session.oauthState = state;
-  const params = new URLSearchParams({
-    client_id:     process.env.DISCORD_CLIENT_ID,
-    redirect_uri:  process.env.DISCORD_REDIRECT_URI,
-    response_type: 'code',
-    scope:         'identify',
-    state,
+  req.session.save(() => {
+    const params = new URLSearchParams({
+      client_id:     process.env.DISCORD_CLIENT_ID,
+      redirect_uri:  process.env.DISCORD_REDIRECT_URI,
+      response_type: 'code',
+      scope:         'identify',
+      state,
+    });
+    res.redirect(`${DISCORD_AUTH_URL}?${params}`);
   });
-  res.redirect(`${DISCORD_AUTH_URL}?${params}`);
 });
 
 app.get('/auth/callback', async (req, res) => {
