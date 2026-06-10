@@ -141,6 +141,9 @@ const PAGES = {
   search:       { title: 'Globale Suche',          sub: 'Sperren, Mitarbeiter & Register durchsuchen' },
   faq:          { title: 'FAQ',                    sub: 'Häufig gestellte Fragen verwalten' },
   auditlog:     { title: 'Audit-Log',             sub: 'Wer hat was wann geändert' },
+  turnier:      { title: 'Wochenturnier',         sub: 'Jede Woche ein anderes Spiel – Coins für die Top 3' },
+  duell:        { title: 'Quiz-Duell',            sub: '1-gegen-1 live gegen deine Kollegen' },
+  shop:         { title: 'Coin-Shop',             sub: 'ACLS-Coins verdienen & ausgeben' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -337,11 +340,11 @@ async function renderVoterScreen() {
         <a class="nav-item"        id="vnFaq"       onclick="voterTab('faq')"      style="cursor:pointer"><i class="fas fa-question-circle" style="color:#38bdf8"></i><span style="color:#38bdf8">FAQ</span></a>
 
         <!-- Minispiele -->
-        <div id="vGamesToggle" onclick="(function(){var l=document.getElementById('vGamesList'),o=l.style.maxHeight!=='0px';l.style.maxHeight=o?'0px':'700px';document.getElementById('vGamesChev').style.transform=o?'rotate(-90deg)':'';})()" style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
+        <div id="vGamesToggle" onclick="(function(){var l=document.getElementById('vGamesList'),o=l.style.maxHeight!=='0px';l.style.maxHeight=o?'0px':'900px';document.getElementById('vGamesChev').style.transform=o?'rotate(-90deg)':'';})()" style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
           <span>Minispiele</span>
           <i id="vGamesChev" class="fas fa-chevron-down" style="font-size:.55rem;transition:transform .2s"></i>
         </div>
-        <div id="vGamesList" style="overflow:hidden;transition:max-height .22s ease;max-height:700px">
+        <div id="vGamesList" style="overflow:hidden;transition:max-height .22s ease;max-height:900px">
           <a class="nav-item" href="/game"   target="_blank"><i class="fas fa-car"></i><span>Autorennen</span></a>
           <a class="nav-item" href="/game2"  target="_blank"><i class="fas fa-th-large"></i><span>Brick Breaker</span></a>
           <a class="nav-item" href="/game3"  target="_blank" style="color:#ef4444"><i class="fas fa-biohazard" style="color:#ef4444"></i><span>Dead Zone</span></a>
@@ -355,6 +358,8 @@ async function renderVoterScreen() {
           <a class="nav-item" href="/game11" target="_blank" style="color:#a855f7"><i class="fas fa-brain" style="color:#a855f7"></i><span>Quiz Survival</span></a>
           <a class="nav-item" href="/game12" target="_blank" style="color:#f97316"><i class="fas fa-wrench" style="color:#f97316"></i><span>ACLS Werkstatt</span></a>
           <a class="nav-item" href="/game13" target="_blank" style="color:#60a5fa"><i class="fas fa-dungeon" style="color:#60a5fa"></i><span>Dungeon RPG</span></a>
+          <a class="nav-item" href="/game14" target="_blank" style="color:#fb923c"><i class="fas fa-truck-pickup" style="color:#fb923c"></i><span>Abschlepp-Simulator</span></a>
+          <a class="nav-item" href="/game15" target="_blank" style="color:#4ade80"><i class="fas fa-heart" style="color:#ef4444"></i><span>Blackjack</span></a>
         </div>
       </nav>
       <div class="sidebar-bottom">
@@ -935,15 +940,68 @@ function renderUserWidget() {
   const u = currentUser;
   const url = avatarUrl(u);
   $('userWidget').innerHTML = `
-    <div class="u-avatar" style="${url ? 'background:transparent;padding:0' : ''}">
+    <button onclick="navigate('shop')" title="ACLS-Coins – zum Shop" style="display:flex;align-items:center;gap:.35rem;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:#fbbf24;padding:.35rem .7rem;border-radius:999px;font-weight:800;font-size:.78rem;cursor:pointer;font-family:inherit;white-space:nowrap">
+      🪙 <span id="coinChipVal">…</span>
+    </button>
+    <div class="u-avatar" id="uAvatarBox" style="${url ? 'background:transparent;padding:0' : ''}">
       ${url ? `<img src="${url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.parentElement.textContent='${initials(u.username)}'">` : initials(u.username)}
     </div>
     <div class="u-info">
       <div class="u-name">${esc(u.username)}</div>
-      <div class="u-role">${u.role === 'admin' ? 'Administrator' : 'Mitarbeiter'}</div>
+      <div class="u-role" id="uRoleLine">${u.role === 'admin' ? 'Administrator' : 'Mitarbeiter'}</div>
     </div>
     <button class="icon-btn" onclick="openProfileModal(${u.id})" title="Profil"><i class="fas fa-chevron-down"></i></button>
     <button class="icon-btn" onclick="logout()" title="Abmelden"><i class="fas fa-sign-out-alt"></i></button>`;
+  loadCoins();
+}
+
+// ── ACLS-Coins Widget ────────────────────────────────────────────
+const SHOP_TITLE_NAMES = {
+  title_rennfahrer: '🏎️ Rennfahrer',   title_blitz:    '⚡ Blitzschnell',
+  title_schrauber: '🔧 Meisterschrauber', title_casino: '🎰 Casino-Hai',
+  title_abschlepp: '🚛 Abschleppkönig', title_champion: '🏆 Turnier-Champion',
+  title_legende:   '👑 ACLS-Legende',
+};
+const SHOP_FRAME_COLORS = {
+  frame_gold: '#ffd700', frame_neon: '#00f5ff', frame_feuer: '#f97316',
+  frame_lila: '#a855f7', frame_regenbogen: 'rainbow',
+};
+
+function updateCoinChip(balance) {
+  const el = $('coinChipVal');
+  if (el) el.textContent = (+balance).toLocaleString('de-DE');
+}
+
+async function loadCoins() {
+  try {
+    const r = await fetch('/api/coins/me');
+    if (!r.ok) return;
+    const d = await r.json();
+    window._coinInfo = d;
+    updateCoinChip(d.balance);
+    // Ausgerüsteter Titel ersetzt die Rollen-Zeile
+    if (d.equippedTitle && SHOP_TITLE_NAMES[d.equippedTitle]) {
+      const role = $('uRoleLine');
+      if (role) { role.textContent = SHOP_TITLE_NAMES[d.equippedTitle]; role.style.color = '#fbbf24'; }
+    }
+    // Avatar-Rahmen
+    const av = $('uAvatarBox');
+    if (av && d.equippedFrame) {
+      const c = SHOP_FRAME_COLORS[d.equippedFrame];
+      if (c === 'rainbow') {
+        av.style.boxShadow = '0 0 10px 2px #f97316';
+        av.style.animation = 'rainbowGlow 3s linear infinite';
+        if (!document.getElementById('rainbowGlowStyle')) {
+          const st = document.createElement('style');
+          st.id = 'rainbowGlowStyle';
+          st.textContent = '@keyframes rainbowGlow{0%{box-shadow:0 0 10px 2px #ef4444}25%{box-shadow:0 0 10px 2px #fbbf24}50%{box-shadow:0 0 10px 2px #4ade80}75%{box-shadow:0 0 10px 2px #38bdf8}100%{box-shadow:0 0 10px 2px #ef4444}}';
+          document.head.appendChild(st);
+        }
+      } else if (c) {
+        av.style.boxShadow = `0 0 10px 2px ${c}`;
+      }
+    }
+  } catch {}
 }
 
 async function logout() {
@@ -966,7 +1024,8 @@ function navigate(page) {
   $('pageSubtitle').textContent = p.sub;
   $('pageContent').innerHTML    = loading();
 
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog };
+  if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop };
   (renders[page] || dashboard)();
 }
 
@@ -1281,6 +1340,21 @@ function connectSSE() {
     });
     _sseSource.addEventListener('eow_vote', () => {
       if (_activePage === 'eow') eow();
+    });
+    _sseSource.addEventListener('coins', e => {
+      try {
+        const d = JSON.parse(e.data);
+        if (currentUser && d.discord_id === currentUser.discord_id) updateCoinChip(d.balance);
+      } catch {}
+    });
+    _sseSource.addEventListener('tournament', () => {
+      if (_activePage === 'turnier') turnier();
+    });
+    _sseSource.addEventListener('duel', e => {
+      try {
+        const d = JSON.parse(e.data);
+        if (_activePage === 'duell') handleDuelEvent(d);
+      } catch {}
     });
     _sseSource.onerror = () => { _sseSource.close(); _sseSource = null; setTimeout(connectSSE, 30_000); };
   } catch {}
@@ -4730,6 +4804,382 @@ window.addRankQuestion = async function(e) {
 window.deleteRankQuestion = async function(id) {
   await api(`/api/rank-questions/${id}`, { method: 'DELETE' });
   manageRankQuestions();
+};
+
+// ════════════════════════════════════════════════════════════════
+//  COIN-SHOP
+// ════════════════════════════════════════════════════════════════
+const GAME_NAMES_DE = {
+  race: 'Autorennen', brick: 'Brick Breaker', deadzone: 'Dead Zone', snake: 'Snake',
+  tetris: 'Tetris', bookofra: 'Book of Ra', skycop: 'Sky Cop', doodlejump: 'Doodle Jump',
+  towerdefense: 'Tower Defense', '2048': '2048', quiz: 'Quiz Survival', idle: 'Werkstatt',
+  rpg: 'Dungeon RPG', tow: 'Abschlepp-Simulator', blackjack: 'Blackjack',
+};
+function txLabel(reason) {
+  const map = {
+    daily: '📅 Tagesbonus', 'shop:buy': '🛒 Shop-Kauf', 'tournament:prize': '🏆 Turnier-Preisgeld',
+    'duel:win': '⚔️ Duell gewonnen', 'duel:loss': '⚔️ Duell verloren', 'duel:draw': '⚔️ Duell unentschieden',
+    'blackjack:bet': '🃏 Blackjack-Einsatz', 'blackjack:win': '🃏 Blackjack-Gewinn',
+    'blackjack:push': '🃏 Blackjack-Push', 'blackjack:double': '🃏 Blackjack verdoppelt',
+  };
+  if (map[reason]) return map[reason];
+  if (reason.startsWith('game:')) return '🎮 ' + (GAME_NAMES_DE[reason.slice(5)] || reason.slice(5));
+  return reason;
+}
+
+async function shop() {
+  const [me, shopData] = await Promise.all([api('/api/coins/me'), api('/api/shop')]);
+  if (!me || !shopData) return;
+
+  const itemCard = it => {
+    const isFrame = it.type === 'frame';
+    const preview = isFrame
+      ? `<div style="width:46px;height:46px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;${it.color === 'rainbow' ? 'animation:rainbowGlow 3s linear infinite;box-shadow:0 0 10px 2px #f97316' : `box-shadow:0 0 10px 2px ${it.color}`}">${initials(currentUser.username)}</div>`
+      : `<div style="font-size:1.6rem">${it.name.split(' ')[0]}</div>`;
+    let btn;
+    if (it.equipped)
+      btn = `<button class="btn btn-ghost btn-sm" onclick="shopUnequip('${it.type}')"><i class="fas fa-check" style="color:#22c55e"></i> Ausgerüstet</button>`;
+    else if (it.owned)
+      btn = `<button class="btn btn-primary btn-sm" onclick="shopEquip('${it.id}')">Ausrüsten</button>`;
+    else
+      btn = `<button class="btn btn-sm" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);color:#fbbf24" onclick="shopBuy('${it.id}', ${it.price})">🪙 ${it.price.toLocaleString('de-DE')}</button>`;
+    return `<div class="card" style="display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:1rem;text-align:center">
+      ${preview}
+      <div style="font-weight:700;font-size:.85rem">${it.name}</div>
+      <div style="font-size:.7rem;color:var(--muted)">${it.desc || ''}</div>
+      ${btn}
+    </div>`;
+  };
+
+  const titles = shopData.items.filter(i => i.type === 'title');
+  const frames = shopData.items.filter(i => i.type === 'frame');
+
+  $('pageContent').innerHTML = `
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem">
+      <div class="card" style="flex:1;min-width:220px;display:flex;align-items:center;gap:1rem;padding:1.1rem">
+        <div style="font-size:2.2rem">🪙</div>
+        <div>
+          <div style="font-size:1.5rem;font-weight:800;color:#fbbf24">${me.balance.toLocaleString('de-DE')}</div>
+          <div style="font-size:.75rem;color:var(--muted)">ACLS-Coins · insgesamt verdient: ${me.totalEarned.toLocaleString('de-DE')}</div>
+        </div>
+      </div>
+      <div class="card" style="flex:1;min-width:220px;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.1rem">
+        <div>
+          <div style="font-weight:700;font-size:.9rem">📅 Tagesbonus</div>
+          <div style="font-size:.73rem;color:var(--muted)">Jeden Tag +25 Coins gratis</div>
+        </div>
+        ${me.dailyAvailable
+          ? `<button class="btn btn-primary btn-sm" onclick="claimDaily()">+25 abholen</button>`
+          : `<span class="badge" style="background:var(--surface2);color:var(--muted)">Heute abgeholt ✓</span>`}
+      </div>
+    </div>
+
+    <div class="card" style="padding:1rem 1.2rem;margin-bottom:1.25rem">
+      <div style="font-weight:700;font-size:.85rem;margin-bottom:.5rem"><i class="fas fa-info-circle" style="color:var(--orange);margin-right:.4rem"></i>So verdienst du Coins</div>
+      <div style="display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.78rem;color:var(--muted)">
+        <span>🎮 Minispiele spielen (bis 150/Tag pro Spiel)</span>
+        <span>🏆 Wochenturnier: 500 / 250 / 100 für Top 3</span>
+        <span>⚔️ Quiz-Duell: 150 für den Sieger</span>
+        <span>📅 Tagesbonus: +25</span>
+        <span>🃏 Blackjack: Einsatz verdoppeln</span>
+      </div>
+    </div>
+
+    <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">Titel</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.7rem;margin-bottom:1.5rem">${titles.map(itemCard).join('')}</div>
+
+    <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">Avatar-Rahmen</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.7rem;margin-bottom:1.5rem">${frames.map(itemCard).join('')}</div>
+
+    <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">Letzte Transaktionen</div>
+    <div class="card" style="padding:.4rem .9rem">
+      ${me.transactions.length ? me.transactions.map(t => `
+        <div style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px solid var(--border);font-size:.8rem">
+          <span style="flex:1">${txLabel(t.reason)}</span>
+          <span style="font-weight:700;color:${t.amount >= 0 ? '#4ade80' : '#ef4444'}">${t.amount >= 0 ? '+' : ''}${t.amount}</span>
+          <span style="color:var(--muted);font-size:.7rem;white-space:nowrap">${ago(t.created_at)}</span>
+        </div>`).join('') : '<div style="padding:.8rem 0;color:var(--muted);font-size:.8rem">Noch keine Transaktionen – spiel ein Minispiel!</div>'}
+    </div>`;
+}
+
+window.claimDaily = async () => {
+  const r = await api('/api/coins/daily', { method: 'POST' });
+  if (r) { toast(`+${r.amount} Coins Tagesbonus! 🪙`, 'ok'); updateCoinChip(r.balance); shop(); }
+};
+window.shopBuy = async (itemId, price) => {
+  const r = await api('/api/shop/buy', { method: 'POST', body: { itemId } });
+  if (r) { toast('Gekauft & ausgerüstet! 🎉', 'ok'); renderUserWidget(); shop(); }
+};
+window.shopEquip = async itemId => {
+  const r = await api('/api/shop/equip', { method: 'POST', body: { itemId } });
+  if (r) { toast('Ausgerüstet!', 'ok'); renderUserWidget(); shop(); }
+};
+window.shopUnequip = async slot => {
+  const r = await api('/api/shop/equip', { method: 'POST', body: { itemId: null, slot } });
+  if (r) { toast('Abgelegt', 'ok'); renderUserWidget(); shop(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  WOCHENTURNIER
+// ════════════════════════════════════════════════════════════════
+function tournamentCountdown() {
+  // Nächster Sonntag 20:00 (lokale Zeit ≈ Berlin für die Zielgruppe)
+  const now = new Date();
+  const d = new Date(now);
+  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
+  d.setHours(20, 0, 0, 0);
+  if (d <= now) d.setDate(d.getDate() + 7);
+  const ms = d - now;
+  const days = Math.floor(ms / 86400000), hrs = Math.floor(ms % 86400000 / 3600000), min = Math.floor(ms % 3600000 / 60000);
+  return days > 0 ? `${days}T ${hrs}h` : `${hrs}h ${min}min`;
+}
+
+async function turnier() {
+  const t = await api('/api/tournament');
+  if (!t) return;
+  const medals = ['🥇', '🥈', '🥉'];
+  const avEl = r => r.avatar
+    ? `<img src="https://cdn.discordapp.com/avatars/${r.discord_id}/${r.avatar}.png?size=64" style="width:30px;height:30px;border-radius:50%;object-fit:cover">`
+    : `<div style="width:30px;height:30px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700">${initials(r.username)}</div>`;
+
+  $('pageContent').innerHTML = `
+    <div class="card" style="padding:1.4rem;margin-bottom:1.25rem;background:linear-gradient(135deg,rgba(251,191,36,.10),rgba(251,191,36,.02));border-color:rgba(251,191,36,.35)">
+      <div style="display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap">
+        <div style="font-size:2.6rem">🏆</div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:.72rem;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:.08em">Turnier-Spiel der Woche · KW ${isoWeek(t.week)}</div>
+          <div style="font-size:1.45rem;font-weight:800;margin:.15rem 0">${esc(t.gameName)}</div>
+          <div style="font-size:.78rem;color:var(--muted)">Dein bester Score in dieser Woche zählt automatisch. Auswertung: Sonntag 20:00 Uhr (noch ${tournamentCountdown()})</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.5rem;align-items:flex-end">
+          <a href="${t.gameUrl}" target="_blank"><button class="btn btn-primary"><i class="fas fa-play"></i> Jetzt spielen</button></a>
+          <div style="font-size:.72rem;color:var(--muted)">Preise: 🥇 ${t.prizes[0]} · 🥈 ${t.prizes[1]} · 🥉 ${t.prizes[2]} 🪙</div>
+        </div>
+      </div>
+      ${t.myScore != null ? `<div style="margin-top:.9rem;padding-top:.9rem;border-top:1px solid rgba(251,191,36,.2);font-size:.85rem">Dein Score diese Woche: <b style="color:#fbbf24">${t.myScore.toLocaleString('de-DE')}</b></div>` : ''}
+    </div>
+
+    ${t.lastWinner ? `
+    <div class="card" style="padding:.9rem 1.2rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:.8rem">
+      <i class="fas fa-crown" style="color:#fbbf24;font-size:1.1rem"></i>
+      <div style="font-size:.82rem">Letzte Woche gewann <b>${esc(t.lastWinner.username || '–')}</b> das ${esc(t.lastWinner.game)}-Turnier${t.lastWinner.score != null ? ` mit ${(+t.lastWinner.score).toLocaleString('de-DE')} Punkten` : ''} 🎉</div>
+    </div>` : ''}
+
+    <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">Rangliste dieser Woche</div>
+    <div class="card" style="padding:.5rem 1rem">
+      ${t.leaderboard.length ? t.leaderboard.map((r, i) => `
+        <div style="display:flex;align-items:center;gap:.7rem;padding:.55rem 0;border-bottom:1px solid var(--border);${currentUser && r.discord_id === currentUser.discord_id ? 'background:rgba(251,191,36,.06);border-radius:8px;padding-left:.5rem;padding-right:.5rem' : ''}">
+          <div style="width:28px;text-align:center;font-weight:800;font-size:.9rem">${medals[i] || (i + 1) + '.'}</div>
+          ${avEl(r)}
+          <div style="flex:1;font-weight:600;font-size:.85rem">${esc(r.username || 'Unbekannt')}</div>
+          ${i < 3 ? `<span style="font-size:.7rem;color:#fbbf24;font-weight:700">+${t.prizes[i]} 🪙</span>` : ''}
+          <div style="font-weight:800;color:#fbbf24;font-size:.9rem">${(+r.score).toLocaleString('de-DE')}</div>
+        </div>`).join('') : '<div style="padding:1.2rem 0;text-align:center;color:var(--muted);font-size:.85rem">Noch keine Teilnehmer – sei der Erste! 🚀</div>'}
+    </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  QUIZ-DUELL (1v1 live)
+// ════════════════════════════════════════════════════════════════
+let _duel = { code: null, answering: false, t0: 0, viewingResult: false };
+
+async function duell() {
+  if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
+  _duel.viewingResult = false;
+  const data = await api('/api/duels');
+  if (!data) return;
+  if (data.myDuel) { duelArena(data.myDuel.code); return; }
+  _duel.code = null;
+
+  $('pageContent').innerHTML = `
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem">
+      <div class="card" style="flex:2;min-width:260px;padding:1.4rem;display:flex;align-items:center;gap:1.2rem;background:linear-gradient(135deg,rgba(244,114,182,.10),rgba(244,114,182,.02));border-color:rgba(244,114,182,.35)">
+        <div style="font-size:2.6rem">⚔️</div>
+        <div style="flex:1">
+          <div style="font-size:1.2rem;font-weight:800">Fordere einen Kollegen heraus!</div>
+          <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">8 Fragen · 15 Sekunden pro Frage · Schnelligkeit gibt Bonuspunkte<br>Sieger: <b style="color:#fbbf24">+150 🪙</b> · Verlierer: +25 🪙</div>
+        </div>
+        <button class="btn btn-primary" onclick="duelCreate()"><i class="fas fa-bolt"></i> Duell erstellen</button>
+      </div>
+      <div class="card" style="flex:1;min-width:160px;padding:1.4rem;text-align:center">
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem">Deine Bilanz</div>
+        <div style="font-size:1.3rem;font-weight:800"><span style="color:#4ade80">${data.stats.wins}</span> : <span style="color:#ef4444">${data.stats.losses}</span></div>
+        <div style="font-size:.7rem;color:var(--muted)">Siege : Niederlagen</div>
+      </div>
+    </div>
+
+    <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">Offene Herausforderungen</div>
+    <div id="duel-open-list">
+      ${data.open.length ? data.open.map(d => `
+        <div class="card" style="padding:.7rem 1rem;margin-bottom:.5rem;display:flex;align-items:center;gap:.8rem">
+          ${d.avatar ? `<img src="https://cdn.discordapp.com/avatars/${d.discord_id}/${d.avatar}.png?size=64" style="width:32px;height:32px;border-radius:50%;object-fit:cover">` : `<div style="width:32px;height:32px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700">${initials(d.username)}</div>`}
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:.85rem">${esc(d.username)}</div>
+            <div style="font-size:.7rem;color:var(--muted)">wartet auf einen Gegner · ${ago(d.created_at)}</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="duelJoin('${d.code}')"><i class="fas fa-bolt"></i> Annehmen</button>
+        </div>`).join('') : '<div class="card" style="padding:1.2rem;text-align:center;color:var(--muted);font-size:.85rem">Keine offenen Duelle – erstelle eins!</div>'}
+    </div>`;
+}
+
+window.duelCreate = async () => {
+  const r = await api('/api/duels', { method: 'POST' });
+  if (r) duelArena(r.code);
+};
+window.duelJoin = async code => {
+  const r = await api(`/api/duels/${code}/join`, { method: 'POST' });
+  if (r) duelArena(code);
+};
+window.duelCancel = async () => {
+  if (_duel.code) await api(`/api/duels/${_duel.code}/cancel`, { method: 'POST' });
+  duell();
+};
+
+function handleDuelEvent(d) {
+  if (_duel.code && d.code === _duel.code) {
+    if (d.action === 'start' || d.action === 'done') { duelArena(_duel.code); return; }
+    if (d.action === 'progress') { duelUpdateOpp(); return; }
+  }
+  if (!_duel.code && !_duel.viewingResult && (d.action === 'open' || d.action === 'start')) duell();
+}
+
+async function duelUpdateOpp() {
+  if (!_duel.code) return;
+  try {
+    const r = await fetch(`/api/duels/${_duel.code}/state`);
+    if (!r.ok) return;
+    const s = await r.json();
+    const el = $('duel-opp-progress');
+    if (el) el.textContent = `${s.oppIdx}/${s.total}`;
+    const sc = $('duel-opp-score');
+    if (sc) sc.textContent = s.oppScore;
+    if (s.status === 'done') duelArena(_duel.code);
+  } catch {}
+}
+
+function duelPlayerBox(p, score, progress, total, align) {
+  const av = p?.avatar
+    ? `<img src="https://cdn.discordapp.com/avatars/${p.discord_id}/${p.avatar}.png?size=64" style="width:42px;height:42px;border-radius:50%;object-fit:cover">`
+    : `<div style="width:42px;height:42px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.75rem">${initials(p?.username || '?')}</div>`;
+  return `<div style="display:flex;align-items:center;gap:.7rem;${align === 'right' ? 'flex-direction:row-reverse;text-align:right' : ''}">
+    ${av}
+    <div>
+      <div style="font-weight:700;font-size:.85rem">${esc(p?.username || '???')}</div>
+      <div style="font-size:.72rem;color:var(--muted)">Frage <span id="${align === 'right' ? 'duel-opp-progress' : 'duel-my-progress'}">${progress}/${total}</span></div>
+    </div>
+    <div style="font-size:1.35rem;font-weight:800;color:${align === 'right' ? '#ef4444' : '#4ade80'};margin:0 .4rem" id="${align === 'right' ? 'duel-opp-score' : 'duel-my-score'}">${score}</div>
+  </div>`;
+}
+
+async function duelArena(code) {
+  _duel.code = code;
+  if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
+  const s = await api(`/api/duels/${code}/state`);
+  if (!s) { duell(); return; }
+
+  // ── Wartend auf Gegner ──
+  if (s.status === 'waiting') {
+    $('pageContent').innerHTML = `
+      <div class="card" style="max-width:480px;margin:2rem auto;padding:2.2rem;text-align:center">
+        <div style="font-size:2.6rem;margin-bottom:.6rem">⏳</div>
+        <div style="font-size:1.15rem;font-weight:800;margin-bottom:.3rem">Warte auf einen Gegner…</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1.2rem">Dein Duell ist für alle Mitarbeiter sichtbar.<br>Sobald jemand annimmt, geht es automatisch los!</div>
+        <div class="loader" style="margin:0 auto 1.2rem"></div>
+        <button class="btn btn-ghost btn-sm" onclick="duelCancel()"><i class="fas fa-times"></i> Duell abbrechen</button>
+      </div>`;
+    // Fallback-Polling falls SSE hängt
+    window._duelTimer = setInterval(() => { if (_activePage === 'duell') duelArena(code); }, 5000);
+    return;
+  }
+
+  const header = `
+    <div class="card" style="padding:.9rem 1.2rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+      ${duelPlayerBox(s.isHost ? s.host : s.guest, s.myScore, s.myIdx, s.total, 'left')}
+      <div style="font-weight:800;color:var(--muted);font-size:.9rem">VS</div>
+      ${duelPlayerBox(s.isHost ? s.guest : s.host, s.oppScore, s.oppIdx, s.total, 'right')}
+    </div>`;
+
+  // ── Fertig ──
+  if (s.status === 'done') {
+    _duel.code = null;
+    _duel.viewingResult = true;
+    const me = s.isHost ? s.host : s.guest;
+    const won  = s.winnerId && me && s.winnerId === me.id;
+    const draw = !s.winnerId;
+    $('pageContent').innerHTML = header + `
+      <div class="card" style="max-width:480px;margin:1.5rem auto;padding:2.2rem;text-align:center">
+        <div style="font-size:3rem;margin-bottom:.5rem">${draw ? '🤝' : won ? '🏆' : '😢'}</div>
+        <div style="font-size:1.4rem;font-weight:800;color:${draw ? 'var(--text)' : won ? '#4ade80' : '#ef4444'}">${draw ? 'Unentschieden!' : won ? 'Gewonnen!' : 'Verloren!'}</div>
+        <div style="font-size:.95rem;margin:.5rem 0 1rem">${s.myScore} : ${s.oppScore}</div>
+        <div style="font-size:.8rem;color:#fbbf24;font-weight:700;margin-bottom:1.4rem">+${draw ? s.coins.draw : won ? s.coins.win : s.coins.loss} 🪙 ACLS-Coins</div>
+        <button class="btn btn-primary" onclick="duell()"><i class="fas fa-redo"></i> Zur Duell-Lobby</button>
+      </div>`;
+    loadCoins();
+    return;
+  }
+
+  // ── Aktiv: alle eigenen Fragen beantwortet → auf Gegner warten ──
+  if (!s.question) {
+    $('pageContent').innerHTML = header + `
+      <div class="card" style="max-width:480px;margin:1.5rem auto;padding:2.2rem;text-align:center">
+        <div style="font-size:2.4rem;margin-bottom:.6rem">✅</div>
+        <div style="font-weight:800;font-size:1.05rem;margin-bottom:.3rem">Du bist fertig!</div>
+        <div style="font-size:.8rem;color:var(--muted)">Warte, bis dein Gegner alle Fragen beantwortet hat…</div>
+        <div class="loader" style="margin:1.2rem auto 0"></div>
+      </div>`;
+    // Fallback-Polling falls SSE hängt
+    window._duelTimer = setInterval(() => { if (_activePage === 'duell') duelArena(code); }, 5000);
+    return;
+  }
+
+  // ── Aktiv: Frage anzeigen ──
+  _duel.t0 = Date.now();
+  _duel.answering = false;
+  $('pageContent').innerHTML = header + `
+    <div class="card" style="max-width:640px;margin:0 auto;padding:1.6rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem">
+        <span style="font-size:.75rem;font-weight:700;color:var(--muted)">Frage ${s.question.idx + 1} von ${s.total}</span>
+        <span style="font-size:.85rem;font-weight:800;color:#fbbf24" id="duel-timer-txt">15.0s</span>
+      </div>
+      <div style="height:6px;background:var(--surface2);border-radius:4px;overflow:hidden;margin-bottom:1.2rem">
+        <div id="duel-timer-bar" style="height:100%;width:100%;background:linear-gradient(90deg,#4ade80,#fbbf24,#ef4444);transition:width .1s linear"></div>
+      </div>
+      <div style="font-weight:700;font-size:1.02rem;line-height:1.5;margin-bottom:1.2rem">${esc(s.question.question)}</div>
+      <div style="display:flex;flex-direction:column;gap:.6rem" id="duel-options">
+        ${s.question.options.map((o, i) => `
+          <button class="btn btn-ghost" id="duel-opt-${i}" onclick="duelAnswer(${i})" style="text-align:left;justify-content:flex-start;padding:.8rem 1rem;font-size:.88rem">
+            <b style="margin-right:.6rem;color:var(--orange)">${'ABCD'[i]}</b> ${esc(o)}
+          </button>`).join('')}
+      </div>
+    </div>`;
+
+  // Countdown
+  window._duelTimer = setInterval(() => {
+    const left = Math.max(0, s.timeMs - (Date.now() - _duel.t0));
+    const bar = $('duel-timer-bar'), txt = $('duel-timer-txt');
+    if (bar) bar.style.width = (left / s.timeMs * 100) + '%';
+    if (txt) txt.textContent = (left / 1000).toFixed(1) + 's';
+    if (left <= 0) duelAnswer(-1);
+  }, 100);
+}
+
+window.duelAnswer = async answer => {
+  if (_duel.answering || !_duel.code) return;
+  _duel.answering = true;
+  if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
+  const ms = Date.now() - _duel.t0;
+  const r = await api(`/api/duels/${_duel.code}/answer`, { method: 'POST', body: { answer, ms } });
+  if (!r) { _duel.answering = false; if (_duel.code) duelArena(_duel.code); return; }
+  // Feedback: richtige Antwort grün, eigene falsche rot
+  document.querySelectorAll('#duel-options button').forEach(b => b.disabled = true);
+  const right = $(`duel-opt-${r.correctAnswer}`);
+  if (right) { right.style.borderColor = '#22c55e'; right.style.background = 'rgba(34,197,94,.12)'; }
+  if (!r.correct && answer >= 0) {
+    const mine = $(`duel-opt-${answer}`);
+    if (mine) { mine.style.borderColor = '#ef4444'; mine.style.background = 'rgba(239,68,68,.12)'; }
+  }
+  if (r.correct) toast(`Richtig! +${r.points} Punkte`, 'ok');
+  setTimeout(() => { if (_activePage === 'duell' && _duel.code) duelArena(_duel.code); }, 1100);
 };
 
 // ── Start ─────────────────────────────────────────────────────────

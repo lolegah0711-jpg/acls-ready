@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blackjack – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:radial-gradient(ellipse at 50% 30%,#0d3320 0%,#06160d 70%,#030906 100%);font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;overflow-x:hidden;}
+    .topbar{width:100%;max-width:720px;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;}
+    .chip-bal{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.45);border:1px solid rgba(251,191,36,.35);border-radius:999px;padding:7px 16px;font-weight:800;font-size:15px;color:#fbbf24;}
+    .table{width:100%;max-width:720px;flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 16px 24px;}
+    .zone-label{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.35);margin:10px 0 8px;}
+    .cards{display:flex;gap:10px;min-height:108px;align-items:center;justify-content:center;flex-wrap:wrap;}
+    .card{width:74px;height:106px;border-radius:10px;background:#f8fafc;color:#0f172a;display:flex;flex-direction:column;justify-content:space-between;padding:7px 9px;font-weight:800;box-shadow:0 4px 14px rgba(0,0,0,.45);animation:deal .3s ease;position:relative;}
+    @keyframes deal{from{transform:translateY(-26px) scale(.8);opacity:0}to{transform:none;opacity:1}}
+    .card.red{color:#dc2626;}
+    .card .rank{font-size:20px;line-height:1;}
+    .card .suit-big{font-size:30px;text-align:center;}
+    .card .bottom{transform:rotate(180deg);font-size:20px;line-height:1;}
+    .card.back{background:repeating-linear-gradient(45deg,#7c2d12,#7c2d12 6px,#9a3412 6px,#9a3412 12px);border:3px solid #f8fafc;}
+    .total{margin-top:8px;font-weight:800;font-size:15px;background:rgba(0,0,0,.5);border-radius:999px;padding:3px 14px;min-height:26px;}
+    .result{font-size:26px;font-weight:800;margin:12px 0 2px;min-height:36px;text-align:center;}
+    .result small{display:block;font-size:14px;color:#fbbf24;font-weight:700;}
+    .controls{margin-top:14px;display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;}
+    .bet-chips{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;}
+    .bchip{width:54px;height:54px;border-radius:50%;border:3px dashed rgba(255,255,255,.6);font-weight:800;font-size:13px;cursor:pointer;color:#fff;transition:transform .12s;font-family:inherit;}
+    .bchip:hover{transform:scale(1.1);}
+    .bchip.c10{background:#1d4ed8}.bchip.c25{background:#15803d}.bchip.c50{background:#b45309}.bchip.c100{background:#0f172a;border-color:#fbbf24}.bchip.c250{background:#7e22ce}.bchip.c500{background:#be123c}
+    .btn{padding:13px 30px;border-radius:12px;border:none;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit;transition:opacity .15s,transform .12s;}
+    .btn:hover{opacity:.88;transform:translateY(-1px);}
+    .btn:disabled{opacity:.35;cursor:default;transform:none;}
+    .btn-deal{background:linear-gradient(135deg,#f59e0b,#d97706);color:#111;}
+    .btn-hit{background:#16a34a;color:#fff;}
+    .btn-stand{background:#dc2626;color:#fff;}
+    .btn-double{background:#7c3aed;color:#fff;}
+    .btn-gray{background:#1f2937;color:#d1d5db;border:1px solid #374151;}
+    .bet-display{font-weight:800;font-size:17px;color:#fbbf24;min-height:24px;}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.88);z-index:100;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#0c0c0c;border:1px solid #1e1e1e;border-radius:18px;padding:36px 42px;max-width:400px;width:92%;text-align:center;}
+    .lb-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #141414;font-size:13px;}
+    .lb-rank{width:24px;text-align:center;font-weight:700;}
+    .lb-av{width:26px;height:26px;border-radius:50%;background:#1f2937;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;overflow:hidden;flex-shrink:0;}
+    .lb-av img{width:100%;height:100%;object-fit:cover;}
+    .lb-name{flex:1;font-weight:600;}.lb-score{font-weight:700;color:#fbbf24;}
+    .sub{color:#6b7280;font-size:14px;margin-bottom:20px;line-height:1.5;}
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <a href="/" onclick="window.close()" style="background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none">← Portal</a>
+  <div style="font-weight:800;font-size:17px;letter-spacing:.04em">♠ ACLS BLACKJACK ♥</div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <button class="btn btn-gray" style="padding:7px 12px;font-size:12px" onclick="openLb()">🏆</button>
+    <div class="chip-bal">🪙 <span id="balance">–</span></div>
+  </div>
+</div>
+
+<div class="table">
+  <div class="zone-label">Dealer</div>
+  <div class="cards" id="dealer-cards"></div>
+  <div class="total" id="dealer-total"></div>
+
+  <div class="result" id="result"></div>
+
+  <div class="zone-label">Deine Hand</div>
+  <div class="cards" id="player-cards"></div>
+  <div class="total" id="player-total"></div>
+
+  <div class="controls">
+    <!-- Einsatz-Phase -->
+    <div id="bet-ui" style="display:flex;flex-direction:column;align-items:center;gap:12px">
+      <div class="bet-display" id="bet-display">Einsatz wählen (10–1000)</div>
+      <div class="bet-chips">
+        <button class="bchip c10"  onclick="addBet(10)">10</button>
+        <button class="bchip c25"  onclick="addBet(25)">25</button>
+        <button class="bchip c50"  onclick="addBet(50)">50</button>
+        <button class="bchip c100" onclick="addBet(100)">100</button>
+        <button class="bchip c250" onclick="addBet(250)">250</button>
+        <button class="bchip c500" onclick="addBet(500)">500</button>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-gray" onclick="resetBet()">Zurücksetzen</button>
+        <button class="btn btn-deal" id="deal-btn" onclick="deal()" disabled>KARTEN GEBEN</button>
+      </div>
+      <div style="font-size:12px;color:rgba(255,255,255,.4)">Blackjack zahlt 3:2 · Dealer zieht bis 17 · Coins verdienst du in allen Minispielen</div>
+    </div>
+    <!-- Spiel-Phase -->
+    <div id="play-ui" style="display:none;gap:12px">
+      <button class="btn btn-hit"    onclick="hit()">KARTE</button>
+      <button class="btn btn-stand"  onclick="stand()">HALTEN</button>
+      <button class="btn btn-double" id="double-btn" onclick="doubleDown()">VERDOPPELN</button>
+    </div>
+    <!-- Nach der Hand -->
+    <div id="again-ui" style="display:none;gap:12px">
+      <button class="btn btn-deal" onclick="newRound()">NEUE RUNDE</button>
+    </div>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-login">
+  <div class="ov-card">
+    <div style="font-size:44px;margin-bottom:10px">🔒</div>
+    <h2 style="margin-bottom:8px">Anmeldung nötig</h2>
+    <p class="sub">Blackjack spielst du mit deinen ACLS-Coins.<br>Melde dich zuerst im Portal an.</p>
+    <a href="/" class="btn btn-deal" style="text-decoration:none">Zum Portal</a>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-lb">
+  <div class="ov-card">
+    <h2 style="margin-bottom:4px">🏆 Rangliste</h2>
+    <p class="sub">Blackjack – Größter Einzelgewinn</p>
+    <div id="lb-list" style="text-align:left;max-height:280px;overflow-y:auto"></div>
+    <button class="btn btn-gray" onclick="closeLb()" style="margin-top:16px">Schließen</button>
+  </div>
+</div>
+
+<script>
+let balance=0,bet=0,inHand=false,busy=false,currentUser=null;
+const $=id=>document.getElementById(id);
+
+function fmtCard(c){
+  if(c.r==='?')return '<div class="card back"></div>';
+  const red=c.s==='♥'||c.s==='♦';
+  return `<div class="card${red?' red':''}">
+    <div class="rank">${c.r}<br><span style="font-size:15px">${c.s}</span></div>
+    <div class="suit-big">${c.s}</div>
+    <div class="bottom">${c.r}</div>
+  </div>`;
+}
+
+function renderHand(h){
+  $('dealer-cards').innerHTML=h.dealer.map(fmtCard).join('');
+  $('player-cards').innerHTML=h.player.map(fmtCard).join('');
+  $('player-total').textContent=h.playerVal;
+  $('dealer-total').textContent=h.dealerVal!=null?h.dealerVal:'?';
+  $('double-btn').disabled=h.player.length!==2||h.doubled||balance<h.bet;
+}
+
+function setBalance(b){balance=b;$('balance').textContent=b.toLocaleString('de-DE');}
+
+function showResult(result,payout,handBet){
+  const map={
+    win:     ['✅ GEWONNEN!','#4ade80'],
+    loss:    ['❌ VERLOREN','#ef4444'],
+    bust:    ['💥 ÜBERKAUFT!','#ef4444'],
+    push:    ['🤝 UNENTSCHIEDEN','#9ca3af'],
+  };
+  const natural=payout>handBet*2;
+  const[txt,col]=natural?['🃏 BLACKJACK!','#fbbf24']:(map[result]||['','#fff']);
+  const net=payout-handBet;
+  $('result').innerHTML=`<span style="color:${col}">${txt}</span><small>${net>0?`+${net}`:net<0?net:'±0'} 🪙</small>`;
+}
+
+function uiPhase(phase){ // 'bet' | 'play' | 'again'
+  $('bet-ui').style.display  =phase==='bet'  ?'flex':'none';
+  $('play-ui').style.display =phase==='play' ?'flex':'none';
+  $('again-ui').style.display=phase==='again'?'flex':'none';
+}
+
+function addBet(n){
+  bet=Math.min(1000,bet+n);
+  $('bet-display').textContent=`Einsatz: ${bet} 🪙`;
+  $('deal-btn').disabled=bet<10||bet>balance;
+  if(bet>balance)$('bet-display').textContent=`Einsatz: ${bet} 🪙 — nicht genug Coins!`;
+}
+function resetBet(){bet=0;$('bet-display').textContent='Einsatz wählen (10–1000)';$('deal-btn').disabled=true;}
+
+async function post(url,body){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.error||'Fehler');
+  return d;
+}
+
+async function deal(){
+  if(busy||bet<10)return;busy=true;
+  $('result').textContent='';
+  try{
+    const d=await post('/api/blackjack/start',{bet});
+    setBalance(d.balance);
+    renderHand(d.hand);
+    if(d.hand.done){showResult(d.result,d.payout,d.hand.bet);uiPhase('again');inHand=false;}
+    else{uiPhase('play');inHand=true;}
+  }catch(e){$('result').innerHTML=`<span style="color:#ef4444;font-size:15px">${e.message}</span>`;}
+  busy=false;
+}
+
+async function hit(){
+  if(busy||!inHand)return;busy=true;
+  try{
+    const d=await post('/api/blackjack/hit');
+    renderHand(d.hand);
+    if(d.hand.done){setBalance(d.balance);showResult(d.result,d.payout,d.hand.bet);uiPhase('again');inHand=false;}
+  }catch(e){$('result').innerHTML=`<span style="color:#ef4444;font-size:15px">${e.message}</span>`;}
+  busy=false;
+}
+
+async function stand(){
+  if(busy||!inHand)return;busy=true;
+  try{
+    const d=await post('/api/blackjack/stand');
+    renderHand(d.hand);setBalance(d.balance);
+    showResult(d.result,d.payout,d.hand.bet);uiPhase('again');inHand=false;
+  }catch(e){$('result').innerHTML=`<span style="color:#ef4444;font-size:15px">${e.message}</span>`;}
+  busy=false;
+}
+
+async function doubleDown(){
+  if(busy||!inHand)return;busy=true;
+  try{
+    const d=await post('/api/blackjack/double');
+    renderHand(d.hand);setBalance(d.balance);
+    showResult(d.result,d.payout,d.hand.bet);uiPhase('again');inHand=false;
+  }catch(e){$('result').innerHTML=`<span style="color:#ef4444;font-size:15px">${e.message}</span>`;}
+  busy=false;
+}
+
+function newRound(){
+  $('dealer-cards').innerHTML='';$('player-cards').innerHTML='';
+  $('dealer-total').textContent='';$('player-total').textContent='';
+  $('result').textContent='';
+  resetBet();uiPhase('bet');
+}
+
+async function openLb(){
+  $('ov-lb').classList.remove('hidden');
+  const el=$('lb-list');
+  el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Laden…</div>';
+  try{
+    const r=await fetch('/api/game-scores/blackjack'),data=await r.json();
+    if(!data.length){el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Noch keine Einträge</div>';return;}
+    el.innerHTML=data.map((row,i)=>{
+      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+      const me=currentUser&&row.discord_id===currentUser.discord_id;
+      const av=row.avatar?`<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`:(row.username||'?').slice(0,2).toUpperCase();
+      return`<div class="lb-row" style="${me?'background:#1a1408;border-radius:5px;':''}">
+        <div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
+        <div class="lb-name">${row.username||'Unbekannt'}</div>
+        <div class="lb-score">+${row.score.toLocaleString()}</div>
+      </div>`;
+    }).join('');
+  }catch{el.innerHTML='<div style="text-align:center;color:#ef4444">Fehler</div>';}
+}
+function closeLb(){$('ov-lb').classList.add('hidden');}
+
+async function init(){
+  try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  try{
+    const r=await fetch('/api/blackjack/state');
+    if(r.status===401){$('ov-login').classList.remove('hidden');return;}
+    const d=await r.json();
+    setBalance(d.balance);
+    if(d.hand){renderHand(d.hand);uiPhase('play');inHand=true;}
+    else uiPhase('bet');
+  }catch{$('ov-login').classList.remove('hidden');}
+}
+init();
+</script>
+</body>
+</html>

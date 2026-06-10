@@ -18,6 +18,7 @@ const PRACTICAL_CHANNEL_ID = process.env.PRACTICAL_CHANNEL_ID || '';
 const IC_LOG_CHANNEL_ID   = process.env.IC_LOG_CHANNEL_ID   || '';
 const COMMANDS_CHANNEL_ID = process.env.COMMANDS_CHANNEL_ID || '';
 const MOD_LOG_CHANNEL_ID  = process.env.MOD_LOG_CHANNEL_ID  || '1476285851402113182';
+const TOURNAMENT_CHANNEL_ID = process.env.TOURNAMENT_CHANNEL_ID || process.env.EOW_CHANNEL_ID || '';
 const AUTO_ROLE_NAME      = process.env.AUTO_ROLE_NAME       || 'ACLS Member';
 
 const BADGE_LABELS = {
@@ -133,6 +134,27 @@ async function pollNotifications() {
               const ch = await client.channels.fetch(EOW_CHANNEL_ID);
               await ch.send(msg);
             } catch (e) { console.error('[Bot] EoW-Kanal Fehler:', e.message); }
+          }
+        }
+        if (n.type === 'tournament') {
+          const medals = ['🥇', '🥈', '🥉'];
+          const lines = (p.top || []).map(t => `${medals[t.place - 1] || t.place + '.'} **${t.username}** – ${Number(t.score).toLocaleString('de-DE')} Punkte (+${t.prize} 🪙)`).join('\n');
+          if (n.discord_id) {
+            try {
+              const u = await client.users.fetch(n.discord_id);
+              await u.send(`🏆 Glückwunsch! Du hast das **Wochenturnier** (${p.game}, KW ${p.week}) gewonnen!`);
+            } catch (_) {}
+          }
+          if (TOURNAMENT_CHANNEL_ID) {
+            try {
+              const ch = await client.channels.fetch(TOURNAMENT_CHANNEL_ID);
+              const embed = new EmbedBuilder()
+                .setColor(0xfbbf24)
+                .setTitle(`🏆 Wochenturnier beendet – ${p.game}`)
+                .setDescription(lines || 'Keine Teilnehmer')
+                .setFooter({ text: `Woche ${p.week} · Nächstes Turnier startet Montag!` });
+              await ch.send({ embeds: [embed] });
+            } catch (e) { console.error('[Bot] Turnier-Kanal Fehler:', e.message); }
           }
         }
         if (n.type === 'exam') {

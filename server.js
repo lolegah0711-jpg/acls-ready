@@ -61,7 +61,17 @@ const GAME_LIMITS = {
   quiz:         { minSec: 30,  maxScore: 15000   },
   idle:         { minSec: 60,  maxScore: 1e15    },
   rpg:          { minSec: 60,  maxScore: 1e9     },
+  tow:          { minSec: 20,  maxScore: 200000  },
 };
+
+// ── ACLS-Coins: Umrechnung pro Spiel (score / divisor = Coins) ──
+const GAME_COIN_DIV = {
+  race: 2000, brick: 1200, deadzone: 30000, tetris: 20000, snake: 50,
+  skycop: 20000, doodlejump: 15000, '2048': 30000, bookofra: 500000,
+  towerdefense: 800, quiz: 150, idle: 1e12, rpg: 5e6, tow: 60,
+};
+const COINS_MAX_PER_SUBMIT = 60;   // max Coins pro Spielrunde
+const COINS_DAILY_GAME_CAP = 150;  // max Coins pro Spiel pro Tag
 
 function makeGameToken(uid, game, ts) {
   return crypto.createHmac('sha256', GAME_SECRET)
@@ -1997,6 +2007,35 @@ app.post('/api/game-scores/:game', (req, res) => {
   if (limits && score > limits.maxScore)
     return res.status(400).json({ error: 'Score ungültig' });
 
+  // ── ACLS-Coins gutschreiben + Turnier-Score eintragen ──
+  const cDid  = user ? user.discord_id : discordId;
+  const cName = user ? user.username   : (req.session.voterUsername || 'Bürger');
+  let coinsEarned = 0;
+  try {
+    const div = GAME_COIN_DIV[game];
+    if (div) {
+      let coins = Math.min(COINS_MAX_PER_SUBMIT, Math.floor(score / div));
+      if (coins > 0) {
+        const today = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM coin_transactions
+          WHERE discord_id = ? AND reason = ? AND date(created_at) = date('now')`).get(cDid, `game:${game}`).s;
+        coins = Math.min(coins, Math.max(0, COINS_DAILY_GAME_CAP - today));
+        if (coins > 0) { addCoins(cDid, cName, coins, `game:${game}`, { score }); coinsEarned = coins; }
+      }
+    }
+    const t = ensureTournament();
+    if (t && !t.finished && t.game === game) {
+      db.prepare(`
+        INSERT INTO tournament_scores (week, discord_id, username, avatar, score) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(week, discord_id) DO UPDATE SET
+          score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+          username   = excluded.username,
+          avatar     = COALESCE(excluded.avatar, avatar),
+          updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END
+      `).run(t.week, cDid, cName, user?.avatar || null, score);
+      sseEmit('tournament', { week: t.week });
+    }
+  } catch (e) { console.error('[Coins]', e.message); }
+
   if (user) {
     db.prepare(`
       INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
@@ -2004,7 +2043,7 @@ app.post('/api/game-scores/:game', (req, res) => {
         score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
         updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END
     `).run(user.id, game, score);
-    return res.json({ ok: true });
+    return res.json({ ok: true, coinsEarned });
   }
   const username = req.session.voterUsername || 'Bürger';
   db.prepare(`
@@ -2014,7 +2053,7 @@ app.post('/api/game-scores/:game', (req, res) => {
       updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END,
       username   = excluded.username
   `).run(discordId, username, game, score);
-  res.json({ ok: true });
+  res.json({ ok: true, coinsEarned });
 });
 
 // ── Idle Clicker Save ────────────────────────────────────────────
@@ -2144,6 +2183,8 @@ app.get('/game10', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ga
 app.get('/game11', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game11.html')));
 app.get('/game12', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game12.html')));
 app.get('/game13', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game13.html')));
+app.get('/game14', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game14.html')));
+app.get('/game15', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game15.html')));
 app.get('/quiz', (req, res) => {
   const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
   const fs = require('fs');
@@ -2358,6 +2399,512 @@ app.put('/api/faq/:id', requireAdmin, (req, res) => {
 app.delete('/api/faq/:id', requireAdmin, (req, res) => {
   db.prepare('DELETE FROM faq_items WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  ACLS-COINS — globale Spielwährung
+// ════════════════════════════════════════════════════════════════
+// Identität für Coins: Mitarbeiter (users) ODER Bürger (voter session)
+function coinIdent(req) {
+  const u = getUser(req);
+  if (u) return { id: u.discord_id, name: u.username, user: u };
+  if (req.session?.voterDiscordId)
+    return { id: req.session.voterDiscordId, name: req.session.voterUsername || 'Bürger', user: null };
+  return null;
+}
+
+// Coins gutschreiben/abziehen. Gibt neuen Kontostand zurück, null wenn nicht gedeckt.
+function addCoins(discordId, username, amount, reason, meta) {
+  amount = Math.round(amount);
+  if (!amount) return db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(discordId)?.balance ?? 0;
+  const cur = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(discordId)?.balance ?? 0;
+  if (amount < 0 && cur + amount < 0) return null;
+  db.prepare(`
+    INSERT INTO coin_balances (discord_id, username, balance, total_earned, updated_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(discord_id) DO UPDATE SET
+      balance      = balance + excluded.balance,
+      total_earned = total_earned + excluded.total_earned,
+      username     = COALESCE(excluded.username, username),
+      updated_at   = CURRENT_TIMESTAMP
+  `).run(discordId, username || null, amount, amount > 0 ? amount : 0);
+  db.prepare('INSERT INTO coin_transactions (discord_id, amount, reason, meta) VALUES (?, ?, ?, ?)')
+    .run(discordId, amount, reason, meta ? JSON.stringify(meta) : null);
+  const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(discordId).balance;
+  sseEmit('coins', { discord_id: discordId, balance: bal });
+  return bal;
+}
+
+// Berliner Datum als YYYY-MM-DD (für Daily-Bonus)
+function berlinDateStr() {
+  const { y, m, d } = _berlinParts();
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+const SHOP_ITEMS = [
+  { id: 'title_rennfahrer', type: 'title', name: '🏎️ Rennfahrer',      price: 250,  desc: 'Titel unter deinem Namen' },
+  { id: 'title_blitz',      type: 'title', name: '⚡ Blitzschnell',     price: 250,  desc: 'Titel unter deinem Namen' },
+  { id: 'title_schrauber',  type: 'title', name: '🔧 Meisterschrauber', price: 350,  desc: 'Titel unter deinem Namen' },
+  { id: 'title_casino',     type: 'title', name: '🎰 Casino-Hai',       price: 400,  desc: 'Titel unter deinem Namen' },
+  { id: 'title_abschlepp',  type: 'title', name: '🚛 Abschleppkönig',   price: 500,  desc: 'Titel unter deinem Namen' },
+  { id: 'title_champion',   type: 'title', name: '🏆 Turnier-Champion', price: 800,  desc: 'Titel unter deinem Namen' },
+  { id: 'title_legende',    type: 'title', name: '👑 ACLS-Legende',     price: 1500, desc: 'Der teuerste Titel' },
+  { id: 'frame_gold',       type: 'frame', name: 'Gold-Rahmen',         price: 500,  desc: 'Goldener Avatar-Glow', color: '#ffd700' },
+  { id: 'frame_neon',       type: 'frame', name: 'Neon-Rahmen',         price: 500,  desc: 'Cyan Avatar-Glow',     color: '#00f5ff' },
+  { id: 'frame_feuer',      type: 'frame', name: 'Feuer-Rahmen',        price: 500,  desc: 'Oranger Avatar-Glow',  color: '#f97316' },
+  { id: 'frame_lila',       type: 'frame', name: 'Twilight-Rahmen',     price: 500,  desc: 'Lila Avatar-Glow',     color: '#a855f7' },
+  { id: 'frame_regenbogen', type: 'frame', name: 'Regenbogen-Rahmen',   price: 1200, desc: 'Animierter Regenbogen-Glow', color: 'rainbow' },
+];
+
+app.get('/api/coins/me', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const row = db.prepare('SELECT * FROM coin_balances WHERE discord_id = ?').get(ident.id);
+  const tx  = db.prepare('SELECT amount, reason, created_at FROM coin_transactions WHERE discord_id = ? ORDER BY id DESC LIMIT 15').all(ident.id);
+  res.json({
+    balance:        row?.balance ?? 0,
+    totalEarned:    row?.total_earned ?? 0,
+    equippedTitle:  row?.equipped_title || null,
+    equippedFrame:  row?.equipped_frame || null,
+    dailyAvailable: (row?.last_daily || '') !== berlinDateStr(),
+    transactions:   tx,
+  });
+});
+
+app.post('/api/coins/daily', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const today = berlinDateStr();
+  const row = db.prepare('SELECT last_daily FROM coin_balances WHERE discord_id = ?').get(ident.id);
+  if (row?.last_daily === today) return res.status(400).json({ error: 'Tagesbonus heute schon abgeholt' });
+  const bal = addCoins(ident.id, ident.name, 25, 'daily');
+  db.prepare('UPDATE coin_balances SET last_daily = ? WHERE discord_id = ?').run(today, ident.id);
+  res.json({ ok: true, balance: bal, amount: 25 });
+});
+
+app.get('/api/coins/leaderboard', (req, res) => {
+  const rows = db.prepare('SELECT discord_id, username, balance, total_earned FROM coin_balances ORDER BY total_earned DESC LIMIT 10').all();
+  res.json(rows);
+});
+
+app.get('/api/shop', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const owned = new Set(db.prepare('SELECT item_id FROM shop_purchases WHERE discord_id = ?').all(ident.id).map(r => r.item_id));
+  const row   = db.prepare('SELECT * FROM coin_balances WHERE discord_id = ?').get(ident.id);
+  res.json({
+    balance: row?.balance ?? 0,
+    items: SHOP_ITEMS.map(it => ({
+      ...it,
+      owned:    owned.has(it.id),
+      equipped: row?.equipped_title === it.id || row?.equipped_frame === it.id,
+    })),
+  });
+});
+
+app.post('/api/shop/buy', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const item = SHOP_ITEMS.find(i => i.id === req.body.itemId);
+  if (!item) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+  const owned = db.prepare('SELECT 1 FROM shop_purchases WHERE discord_id = ? AND item_id = ?').get(ident.id, item.id);
+  if (owned) return res.status(400).json({ error: 'Bereits gekauft' });
+  const bal = addCoins(ident.id, ident.name, -item.price, 'shop:buy', { item: item.id });
+  if (bal === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+  db.prepare('INSERT INTO shop_purchases (discord_id, item_id, price) VALUES (?, ?, ?)').run(ident.id, item.id, item.price);
+  // Direkt ausrüsten
+  const col = item.type === 'title' ? 'equipped_title' : 'equipped_frame';
+  db.prepare(`UPDATE coin_balances SET ${col} = ? WHERE discord_id = ?`).run(item.id, ident.id);
+  auditLog(req, 'shop_buy', `${item.name} für ${item.price} Coins`);
+  res.json({ ok: true, balance: bal });
+});
+
+app.post('/api/shop/equip', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const { itemId, slot } = req.body;
+  if (itemId) {
+    const item = SHOP_ITEMS.find(i => i.id === itemId);
+    if (!item) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+    const owned = db.prepare('SELECT 1 FROM shop_purchases WHERE discord_id = ? AND item_id = ?').get(ident.id, itemId);
+    if (!owned) return res.status(403).json({ error: 'Nicht gekauft' });
+    const col = item.type === 'title' ? 'equipped_title' : 'equipped_frame';
+    db.prepare(`INSERT INTO coin_balances (discord_id, username) VALUES (?, ?) ON CONFLICT(discord_id) DO NOTHING`).run(ident.id, ident.name);
+    db.prepare(`UPDATE coin_balances SET ${col} = ? WHERE discord_id = ?`).run(itemId, ident.id);
+  } else {
+    const col = slot === 'title' ? 'equipped_title' : 'equipped_frame';
+    db.prepare(`UPDATE coin_balances SET ${col} = NULL WHERE discord_id = ?`).run(ident.id);
+  }
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  WOCHENTURNIER — jede Woche ein anderes Spiel
+// ════════════════════════════════════════════════════════════════
+const TOURNAMENT_GAMES = {
+  race:         { name: 'Autorennen',          url: '/game'   },
+  brick:        { name: 'Brick Breaker',       url: '/game2'  },
+  snake:        { name: 'Snake',               url: '/game4'  },
+  tetris:       { name: 'Tetris',              url: '/game5'  },
+  skycop:       { name: 'Sky Cop',             url: '/game7'  },
+  doodlejump:   { name: 'Doodle Jump',         url: '/game8'  },
+  towerdefense: { name: 'Tower Defense',       url: '/game9'  },
+  '2048':       { name: '2048',                url: '/game10' },
+  quiz:         { name: 'Quiz Survival',       url: '/game11' },
+  tow:          { name: 'Abschlepp-Simulator', url: '/game14' },
+};
+const TOURNAMENT_PRIZES = [500, 250, 100];
+
+function ensureTournament() {
+  const wk = weekKey();
+  let t = db.prepare('SELECT * FROM tournaments WHERE week = ?').get(wk);
+  if (t) return t;
+  const keys = Object.keys(TOURNAMENT_GAMES);
+  // deterministische Rotation über die Wochennummer, nie 2× dasselbe nacheinander
+  const weekNum = Math.floor(new Date(wk + 'T12:00:00Z').getTime() / (7 * 86400000));
+  let game = keys[weekNum % keys.length];
+  const prev = db.prepare('SELECT game FROM tournaments ORDER BY week DESC LIMIT 1').get();
+  if (prev && prev.game === game) game = keys[(weekNum + 1) % keys.length];
+  db.prepare('INSERT OR IGNORE INTO tournaments (week, game) VALUES (?, ?)').run(wk, game);
+  return db.prepare('SELECT * FROM tournaments WHERE week = ?').get(wk);
+}
+
+app.get('/api/tournament', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const t = ensureTournament();
+  const info = TOURNAMENT_GAMES[t.game] || { name: t.game, url: '/' };
+  const board = db.prepare('SELECT discord_id, username, avatar, score, updated_at FROM tournament_scores WHERE week = ? ORDER BY score DESC LIMIT 15').all(t.week);
+  const mine  = db.prepare('SELECT score FROM tournament_scores WHERE week = ? AND discord_id = ?').get(t.week, ident.id);
+  const last  = db.prepare('SELECT * FROM tournaments WHERE finished = 1 ORDER BY week DESC LIMIT 1').get();
+  res.json({
+    week: t.week, game: t.game, gameName: info.name, gameUrl: info.url,
+    finished: !!t.finished, prizes: TOURNAMENT_PRIZES,
+    leaderboard: board, myScore: mine?.score ?? null,
+    lastWinner: last ? { week: last.week, game: TOURNAMENT_GAMES[last.game]?.name || last.game, username: last.winner_username, score: last.winner_score } : null,
+  });
+});
+
+function finalizeTournament() {
+  const wk = weekKey();
+  const t = db.prepare('SELECT * FROM tournaments WHERE week = ? AND finished = 0').get(wk);
+  if (!t) return;
+  const top = db.prepare('SELECT * FROM tournament_scores WHERE week = ? ORDER BY score DESC LIMIT 3').all(wk);
+  top.forEach((r, i) => addCoins(r.discord_id, r.username, TOURNAMENT_PRIZES[i], 'tournament:prize', { week: wk, place: i + 1 }));
+  const w = top[0] || null;
+  db.prepare('UPDATE tournaments SET finished = 1, winner_discord_id = ?, winner_username = ?, winner_score = ? WHERE week = ?')
+    .run(w?.discord_id || null, w?.username || null, w?.score ?? null, wk);
+  if (w) queueNotification('tournament', w.discord_id, {
+    week: wk,
+    game: TOURNAMENT_GAMES[t.game]?.name || t.game,
+    top:  top.map((r, i) => ({ place: i + 1, username: r.username, score: r.score, prize: TOURNAMENT_PRIZES[i] })),
+  });
+  sseEmit('tournament', { week: wk, finished: true });
+  console.log(`[Turnier] ${wk} (${t.game}) ausgewertet — Sieger: ${w?.username || 'niemand'}`);
+}
+
+// Sonntag 20:00 Berliner Zeit — Wochenturnier auswerten
+cron.schedule('0 20 * * 0', finalizeTournament, { timezone: 'Europe/Berlin' });
+
+// ════════════════════════════════════════════════════════════════
+//  QUIZ-DUELL — 1v1 live (nur Mitarbeiter)
+// ════════════════════════════════════════════════════════════════
+const DUEL_QUESTIONS  = 8;
+const DUEL_TIME_MS    = 15000;
+const DUEL_COINS_WIN  = 150, DUEL_COINS_LOSS = 25, DUEL_COINS_DRAW = 75;
+
+function duelByCode(code) {
+  return db.prepare('SELECT * FROM quiz_duels WHERE code = ?').get(String(code || '').toUpperCase());
+}
+function duelUserInfo(id) {
+  if (!id) return null;
+  const u = db.prepare('SELECT id, username, avatar, discord_id FROM users WHERE id = ?').get(id);
+  return u ? { id: u.id, username: u.username, avatar: u.avatar, discord_id: u.discord_id } : null;
+}
+function myActiveDuel(userId) {
+  return db.prepare(`SELECT * FROM quiz_duels WHERE (host_id = ? OR guest_id = ?) AND status IN ('waiting','active') ORDER BY id DESC LIMIT 1`).get(userId, userId);
+}
+
+function finishDuel(d) {
+  const winnerId = d.host_score > d.guest_score ? d.host_id : d.guest_score > d.host_score ? d.guest_id : null;
+  db.prepare(`UPDATE quiz_duels SET status = 'done', winner_id = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`).run(winnerId, d.id);
+  const host  = duelUserInfo(d.host_id);
+  const guest = duelUserInfo(d.guest_id);
+  if (host && guest) {
+    if (!winnerId) {
+      addCoins(host.discord_id,  host.username,  DUEL_COINS_DRAW, 'duel:draw', { code: d.code });
+      addCoins(guest.discord_id, guest.username, DUEL_COINS_DRAW, 'duel:draw', { code: d.code });
+    } else {
+      const w = winnerId === d.host_id ? host : guest;
+      const l = winnerId === d.host_id ? guest : host;
+      addCoins(w.discord_id, w.username, DUEL_COINS_WIN,  'duel:win',  { code: d.code });
+      addCoins(l.discord_id, l.username, DUEL_COINS_LOSS, 'duel:loss', { code: d.code });
+    }
+  }
+  sseEmit('duel', { code: d.code, action: 'done' });
+}
+
+// Lobby: offene Duelle + mein laufendes Duell
+app.get('/api/duels', requireAuth, (req, res) => {
+  const me = getUser(req);
+  const open = db.prepare(`
+    SELECT d.code, d.created_at, u.username, u.avatar, u.discord_id
+    FROM quiz_duels d JOIN users u ON u.id = d.host_id
+    WHERE d.status = 'waiting' ORDER BY d.id DESC LIMIT 20
+  `).all();
+  const mine = myActiveDuel(me.id);
+  const stats = db.prepare(`
+    SELECT
+      SUM(CASE WHEN winner_id = ? THEN 1 ELSE 0 END) AS wins,
+      SUM(CASE WHEN winner_id IS NOT NULL AND winner_id != ? AND (host_id = ? OR guest_id = ?) THEN 1 ELSE 0 END) AS losses
+    FROM quiz_duels WHERE status = 'done' AND (host_id = ? OR guest_id = ?)
+  `).get(me.id, me.id, me.id, me.id, me.id, me.id);
+  res.json({ open, myDuel: mine ? { code: mine.code, status: mine.status } : null, stats: { wins: stats?.wins || 0, losses: stats?.losses || 0 } });
+});
+
+app.post('/api/duels', requireAuth, (req, res) => {
+  const me = getUser(req);
+  const existing = myActiveDuel(me.id);
+  if (existing) return res.json({ ok: true, code: existing.code });
+  const qs = db.prepare(`SELECT id FROM exam_questions WHERE is_active = 1 ORDER BY RANDOM() LIMIT ?`).all(DUEL_QUESTIONS);
+  if (qs.length < DUEL_QUESTIONS) return res.status(400).json({ error: 'Zu wenige Fragen in der Datenbank' });
+  const code = crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 5);
+  db.prepare('INSERT INTO quiz_duels (code, host_id, question_ids) VALUES (?, ?, ?)')
+    .run(code, me.id, JSON.stringify(qs.map(q => q.id)));
+  sseEmit('duel', { code, action: 'open' });
+  res.json({ ok: true, code });
+});
+
+app.post('/api/duels/:code/cancel', requireAuth, (req, res) => {
+  const me = getUser(req);
+  const d = duelByCode(req.params.code);
+  if (!d || d.host_id !== me.id || d.status !== 'waiting') return res.status(400).json({ error: 'Nicht möglich' });
+  db.prepare('DELETE FROM quiz_duels WHERE id = ?').run(d.id);
+  sseEmit('duel', { code: d.code, action: 'open' });
+  res.json({ ok: true });
+});
+
+app.post('/api/duels/:code/join', requireAuth, (req, res) => {
+  const me = getUser(req);
+  const d = duelByCode(req.params.code);
+  if (!d) return res.status(404).json({ error: 'Duell nicht gefunden' });
+  if (d.status !== 'waiting') return res.status(400).json({ error: 'Duell läuft bereits' });
+  if (d.host_id === me.id) return res.status(400).json({ error: 'Du kannst nicht gegen dich selbst spielen' });
+  if (myActiveDuel(me.id)) return res.status(400).json({ error: 'Du bist bereits in einem Duell' });
+  db.prepare(`UPDATE quiz_duels SET guest_id = ?, status = 'active', started_at = CURRENT_TIMESTAMP WHERE id = ?`).run(me.id, d.id);
+  sseEmit('duel', { code: d.code, action: 'start' });
+  res.json({ ok: true, code: d.code });
+});
+
+app.get('/api/duels/:code/state', requireAuth, (req, res) => {
+  const me = getUser(req);
+  let d = duelByCode(req.params.code);
+  if (!d) return res.status(404).json({ error: 'Duell nicht gefunden' });
+  if (d.host_id !== me.id && d.guest_id !== me.id && d.status !== 'done') {
+    if (d.status !== 'waiting') return res.status(403).json({ error: 'Kein Zugriff' });
+  }
+  // Auto-Timeout: aktives Duell älter als 6 Minuten wird ausgewertet
+  if (d.status === 'active' && d.started_at) {
+    const ageMs = Date.now() - new Date(d.started_at.replace(' ', 'T') + 'Z').getTime();
+    if (ageMs > 6 * 60 * 1000) { finishDuel(d); d = duelByCode(req.params.code); }
+  }
+  const isHost  = d.host_id === me.id;
+  const myAns   = JSON.parse(isHost ? d.host_answers : d.guest_answers);
+  const oppAns  = JSON.parse(isHost ? d.guest_answers : d.host_answers);
+  const qIds    = JSON.parse(d.question_ids);
+  let question  = null;
+  if (d.status === 'active' && myAns.length < qIds.length) {
+    const q = db.prepare('SELECT id, question, option_a, option_b, option_c, option_d FROM exam_questions WHERE id = ?').get(qIds[myAns.length]);
+    if (q) question = {
+      idx: myAns.length,
+      question: q.question,
+      options: [q.option_a, q.option_b, q.option_c, q.option_d].filter(o => o && o.trim() !== ''),
+    };
+  }
+  res.json({
+    code: d.code, status: d.status, isHost,
+    host: duelUserInfo(d.host_id), guest: duelUserInfo(d.guest_id),
+    total: qIds.length,
+    myIdx: myAns.length, oppIdx: oppAns.length,
+    myScore:  isHost ? d.host_score : d.guest_score,
+    oppScore: isHost ? d.guest_score : d.host_score,
+    myAnswers: myAns,
+    question,
+    timeMs: DUEL_TIME_MS,
+    winnerId: d.winner_id,
+    coins: { win: DUEL_COINS_WIN, loss: DUEL_COINS_LOSS, draw: DUEL_COINS_DRAW },
+  });
+});
+
+app.post('/api/duels/:code/answer', requireAuth, (req, res) => {
+  const me = getUser(req);
+  const d = duelByCode(req.params.code);
+  if (!d || d.status !== 'active') return res.status(400).json({ error: 'Duell nicht aktiv' });
+  if (d.host_id !== me.id && d.guest_id !== me.id) return res.status(403).json({ error: 'Kein Zugriff' });
+  const isHost = d.host_id === me.id;
+  const ansCol = isHost ? 'host_answers' : 'guest_answers';
+  const scCol  = isHost ? 'host_score'   : 'guest_score';
+  const myAns  = JSON.parse(isHost ? d.host_answers : d.guest_answers);
+  const qIds   = JSON.parse(d.question_ids);
+  if (myAns.length >= qIds.length) return res.status(400).json({ error: 'Schon alle beantwortet' });
+
+  const q = db.prepare('SELECT * FROM exam_questions WHERE id = ?').get(qIds[myAns.length]);
+  const answer = Number.isInteger(req.body.answer) ? req.body.answer : -1; // -1 = Zeit abgelaufen
+  const ms = Math.max(0, Math.min(DUEL_TIME_MS, +req.body.ms || DUEL_TIME_MS));
+  const correct = q && answer === q.correct_answer;
+  const points = correct ? 100 + Math.round(50 * (DUEL_TIME_MS - ms) / DUEL_TIME_MS) : 0;
+
+  myAns.push({ a: answer, correct: !!correct, pts: points });
+  db.prepare(`UPDATE quiz_duels SET ${ansCol} = ?, ${scCol} = ${scCol} + ? WHERE id = ?`).run(JSON.stringify(myAns), points, d.id);
+
+  const updated = duelByCode(d.code);
+  const hostDone  = JSON.parse(updated.host_answers).length  >= qIds.length;
+  const guestDone = JSON.parse(updated.guest_answers).length >= qIds.length;
+  if (hostDone && guestDone) finishDuel(updated);
+  else sseEmit('duel', { code: d.code, action: 'progress' });
+
+  res.json({ ok: true, correct: !!correct, points, correctAnswer: q?.correct_answer });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  BLACKJACK — serverseitig, Einsatz in ACLS-Coins
+// ════════════════════════════════════════════════════════════════
+const bjGames = new Map(); // discordId -> aktive Hand
+
+function bjShuffledDeck() {
+  const suits = ['♠', '♥', '♦', '♣'];
+  const ranks = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+  const deck = [];
+  for (const s of suits) for (const r of ranks) deck.push({ r, s });
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  return deck;
+}
+function bjValue(cards) {
+  let total = 0, aces = 0;
+  for (const c of cards) {
+    if (c.r === 'A') { total += 11; aces++; }
+    else if (['J','Q','K'].includes(c.r)) total += 10;
+    else total += +c.r;
+  }
+  while (total > 21 && aces > 0) { total -= 10; aces--; }
+  return total;
+}
+function bjPublic(g, done) {
+  return {
+    bet: g.bet, doubled: g.doubled,
+    player: g.player, playerVal: bjValue(g.player),
+    dealer: done ? g.dealer : [g.dealer[0], { r: '?', s: '?' }],
+    dealerVal: done ? bjValue(g.dealer) : null,
+    done: !!done,
+  };
+}
+// Dealer zieht bis 17, dann auswerten. Gibt {result, payout} zurück.
+function bjResolve(g, ident) {
+  if (bjValue(g.player) <= 21) {
+    while (bjValue(g.dealer) < 17) g.dealer.push(g.deck.pop());
+  }
+  const pv = bjValue(g.player), dv = bjValue(g.dealer);
+  let payout = 0, result;
+  if (pv > 21)                  result = 'bust';
+  else if (dv > 21 || pv > dv)  { result = 'win';  payout = g.bet * 2; }
+  else if (pv === dv)           { result = 'push'; payout = g.bet; }
+  else                          result = 'loss';
+  if (g.natural && result === 'win') payout = Math.floor(g.bet * 2.5);
+  if (payout > 0) addCoins(ident.id, ident.name, payout, 'blackjack:' + result, { bet: g.bet });
+  bjGames.delete(ident.id);
+  // Größter Netto-Gewinn als Highscore
+  const net = payout - g.bet;
+  if (net > 0) {
+    if (ident.user) {
+      db.prepare(`INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, 'blackjack', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, game) DO UPDATE SET
+          score = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+          updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END
+      `).run(ident.user.id, net);
+    } else {
+      db.prepare(`INSERT INTO visitor_game_scores (discord_id, username, game, score, updated_at) VALUES (?, ?, 'blackjack', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(discord_id, game) DO UPDATE SET
+          score = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+          updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END,
+          username = excluded.username
+      `).run(ident.id, ident.name, net);
+    }
+  }
+  return { result, payout };
+}
+
+app.get('/api/blackjack/state', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+  const g = bjGames.get(ident.id);
+  res.json({ balance: bal, hand: g ? bjPublic(g, false) : null, username: ident.name });
+});
+
+app.post('/api/blackjack/start', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`bj:${ident.id}`, 30, 60_000)) return res.status(429).json({ error: 'Zu schnell' });
+  if (bjGames.has(ident.id)) return res.status(400).json({ error: 'Hand läuft bereits' });
+  const bet = Math.floor(+req.body.bet || 0);
+  if (bet < 10 || bet > 1000) return res.status(400).json({ error: 'Einsatz: 10 bis 1000 Coins' });
+  const bal = addCoins(ident.id, ident.name, -bet, 'blackjack:bet');
+  if (bal === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+
+  const deck = bjShuffledDeck();
+  const g = { deck, bet, doubled: false, player: [deck.pop(), deck.pop()], dealer: [deck.pop(), deck.pop()], natural: false };
+  bjGames.set(ident.id, g);
+
+  // Natural Blackjack → sofort auswerten
+  if (bjValue(g.player) === 21) {
+    g.natural = true;
+    const { result, payout } = bjResolve(g, ident);
+    const newBal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+    return res.json({ hand: bjPublic(g, true), result, payout, balance: newBal });
+  }
+  res.json({ hand: bjPublic(g, false), balance: bal });
+});
+
+app.post('/api/blackjack/hit', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const g = bjGames.get(ident.id);
+  if (!g) return res.status(400).json({ error: 'Keine aktive Hand' });
+  g.player.push(g.deck.pop());
+  if (bjValue(g.player) > 21) {
+    const { result, payout } = bjResolve(g, ident);
+    const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+    return res.json({ hand: bjPublic(g, true), result, payout, balance: bal });
+  }
+  res.json({ hand: bjPublic(g, false) });
+});
+
+app.post('/api/blackjack/double', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const g = bjGames.get(ident.id);
+  if (!g) return res.status(400).json({ error: 'Keine aktive Hand' });
+  if (g.player.length !== 2) return res.status(400).json({ error: 'Verdoppeln nur als erster Zug' });
+  const extra = addCoins(ident.id, ident.name, -g.bet, 'blackjack:double');
+  if (extra === null) return res.status(400).json({ error: 'Nicht genug Coins zum Verdoppeln' });
+  g.bet *= 2; g.doubled = true;
+  g.player.push(g.deck.pop());
+  const { result, payout } = bjResolve(g, ident);
+  const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+  res.json({ hand: bjPublic(g, true), result, payout, balance: bal });
+});
+
+app.post('/api/blackjack/stand', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const g = bjGames.get(ident.id);
+  if (!g) return res.status(400).json({ error: 'Keine aktive Hand' });
+  const { result, payout } = bjResolve(g, ident);
+  const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+  res.json({ hand: bjPublic(g, true), result, payout, balance: bal });
 });
 
 app.get('/profil/:id', (req, res) => {

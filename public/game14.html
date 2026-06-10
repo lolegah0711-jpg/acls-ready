@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Abschlepp-Simulator – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#0a0a0a;font-family:'Inter',sans-serif;color:#fff;overflow:hidden;display:flex;align-items:center;justify-content:center;height:100vh;}
+    canvas{display:block;}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.88);z-index:100;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#0c0c0c;border:1px solid #1e1e1e;border-radius:18px;padding:36px 42px;max-width:420px;width:92%;text-align:center;}
+    .ov-card h2{font-size:26px;font-weight:800;margin-bottom:6px;}
+    .sub{color:#6b7280;font-size:14px;margin-bottom:20px;line-height:1.6;}
+    .btn{display:inline-block;padding:11px 26px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;border:none;font-family:inherit;transition:opacity .15s;}
+    .btn:hover{opacity:.85;}
+    .btn-orange{background:#f97316;color:#fff;}
+    .btn-gray{background:#1f2937;color:#d1d5db;border:1px solid #374151;}
+    .lb-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #141414;font-size:13px;}
+    .lb-rank{width:24px;text-align:center;font-weight:700;}
+    .lb-av{width:26px;height:26px;border-radius:50%;background:#1f2937;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;overflow:hidden;flex-shrink:0;}
+    .lb-av img{width:100%;height:100%;object-fit:cover;}
+    .lb-name{flex:1;font-weight:600;}.lb-score{font-weight:700;color:#fb923c;}
+    .key{display:inline-block;background:#1f2937;border:1px solid #374151;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;}
+  </style>
+</head>
+<body>
+<a href="/" onclick="window.close()" style="position:fixed;top:10px;left:10px;z-index:999;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;font-family:Inter,sans-serif;backdrop-filter:blur(4px)">← Portal</a>
+<canvas id="c"></canvas>
+
+<div class="ov" id="ov-start">
+  <div class="ov-card">
+    <div style="font-size:48px;margin-bottom:8px">🚛</div>
+    <h2 style="color:#fb923c">ABSCHLEPP-SIMULATOR</h2>
+    <p class="sub">
+      Fahre mit <span class="key">W A S D</span> oder Pfeiltasten durch Los Santos.<br>
+      Setze <b>rückwärts</b> an liegengebliebene Fahrzeuge ran, um sie anzuhängen.<br>
+      Bring sie zum <b style="color:#fb923c">ACLS-Hof</b>, bevor die Zeit abläuft!<br>
+      Jede Lieferung gibt Punkte + Extra-Zeit. Crashs kosten Zeit!
+    </p>
+    <button class="btn btn-orange" onclick="startGame()" style="font-size:15px;padding:13px 32px">▶ SCHICHT STARTEN</button>
+    <br><br>
+    <button class="btn btn-gray" onclick="openLb()">🏆 Rangliste</button>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-end">
+  <div class="ov-card">
+    <div style="font-size:40px;margin-bottom:8px">🏁</div>
+    <h2 style="color:#fb923c">SCHICHT VORBEI</h2>
+    <p class="sub" id="end-stats"></p>
+    <div id="end-coins" style="display:none;margin:-8px 0 18px;color:#fbbf24;font-weight:700;font-size:14px"></div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn btn-orange" onclick="startGame()">Nochmal</button>
+      <button class="btn btn-gray" onclick="openLb()">🏆 Rangliste</button>
+    </div>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-lb">
+  <div class="ov-card">
+    <h2 style="margin-bottom:4px">🏆 Rangliste</h2>
+    <p class="sub">Abschlepp-Simulator – Höchster Score</p>
+    <div id="lb-list" style="text-align:left;max-height:280px;overflow-y:auto"></div>
+    <button class="btn btn-gray" onclick="closeLb()" style="margin-top:16px">Schließen</button>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const W=1600,H=1000;             // virtuelle Weltgröße
+let SCALE=1,VX=0,VY=0;           // Skalierung + Offset auf den Bildschirm
+let currentUser=null;
+
+function resize(){
+  canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+  SCALE=Math.min(canvas.width/W,canvas.height/H)*0.98;
+  VX=(canvas.width-W*SCALE)/2;VY=(canvas.height-H*SCALE)/2;
+}
+window.addEventListener('resize',resize);resize();
+
+// ── Stadt-Layout ────────────────────────────────────────────────
+const HROADS=[140,500,860];        // y-Zentren horizontale Straßen
+const VROADS=[160,560,960,1400];   // x-Zentren vertikale Straßen
+const RW=46;                       // halbe Straßenbreite
+const DEPOT={x1:225,y1:200,x2:495,y2:440}; // ACLS-Hof (Block oben links)
+
+// Gebäudeblöcke zwischen den Straßen berechnen
+const buildings=[];
+{
+  const xs=[-40,...VROADS,W+40], ys=[-40,...HROADS,H+40];
+  for(let i=0;i<xs.length-1;i++)for(let j=0;j<ys.length-1;j++){
+    const x1=(i===0?0:xs[i]+RW+14), x2=(i===xs.length-2?W:xs[i+1]-RW-14);
+    const y1=(j===0?0:ys[j]+RW+14), y2=(j===ys.length-2?H:ys[j+1]-RW-14);
+    if(x2-x1<40||y2-y1<40)continue;
+    // Depot-Block freilassen
+    if(x1<DEPOT.x2&&x2>DEPOT.x1&&y1<DEPOT.y2&&y2>DEPOT.y1)continue;
+    buildings.push({x1,y1,x2,y2,hue:Math.random()});
+  }
+}
+
+function onRoad(x,y){
+  if(x<14||x>W-14||y<14||y>H-14)return false;
+  for(const ry of HROADS)if(Math.abs(y-ry)<RW)return true;
+  for(const rx of VROADS)if(Math.abs(x-rx)<RW)return true;
+  if(x>DEPOT.x1&&x<DEPOT.x2&&y>DEPOT.y1&&y<DEPOT.y2)return true;
+  return false;
+}
+function hitsBuilding(x,y,r){
+  if(x<r||x>W-r||y<r||y>H-r)return true;
+  for(const b of buildings)
+    if(x>b.x1-r&&x<b.x2+r&&y>b.y1-r&&y<b.y2+r)return true;
+  return false;
+}
+function randRoadPoint(minDist,fx,fy){
+  for(let t=0;t<400;t++){
+    let x,y;
+    if(Math.random()<0.5){const ry=HROADS[Math.floor(Math.random()*HROADS.length)];x=60+Math.random()*(W-120);y=ry+(Math.random()*2-1)*(RW-18);}
+    else{const rx=VROADS[Math.floor(Math.random()*VROADS.length)];y=60+Math.random()*(H-120);x=rx+(Math.random()*2-1)*(RW-18);}
+    if(!onRoad(x,y))continue;
+    if(x>DEPOT.x1-60&&x<DEPOT.x2+60&&y>DEPOT.y1-60&&y<DEPOT.y2+60)continue;
+    if(minDist&&Math.hypot(x-fx,y-fy)<minDist)continue;
+    return{x,y};
+  }
+  return{x:VROADS[2],y:HROADS[2]};
+}
+
+// ── Spielzustand ────────────────────────────────────────────────
+let truck,wreck,towed,traffic,particles,score,deliveries,timeLeft,hookT,crashedSinceHook,shake,gameState='idle',lastT=0,msgT=0,msg='';
+const keys={};
+window.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase()))e.preventDefault();});
+window.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+
+function initGame(){
+  truck={x:(DEPOT.x1+DEPOT.x2)/2,y:(DEPOT.y1+DEPOT.y2)/2,a:Math.PI/2,v:0,invuln:0};
+  towed=null;hookT=0;crashedSinceHook=false;
+  score=0;deliveries=0;timeLeft=90;shake=0;particles=[];
+  spawnWreck();
+  traffic=[];
+  for(let i=0;i<4;i++)spawnTraffic();
+}
+function spawnWreck(){
+  const p=randRoadPoint(420,truck.x,truck.y);
+  wreck={x:p.x,y:p.y,a:Math.random()*Math.PI*2,hue:[0,'#9ca3af','#60a5fa','#f87171','#facc15','#4ade80'][1+Math.floor(Math.random()*5)]};
+}
+function spawnTraffic(){
+  const horiz=Math.random()<0.5;
+  const lane=horiz?HROADS[Math.floor(Math.random()*HROADS.length)]:VROADS[Math.floor(Math.random()*VROADS.length)];
+  const dirn=Math.random()<0.5?1:-1;
+  traffic.push({
+    x:horiz?Math.random()*W:lane+dirn*20,
+    y:horiz?lane+dirn*20:Math.random()*H,
+    horiz,dir:dirn,sp:60+Math.random()*50,
+    col:['#64748b','#475569','#7c3aed','#0ea5e9','#dc2626'][Math.floor(Math.random()*5)],
+  });
+}
+
+function showMsg(t,sec){msg=t;msgT=sec;}
+
+// ── Update ──────────────────────────────────────────────────────
+function update(dt){
+  timeLeft-=dt;
+  if(timeLeft<=0){endGame();return;}
+  if(msgT>0)msgT-=dt;
+  if(truck.invuln>0)truck.invuln-=dt;
+  if(shake>0)shake-=dt*40;
+
+  // Steuerung (Auto-Physik)
+  const up=keys['w']||keys['arrowup'],down=keys['s']||keys['arrowdown'];
+  const left=keys['a']||keys['arrowleft'],right=keys['d']||keys['arrowright'];
+  const towing=!!towed;
+  const vmax=towing?170:250,acc=towing?180:300;
+  if(up)truck.v+=acc*dt;
+  if(down)truck.v-=acc*dt*(truck.v>0?1.6:0.7);
+  truck.v*=Math.pow(0.55,dt); // Rollwiderstand
+  truck.v=Math.max(-110,Math.min(vmax,truck.v));
+  const steer=(right?1:0)-(left?1:0);
+  truck.a+=steer*Math.min(1,Math.abs(truck.v)/80)*2.7*dt*Math.sign(truck.v||1);
+
+  const nx=truck.x+Math.cos(truck.a)*truck.v*dt;
+  const ny=truck.y+Math.sin(truck.a)*truck.v*dt;
+  if(hitsBuilding(nx,ny,15)){
+    if(Math.abs(truck.v)>120&&truck.invuln<=0){
+      timeLeft=Math.max(1,timeLeft-4);shake=8;truck.invuln=1;crashedSinceHook=true;
+      showMsg('💥 CRASH! −4 Sekunden',1.6);
+      for(let i=0;i<12;i++)particles.push({x:nx,y:ny,vx:(Math.random()-0.5)*200,vy:(Math.random()-0.5)*200,t:0.5,c:'#fbbf24'});
+    }
+    truck.v*=-0.25;
+  }else{truck.x=nx;truck.y=ny;}
+
+  // Anhängen: Heck des Trucks nahe am Pannenfahrzeug + langsam
+  const rearX=truck.x-Math.cos(truck.a)*26,rearY=truck.y-Math.sin(truck.a)*26;
+  if(!towed&&wreck){
+    const d=Math.hypot(rearX-wreck.x,rearY-wreck.y);
+    if(d<48&&Math.abs(truck.v)<45){
+      hookT+=dt;
+      if(hookT>=0.8){
+        towed={x:wreck.x,y:wreck.y,a:wreck.a,hue:wreck.hue};
+        wreck=null;hookT=0;crashedSinceHook=false;
+        showMsg('🔗 Angehängt! Ab zum ACLS-Hof!',2);
+      }
+    }else hookT=Math.max(0,hookT-dt*2);
+  }
+
+  // Anhänger-Physik (Trailer folgt dem Haken)
+  if(towed){
+    const dx=rearX-towed.x,dy=rearY-towed.y;
+    const dist=Math.hypot(dx,dy);
+    if(dist>0.01){
+      towed.a=Math.atan2(dy,dx);
+      const want=44;
+      if(dist>want){
+        towed.x=rearX-Math.cos(towed.a)*want;
+        towed.y=rearY-Math.sin(towed.a)*want;
+      }
+    }
+    // Abgeliefert?
+    if(towed.x>DEPOT.x1+20&&towed.x<DEPOT.x2-20&&towed.y>DEPOT.y1+20&&towed.y<DEPOT.y2-20){
+      deliveries++;
+      let pts=150,bonusTxt='';
+      if(!crashedSinceHook){pts+=50;bonusTxt=' (+50 Sauber-Bonus)';}
+      score+=pts;timeLeft=Math.min(150,timeLeft+20);
+      showMsg(`✅ Abgeliefert! +${pts} Punkte${bonusTxt} · +20s`,2.2);
+      for(let i=0;i<20;i++)particles.push({x:towed.x,y:towed.y,vx:(Math.random()-0.5)*260,vy:(Math.random()-0.5)*260,t:0.8,c:'#4ade80'});
+      towed=null;spawnWreck();
+    }
+  }
+
+  // Verkehr
+  for(const t of traffic){
+    if(t.horiz){t.x+=t.dir*t.sp*dt;if(t.x<-40)t.x=W+40;if(t.x>W+40)t.x=-40;}
+    else{t.y+=t.dir*t.sp*dt;if(t.y<-40)t.y=H+40;if(t.y>H+40)t.y=-40;}
+    if(truck.invuln<=0&&Math.hypot(t.x-truck.x,t.y-truck.y)<30&&Math.abs(truck.v)>40){
+      timeLeft=Math.max(1,timeLeft-5);shake=10;truck.invuln=1.2;truck.v*=-0.3;crashedSinceHook=true;
+      showMsg('💥 Unfall mit Verkehr! −5 Sekunden',1.8);
+      for(let i=0;i<14;i++)particles.push({x:t.x,y:t.y,vx:(Math.random()-0.5)*240,vy:(Math.random()-0.5)*240,t:0.6,c:'#ef4444'});
+    }
+  }
+
+  // Partikel
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];p.t-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=0.92;p.vy*=0.92;
+    if(p.t<=0)particles.splice(i,1);
+  }
+  // Rauch am Pannenfahrzeug
+  if(wreck&&Math.random()<0.18)particles.push({x:wreck.x+(Math.random()-0.5)*14,y:wreck.y+(Math.random()-0.5)*14,vx:(Math.random()-0.5)*16,vy:-26-Math.random()*18,t:1.2,c:'rgba(148,163,184,0.5)'});
+}
+
+// ── Zeichnen ────────────────────────────────────────────────────
+function drawCar(x,y,a,len,wid,col,beacon){
+  ctx.save();ctx.translate(x,y);ctx.rotate(a);
+  ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(-len/2+3,-wid/2+3,len,wid);
+  ctx.fillStyle=col;ctx.fillRect(-len/2,-wid/2,len,wid);
+  ctx.fillStyle='rgba(255,255,255,.22)';ctx.fillRect(len*0.08,-wid/2+3,len*0.26,wid-6); // Windschutzscheibe
+  ctx.fillStyle='rgba(0,0,0,.4)';
+  ctx.fillRect(-len/2+2,-wid/2-2,7,3);ctx.fillRect(-len/2+2,wid/2-1,7,3);
+  ctx.fillRect(len/2-9,-wid/2-2,7,3);ctx.fillRect(len/2-9,wid/2-1,7,3);
+  if(beacon){
+    const on=Math.floor(performance.now()/200)%2===0;
+    ctx.fillStyle=on?'#fbbf24':'#92660a';
+    ctx.beginPath();ctx.arc(-len*0.12,0,4.5,0,Math.PI*2);ctx.fill();
+    if(on){ctx.fillStyle='rgba(251,191,36,.25)';ctx.beginPath();ctx.arc(-len*0.12,0,11,0,Math.PI*2);ctx.fill();}
+  }
+  ctx.restore();
+}
+
+function draw(ts){
+  requestAnimationFrame(draw);
+  const dt=Math.min(0.05,(ts-lastT)/1000);lastT=ts;
+  if(gameState==='playing')update(dt);
+
+  ctx.fillStyle='#0a0a0a';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  const sx=shake>0?(Math.random()-0.5)*shake:0,sy=shake>0?(Math.random()-0.5)*shake:0;
+  ctx.translate(VX+sx,VY+sy);ctx.scale(SCALE,SCALE);
+
+  // Boden
+  ctx.fillStyle='#101418';ctx.fillRect(0,0,W,H);
+
+  // Straßen
+  ctx.fillStyle='#1d2329';
+  for(const ry of HROADS)ctx.fillRect(0,ry-RW,W,RW*2);
+  for(const rx of VROADS)ctx.fillRect(rx-RW,0,RW*2,H);
+  // Mittellinien
+  ctx.strokeStyle='rgba(251,191,36,.35)';ctx.lineWidth=3;ctx.setLineDash([26,22]);
+  for(const ry of HROADS){ctx.beginPath();ctx.moveTo(0,ry);ctx.lineTo(W,ry);ctx.stroke();}
+  for(const rx of VROADS){ctx.beginPath();ctx.moveTo(rx,0);ctx.lineTo(rx,H);ctx.stroke();}
+  ctx.setLineDash([]);
+
+  // ACLS-Hof
+  ctx.fillStyle='rgba(249,115,22,.10)';ctx.fillRect(DEPOT.x1,DEPOT.y1,DEPOT.x2-DEPOT.x1,DEPOT.y2-DEPOT.y1);
+  ctx.strokeStyle='#f97316';ctx.lineWidth=3;ctx.setLineDash([14,10]);
+  ctx.strokeRect(DEPOT.x1,DEPOT.y1,DEPOT.x2-DEPOT.x1,DEPOT.y2-DEPOT.y1);
+  ctx.setLineDash([]);
+  ctx.fillStyle='rgba(249,115,22,.85)';ctx.font='800 34px Inter,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('ACLS',(DEPOT.x1+DEPOT.x2)/2,(DEPOT.y1+DEPOT.y2)/2-14);
+  ctx.font='600 15px Inter,sans-serif';ctx.fillStyle='rgba(249,115,22,.6)';
+  ctx.fillText('ABSCHLEPPHOF',(DEPOT.x1+DEPOT.x2)/2,(DEPOT.y1+DEPOT.y2)/2+16);
+
+  // Gebäude
+  for(const b of buildings){
+    ctx.fillStyle=`hsl(${210+b.hue*30},18%,${10+b.hue*5}%)`;
+    ctx.fillRect(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1);
+    ctx.strokeStyle='rgba(255,255,255,.05)';ctx.lineWidth=2;
+    ctx.strokeRect(b.x1,b.y1,b.x2-b.x1,b.y2-b.y1);
+    // Fenster
+    ctx.fillStyle='rgba(251,191,36,.07)';
+    for(let wx=b.x1+14;wx<b.x2-14;wx+=26)for(let wy=b.y1+14;wy<b.y2-14;wy+=26)
+      if((wx*7+wy*13)%5<2)ctx.fillRect(wx,wy,10,10);
+  }
+
+  if(gameState!=='idle'){
+    // Pannenfahrzeug + Marker
+    if(wreck){
+      const pulse=1+Math.sin(performance.now()/300)*0.12;
+      ctx.strokeStyle='rgba(239,68,68,.55)';ctx.lineWidth=3;
+      ctx.beginPath();ctx.arc(wreck.x,wreck.y,40*pulse,0,Math.PI*2);ctx.stroke();
+      drawCar(wreck.x,wreck.y,wreck.a,40,20,wreck.hue,false);
+      ctx.fillStyle='#ef4444';ctx.font='800 20px Inter,sans-serif';ctx.textAlign='center';
+      ctx.fillText('⚠',wreck.x,wreck.y-50);
+      // Haken-Fortschritt
+      if(hookT>0){
+        ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(wreck.x-34,wreck.y+34,68,10);
+        ctx.fillStyle='#fb923c';ctx.fillRect(wreck.x-34,wreck.y+34,68*(hookT/0.8),10);
+      }
+    }
+    // Verkehr
+    for(const t of traffic)drawCar(t.x,t.y,t.horiz?(t.dir>0?0:Math.PI):(t.dir>0?Math.PI/2:-Math.PI/2),36,18,t.col,false);
+    // Abgeschlepptes Fahrzeug + Seil
+    if(towed){
+      const rearX=truck.x-Math.cos(truck.a)*26,rearY=truck.y-Math.sin(truck.a)*26;
+      ctx.strokeStyle='#94a3b8';ctx.lineWidth=3;
+      ctx.beginPath();ctx.moveTo(rearX,rearY);
+      ctx.lineTo(towed.x+Math.cos(towed.a)*20,towed.y+Math.sin(towed.a)*20);ctx.stroke();
+      drawCar(towed.x,towed.y,towed.a,40,20,towed.hue,false);
+    }
+    // Truck
+    drawCar(truck.x,truck.y,truck.a,52,24,'#f97316',true);
+    // Zielpfeil (zeigt zum Wrack bzw. Hof)
+    const tx=towed?(DEPOT.x1+DEPOT.x2)/2:(wreck?wreck.x:truck.x);
+    const ty=towed?(DEPOT.y1+DEPOT.y2)/2:(wreck?wreck.y:truck.y);
+    const da=Math.atan2(ty-truck.y,tx-truck.x);
+    if(Math.hypot(tx-truck.x,ty-truck.y)>140){
+      ctx.save();ctx.translate(truck.x+Math.cos(da)*70,truck.y+Math.sin(da)*70);ctx.rotate(da);
+      ctx.fillStyle=towed?'#f97316':'#ef4444';
+      ctx.beginPath();ctx.moveTo(14,0);ctx.lineTo(-8,-9);ctx.lineTo(-8,9);ctx.closePath();ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Partikel
+  for(const p of particles){
+    ctx.globalAlpha=Math.max(0,p.t);
+    ctx.fillStyle=p.c;ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  ctx.restore();
+
+  // HUD
+  if(gameState==='playing'){
+    ctx.textBaseline='top';
+    ctx.font='800 26px Inter,sans-serif';ctx.textAlign='center';
+    ctx.fillStyle=timeLeft<15?(Math.floor(performance.now()/300)%2?'#ef4444':'#fff'):'#fff';
+    ctx.fillText(Math.ceil(timeLeft)+'s',canvas.width/2,14);
+    ctx.font='bold 15px Inter,sans-serif';ctx.textAlign='left';
+    ctx.fillStyle='#6b7280';ctx.fillText('Score',16,16);
+    ctx.fillStyle='#fb923c';ctx.fillText(score.toLocaleString(),68,16);
+    ctx.fillStyle='#6b7280';ctx.fillText('Abschlepps',150,16);
+    ctx.fillStyle='#fff';ctx.fillText(deliveries,250,16);
+    if(msgT>0){
+      ctx.font='700 17px Inter,sans-serif';ctx.textAlign='center';
+      ctx.fillStyle='rgba(0,0,0,.65)';
+      const tw=ctx.measureText(msg).width;
+      ctx.fillRect(canvas.width/2-tw/2-16,52,tw+32,32);
+      ctx.fillStyle='#fff';ctx.fillText(msg,canvas.width/2,59);
+    }
+    const hint=towed?'Bring das Fahrzeug zum ACLS-Hof!':'Rückwärts ans Pannenfahrzeug ransetzen (langsam!)';
+    ctx.font='600 12px Inter,sans-serif';ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.35)';
+    ctx.fillText(hint,canvas.width/2,canvas.height-24);
+  }
+}
+
+async function endGame(){
+  gameState='over';
+  document.getElementById('end-stats').textContent=`Score: ${score.toLocaleString()} · ${deliveries} Fahrzeuge abgeschleppt`;
+  const coinsEl=document.getElementById('end-coins');coinsEl.style.display='none';
+  document.getElementById('ov-end').classList.remove('hidden');
+  try{
+    const r=await fetch('/api/game-scores/tow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(GameAuth.body(score))});
+    const d=await r.json();
+    if(d.coinsEarned>0){coinsEl.textContent=`+${d.coinsEarned} ACLS-Coins verdient! 🪙`;coinsEl.style.display='';}
+  }catch{}
+}
+
+function startGame(){
+  document.getElementById('ov-start').classList.add('hidden');
+  document.getElementById('ov-end').classList.add('hidden');
+  initGame();gameState='playing';
+}
+
+async function openLb(){
+  document.getElementById('ov-lb').classList.remove('hidden');
+  const el=document.getElementById('lb-list');
+  el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Laden…</div>';
+  try{
+    const r=await fetch('/api/game-scores/tow'),data=await r.json();
+    if(!data.length){el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Noch keine Einträge</div>';return;}
+    el.innerHTML=data.map((row,i)=>{
+      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+      const me=currentUser&&row.discord_id===currentUser.discord_id;
+      const av=row.avatar?`<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`:(row.username||'?').slice(0,2).toUpperCase();
+      return`<div class="lb-row" style="${me?'background:#1a1108;border-radius:5px;':''}">
+        <div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
+        <div class="lb-name">${row.username||'Unbekannt'}</div>
+        <div class="lb-score">${row.score.toLocaleString()}</div>
+      </div>`;
+    }).join('');
+  }catch{el.innerHTML='<div style="text-align:center;color:#ef4444">Fehler</div>';}
+}
+function closeLb(){document.getElementById('ov-lb').classList.add('hidden');}
+
+async function init(){
+  try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  await GameAuth.init('tow');
+  requestAnimationFrame(draw);
+}
+init();
+</script>
+<script src="/game-auth.js"></script>
+</body>
+</html>

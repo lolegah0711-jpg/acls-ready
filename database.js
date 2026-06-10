@@ -375,6 +375,72 @@ function initDb() {
       skills    TEXT    NOT NULL DEFAULT '[]',
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS coin_balances (
+      discord_id     TEXT PRIMARY KEY,
+      username       TEXT,
+      balance        INTEGER NOT NULL DEFAULT 0,
+      total_earned   INTEGER NOT NULL DEFAULT 0,
+      equipped_title TEXT,
+      equipped_frame TEXT,
+      last_daily     TEXT,
+      updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS coin_transactions (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id  TEXT NOT NULL,
+      amount      INTEGER NOT NULL,
+      reason      TEXT NOT NULL,
+      meta        TEXT,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS shop_purchases (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id  TEXT NOT NULL,
+      item_id     TEXT NOT NULL,
+      price       INTEGER NOT NULL,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(discord_id, item_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS tournaments (
+      week              TEXT PRIMARY KEY,
+      game              TEXT NOT NULL,
+      finished          INTEGER DEFAULT 0,
+      winner_discord_id TEXT,
+      winner_username   TEXT,
+      winner_score      INTEGER,
+      created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS tournament_scores (
+      week       TEXT NOT NULL,
+      discord_id TEXT NOT NULL,
+      username   TEXT,
+      avatar     TEXT,
+      score      INTEGER NOT NULL DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (week, discord_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS quiz_duels (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      code             TEXT UNIQUE NOT NULL,
+      host_id          INTEGER NOT NULL REFERENCES users(id),
+      guest_id         INTEGER REFERENCES users(id),
+      question_ids     TEXT NOT NULL,
+      status           TEXT DEFAULT 'waiting',
+      host_answers     TEXT DEFAULT '[]',
+      guest_answers    TEXT DEFAULT '[]',
+      host_score       INTEGER DEFAULT 0,
+      guest_score      INTEGER DEFAULT 0,
+      winner_id        INTEGER,
+      started_at       DATETIME,
+      finished_at      DATETIME,
+      created_at       DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Migrations — Spalten nachrüsten falls nicht vorhanden

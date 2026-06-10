@@ -57,6 +57,9 @@
         <a class="nav-item" data-page="prices"><i class="fas fa-tags"></i><span>Preise</span></a>
         <a class="nav-item" data-page="carmarket"><i class="fas fa-car-side"></i><span>Fahrzeugmarkt</span></a>
         <a class="nav-item" href="/quiz" target="_blank" style="color:#22c55e"><i class="fas fa-graduation-cap" style="color:#22c55e"></i><span>Prüfungsvorbereitung</span></a>
+        <a class="nav-item" data-page="turnier" style="color:#fbbf24"><i class="fas fa-trophy" style="color:#fbbf24"></i><span>Wochenturnier</span></a>
+        <a class="nav-item" data-page="duell" style="color:#f472b6"><i class="fas fa-bolt" style="color:#f472b6"></i><span>Quiz-Duell</span></a>
+        <a class="nav-item" data-page="shop" style="color:#fbbf24"><i class="fas fa-coins" style="color:#fbbf24"></i><span>Coin-Shop</span></a>
         <a class="nav-item" data-page="faq" style="color:#38bdf8"><i class="fas fa-question-circle" style="color:#38bdf8"></i><span>FAQ</span></a>
         <a class="nav-item" data-page="organigramm"><i class="fas fa-users"></i><span>Unser Team</span></a>
         <div id="games-toggle" onclick="toggleGames()" style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
@@ -77,6 +80,8 @@
           <a class="nav-item" href="/game11" target="_blank" style="color:#a855f7"><i class="fas fa-brain" style="color:#a855f7"></i><span>Quiz Survival</span></a>
           <a class="nav-item" href="/game12" target="_blank" style="color:#f97316"><i class="fas fa-wrench" style="color:#f97316"></i><span>ACLS Werkstatt</span></a>
           <a class="nav-item" href="/game13" target="_blank" style="color:#60a5fa"><i class="fas fa-dungeon" style="color:#60a5fa"></i><span>Dungeon RPG</span></a>
+          <a class="nav-item" href="/game14" target="_blank" style="color:#fb923c"><i class="fas fa-truck-pickup" style="color:#fb923c"></i><span>Abschlepp-Simulator</span></a>
+          <a class="nav-item" href="/game15" target="_blank" style="color:#4ade80"><i class="fas fa-heart" style="color:#ef4444"></i><span>Blackjack</span></a>
         </div>
         <script>
           (function(){
@@ -85,11 +90,11 @@
             var open=localStorage.getItem('games-open')!=='0';
             list.style.overflow='hidden';
             list.style.transition='max-height .22s ease';
-            list.style.maxHeight=open?'700px':'0';
+            list.style.maxHeight=open?'900px':'0';
             chev.style.transform=open?'':'rotate(-90deg)';
             window.toggleGames=function(){
               open=!open;
-              list.style.maxHeight=open?'700px':'0';
+              list.style.maxHeight=open?'900px':'0';
               chev.style.transform=open?'':'rotate(-90deg)';
               localStorage.setItem('games-open',open?'1':'0');
             };
