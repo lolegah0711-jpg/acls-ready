@@ -309,19 +309,20 @@ function runEowEvaluation() {
 // ════════════════════════════════════════════════════════════════
 //  DISCORD OAUTH
 // ════════════════════════════════════════════════════════════════
+function oauthState(sessionId) {
+  return crypto.createHmac('sha256', GAME_SECRET).update(sessionId).digest('hex').slice(0, 32);
+}
+
 app.get('/auth/discord', (req, res) => {
-  const state = crypto.randomBytes(16).toString('hex');
-  req.session.oauthState = state;
-  req.session.save(() => {
-    const params = new URLSearchParams({
-      client_id:     process.env.DISCORD_CLIENT_ID,
-      redirect_uri:  process.env.DISCORD_REDIRECT_URI,
-      response_type: 'code',
-      scope:         'identify',
-      state,
-    });
-    res.redirect(`${DISCORD_AUTH_URL}?${params}`);
+  const state = oauthState(req.sessionID);
+  const params = new URLSearchParams({
+    client_id:     process.env.DISCORD_CLIENT_ID,
+    redirect_uri:  process.env.DISCORD_REDIRECT_URI,
+    response_type: 'code',
+    scope:         'identify',
+    state,
   });
+  res.redirect(`${DISCORD_AUTH_URL}?${params}`);
 });
 
 app.get('/auth/callback', async (req, res) => {
@@ -329,8 +330,7 @@ app.get('/auth/callback', async (req, res) => {
   if (rateLimit(`oauth:${ip}`, 10, 60_000)) return res.status(429).redirect('/?error=rate_limit');
   const { code, state } = req.query;
   if (!code) return res.redirect('/?error=no_code');
-  if (!state || state !== req.session.oauthState) return res.redirect('/?error=state_mismatch');
-  delete req.session.oauthState;
+  if (!state || !secretEqual(state, oauthState(req.sessionID))) return res.redirect('/?error=state_mismatch');
 
   try {
     // Exchange code → token
