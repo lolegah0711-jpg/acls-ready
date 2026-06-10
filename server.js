@@ -2,10 +2,15 @@ require('dotenv').config();
 const express  = require('express');
 const session  = require('express-session');
 const path     = require('path');
+const fs       = require('fs');
 const cron     = require('node-cron');
 const fetch    = require('node-fetch');
 const crypto   = require('crypto');
 const { initDb } = require('./database');
+
+// Uploads-Ordner anlegen
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // Pflicht-Secrets — Server startet nicht ohne sie in Produktion
 const GAME_SECRET = process.env.GAME_SECRET || (process.env.NODE_ENV === 'production'
@@ -154,6 +159,7 @@ app.use((req, res, next) => {
   if (!allowed) return res.status(403).json({ error: 'CSRF-Schutz: ungültiger Origin' });
   next();
 });
+app.use('/uploads', express.static(UPLOADS_DIR));
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
   setHeaders(res, filePath) {
@@ -728,10 +734,11 @@ app.post('/api/exams/practical', requireAuth, (req, res) => {
 app.get('/api/registry', requireAuth, (req, res) => {
   const { search, category } = req.query;
   let sql = `
-    SELECT r.*, ec.name as category_name, ec.icon, u.username as examiner_name
+    SELECT r.*, ec.name as category_name, ec.icon, u.username as examiner_name,
+      (SELECT COUNT(*) FROM citizen_notes cn WHERE LOWER(cn.citizen_name)=LOWER(r.citizen_name)) as note_count
     FROM registry r JOIN exam_categories ec ON ec.id = r.category_id JOIN users u ON u.id = r.examiner_id WHERE 1=1`;
   const params = [];
-  if (search)   { sql += ' AND (r.citizen_name LIKE ? OR r.citizen_id LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+  if (search)   { sql += ' AND (LOWER(r.citizen_name) LIKE ? OR LOWER(r.citizen_id) LIKE ?)'; params.push(`%${search.toLowerCase()}%`, `%${search.toLowerCase()}%`); }
   if (category) { sql += ' AND r.category_id = ?'; params.push(+category); }
   sql += ' ORDER BY r.registered_at DESC';
   res.json(db.prepare(sql).all(...params));
@@ -1746,9 +1753,25 @@ app.get('/api/car-listings', (req, res) => {
   res.json(db.prepare('SELECT * FROM car_listings ORDER BY created_at DESC').all());
 });
 
-// Stellt sicher dass image_data-Spalte existiert (kein Server-Neustart nötig)
+// Stellt sicher dass image_data-Spalte existiert
 function ensureImageCol() {
   try { db.exec('ALTER TABLE car_listings ADD COLUMN image_data TEXT'); } catch {}
+}
+
+// Speichert base64-Bild auf Disk, gibt Pfad zurück (oder null)
+function saveCarImage(base64, existingPath) {
+  if (!base64) return existingPath || null;
+  const match = base64.match(/^data:image\/(jpeg|png|webp|gif);base64,(.+)$/);
+  if (!match) return existingPath || null;
+  const ext  = match[1] === 'jpeg' ? 'jpg' : match[1];
+  const name = `car_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${ext}`;
+  const dest = path.join(UPLOADS_DIR, name);
+  fs.writeFileSync(dest, Buffer.from(match[2], 'base64'));
+  // Altes Bild löschen
+  if (existingPath && existingPath.startsWith('/uploads/')) {
+    try { fs.unlinkSync(path.join(__dirname, existingPath)); } catch {}
+  }
+  return `/uploads/${name}`;
 }
 
 app.post('/api/car-listings', requireLogin, (req, res) => {
@@ -1764,9 +1787,10 @@ app.post('/api/car-listings', requireLogin, (req, res) => {
   ensureImageCol();
   const u = getUser(req);
   try {
+    const imagePath = saveCarImage(image_data, null);
     const r = db.prepare(
       'INSERT INTO car_listings (name, phone, car, price, notes, listing_type, duration, owner_discord_id, owner_user_id, image_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, u?.discord_id || null, u?.id || null, image_data || null);
+    ).run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, u?.discord_id || null, u?.id || null, imagePath);
     res.json({ ok: true, id: r.lastInsertRowid });
   } catch (err) {
     console.error('car-listing insert:', err.message);
@@ -1780,10 +1804,10 @@ app.patch('/api/car-listings/:id', requireLogin, (req, res) => {
   const { name, phone, car, price, notes } = req.body;
   if (!name?.trim() || !phone?.trim() || !car?.trim() || !price?.trim())
     return res.status(400).json({ error: 'Fehlende Felder' });
-  const item = db.prepare('SELECT id FROM car_listings WHERE id = ?').get(+req.params.id);
+  const item = db.prepare('SELECT * FROM car_listings WHERE id = ?').get(+req.params.id);
   if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
   const { listing_type, duration, image_data } = req.body;
-  if (image_data) {
+  if (image_data && image_data.startsWith('data:')) {
     if (!/^data:image\/(jpeg|png|webp|gif);base64,/.test(image_data))
       return res.status(400).json({ error: 'Ungültiges Bildformat (nur JPEG/PNG/WebP/GIF)' });
     if (image_data.length > 2_000_000)
@@ -1791,8 +1815,11 @@ app.patch('/api/car-listings/:id', requireLogin, (req, res) => {
   }
   ensureImageCol();
   try {
+    const newImagePath = image_data && image_data.startsWith('data:')
+      ? saveCarImage(image_data, item.image_data)
+      : (image_data === null ? null : item.image_data);
     db.prepare('UPDATE car_listings SET name=?, phone=?, car=?, price=?, notes=?, listing_type=?, duration=?, image_data=? WHERE id=?')
-      .run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, image_data ?? null, +req.params.id);
+      .run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, newImagePath, +req.params.id);
     res.json({ ok: true });
   } catch (err) {
     console.error('car-listing update:', err.message);
@@ -1808,6 +1835,9 @@ app.delete('/api/car-listings/:id', requireLogin, (req, res) => {
   if (u.role !== 'admin' && item.owner_discord_id !== u.discord_id)
     return res.status(403).json({ error: 'Kein Zugriff' });
   db.prepare('DELETE FROM car_listings WHERE id = ?').run(+req.params.id);
+  if (item.image_data?.startsWith('/uploads/')) {
+    try { fs.unlinkSync(path.join(__dirname, item.image_data)); } catch {}
+  }
   res.json({ ok: true });
 });
 
@@ -2087,11 +2117,17 @@ app.post('/api/rpg-save', (req, res) => {
 
 // ── Audit-Log ───────────────────────────────────────────────────
 app.get('/api/audit-log', requireAdmin, (req, res) => {
-  const rows = db.prepare(`
-    SELECT id, username, action, details, ip, created_at
-    FROM audit_log ORDER BY created_at DESC LIMIT 200
-  `).all();
-  res.json(rows);
+  const { q, action, page = 1 } = req.query;
+  const limit  = 50;
+  const offset = (Math.max(1, +page) - 1) * limit;
+  const conditions = [];
+  const params = [];
+  if (q)      { conditions.push("(LOWER(username) LIKE ? OR LOWER(details) LIKE ?)"); params.push(`%${q.toLowerCase()}%`, `%${q.toLowerCase()}%`); }
+  if (action) { conditions.push("action = ?"); params.push(action); }
+  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+  const total = db.prepare(`SELECT COUNT(*) as c FROM audit_log ${where}`).get(...params).c;
+  const rows  = db.prepare(`SELECT id, username, action, details, ip, created_at FROM audit_log ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
+  res.json({ rows, total, page: +page, pages: Math.ceil(total / limit) });
 });
 
 app.get('/preise', (req, res) => res.sendFile(path.join(__dirname, 'public', 'preise.html')));

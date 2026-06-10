@@ -103,6 +103,9 @@
         <a class="nav-item" data-page="admin" id="adminNavItem" style="display:none">
           <i class="fas fa-shield-alt"></i><span>Admin</span>
         </a>
+        <a class="nav-item" data-page="auditlog" id="auditlogNavItem" style="display:none">
+          <i class="fas fa-scroll" style="color:#a78bfa"></i><span style="color:#a78bfa">Audit-Log</span>
+        </a>
         <a class="nav-item" data-page="ausbildung" id="ausbildungNavItem" style="display:none">
           <i class="fas fa-graduation-cap"></i><span>Ausbildung</span>
         </a>
@@ -118,6 +121,9 @@
           <p id="pageSubtitle">Willkommen zurück</p>
         </div>
         <div style="display:flex;align-items:center;gap:.6rem">
+          <button id="mobileMenuBtn" onclick="toggleMobileMenu()" title="Menü" style="display:none;background:none;border:1px solid var(--border);color:var(--muted);width:36px;height:36px;border-radius:8px;cursor:pointer;align-items:center;justify-content:center;transition:color .15s,border-color .15s;flex-shrink:0">
+            <i class="fas fa-bars" style="font-size:.85rem"></i>
+          </button>
           <button onclick="navigate('search')" title="Suche" style="background:none;border:1px solid var(--border);color:var(--muted);width:36px;height:36px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .15s,border-color .15s;flex-shrink:0" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--orange)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
             <i class="fas fa-search" style="font-size:.85rem"></i>
           </button>
@@ -127,6 +133,9 @@
       <main id="pageContent"><div class="loader-wrap"><div class="loader"></div></div></main>
     </div>
   </div>
+
+  <!-- Mobile sidebar overlay -->
+  <div id="mobileOverlay" onclick="closeMobileMenu()"></div>
 
   <!-- Modal overlay -->
   <div id="modalOverlay" class="modal-overlay hidden">

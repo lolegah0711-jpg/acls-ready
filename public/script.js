@@ -99,6 +99,18 @@ window.toggleSidebar = () => {
   const collapsed = s.classList.toggle('collapsed');
   localStorage.setItem('acls-sidebar', collapsed ? '1' : '0');
 };
+
+// ── Mobile sidebar ───────────────────────────────────────────────
+window.toggleMobileMenu = () => {
+  const s = document.querySelector('.sidebar');
+  const o = document.getElementById('mobileOverlay');
+  const open = s.classList.toggle('mobile-open');
+  o.classList.toggle('active', open);
+};
+window.closeMobileMenu = () => {
+  document.querySelector('.sidebar')?.classList.remove('mobile-open');
+  document.getElementById('mobileOverlay')?.classList.remove('active');
+};
 function initSidebar() {
   if (localStorage.getItem('acls-sidebar') === '1')
     document.querySelector('.sidebar').classList.add('collapsed');
@@ -128,6 +140,7 @@ const PAGES = {
   bans:         { title: 'Aktive Sperren',         sub: 'Hausverbot-Verwaltung' },
   search:       { title: 'Globale Suche',          sub: 'Sperren, Mitarbeiter & Register durchsuchen' },
   faq:          { title: 'FAQ',                    sub: 'Häufig gestellte Fragen verwalten' },
+  auditlog:     { title: 'Audit-Log',             sub: 'Wer hat was wann geändert' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -903,6 +916,7 @@ function bootApp() {
   initSidebar();
   renderUserWidget();
   $('adminNavItem').style.display        = isAdmin()     ? '' : 'none';
+  $('auditlogNavItem').style.display     = isAdmin()     ? '' : 'none';
   $('ausbildungNavItem').style.display   = isAusbilder() ? '' : 'none';
   $('applicationsNavItem').style.display = isAdmin()     ? '' : 'none';
   document.querySelectorAll('.nav-item').forEach(el => {
@@ -942,6 +956,7 @@ function navigate(page) {
   if (page === 'admin'     && !isAdmin())     { toast('Kein Zugriff', 'err'); return; }
   if (page === 'ausbildung' && !isAusbilder()) { toast('Kein Zugriff', 'err'); return; }
   closeModal();
+  closeMobileMenu();
   _activePage = page;
   if (leafletMap && page !== 'map') { leafletMap.remove(); leafletMap = null; }
 
@@ -951,7 +966,7 @@ function navigate(page) {
   $('pageSubtitle').textContent = p.sub;
   $('pageContent').innerHTML    = loading();
 
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog };
   (renders[page] || dashboard)();
 }
 
@@ -1353,28 +1368,51 @@ window.runSearch = q => {
 // ════════════════════════════════════════════════════════════════
 //  ACTIVITY
 // ════════════════════════════════════════════════════════════════
+let _actPage = 1;
+const ACT_PER_PAGE = 20;
+let _actAllEvents = [];
+
 async function activity() {
+  _actPage = 1;
   const [reg, bansData, ic] = await Promise.all([
     api('/api/registry'), api('/api/bans'), api('/api/ic-log'),
   ]);
   if (!reg) return;
 
-  const events = [
+  _actAllEvents = [
     ...(reg || []).map(r => ({ date: r.registered_at, dot: r.passed ? 'g' : 'r', text: `<b>${esc(r.citizen_name)}</b> – ${esc(r.category_name)} ${esc(r.exam_type)} (${r.passed ? 'Bestanden' : 'Nicht bestanden'}) | Prüfer: ${esc(r.examiner_name)}` })),
     ...(bansData || []).map(b => ({ date: b.issued_at, dot: 'r', text: `Hausverbot: <b>${esc(b.person_name)}</b> – ${esc(b.reason)}` })),
-    ...(ic || []).filter(e => e.auto).map(e => ({ date: e.created_at, dot: 'o', text: `IC-Zeit: <b>${e.user_name}</b> – ${(+e.hours).toFixed(1)}h ${e.notes ? '(' + e.notes + ')' : ''}` })),
-  ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 60);
+    ...(ic || []).filter(e => e.auto).map(e => ({ date: e.created_at, dot: 'o', text: `IC-Zeit: <b>${e.user_name}</b> – ${(+e.hours).toFixed(1)}h ${e.notes ? '(' + esc(e.notes) + ')' : ''}` })),
+  ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  renderActivity();
+}
+
+function renderActivity() {
+  const total  = _actAllEvents.length;
+  const pages  = Math.ceil(total / ACT_PER_PAGE) || 1;
+  _actPage     = Math.min(_actPage, pages);
+  const start  = (_actPage - 1) * ACT_PER_PAGE;
+  const slice  = _actAllEvents.slice(start, start + ACT_PER_PAGE);
 
   $('pageContent').innerHTML = `
-    <div class="pg-header"><div class="pg-header-left"><h2>Aktivitätslog</h2><p>${events.length} Einträge</p></div></div>
+    <div class="pg-header">
+      <div class="pg-header-left"><h2>Aktivitätslog</h2><p>${total} Einträge gesamt</p></div>
+    </div>
     <div class="card">
-      ${events.length ? events.map(ev => `
+      ${slice.length ? slice.map(ev => `
         <div class="act-item">
           <div class="act-dot ${ev.dot}"></div>
           <div class="act-text">${ev.text}</div>
           <div class="act-time">${ago(ev.date)}</div>
         </div>`).join('') : '<div class="empty"><i class="fas fa-stream"></i><p>Keine Aktivitäten</p></div>'}
-    </div>`;
+    </div>
+    ${pages > 1 ? `
+    <div style="display:flex;align-items:center;justify-content:center;gap:.5rem;margin-top:1rem">
+      <button class="btn btn-ghost btn-sm" ${_actPage<=1?'disabled':''} onclick="_actPage--;renderActivity()"><i class="fas fa-chevron-left"></i></button>
+      <span style="font-size:.85rem;color:var(--muted)">Seite ${_actPage} / ${pages}</span>
+      <button class="btn btn-ghost btn-sm" ${_actPage>=pages?'disabled':''} onclick="_actPage++;renderActivity()"><i class="fas fa-chevron-right"></i></button>
+    </div>` : ''}`;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1434,7 +1472,7 @@ async function eow() {
           <div class="card-head-icon orange"><i class="fas fa-vote-yea"></i></div>
           <div>
             <div class="card-title">Abstimmung – KW ${isoWeek(data.week)}</div>
-            <div class="card-sub">${!myVote ? 'Klicke auf einen Mitarbeiter um deine Stimme abzugeben' : canChange ? '<i class="fas fa-rotate-left" style="margin-right:.3rem"></i>Du kannst deine Stimme noch einmalig ändern' : 'Du hast abgestimmt und deine Stimme bereits geändert'} · Auszählung: Sonntag 18:00 Uhr</div>
+            <div class="card-sub">${!myVote ? 'Klicke auf einen Mitarbeiter um deine Stimme abzugeben' : canChange ? '<i class="fas fa-rotate-left" style="margin-right:.3rem"></i>Du kannst deine Stimme noch einmalig ändern' : 'Du hast abgestimmt und deine Stimme bereits geändert'} · <span id="eowCountdown"></span></div>
           </div>
           ${isAdmin() ? `<div style="display:flex;gap:.5rem;margin-left:auto;flex-wrap:wrap">
             <button class="btn btn-primary btn-sm" onclick="countEow()"><i class="fas fa-calculator"></i> Auszählen</button>
@@ -1476,6 +1514,29 @@ async function eow() {
       </div>
     </div>`;
 }
+
+// EoW-Countdown: nächster Sonntag 18:00 Uhr Berlin-Zeit
+(function startEowCountdown() {
+  function update() {
+    const el = document.getElementById('eowCountdown');
+    if (!el) return;
+    const now = new Date();
+    const berlin = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Berlin' }));
+    const day  = berlin.getDay(); // 0=So
+    const daysUntilSun = (7 - day) % 7 || 7;
+    const target = new Date(berlin);
+    target.setDate(berlin.getDate() + daysUntilSun);
+    target.setHours(18, 0, 0, 0);
+    const diff = target - berlin;
+    if (diff <= 0) { el.textContent = 'Auszählung läuft!'; return; }
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    el.textContent = `Auszählung in ${h > 24 ? Math.floor(h/24)+'T ' + (h%24) + 'h' : h+'h '+m+'m '+s+'s'}`;
+    setTimeout(update, 1000);
+  }
+  update();
+})();
 
 window.confirmVote = (nominee_id, username) => {
   const isChange = !!window._eowMyVote;
@@ -1558,9 +1619,13 @@ window.startExam = (category_id, mode) => {
       <div class="modal-title"><i class="fas fa-user" style="color:var(--orange);margin-right:.5rem"></i>Prüfling</div>
       <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
     </div>
-    <p style="font-size:.85rem;color:var(--muted);margin-bottom:1rem">
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:.75rem">
       Fülle die Daten des Prüflings aus. Die Person wird nach Bestehen automatisch ins Bürgerregister eingetragen.
     </p>
+    <div style="display:flex;align-items:flex-start;gap:.6rem;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:var(--r);padding:.65rem .9rem;margin-bottom:1rem;font-size:.82rem;color:#fca5a5">
+      <i class="fas fa-skull" style="color:#ef4444;margin-top:.1rem;flex-shrink:0"></i>
+      <span><b>Achtung K.O.-Fragen:</b> Diese Prüfung enthält K.O.-Fragen. Eine falsche Antwort führt zum <b>sofortigen Durchfallen</b> und einer automatischen 24h-Sperre des Prüflings.</span>
+    </div>
     <form onsubmit="launchExam(event,${category_id},'${mode}')">
       <div class="form-row">
         <div class="form-group"><label>Prüfling Name <span style="color:var(--red)">*</span></label>
@@ -1874,9 +1939,10 @@ async function registry() {
       </div>
     </div>
     ${citizens.length ? citizens.map((c, idx) => {
-      const passed   = c.entries.filter(e => e.passed);
-      const licenses = [...new Map(passed.map(e => [e.category_name, e])).values()];
-      const latest   = c.entries.reduce((a, b) => new Date(a.registered_at) > new Date(b.registered_at) ? a : b);
+      const passed    = c.entries.filter(e => e.passed);
+      const licenses  = [...new Map(passed.map(e => [e.category_name, e])).values()];
+      const latest    = c.entries.reduce((a, b) => new Date(a.registered_at) > new Date(b.registered_at) ? a : b);
+      const noteCount = c.entries[0]?.note_count || 0;
       return `
       <div class="card" style="margin-bottom:.75rem">
         <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;cursor:pointer" onclick="toggleCitizenDetail(this,${idx})">
@@ -1885,13 +1951,14 @@ async function registry() {
           </div>
           <div style="flex:1;min-width:0">
             <div style="font-weight:700;font-size:.98rem">${c.name}${c.citizenId ? ` <span style="font-size:.75rem;color:var(--muted);font-weight:400">${c.citizenId}</span>` : ''}</div>
-            <div style="font-size:.75rem;color:var(--muted);margin-top:.15rem">Letzter Eintrag: ${fmt(latest.registered_at)}</div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:.15rem">Letzter Eintrag: ${fmt(latest.registered_at)}${c.entries.length > 1 ? ` · ${c.entries.length} Einträge` : ''}</div>
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">
             ${licenses.length ? licenses.map(e => `
               <span title="${e.category_name} – Bestanden" style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;font-weight:700;padding:.2rem .55rem;border-radius:20px;background:${(CAT_COLORS[e.category_name]||'#6b7280')}22;color:${CAT_COLORS[e.category_name]||'#6b7280'};border:1px solid ${(CAT_COLORS[e.category_name]||'#6b7280')}44">
                 <i class="fas ${e.icon}"></i>${e.category_name}
               </span>`).join('') : `<span style="font-size:.72rem;color:var(--muted)">Keine Lizenz</span>`}
+            ${noteCount > 0 ? `<span title="${noteCount} interne Notiz(en)" style="display:inline-flex;align-items:center;gap:.25rem;font-size:.7rem;font-weight:700;padding:.2rem .5rem;border-radius:20px;background:rgba(168,85,247,.12);color:#a855f7;border:1px solid rgba(168,85,247,.3)"><i class="fas fa-lock" style="font-size:.6rem"></i>${noteCount}</span>` : ''}
           </div>
           <i class="fas fa-chevron-down" style="color:var(--muted);font-size:.75rem;flex-shrink:0"></i>
         </div>
@@ -2371,6 +2438,84 @@ window.deleteSpot = async id => {
   const r = await api(`/api/map-spots/${id}`, { method: 'DELETE' });
   if (r) { toast('Spot gelöscht.', 'ok'); map(); }
 };
+
+// ════════════════════════════════════════════════════════════════
+//  AUDIT-LOG
+// ════════════════════════════════════════════════════════════════
+let _auditQ = '', _auditAction = '', _auditPage = 1;
+const ACTION_LABELS = {
+  ban_create:'Sperre erstellt', ban_lift:'Sperre aufgehoben', ban_delete:'Sperre gelöscht',
+  user_update:'User aktualisiert', registry_delete:'Register-Eintrag gelöscht',
+  exam_ko_fail:'K.O.-Frage Fail', ic_log_reset:'IC-Log zurückgesetzt',
+  ic_log_add:'IC-Zeit eingetragen', announcement_create:'Ankündigung erstellt',
+  announcement_delete:'Ankündigung gelöscht', complaint_response:'Beschwerde beantwortet',
+  faction_create:'Fraktion erstellt', faction_delete:'Fraktion gelöscht',
+  price_create:'Preis erstellt', price_update:'Preis aktualisiert', price_delete:'Preis gelöscht',
+  faq_create:'FAQ erstellt', faq_update:'FAQ aktualisiert', faq_delete:'FAQ gelöscht',
+  citizen_note_add:'Bürger-Notiz hinzugefügt', citizen_note_delete:'Bürger-Notiz gelöscht',
+};
+const ACTION_ICONS = {
+  ban_create:'fa-ban r', ban_lift:'fa-lock-open g', ban_delete:'fa-trash r',
+  user_update:'fa-user-edit o', registry_delete:'fa-id-card r',
+  exam_ko_fail:'fa-skull r', ic_log_reset:'fa-redo o', ic_log_add:'fa-clock g',
+  announcement_create:'fa-bullhorn o', announcement_delete:'fa-bullhorn r',
+  complaint_response:'fa-reply g',
+};
+
+async function auditlog() {
+  const params = new URLSearchParams({ page: _auditPage });
+  if (_auditQ)      params.set('q', _auditQ);
+  if (_auditAction) params.set('action', _auditAction);
+  const data = await api(`/api/audit-log?${params}`);
+  if (!data) return;
+  const { rows, total, pages } = data;
+
+  $('pageContent').innerHTML = `
+    <div class="pg-header">
+      <div class="pg-header-left"><h2>Audit-Log</h2><p>${total} Einträge gesamt</p></div>
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+        <div class="search-bar"><i class="fas fa-search"></i>
+          <input id="auditSearch" placeholder="User oder Details..." value="${_auditQ}"
+            oninput="_auditQ=this.value;_auditPage=1;clearTimeout(window._alog);window._alog=setTimeout(auditlog,250)">
+        </div>
+        <select class="form-control" style="width:auto;font-size:.83rem" onchange="_auditAction=this.value;_auditPage=1;auditlog()">
+          <option value="">Alle Aktionen</option>
+          ${Object.entries(ACTION_LABELS).map(([k,v]) => `<option value="${k}" ${_auditAction===k?'selected':''}>${v}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="card">
+      ${rows.length ? `
+      <div class="tbl-wrap">
+        <table class="data-tbl">
+          <thead><tr><th>Zeit</th><th>User</th><th>Aktion</th><th>Details</th><th>IP</th></tr></thead>
+          <tbody>
+            ${rows.map(r => {
+              const iconClass = ACTION_ICONS[r.action] || 'fa-circle-dot o';
+              const [icon, col] = iconClass.split(' ');
+              return `<tr>
+                <td style="white-space:nowrap;color:var(--muted);font-size:.78rem">${fmt(r.created_at)}</td>
+                <td style="font-weight:600">${esc(r.username)}</td>
+                <td><span style="display:inline-flex;align-items:center;gap:.35rem;font-size:.78rem">
+                  <i class="fas ${icon} ${col==='r'?'style="color:#ef4444"':col==='g'?'style="color:#22c55e"':col==='o'?'style="color:var(--orange)"':''}"></i>
+                  ${ACTION_LABELS[r.action] || esc(r.action)}
+                </span></td>
+                <td style="font-size:.8rem;color:var(--muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.details||'')}">${esc(r.details || '—')}</td>
+                <td style="font-size:.75rem;color:var(--muted)">${esc(r.ip || '—')}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${pages > 1 ? `
+      <div style="display:flex;align-items:center;justify-content:center;gap:.5rem;margin-top:1rem;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" ${_auditPage<=1?'disabled':''} onclick="_auditPage--;auditlog()"><i class="fas fa-chevron-left"></i></button>
+        <span style="font-size:.85rem;color:var(--muted)">Seite ${_auditPage} / ${pages}</span>
+        <button class="btn btn-ghost btn-sm" ${_auditPage>=pages?'disabled':''} onclick="_auditPage++;auditlog()"><i class="fas fa-chevron-right"></i></button>
+      </div>` : ''}
+      ` : '<div class="empty"><i class="fas fa-shield-alt"></i><p>Keine Einträge gefunden</p></div>'}
+    </div>`;
+}
 
 // ════════════════════════════════════════════════════════════════
 //  IC-ZEIT
