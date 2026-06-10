@@ -347,6 +347,29 @@ async function renderVoterScreen() {
       </div>
     </aside>
 
+    <!-- Raketenschorle-Button (fixed, bottom-right) -->
+    <a href="https://raketenschorle.de" target="_blank" rel="noopener" style="
+      position:fixed;bottom:18px;right:18px;z-index:9999;
+      display:flex;align-items:center;gap:7px;
+      background:linear-gradient(135deg,#0f172a,#1e293b);
+      border:1px solid rgba(249,115,22,.35);
+      color:#f97316;
+      padding:7px 13px 7px 10px;
+      border-radius:999px;
+      font-size:12px;font-weight:700;font-family:'Inter',sans-serif;
+      text-decoration:none;
+      box-shadow:0 2px 12px rgba(249,115,22,.2);
+      backdrop-filter:blur(6px);
+      transition:border-color .15s,box-shadow .15s,transform .1s;
+    "
+    onmouseover="this.style.borderColor='rgba(249,115,22,.7)';this.style.boxShadow='0 4px 20px rgba(249,115,22,.35)';this.style.transform='translateY(-1px)'"
+    onmouseout="this.style.borderColor='rgba(249,115,22,.35)';this.style.boxShadow='0 2px 12px rgba(249,115,22,.2)';this.style.transform=''"
+    title="Raketenschorle.de">
+      <img src="https://raketenschorle.de/favicon.ico" onerror="this.style.display='none'" style="width:14px;height:14px;border-radius:3px;flex-shrink:0">
+      <span>Raketenschorle.de</span>
+      <i class="fas fa-external-link-alt" style="font-size:9px;opacity:.7"></i>
+    </a>
+
     <!-- ===== MAIN ===== -->
     <div class="main-wrapper">
       <header class="topbar">
