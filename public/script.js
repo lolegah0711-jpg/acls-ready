@@ -1162,11 +1162,8 @@ async function dashboard() {
       ${voteCard}
     </div>
 
-    <!-- Wöchentliche Challenges + Umfrage-Widget -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0" id="staffWidgetRow">
-      <div id="staffPollWidget"></div>
-      <div id="staffChallengesWidget"></div>
-    </div>
+    <!-- Umfrage-Widget -->
+    <div id="staffPollWidget"></div>
 
     <!-- Twitch -->
     <div id="twitch-widget">
@@ -1314,7 +1311,10 @@ async function dashboard() {
           </div>
           <div class="lb-score"><i class="fas fa-clock"></i>${(+u.hours).toFixed(1)}h</div>
         </div>`).join('')}
-    </div>` : ''}`;
+    </div>` : ''}
+
+    <!-- Wöchentliche Challenges (ganz unten, volle Breite) -->
+    <div id="staffChallengesWidget" style="margin-top:1.1rem"></div>`;
   animateCountUps();
   requestAnimationFrame(() => requestAnimationFrame(animateBadgeRings));
   loadTwitchWidget();
