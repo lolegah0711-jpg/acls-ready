@@ -1896,13 +1896,13 @@ app.post('/api/idle-save', (req, res) => {
   const row = db.prepare('SELECT * FROM idle_saves WHERE user_id = ?').get(user.id);
   if (row) {
     const prevBuildings = JSON.parse(row.buildings);
-    const gpsMax = Object.entries(prevBuildings).reduce((s, [id, cnt]) => {
-      const rates = { wb: 0.2, komp: 1, hb: 6, diag: 20, lack: 80, pst: 300, atw: 1000, mw: 4000, fil: 20000, konz: 100000 };
-      return s + (rates[id] || 0) * cnt;
-    }, 0);
+    // GPS-Werte identisch mit game12.html BUILDINGS-Array
+    const baseRates = { parking:.1, wash:.5, shop:4, garage:20, tuning:90, dealer:400, speedway:1800, logistic:7500, factory:30000, empire:150000 };
+    const gpsMax = Object.entries(prevBuildings).reduce((s, [id, cnt]) => s + (baseRates[id] || 0) * cnt, 0);
     const elapsed = Math.max(0, (Date.now() - new Date(row.updated_at).getTime()) / 1000);
-    const maxGold = row.gold + gpsMax * elapsed * 2.5 + 50000;
-    if (gold > maxGold && gold > row.gold + 1e6)
+    // Großzügiger Puffer (×5) damit Upgrades, Prestige-Boni und Offline-Zeit nie fälschlich blockieren
+    const maxGold = row.gold + gpsMax * elapsed * 5 + 1e6;
+    if (gold > maxGold)
       return res.status(400).json({ error: 'Ungültige Daten' });
   }
 
