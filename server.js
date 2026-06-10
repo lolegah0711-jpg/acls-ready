@@ -1709,6 +1709,66 @@ app.get('/api/bot/eow-standings', (req, res) => {
   res.json({ standings, staffVotes, citizenVotes, totalVotes: staffVotes + citizenVotes, week: wk });
 });
 
+// ── Bot: ACLS-Coins Kontostand ──────────────────────────────────
+app.get('/api/bot/coins/:discordId', (req, res) => {
+  if (!secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return res.status(401).end();
+  const did = req.params.discordId;
+  const row = db.prepare('SELECT * FROM coin_balances WHERE discord_id = ?').get(did);
+  const wk  = weekKey();
+  const weekEarned = db.prepare(`
+    SELECT COALESCE(SUM(amount), 0) AS s FROM coin_transactions
+    WHERE discord_id = ? AND amount > 0 AND date(created_at) >= ?
+  `).get(did, wk).s;
+  const rank = row ? db.prepare('SELECT COUNT(*) AS c FROM coin_balances WHERE total_earned > ?').get(row.total_earned).c + 1 : null;
+  res.json({ balance: row?.balance ?? 0, totalEarned: row?.total_earned ?? 0, weekEarned, rank, username: row?.username || null });
+});
+
+// ── Bot: Coins Top 10 (Woche + Allzeit) ─────────────────────────
+app.get('/api/bot/coins-top', (req, res) => {
+  if (!secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return res.status(401).end();
+  const wk = weekKey();
+  const week = db.prepare(`
+    SELECT t.discord_id, COALESCE(b.username, t.discord_id) AS username, SUM(t.amount) AS earned
+    FROM coin_transactions t LEFT JOIN coin_balances b ON b.discord_id = t.discord_id
+    WHERE t.amount > 0 AND date(t.created_at) >= ?
+    GROUP BY t.discord_id ORDER BY earned DESC LIMIT 10
+  `).all(wk);
+  const alltime = db.prepare('SELECT discord_id, username, total_earned AS earned FROM coin_balances ORDER BY total_earned DESC LIMIT 10').all();
+  res.json({ week, alltime, weekStart: wk });
+});
+
+// ── Bot: aktuelles Wochenturnier ────────────────────────────────
+app.get('/api/bot/tournament', (req, res) => {
+  if (!secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return res.status(401).end();
+  const t = ensureTournament();
+  const info = TOURNAMENT_GAMES[t.game] || { name: t.game, url: '/' };
+  const board = db.prepare('SELECT discord_id, username, score FROM tournament_scores WHERE week = ? ORDER BY score DESC LIMIT 10').all(t.week);
+  res.json({ week: t.week, game: t.game, gameName: info.name, gameUrl: info.url, prizes: TOURNAMENT_PRIZES, leaderboard: board });
+});
+
+// ── Bot: Wochenzusammenfassung (für Montags-Post) ───────────────
+app.get('/api/bot/weekly-summary', (req, res) => {
+  if (!secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return res.status(401).end();
+  const eow = db.prepare(`
+    SELECT u.username, w.vote_count, w.week FROM eow_winners w
+    JOIN users u ON u.id = w.user_id ORDER BY w.week DESC LIMIT 1
+  `).get() || null;
+  const t = db.prepare('SELECT week, game, winner_username, winner_score FROM tournaments WHERE finished = 1 ORDER BY week DESC LIMIT 1').get() || null;
+  const applications = db.prepare(`SELECT COUNT(*) AS c FROM applications WHERE created_at >= datetime('now', '-7 days')`).get().c;
+  const coinsTop = db.prepare(`
+    SELECT t.discord_id, COALESCE(b.username, t.discord_id) AS username, SUM(t.amount) AS earned
+    FROM coin_transactions t LEFT JOIN coin_balances b ON b.discord_id = t.discord_id
+    WHERE t.amount > 0 AND t.created_at >= datetime('now', '-7 days')
+    GROUP BY t.discord_id ORDER BY earned DESC LIMIT 3
+  `).all();
+  res.json({
+    eow,
+    tournament: t ? { ...t, gameName: TOURNAMENT_GAMES[t.game]?.name || t.game } : null,
+    applications,
+    coinsTop,
+  });
+});
+
 app.get('/api/bot-notifications', (req, res) => {
   if (!secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return res.status(401).end();
   const rows = db.prepare('SELECT * FROM bot_notifications WHERE sent = 0 ORDER BY created_at ASC').all();

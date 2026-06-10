@@ -194,13 +194,26 @@ const SLASH_COMMANDS = [
   new SlashCommandBuilder().setName('ic').setDescription('Deine IC-Zeit diese Woche anzeigen'),
   new SlashCommandBuilder().setName('dienst').setDescription('Wer ist gerade im Dienst?'),
   new SlashCommandBuilder().setName('monatsbericht').setDescription('Prüfungsstatistik dieser Woche und dieses Monats'),
-  new SlashCommandBuilder().setName('rangliste').setDescription('Spielrangliste anzeigen')
-    .addStringOption(o => o.setName('spiel').setDescription('Spielname').setRequired(true)
+  new SlashCommandBuilder().setName('rangliste').setDescription('Ranglisten anzeigen (Coins, Turnier oder Minispiel)')
+    .addStringOption(o => o.setName('liste').setDescription('Welche Rangliste? (leer = Coins der Woche)').setRequired(false)
       .addChoices(
-        { name: 'Book of Ra',    value: 'bookofra' },
-        { name: 'Tower Defense', value: 'towerdefense' },
-        { name: '2048',          value: '2048' },
+        { name: '🪙 Coins – Top 10 der Woche', value: 'coins' },
+        { name: '🏆 Wochenturnier',            value: 'turnier' },
+        { name: 'Autorennen',          value: 'race' },
+        { name: 'Brick Breaker',       value: 'brick' },
+        { name: 'Dead Zone',           value: 'deadzone' },
+        { name: 'Snake',               value: 'snake' },
+        { name: 'Tetris',              value: 'tetris' },
+        { name: 'Book of Ra',          value: 'bookofra' },
+        { name: 'Sky Cop',             value: 'skycop' },
+        { name: 'Doodle Jump',         value: 'doodlejump' },
+        { name: 'Tower Defense',       value: 'towerdefense' },
+        { name: '2048',                value: '2048' },
+        { name: 'Quiz Survival',       value: 'quiz' },
+        { name: 'Abschlepp-Simulator', value: 'tow' },
+        { name: 'Blackjack',           value: 'blackjack' },
       )),
+  new SlashCommandBuilder().setName('coins').setDescription('Dein ACLS-Coins Kontostand'),
 ].map(c => c.toJSON());
 
 async function registerSlashCommands() {
@@ -261,19 +274,68 @@ async function handleInteraction(interaction) {
   }
 
   if (commandName === 'rangliste') {
-    const game = interaction.options.getString('spiel');
+    const list = interaction.options.getString('liste') || 'coins';
+    const medals = ['🥇', '🥈', '🥉'];
+    const rankIcon = i => medals[i] || `**${i + 1}.**`;
     try {
-      const res  = await fetch(`${SERVER_URL}/api/game-scores/${game}`).catch(() => null);
+      if (list === 'coins') {
+        const res = await fetch(`${SERVER_URL}/api/bot/coins-top`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+        const d   = res?.ok ? await res.json() : null;
+        if (!d?.week?.length) return interaction.editReply({ content: 'Diese Woche wurden noch keine Coins verdient.' });
+        const embed = new EmbedBuilder()
+          .setColor(0xfbbf24)
+          .setTitle('🪙 ACLS-Coins – Top 10 der Woche')
+          .setDescription(d.week.map((r, i) => `${rankIcon(i)} **${r.username || 'Unbekannt'}** — ${(+r.earned).toLocaleString('de-DE')} 🪙`).join('\n'))
+          .setFooter({ text: 'Verdient seit Montag · Coins gibt es in allen Minispielen auf der Website' })
+          .setTimestamp();
+        return interaction.editReply({ embeds: [embed] });
+      }
+      if (list === 'turnier') {
+        const res = await fetch(`${SERVER_URL}/api/bot/tournament`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+        const d   = res?.ok ? await res.json() : null;
+        if (!d) return interaction.editReply({ content: 'Turnierdaten konnten nicht geladen werden.' });
+        const board = d.leaderboard.length
+          ? d.leaderboard.map((r, i) => `${rankIcon(i)} **${r.username || 'Unbekannt'}** — ${(+r.score).toLocaleString('de-DE')}${i < 3 ? ` (+${d.prizes[i]} 🪙)` : ''}`).join('\n')
+          : '_Noch keine Teilnehmer – sei der Erste!_';
+        const embed = new EmbedBuilder()
+          .setColor(0xf97316)
+          .setTitle(`🏆 Wochenturnier – ${d.gameName}`)
+          .setDescription(board)
+          .addFields({ name: '🎁 Preise', value: `🥇 ${d.prizes[0]} · 🥈 ${d.prizes[1]} · 🥉 ${d.prizes[2]} ACLS-Coins`, inline: false })
+          .setFooter({ text: 'Bester Score der Woche zählt · Auswertung Sonntag 20:00 Uhr' })
+          .setTimestamp();
+        return interaction.editReply({ embeds: [embed] });
+      }
+      // Minispiel-Rangliste
+      const res  = await fetch(`${SERVER_URL}/api/game-scores/${list}`).catch(() => null);
       const data = res?.ok ? await res.json() : [];
       if (!data.length) return interaction.editReply({ content: 'Noch keine Einträge in dieser Rangliste.' });
-      const medals = ['🥇', '🥈', '🥉'];
       const embed = new EmbedBuilder()
         .setColor(0xfbbf24)
-        .setTitle(`🏆 Rangliste – ${game}`)
-        .setDescription(data.slice(0,10).map((r,i) => `${medals[i]||`**${i+1}.**`} **${r.username||'Unbekannt'}** — ${r.score.toLocaleString('de-DE')}`).join('\n'))
+        .setTitle(`🏆 Rangliste – ${list}`)
+        .setDescription(data.slice(0, 10).map((r, i) => `${rankIcon(i)} **${r.username || 'Unbekannt'}** — ${r.score.toLocaleString('de-DE')}`).join('\n'))
         .setTimestamp();
       await interaction.editReply({ embeds: [embed] });
     } catch (e) { await interaction.editReply({ content: 'Fehler beim Laden der Rangliste.' }); }
+  }
+
+  if (commandName === 'coins') {
+    try {
+      const res = await fetch(`${SERVER_URL}/api/bot/coins/${interaction.user.id}`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+      const d   = res?.ok ? await res.json() : null;
+      if (!d) return interaction.editReply({ content: 'Kontostand konnte nicht geladen werden.' });
+      const embed = new EmbedBuilder()
+        .setColor(0xfbbf24)
+        .setTitle(`🪙 ACLS-Coins – ${interaction.member?.displayName || interaction.user.username}`)
+        .addFields(
+          { name: 'Kontostand',        value: `**${(+d.balance).toLocaleString('de-DE')}** 🪙`, inline: true },
+          { name: 'Diese Woche',       value: `+${(+d.weekEarned).toLocaleString('de-DE')}`, inline: true },
+          { name: 'Insgesamt verdient', value: `${(+d.totalEarned).toLocaleString('de-DE')}`, inline: true },
+        )
+        .setFooter({ text: d.rank ? `Platz ${d.rank} der Allzeit-Rangliste · Coins verdienen: Minispiele auf der Website` : 'Spiel ein Minispiel auf der Website, um Coins zu verdienen!' })
+        .setTimestamp();
+      await interaction.editReply({ embeds: [embed] });
+    } catch (e) { await interaction.editReply({ content: 'Fehler beim Laden des Kontostands.' }); }
   }
 
   if (commandName === 'stats') {
@@ -375,33 +437,50 @@ async function sendEowReminder() {
 // Jeden Freitag um 18:00 Berliner Zeit
 cron.schedule('0 18 * * 5', sendEowReminder, { timezone: 'Europe/Berlin' });
 
-// ── Automatischer Wochenbericht: Montag 08:00 ────────────────────
+// ── Automatischer Wochenbericht: Montag 18:00 → Bot-Channel ──────
 async function sendWochenbericht() {
-  if (!EOW_CHANNEL_ID) return;
+  const channelId = COMMANDS_CHANNEL_ID || EOW_CHANNEL_ID;
+  if (!channelId) return;
   try {
-    const res = await fetch(`${SERVER_URL}/api/monatsbericht`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+    const [res, sumRes] = await Promise.all([
+      fetch(`${SERVER_URL}/api/monatsbericht`,      { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null),
+      fetch(`${SERVER_URL}/api/bot/weekly-summary`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null),
+    ]);
     if (!res?.ok) return;
-    const d = await res.json();
+    const d   = await res.json();
+    const sum = sumRes?.ok ? await sumRes.json() : null;
     const pct = (c, p) => c > 0 ? ` (${Math.round((p||0)/c*100)}% bestanden)` : '';
     const now = new Date();
     const monat = now.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
     const embed = new EmbedBuilder()
       .setColor(0xa855f7)
       .setTitle(`📊 Wochenbericht – ${monat}`)
-      .setDescription('Guten Morgen! Hier die aktuellen Statistiken der ACLS Fahrschule:')
+      .setDescription('Hier die Zusammenfassung der letzten Woche beim ACLS:')
       .addFields(
         { name: '📅 Letzte Woche',  value: `**${d.week.c}** Prüfungen${pct(d.week.c, d.week.p)}`,   inline: true },
         { name: '📆 Dieser Monat', value: `**${d.month.c}** Prüfungen${pct(d.month.c, d.month.p)}`, inline: true },
         { name: '📈 Gesamt',       value: `**${d.total.c}** Prüfungen${pct(d.total.c, d.total.p)}`, inline: true },
       );
+    if (sum?.eow)        embed.addFields({ name: '🌟 Mitarbeiter der Woche', value: `**${sum.eow.username}** mit ${sum.eow.vote_count} Stimmen`, inline: true });
+    if (sum?.tournament) embed.addFields({ name: '🏆 Turniersieger',         value: `**${sum.tournament.winner_username || '–'}** (${sum.tournament.gameName}${sum.tournament.winner_score != null ? `, ${(+sum.tournament.winner_score).toLocaleString('de-DE')} Punkte` : ''})`, inline: true });
+    if (sum)             embed.addFields({ name: '📨 Neue Bewerbungen',      value: `**${sum.applications}** in den letzten 7 Tagen`, inline: true });
+    if (sum?.coinsTop?.length) {
+      embed.addFields({ name: '🪙 Top Coin-Verdiener (Woche)', value: sum.coinsTop.map((c, i) => `${['🥇','🥈','🥉'][i]} **${c.username}** — ${(+c.earned).toLocaleString('de-DE')} 🪙`).join('\n'), inline: false });
+    }
     if (d.byExaminer?.length) {
-      embed.addFields({ name: '🏆 Top Prüfer (Monat)', value: d.byExaminer.slice(0,5).map((e,i) => `${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} **${e.username}** — ${e.c} Prüfungen${pct(e.c,e.p)}`).join('\n'), inline: false });
+      embed.addFields({ name: '🏅 Top Prüfer (Monat)', value: d.byExaminer.slice(0,5).map((e,i) => `${['🥇','🥈','🥉','4️⃣','5️⃣'][i]} **${e.username}** — ${e.c} Prüfungen${pct(e.c,e.p)}`).join('\n'), inline: false });
     }
     if (d.icWeek?.length) {
       embed.addFields({ name: '⏱️ Meiste IC-Zeit (letzte Woche)', value: d.icWeek.map((u,i) => `${i+1}. **${u.username}** — ${(+u.h).toFixed(1)}h`).join('\n'), inline: false });
     }
     embed.setTimestamp().setFooter({ text: 'ACLS Automobil Club Los Santos · Automatischer Wochenbericht' });
-    const ch = await client.channels.fetch(EOW_CHANNEL_ID);
+    const ch = await client.channels.fetch(channelId);
+    // Alten Wochenbericht entfernen, damit immer nur der aktuelle steht
+    try {
+      const msgs = await ch.messages.fetch({ limit: 50 });
+      const old = msgs.filter(m => !m.pinned && m.author?.id === client.user.id && m.embeds[0]?.title?.startsWith('📊 Wochenbericht'));
+      for (const [, m] of old) await m.delete().catch(() => {});
+    } catch {}
     await ch.send({ embeds: [embed] });
     console.log('[Bot] Automatischer Wochenbericht gesendet');
   } catch (e) {
@@ -422,11 +501,11 @@ function buildCommandsEmbed() {
       { name: '`/stats [mitarbeiter]`',  value: 'Prüfungsstatistiken eines Mitarbeiters anzeigen.\nOhne Angabe werden deine eigenen Stats gezeigt.', inline: false },
       { name: '`/ic`',                   value: 'Deine IC-Zeit dieser Woche, dieses Monats und gesamt.', inline: false },
       { name: '`/dienst`',               value: 'Zeigt welche Mitarbeiter gerade im Voice-Kanal aktiv sind.', inline: false },
-      { name: '`/rangliste [spiel]`',    value: 'Top-10 Rangliste eines Minispiels.\nSpiele: Book of Ra · Tower Defense · 2048', inline: false },
+      { name: '`/rangliste [liste]`',    value: 'Top-10 Ranglisten: 🪙 Coins der Woche (Standard) · 🏆 Wochenturnier · alle Minispiele.', inline: false },
+      { name: '`/coins`',                value: 'Dein ACLS-Coins Kontostand, Wochenverdienst und Allzeit-Platzierung.', inline: false },
       { name: '`/monatsbericht`',        value: 'Prüfungsstatistik dieser Woche und dieses Monats + Top Prüfer.', inline: false },
     )
-    .setFooter({ text: 'ACLS Bot · Befehle werden laufend erweitert' })
-    .setTimestamp();
+    .setFooter({ text: 'ACLS Bot · Befehle werden laufend erweitert' });
 }
 
 async function setupCommandsChannel() {
@@ -435,15 +514,30 @@ async function setupCommandsChannel() {
     const ch = await client.channels.fetch(COMMANDS_CHANNEL_ID);
     if (!ch) return;
 
-    // Alle bestehenden Nachrichten löschen
+    // Bestehende angepinnte Bot-Nachricht still aktualisieren (kein neuer
+    // Post bei jedem Neustart → keine Benachrichtigung für die User)
+    const recent = await ch.messages.fetch({ limit: 100 }).catch(() => null);
+    const existing = recent?.find(m => m.pinned && m.author.id === client.user.id && m.embeds[0]?.title?.startsWith('📋 Bot-Befehle'));
+    if (existing) {
+      await existing.edit({ embeds: [buildCommandsEmbed()] }).catch(() => {});
+      console.log('[Bot] Befehls-Embed still aktualisiert (kein Neupost)');
+      return;
+    }
+
+    // Erste Einrichtung: Kanal leeren, Embed posten und anpinnen
     const msgs = await ch.messages.fetch({ limit: 100 });
     if (msgs.size > 0) await ch.bulkDelete(msgs, true).catch(() => {});
-
-    // Neues Embed posten und anpinnen
     const msg = await ch.send({ embeds: [buildCommandsEmbed()] });
     await msg.pin().catch(() => {});
     console.log('[Bot] Befehls-Kanal eingerichtet');
   } catch (e) { console.error('[Bot] Befehls-Kanal Fehler:', e.message); }
+}
+
+// Nachrichten, die der 5-Minuten-Cleaner NICHT löschen darf
+function isProtectedMessage(m) {
+  if (m.pinned) return true;
+  // Wochenzusammenfassung bleibt bis zum nächsten Montags-Post stehen
+  return m.author?.id === client.user.id && m.embeds[0]?.title?.startsWith('📊 Wochenbericht');
 }
 
 async function clearCommandsChannel() {
@@ -452,8 +546,7 @@ async function clearCommandsChannel() {
     const ch   = await client.channels.fetch(COMMANDS_CHANNEL_ID);
     if (!ch) return;
     const msgs = await ch.messages.fetch({ limit: 100 });
-    // Alle nicht-angehefteten Nachrichten löschen
-    const toDelete = msgs.filter(m => !m.pinned);
+    const toDelete = msgs.filter(m => !isProtectedMessage(m));
     if (toDelete.size > 0) await ch.bulkDelete(toDelete, true).catch(() => {});
   } catch (e) { /* Kanal nicht erreichbar, ignorieren */ }
 }
