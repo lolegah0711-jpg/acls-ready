@@ -3942,17 +3942,7 @@ async function admin() {
         </div>
       </div>
     </div><!-- /col-right -->
-    </div>
-    <!-- Audit-Log -->
-    <div class="card" style="margin-top:1rem">
-      <div class="card-head">
-        <div class="card-head-icon" style="background:rgba(168,85,247,.15)"><i class="fas fa-shield-alt" style="color:#a855f7"></i></div>
-        <div><div class="card-title">Audit-Log</div><div class="card-sub">Letzte Admin-Aktionen</div></div>
-        <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="loadAuditLog()"><i class="fas fa-sync-alt"></i></button>
-      </div>
-      <div id="audit-log-list"><div style="text-align:center;padding:1rem;color:var(--muted);font-size:.85rem">Wird geladen…</div></div>
     </div>`;
-  loadAuditLog();
   loadPollAdmin();
 }
 
@@ -4012,31 +4002,6 @@ window.deletePollAdmin = async id => {
   const cid = document.getElementById('staffPollWidget') ? 'staffPollWidget' : 'vPollWidget';
   loadPollWidget(cid);
 };
-
-async function loadAuditLog() {
-  const el = document.getElementById('audit-log-list');
-  if (!el) return;
-  const data = await api('/api/audit-log');
-  if (!data?.length) { el.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted);font-size:.85rem">Keine Einträge</div>'; return; }
-  const actionLabel = a => ({
-    user_update:'Nutzer bearbeitet', user_deactivate:'Nutzer deaktiviert',
-    ban_create:'Sperre erteilt', ban_lift:'Sperre aufgehoben', ban_delete:'Sperre gelöscht',
-    eow_reset:'EOW zurückgesetzt', complaint_update:'Beschwerde aktualisiert'
-  }[a] || a);
-  const actionColor = a => a.startsWith('ban') ? '#ef4444' : a.startsWith('eow') ? '#f59e0b' : a.startsWith('user_deactivate') ? '#ef4444' : '#a855f7';
-  el.innerHTML = `<div class="tbl-wrap" style="max-height:320px;overflow-y:auto">
-    <table class="data-tbl">
-      <thead><tr><th>Zeit</th><th>Admin</th><th>Aktion</th><th>Details</th><th>IP</th></tr></thead>
-      <tbody>${data.map(r => `<tr>
-        <td style="white-space:nowrap;font-size:.78rem;color:var(--muted)">${new Date(r.created_at).toLocaleString('de-DE')}</td>
-        <td style="font-weight:600;font-size:.85rem">${r.username||'–'}</td>
-        <td><span style="font-size:.75rem;font-weight:700;padding:.15rem .45rem;border-radius:4px;background:${actionColor(r.action)}22;color:${actionColor(r.action)}">${actionLabel(r.action)}</span></td>
-        <td style="font-size:.78rem;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.details||''}">${r.details||'–'}</td>
-        <td style="font-size:.75rem;color:var(--muted)">${r.ip||'–'}</td>
-      </tr>`).join('')}</tbody>
-    </table>
-  </div>`;
-}
 
 window.openAddUser = () => openModal(`
   <div class="modal-head"><div class="modal-title">Nutzer hinzufügen</div>
