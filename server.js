@@ -7,7 +7,40 @@ const fetch    = require('node-fetch');
 const crypto   = require('crypto');
 const { initDb } = require('./database');
 
-const GAME_SECRET = process.env.GAME_SECRET || 'acls-game-hmac-secret-2024';
+// Pflicht-Secrets — Server startet nicht ohne sie in Produktion
+const GAME_SECRET = process.env.GAME_SECRET || (process.env.NODE_ENV === 'production'
+  ? (() => { console.error('[FATAL] GAME_SECRET nicht gesetzt'); process.exit(1); })()
+  : 'acls-game-hmac-secret-dev');
+
+// Timing-sicherer Secret-Vergleich (verhindert Timing-Angriffe)
+function secretEqual(a, b) {
+  if (!a || !b) return false;
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ba.length !== bb.length) {
+    crypto.timingSafeEqual(ba, ba); // konstante Zeit
+    return false;
+  }
+  return crypto.timingSafeEqual(ba, bb);
+}
+const BOT_API_SECRET = process.env.BOT_API_SECRET || (process.env.NODE_ENV === 'production'
+  ? (() => { console.error('[FATAL] BOT_API_SECRET nicht gesetzt'); process.exit(1); })()
+  : 'acls-bot-secret-dev');
+
+// Einfacher In-Memory-Rate-Limiter (kein externes Paket nötig)
+const _rateBuckets = new Map();
+function rateLimit(key, maxReqs, windowMs) {
+  const now  = Date.now();
+  let bucket = _rateBuckets.get(key);
+  if (!bucket || now - bucket.start > windowMs) bucket = { start: now, count: 0 };
+  bucket.count++;
+  _rateBuckets.set(key, bucket);
+  return bucket.count > maxReqs;
+}
+setInterval(() => {
+  const cutoff = Date.now() - 60_000;
+  for (const [k, v] of _rateBuckets) if (v.start < cutoff) _rateBuckets.delete(k);
+}, 60_000);
 
 const GAME_LIMITS = {
   race:         { minSec: 25,  maxScore: 999999  },
@@ -74,15 +107,53 @@ app.use(express.json({ limit: '8mb' }));
 app.use(express.urlencoded({ extended: true, limit: '8mb' }));
 app.use(session({
   store: new SQLiteStore(db),
-  secret: process.env.SESSION_SECRET || 'acls-dev-secret',
+  secret: process.env.SESSION_SECRET || (process.env.NODE_ENV === 'production'
+    ? (() => { console.error('[FATAL] SESSION_SECRET nicht gesetzt'); process.exit(1); })()
+    : 'acls-session-secret-dev'),
   resave: false,
   saveUninitialized: false,
   cookie: {
-    maxAge:   7 * 24 * 60 * 60 * 1000, // 7 Tage
-    sameSite: 'lax',
+    maxAge:   7 * 24 * 60 * 60 * 1000,
+    sameSite: 'strict',
     secure:   process.env.NODE_ENV === 'production',
+    httpOnly: true,
   },
 }));
+
+// ── Sicherheits-Header ─────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=()');
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://unpkg.com",
+    "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com",
+    "img-src 'self' data: https://cdn.discordapp.com https://i.pravatar.cc https://via.placeholder.com",
+    "connect-src 'self'",
+    "frame-src 'none'",
+    "object-src 'none'",
+    "base-uri 'self'",
+  ].join('; '));
+  next();
+});
+
+// ── CSRF-Schutz: alle state-ändernden Routen prüfen auf gleichen Origin ──
+app.use((req, res, next) => {
+  if (['GET','HEAD','OPTIONS'].includes(req.method)) return next();
+  // Bot-Secret-Anfragen (von bot.js) erlauben
+  if (req.headers['x-bot-secret']) return next();
+  // OAuth-Callback erlauben
+  if (req.path === '/auth/callback' || req.path === '/auth/discord') return next();
+  const origin  = req.headers['origin']  || '';
+  const referer = req.headers['referer'] || '';
+  const host    = req.headers['host']    || '';
+  const allowed = origin ? origin.includes(host) : referer.includes(host);
+  if (!allowed) return res.status(403).json({ error: 'CSRF-Schutz: ungültiger Origin' });
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
   setHeaders(res, filePath) {
@@ -130,7 +201,7 @@ function auditLog(req, action, details = '') {
   const u = getUser(req);
   const userId   = u?.id   || null;
   const username = u?.username || (req.session.voterUsername || 'unbekannt');
-  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+  const ip = req.ip || req.socket?.remoteAddress || '';
   db.prepare('INSERT INTO audit_log (user_id, username, action, details, ip) VALUES (?, ?, ?, ?, ?)')
     .run(userId, username, action, details, ip);
 }
@@ -239,18 +310,25 @@ function runEowEvaluation() {
 //  DISCORD OAUTH
 // ════════════════════════════════════════════════════════════════
 app.get('/auth/discord', (req, res) => {
+  const state = crypto.randomBytes(16).toString('hex');
+  req.session.oauthState = state;
   const params = new URLSearchParams({
     client_id:     process.env.DISCORD_CLIENT_ID,
     redirect_uri:  process.env.DISCORD_REDIRECT_URI,
     response_type: 'code',
     scope:         'identify',
+    state,
   });
   res.redirect(`${DISCORD_AUTH_URL}?${params}`);
 });
 
 app.get('/auth/callback', async (req, res) => {
-  const { code } = req.query;
+  const ip = req.ip || req.socket.remoteAddress;
+  if (rateLimit(`oauth:${ip}`, 10, 60_000)) return res.status(429).redirect('/?error=rate_limit');
+  const { code, state } = req.query;
   if (!code) return res.redirect('/?error=no_code');
+  if (!state || state !== req.session.oauthState) return res.redirect('/?error=state_mismatch');
+  delete req.session.oauthState;
 
   try {
     // Exchange code → token
@@ -336,17 +414,22 @@ app.get('/api/users', requireAuthOrBot, (req, res) => {
 });
 
 app.post('/api/users', (req, res) => {
-  const requester  = getUser(req);
-  const totalUsers = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
-  if (totalUsers > 0 && (!requester || requester.role !== 'admin')) {
-    return res.status(403).json({ error: 'Nur Admins können Nutzer anlegen' });
-  }
+  const requester = getUser(req);
   const { discord_id, username, role } = req.body;
   if (!discord_id || !username) return res.status(400).json({ error: 'Fehlende Felder' });
   try {
-    const r = db.prepare('INSERT INTO users (discord_id, username, role, added_by) VALUES (?, ?, ?, ?)')
-      .run(discord_id, username, role || 'member', requester?.id || null);
-    res.json({ id: r.lastInsertRowid });
+    const result = db.transaction(() => {
+      const totalUsers = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+      if (totalUsers > 0 && (!requester || requester.role !== 'admin')) {
+        return { error: 'Nur Admins können Nutzer anlegen', status: 403 };
+      }
+      const assignedRole = totalUsers === 0 ? 'admin' : (role || 'member');
+      const r = db.prepare('INSERT INTO users (discord_id, username, role, added_by) VALUES (?, ?, ?, ?)')
+        .run(discord_id, username, assignedRole, requester?.id || null);
+      return { id: r.lastInsertRowid };
+    })();
+    if (result.error) return res.status(result.status).json({ error: result.error });
+    res.json({ id: result.id });
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Discord-ID bereits vorhanden' });
     res.status(500).json({ error: 'Datenbankfehler' });
@@ -503,7 +586,7 @@ app.get('/api/bans/check', requireAuth, (req, res) => {
 });
 
 app.post('/api/exams/start', requireAuth, (req, res) => {
-  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+  const ip = req.ip || req.socket?.remoteAddress || '';
   if (rateLimit(`exam:${ip}`, 10, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
   const { category_id, mode, citizen_name, citizen_id } = req.body;
   const limit = mode === 'flash' ? 5 : 10;
@@ -674,7 +757,7 @@ app.post('/api/factions', requireAuth, (req, res) => {
   res.json({ id: r.lastInsertRowid });
 });
 
-app.put('/api/factions/:id', requireAuth, (req, res) => {
+app.put('/api/factions/:id', requireAdmin, (req, res) => {
   const { name, primary_color, secondary_color, pearl_color, notes } = req.body;
   db.prepare('UPDATE factions SET name=?, primary_color=?, secondary_color=?, pearl_color=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
     .run(name, primary_color || null, secondary_color || null, pearl_color || null, notes || null, req.params.id);
@@ -737,7 +820,7 @@ app.post('/api/bans', requireAuth, (req, res) => {
   res.json({ id: r.lastInsertRowid });
 });
 
-app.patch('/api/bans/:id/lift', requireAuth, (req, res) => {
+app.patch('/api/bans/:id/lift', requireAdmin, (req, res) => {
   const user = getUser(req);
   const ban = db.prepare('SELECT person_name FROM bans WHERE id=?').get(req.params.id);
   db.prepare('UPDATE bans SET is_active=0, lifted_by=?, lifted_at=CURRENT_TIMESTAMP WHERE id=?').run(user.id, req.params.id);
@@ -839,7 +922,7 @@ app.get('/api/citizen-votes', (req, res) => {
 });
 
 app.post('/api/citizen-vote', (req, res) => {
-  const ip        = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+  const ip        = req.ip || req.socket?.remoteAddress || 'unknown';
   if (rateLimit(`vote:${ip}`, 5, 60 * 1000)) return res.status(429).json({ error: 'Zu viele Anfragen, bitte warte kurz' });
 
   const discordId = req.session.voterDiscordId || (req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null);
@@ -872,7 +955,7 @@ app.get('/api/users/public', (req, res) => {
 // Vom Bot aufgerufen wenn Server-Nickname sich ändert
 app.post('/api/sync-member', (req, res) => {
   const { bot_secret, discord_id, username, avatar } = req.body;
-  if (bot_secret !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(403).end();
+  if (!secretEqual(bot_secret, BOT_API_SECRET)) return res.status(403).end();
   const user = db.prepare('SELECT id FROM users WHERE discord_id = ? AND is_active = 1').get(discord_id);
   if (user) {
     if (username) db.prepare('UPDATE users SET username = ? WHERE id = ?').run(username, user.id);
@@ -931,7 +1014,7 @@ db.prepare(`DELETE FROM active_bot_sessions WHERE joined_at < datetime('now', '-
 
 app.post('/api/active-session', (req, res) => {
   const { bot_secret, discord_id, username, channel_name, joined_at } = req.body;
-  if (bot_secret !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(403).end();
+  if (!secretEqual(bot_secret, BOT_API_SECRET)) return res.status(403).end();
   if (joined_at) {
     db.prepare('INSERT OR REPLACE INTO active_bot_sessions (discord_id, username, channel_name, joined_at) VALUES (?, ?, ?, ?)')
       .run(discord_id, username || discord_id, channel_name, joined_at);
@@ -955,7 +1038,7 @@ app.get('/api/active-sessions', requireAuthOrBot, (req, res) => {
 // Called by bot.js to store auto-tracked voice sessions
 app.post('/api/voice-session', (req, res) => {
   const { bot_secret, discord_id, channel_id, channel_name, joined_at, left_at, duration_minutes, hours, date, notes } = req.body;
-  if (bot_secret !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) {
+  if (!secretEqual(bot_secret, BOT_API_SECRET)) {
     return res.status(403).json({ error: 'Ungültiger Bot-Secret' });
   }
   db.prepare('INSERT INTO voice_sessions (discord_id, channel_id, channel_name, joined_at, left_at, duration_minutes) VALUES (?, ?, ?, ?, ?, ?)')
@@ -1131,7 +1214,7 @@ app.get('/api/badges/:userId', requireAuth, (req, res) => {
 //  COMPLAINTS
 // ════════════════════════════════════════════════════════════════
 app.post('/api/complaints', (req, res) => {
-  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+  const ip = req.ip || req.socket?.remoteAddress || '';
   if (rateLimit(`complaint:${ip}`, 3, 5 * 60_000)) return res.status(429).json({ error: 'Bitte warte etwas bevor du eine weitere Beschwerde einreichst' });
   const { citizen_name, citizen_discord_id, subject, message } = req.body;
   if (!citizen_name?.trim() || !subject?.trim() || !message?.trim()) return res.status(400).json({ error: 'Pflichtfelder fehlen' });
@@ -1163,7 +1246,7 @@ app.patch('/api/complaints/:id', requireAdmin, (req, res) => {
 //  PROFILE
 // ════════════════════════════════════════════════════════════════
 function requireAuthOrBot(req, res, next) {
-  if (req.headers['x-bot-secret'] === (process.env.BOT_API_SECRET || 'acls-bot-secret')) return next();
+  if (secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return next();
   const u = getUser(req);
   if (!u) return res.status(401).json({ error: 'Nicht angemeldet' });
   next();
@@ -1372,6 +1455,9 @@ app.post('/api/rank-exam/join', requireAusbilder, (req, res) => {
   const { join_code } = req.body;
   const exam = db.prepare('SELECT * FROM active_rank_exams WHERE join_code = ?').get((join_code||'').toUpperCase().trim());
   if (!exam) return res.status(404).json({ error: 'Code nicht gefunden' });
+  const user = getUser(req);
+  if (exam.examiner1_id !== user.id && exam.examiner2_id !== user.id)
+    return res.status(403).json({ error: 'Du bist nicht als Prüfer für diese Prüfung eingetragen' });
   req.session.rankExamCode = exam.join_code;
   const ids = JSON.parse(exam.question_ids || '[]');
   const questions = ids.length
@@ -1442,19 +1528,21 @@ app.get('/api/rank-exams/:id/certificate', requireAusbilder, (req, res) => {
   `).get(+req.params.id);
   if (!exam) return res.status(404).send('Zertifikat nicht gefunden oder Prüfung nicht bestanden.');
 
+  const hesc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const date = new Date(exam.taken_at).toLocaleDateString('de-DE', { day:'2-digit', month:'long', year:'numeric' });
   const typeFull = exam.exam_type === 'meister' ? 'Meisterprüfung' : 'Gesellenprüfung';
   const typeTitle = exam.exam_type === 'meister' ? 'MEISTERZEUGNIS' : 'GESELLENZEUGNIS';
   const m3_ratings = JSON.parse(exam.m3_data || '{}').ratings || [];
   const m3avg = m3_ratings.length ? (m3_ratings.reduce((a,b)=>a+b,0)/m3_ratings.length).toFixed(1) : '–';
-  const examiners = [exam.examiner_name, exam.examiner2_name].filter(Boolean).join(' & ');
+  const examiners = hesc([exam.examiner_name, exam.examiner2_name].filter(Boolean).join(' & '));
+  const examinee  = hesc(exam.examinee_name);
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Zertifikat – ${exam.examinee_name}</title>
+<title>Zertifikat – ${examinee}</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family:'Georgia',serif; background:#f5f0e8; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; padding:2rem; }
@@ -1524,7 +1612,7 @@ app.get('/api/rank-exams/:id/certificate', requireAusbilder, (req, res) => {
 
   <div class="award">
     <div class="awarded-to">Hiermit wird bestätigt, dass</div>
-    <div class="name">${exam.examinee_name}</div>
+    <div class="name">${examinee}</div>
   </div>
 
   <div class="body-text">
@@ -1576,7 +1664,7 @@ app.get('/api/rank-exams/:id/certificate', requireAusbilder, (req, res) => {
 // ════════════════════════════════════════════════════════════════
 // EOW-Standings für Bot-Erinnerung (Bot-Secret geschützt)
 app.get('/api/bot/eow-standings', (req, res) => {
-  if (req.headers['x-bot-secret'] !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(401).end();
+  if (!secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return res.status(401).end();
   const wk = votingWeekKey();
   const standings = db.prepare(`
     SELECT u.username, u.discord_id, COUNT(*) as votes
@@ -1593,7 +1681,7 @@ app.get('/api/bot/eow-standings', (req, res) => {
 });
 
 app.get('/api/bot-notifications', (req, res) => {
-  if (req.headers['x-bot-secret'] !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(401).end();
+  if (!secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return res.status(401).end();
   const rows = db.prepare('SELECT * FROM bot_notifications WHERE sent = 0 ORDER BY created_at ASC').all();
   if (rows.length) {
     const ids = rows.map(r => r.id);
@@ -1603,7 +1691,7 @@ app.get('/api/bot-notifications', (req, res) => {
 });
 
 app.post('/api/bot-notifications/:id/sent', (req, res) => {
-  if (req.headers['x-bot-secret'] !== (process.env.BOT_API_SECRET || 'acls-bot-secret')) return res.status(401).end();
+  if (!secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return res.status(401).end();
   db.prepare('UPDATE bot_notifications SET sent = 1 WHERE id = ?').run(+req.params.id);
   res.json({ ok: true });
 });
@@ -1618,7 +1706,7 @@ app.get('/api/prices', (req, res) => {
   res.json(db.prepare('SELECT * FROM price_items ORDER BY category, sort_order, id').all());
 });
 
-app.post('/api/prices', requireAuth, (req, res) => {
+app.post('/api/prices', requireAdmin, (req, res) => {
   const { category, name, price, notes } = req.body;
   if (!category?.trim() || !name?.trim() || !price?.trim()) return res.status(400).json({ error: 'Fehlende Felder' });
   const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM price_items WHERE category = ?').get(category.trim()).m;
@@ -1627,7 +1715,7 @@ app.post('/api/prices', requireAuth, (req, res) => {
   res.json({ id: r.lastInsertRowid });
 });
 
-app.patch('/api/prices/:id', requireAuth, (req, res) => {
+app.patch('/api/prices/:id', requireAdmin, (req, res) => {
   const { category, name, price, notes } = req.body;
   const item = db.prepare('SELECT id FROM price_items WHERE id = ?').get(+req.params.id);
   if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
@@ -1636,7 +1724,7 @@ app.patch('/api/prices/:id', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete('/api/prices/:id', requireAuth, (req, res) => {
+app.delete('/api/prices/:id', requireAdmin, (req, res) => {
   db.prepare('DELETE FROM price_items WHERE id = ?').run(+req.params.id);
   res.json({ ok: true });
 });
@@ -1655,6 +1743,12 @@ app.post('/api/car-listings', requireLogin, (req, res) => {
   const { name, phone, car, price, notes, listing_type, duration, image_data } = req.body;
   if (!name?.trim() || !phone?.trim() || !car?.trim() || !price?.trim())
     return res.status(400).json({ error: 'Fehlende Felder' });
+  if (image_data) {
+    if (!/^data:image\/(jpeg|png|webp|gif);base64,/.test(image_data))
+      return res.status(400).json({ error: 'Ungültiges Bildformat (nur JPEG/PNG/WebP/GIF)' });
+    if (image_data.length > 2_000_000)
+      return res.status(400).json({ error: 'Bild zu groß (max 1.5 MB)' });
+  }
   ensureImageCol();
   const u = getUser(req);
   try {
@@ -1664,7 +1758,7 @@ app.post('/api/car-listings', requireLogin, (req, res) => {
     res.json({ ok: true, id: r.lastInsertRowid });
   } catch (err) {
     console.error('car-listing insert:', err.message);
-    res.status(500).json({ error: 'Datenbankfehler: ' + err.message });
+    res.status(500).json({ error: 'Datenbankfehler' });
   }
 });
 
@@ -1676,15 +1770,21 @@ app.patch('/api/car-listings/:id', requireLogin, (req, res) => {
     return res.status(400).json({ error: 'Fehlende Felder' });
   const item = db.prepare('SELECT id FROM car_listings WHERE id = ?').get(+req.params.id);
   if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
-  ensureImageCol();
   const { listing_type, duration, image_data } = req.body;
+  if (image_data) {
+    if (!/^data:image\/(jpeg|png|webp|gif);base64,/.test(image_data))
+      return res.status(400).json({ error: 'Ungültiges Bildformat (nur JPEG/PNG/WebP/GIF)' });
+    if (image_data.length > 2_000_000)
+      return res.status(400).json({ error: 'Bild zu groß (max 1.5 MB)' });
+  }
+  ensureImageCol();
   try {
     db.prepare('UPDATE car_listings SET name=?, phone=?, car=?, price=?, notes=?, listing_type=?, duration=?, image_data=? WHERE id=?')
       .run(name.trim(), phone.trim(), car.trim(), price.trim(), notes?.trim() || null, listing_type || 'verkauf', duration || null, image_data ?? null, +req.params.id);
     res.json({ ok: true });
   } catch (err) {
     console.error('car-listing update:', err.message);
-    res.status(500).json({ error: 'Datenbankfehler: ' + err.message });
+    res.status(500).json({ error: 'Datenbankfehler' });
   }
 });
 
@@ -1827,6 +1927,8 @@ app.get('/api/game-token/:game', (req, res) => {
 });
 
 app.post('/api/game-scores/:game', (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress;
+  if (rateLimit(`score:${ip}`, 20, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
   const { score, token, ts } = req.body;
   if (typeof score !== 'number' || score < 0 || !isFinite(score))
     return res.status(400).json({ error: 'Ungültiger Score' });
@@ -1892,6 +1994,16 @@ app.post('/api/idle-save', (req, res) => {
   const { gold, totalEarned, buildings, upgrades, prestige, clickPower } = req.body;
   if (typeof gold !== 'number' || gold < 0 || !isFinite(gold))
     return res.status(400).json({ error: 'Ungültig' });
+
+  // Gebäude-Validierung: nur bekannte IDs, nicht-negative Integer
+  const KNOWN_BUILDINGS = new Set(['parking','wash','shop','garage','tuning','dealer','speedway','logistic','factory','empire']);
+  if (buildings && typeof buildings === 'object') {
+    for (const [id, cnt] of Object.entries(buildings)) {
+      if (!KNOWN_BUILDINGS.has(id)) return res.status(400).json({ error: `Unbekanntes Gebäude: ${id}` });
+      if (!Number.isInteger(cnt) || cnt < 0 || cnt > 9999)
+        return res.status(400).json({ error: `Ungültige Gebäudeanzahl: ${id}` });
+    }
+  }
 
   const row = db.prepare('SELECT * FROM idle_saves WHERE user_id = ?').get(user.id);
   if (row) {

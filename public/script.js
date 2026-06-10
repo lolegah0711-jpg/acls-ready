@@ -173,6 +173,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 const isAdmin      = () => currentUser?.role === 'admin';
 const isAusbilder  = () => currentUser?.role === 'ausbilder' || currentUser?.role === 'admin';
 const initials = n => (n || '?').split(/[_\s]/).map(p => p[0]).join('').toUpperCase().slice(0, 2);
+// XSS-Schutz: alle DB-Werte vor innerHTML-Einbettung escapen
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const fmt = dt => new Date(dt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 const fmtTime = dt => new Date(dt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 const ago = dt => {
@@ -422,7 +424,7 @@ async function renderVoterScreen() {
                 ? `<img src="${av}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">`
                 : `<div style="width:40px;height:40px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;flex-shrink:0">${(u.username||'?')[0].toUpperCase()}</div>`}
               <div style="flex:1;min-width:0">
-                <div class="vote-name">${u.username}</div>
+                <div class="vote-name">${esc(u.username)}</div>
                 <div class="vote-count">${votes} Bürgerstimme${votes !== 1 ? 'n' : ''}</div>
               </div>
               ${voted
@@ -512,7 +514,7 @@ async function loadVoterTeam() {
     return `<div style="background:var(--surface);border:1px solid ${bc};border-radius:var(--r);padding:1rem .85rem;display:flex;flex-direction:column;align-items:center;gap:.5rem;text-align:center${isL?';box-shadow:0 0 14px rgba(201,162,39,.15)':''}">
       ${isL?'<i class="fas fa-crown" style="color:#c9a227;font-size:.8rem"></i>':''}
       ${av(u, isL)}
-      <div style="font-weight:700;font-size:.9rem">${u.username}</div>
+      <div style="font-weight:700;font-size:.9rem">${esc(u.username)}</div>
       <span style="font-size:.68rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;background:${rb};color:${rc}">${rn}</span>
     </div>`;
   }
@@ -554,7 +556,7 @@ async function loadVoterApply() {
         <i class="fas fa-check-circle" style="font-size:2rem;color:#22c55e;display:block;margin-bottom:.75rem"></i>
         <div style="font-weight:700;font-size:1.1rem;margin-bottom:.35rem">Bewerbung angenommen!</div>
         <div style="color:var(--muted);font-size:.85rem">Herzlichen Glückwunsch! Du wurdest in das ACLS-Team aufgenommen.</div>
-        ${app.admin_note ? `<div style="margin-top:.75rem;padding:.5rem .75rem;background:var(--surface2);border-radius:6px;font-size:.82rem;text-align:left"><b>Nachricht:</b> ${app.admin_note}</div>` : ''}
+        ${app.admin_note ? `<div style="margin-top:.75rem;padding:.5rem .75rem;background:var(--surface2);border-radius:6px;font-size:.82rem;text-align:left"><b>Nachricht:</b> ${esc(app.admin_note)}</div>` : ''}
       </div>
     </div>`;
     return;
@@ -565,7 +567,7 @@ async function loadVoterApply() {
         <i class="fas fa-times-circle" style="font-size:2rem;color:#ef4444;display:block;margin-bottom:.75rem"></i>
         <div style="font-weight:700;font-size:1.1rem;margin-bottom:.35rem">Bewerbung abgelehnt</div>
         <div style="color:var(--muted);font-size:.85rem">Leider wurde deine Bewerbung diesmal nicht angenommen.</div>
-        ${app.admin_note ? `<div style="margin-top:.75rem;padding:.5rem .75rem;background:var(--surface2);border-radius:6px;font-size:.82rem;text-align:left"><b>Begründung:</b> ${app.admin_note}</div>` : ''}
+        ${app.admin_note ? `<div style="margin-top:.75rem;padding:.5rem .75rem;background:var(--surface2);border-radius:6px;font-size:.82rem;text-align:left"><b>Begründung:</b> ${esc(app.admin_note)}</div>` : ''}
       </div>
     </div>`;
     return;
@@ -752,10 +754,10 @@ async function loadVoterFaq() {
       ${rows.filter(r => r.category === cat).map(f => `
         <div class="card" style="margin-bottom:.5rem;cursor:pointer" onclick="this.querySelector('.faq-ans').classList.toggle('hidden')">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem">
-            <div style="font-weight:600;font-size:.92rem"><i class="fas fa-question-circle" style="color:#38bdf8;margin-right:.45rem;font-size:.8rem"></i>${f.question}</div>
+            <div style="font-weight:600;font-size:.92rem"><i class="fas fa-question-circle" style="color:#38bdf8;margin-right:.45rem;font-size:.8rem"></i>${esc(f.question)}</div>
             <i class="fas fa-chevron-down" style="color:var(--muted);font-size:.7rem;flex-shrink:0"></i>
           </div>
-          <div class="faq-ans hidden" style="margin-top:.65rem;padding-top:.65rem;border-top:1px solid var(--border);font-size:.88rem;color:var(--muted);line-height:1.6;white-space:pre-wrap">${f.answer}</div>
+          <div class="faq-ans hidden" style="margin-top:.65rem;padding-top:.65rem;border-top:1px solid var(--border);font-size:.88rem;color:var(--muted);line-height:1.6;white-space:pre-wrap">${esc(f.answer)}</div>
         </div>`).join('')}
     </div>`).join('')}</div>`;
 }
@@ -789,8 +791,8 @@ async function loadVoterPrices() {
       ${items.map(item => `
       <div style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;${items.indexOf(item) < items.length-1 ? 'border-bottom:1px solid var(--border)' : ''}">
         <div style="flex:1;min-width:0">
-          <div style="font-size:.83rem;font-weight:600">${item.name}</div>
-          ${item.notes ? `<div style="font-size:.7rem;color:var(--muted)">${item.notes}</div>` : ''}
+          <div style="font-size:.83rem;font-weight:600">${esc(item.name)}</div>
+          ${item.notes ? `<div style="font-size:.7rem;color:var(--muted)">${esc(item.notes)}</div>` : ''}
         </div>
         <div style="font-size:.88rem;font-weight:800;color:${m.col};white-space:nowrap">${item.price}</div>
       </div>`).join('')}
@@ -816,17 +818,17 @@ async function loadVoterMarket() {
     return `
     <div class="card" onclick="openListingDetail(${l.id})" style="display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;cursor:pointer;transition:transform .12s,box-shadow .12s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 24px rgba(0,0,0,.18)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
       ${l.image_data
-        ? `<div class="listing-img-wrap"><img class="listing-img" src="${l.image_data}" alt="${l.car}" loading="lazy"></div>`
+        ? `<div class="listing-img-wrap"><img class="listing-img" src="${l.image_data}" alt="${esc(l.car)}" loading="lazy"></div>`
         : `<div class="listing-no-img"><i class="fas fa-${isRent ? 'key' : 'car-side'}" style="color:var(--orange);font-size:1.6rem;opacity:.5"></i></div>`}
       <div style="padding:.85rem;display:flex;flex-direction:column;gap:.4rem;flex:1">
         <div>
-          <div style="font-weight:800;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${l.car}">${l.car}</div>
+          <div style="font-weight:800;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(l.car)}">${esc(l.car)}</div>
           <div style="font-size:1.05rem;font-weight:800;color:#f97316">${l.price}$${isRent && dur ? `<span style="font-size:.72rem;font-weight:600;color:var(--muted);margin-left:.35rem">/ ${dur}</span>` : ''}</div>
         </div>
         <div>${listingTypeBadge(l)}</div>
         <div style="font-size:.8rem;color:var(--muted);display:flex;flex-direction:column;gap:.2rem">
-          <div><i class="fas fa-user" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.name}</div>
-          <div><i class="fas fa-phone" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.phone}</div>
+          <div><i class="fas fa-user" style="width:14px;text-align:center;margin-right:.35rem"></i>${esc(l.name)}</div>
+          <div><i class="fas fa-phone" style="width:14px;text-align:center;margin-right:.35rem"></i>${esc(l.phone)}</div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:.5rem;border-top:1px solid var(--border)">
           <div style="font-size:.7rem;color:var(--muted)">${ago(l.created_at)}</div>
@@ -866,11 +868,11 @@ async function loadMyComplaints() {
     el.innerHTML = data.map(c => `
       <div style="border:1px solid var(--border);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:.5rem">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem">
-          <span style="font-weight:700;font-size:.9rem">${c.subject}</span>
+          <span style="font-weight:700;font-size:.9rem">${esc(c.subject)}</span>
           <span style="font-size:.72rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;background:${statusColor(c.status)}22;color:${statusColor(c.status)}">${statusLabel(c.status)}</span>
         </div>
         <div style="font-size:.75rem;color:var(--muted)">${new Date(c.created_at).toLocaleDateString('de-DE')}</div>
-        ${c.admin_response ? `<div style="margin-top:.5rem;padding:.5rem .75rem;background:var(--surface2);border-radius:6px;font-size:.82rem;border-left:3px solid #3b82f6"><span style="color:#3b82f6;font-weight:700;font-size:.72rem">Admin-Antwort:</span><br>${c.admin_response}</div>` : ''}
+        ${c.admin_response ? `<div style="margin-top:.5rem;padding:.5rem .75rem;background:var(--surface2);border-radius:6px;font-size:.82rem;border-left:3px solid #3b82f6"><span style="color:#3b82f6;font-weight:700;font-size:.72rem">Admin-Antwort:</span><br>${esc(c.admin_response)}</div>` : ''}
       </div>`).join('');
   } catch { el.innerHTML = '<div style="color:var(--muted);font-size:.85rem">Fehler beim Laden.</div>'; }
 }
@@ -923,7 +925,7 @@ function renderUserWidget() {
       ${url ? `<img src="${url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.parentElement.textContent='${initials(u.username)}'">` : initials(u.username)}
     </div>
     <div class="u-info">
-      <div class="u-name">${u.username}</div>
+      <div class="u-name">${esc(u.username)}</div>
       <div class="u-role">${u.role === 'admin' ? 'Administrator' : 'Mitarbeiter'}</div>
     </div>
     <button class="icon-btn" onclick="openProfileModal(${u.id})" title="Profil"><i class="fas fa-chevron-down"></i></button>
@@ -1071,11 +1073,11 @@ async function dashboard() {
       </div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem">
-          <span style="font-weight:700;font-size:.95rem">${a.title}</span>
+          <span style="font-weight:700;font-size:.95rem">${esc(a.title)}</span>
           ${a.is_pinned ? '<span style="font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:20px;background:rgba(249,115,22,.2);color:var(--orange);text-transform:uppercase;letter-spacing:.05em">Angeheftet</span>' : ''}
           <span style="font-size:.72rem;color:var(--muted);margin-left:auto">${a.author} · ${new Date(a.created_at).toLocaleDateString('de-DE')}</span>
         </div>
-        <div style="font-size:.85rem;color:var(--fg);opacity:.85;white-space:pre-wrap;line-height:1.5">${a.content}</div>
+        <div style="font-size:.85rem;color:var(--fg);opacity:.85;white-space:pre-wrap;line-height:1.5">${esc(a.content)}</div>
       </div>
       ${isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="navigate('admin')" title="Verwalten" style="flex-shrink:0"><i class="fas fa-cog"></i></button>` : ''}
     </div>`).join('') : ''}
@@ -1140,8 +1142,8 @@ async function dashboard() {
       <div style="display:flex;align-items:center;gap:1rem;padding:.75rem 0;border-bottom:1px solid var(--border);last-child:border-bottom:none">
         <span class="badge ${ex.passed ? 'badge-g' : 'badge-r'}" style="min-width:100px;text-align:center">${ex.passed ? '✓ Bestanden' : '✗ Nicht bestanden'}</span>
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ex.citizen_name}${ex.citizen_id ? ` <span style="font-size:.75rem;color:var(--muted);font-weight:400">${ex.citizen_id}</span>` : ''}</div>
-          <div style="font-size:.78rem;color:var(--muted);margin-top:.1rem"><i class="fas ${ex.icon}" style="margin-right:.3rem"></i>${ex.category_name} – ${ex.exam_type} · Prüfer: ${ex.examiner_name}</div>
+          <div style="font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(ex.citizen_name)}${ex.citizen_id ? ` <span style="font-size:.75rem;color:var(--muted);font-weight:400">${esc(ex.citizen_id)}</span>` : ''}</div>
+          <div style="font-size:.78rem;color:var(--muted);margin-top:.1rem"><i class="fas ${ex.icon}" style="margin-right:.3rem"></i>${esc(ex.category_name)} – ${esc(ex.exam_type)} · Prüfer: ${esc(ex.examiner_name)}</div>
         </div>
         <div style="font-size:.78rem;color:var(--muted);white-space:nowrap">${ago(ex.registered_at)}</div>
       </div>`).join('')}
@@ -1176,11 +1178,11 @@ async function dashboard() {
           <div class="re-item">
             <div class="re-ico ${r.passed ? 'pass' : 'fail'}"><i class="fas ${r.passed ? 'fa-check' : 'fa-times'}"></i></div>
             <div class="re-info">
-              <div class="re-name">${r.citizen_name}</div>
+              <div class="re-name">${esc(r.citizen_name)}</div>
               <div class="re-meta">
-                <i class="fas ${r.icon}" style="font-size:.65rem"></i> ${r.exam_type}
-                <span class="sep"></span>${r.category_name}
-                <span class="sep"></span>${r.examiner_name}
+                <i class="fas ${r.icon}" style="font-size:.65rem"></i> ${esc(r.exam_type)}
+                <span class="sep"></span>${esc(r.category_name)}
+                <span class="sep"></span>${esc(r.examiner_name)}
               </div>
             </div>
             <div class="re-time">${ago(r.registered_at)}</div>
@@ -1234,7 +1236,7 @@ async function dashboard() {
           <div class="rank-badge${i === 0 ? '' : i === 1 ? ' r2' : ' r3'}">${i + 1}</div>
           <div style="display:flex;align-items:center;gap:.6rem;flex:1">
             <div style="width:30px;height:30px;flex-shrink:0">${avatarEl(u, 30)}</div>
-            <div class="lb-name">${u.username}</div>
+            <div class="lb-name">${esc(u.username)}</div>
           </div>
           <div class="lb-score"><i class="fas fa-clock"></i>${(+u.hours).toFixed(1)}h</div>
         </div>`).join('')}
@@ -1301,8 +1303,8 @@ window.runSearch = q => {
         ${data.bans.map(b => `
         <div style="display:flex;align-items:center;gap:.75rem;padding:.65rem .9rem;background:var(--surface);border:1px solid ${b.is_active ? 'rgba(239,68,68,.3)' : 'var(--border)'};border-left:3px solid ${banColor(b)};border-radius:8px;margin-bottom:.4rem">
           <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:.9rem">${b.person_name}${b.person_id ? ` <span style="color:var(--muted);font-weight:400;font-size:.8rem">${b.person_id}</span>` : ''}</div>
-            <div style="font-size:.78rem;color:var(--muted);margin-top:.15rem">${b.reason}</div>
+            <div style="font-weight:700;font-size:.9rem">${esc(b.person_name)}${b.person_id ? ` <span style="color:var(--muted);font-weight:400;font-size:.8rem">${esc(b.person_id)}</span>` : ''}</div>
+            <div style="font-size:.78rem;color:var(--muted);margin-top:.15rem">${esc(b.reason)}</div>
           </div>
           <span class="badge ${b.is_active ? 'badge-r' : ''}" style="${!b.is_active ? 'background:var(--surface2);color:var(--muted)' : ''}">${b.is_active ? 'Aktiv' : 'Aufgehoben'}</span>
           <span style="font-size:.75rem;color:var(--muted);white-space:nowrap">von ${b.issued_by_name}</span>
@@ -1318,7 +1320,7 @@ window.runSearch = q => {
         ${data.users.map(u => `
         <div style="display:flex;align-items:center;gap:.75rem;padding:.55rem .9rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:.4rem;cursor:pointer" onclick="window.open('/profil/${u.id}','_blank')">
           ${avatarEl(u, 28)}
-          <div style="flex:1"><div style="font-weight:600;font-size:.9rem">${u.username}</div><div style="font-size:.75rem;color:var(--muted)">${u.role} · ${u.rank || '—'}</div></div>
+          <div style="flex:1"><div style="font-weight:600;font-size:.9rem">${esc(u.username)}</div><div style="font-size:.75rem;color:var(--muted)">${u.role} · ${u.rank || '—'}</div></div>
           <i class="fas fa-external-link-alt" style="color:var(--muted);font-size:.75rem"></i>
         </div>`).join('')}
       </div>`;
@@ -1332,8 +1334,8 @@ window.runSearch = q => {
         ${data.registry.map(r => `
         <div style="display:flex;align-items:center;gap:.75rem;padding:.55rem .9rem;background:var(--surface);border:1px solid var(--border);border-left:3px solid ${r.passed ? '#22c55e' : '#ef4444'};border-radius:8px;margin-bottom:.4rem">
           <div style="flex:1;min-width:0">
-            <div style="font-weight:600;font-size:.9rem">${r.citizen_name}${r.citizen_id ? ` <span style="color:var(--muted);font-weight:400">${r.citizen_id}</span>` : ''}</div>
-            <div style="font-size:.75rem;color:var(--muted)">${r.category_name} · ${r.exam_type} · Prüfer: ${r.examiner_name}</div>
+            <div style="font-weight:600;font-size:.9rem">${esc(r.citizen_name)}${r.citizen_id ? ` <span style="color:var(--muted);font-weight:400">${esc(r.citizen_id)}</span>` : ''}</div>
+            <div style="font-size:.75rem;color:var(--muted)">${esc(r.category_name)} · ${esc(r.exam_type)} · Prüfer: ${esc(r.examiner_name)}</div>
           </div>
           <span class="badge ${r.passed ? 'badge-g' : 'badge-r'}">${r.passed ? 'Bestanden' : 'Nicht bestanden'}</span>
           <span style="font-size:.75rem;color:var(--muted);white-space:nowrap">${new Date(r.registered_at).toLocaleDateString('de-DE')}</span>
@@ -1358,8 +1360,8 @@ async function activity() {
   if (!reg) return;
 
   const events = [
-    ...(reg || []).map(r => ({ date: r.registered_at, dot: r.passed ? 'g' : 'r', text: `<b>${r.citizen_name}</b> – ${r.category_name} ${r.exam_type} (${r.passed ? 'Bestanden' : 'Nicht bestanden'}) | Prüfer: ${r.examiner_name}` })),
-    ...(bansData || []).map(b => ({ date: b.issued_at, dot: 'r', text: `Hausverbot: <b>${b.person_name}</b> – ${b.reason}` })),
+    ...(reg || []).map(r => ({ date: r.registered_at, dot: r.passed ? 'g' : 'r', text: `<b>${esc(r.citizen_name)}</b> – ${esc(r.category_name)} ${esc(r.exam_type)} (${r.passed ? 'Bestanden' : 'Nicht bestanden'}) | Prüfer: ${esc(r.examiner_name)}` })),
+    ...(bansData || []).map(b => ({ date: b.issued_at, dot: 'r', text: `Hausverbot: <b>${esc(b.person_name)}</b> – ${esc(b.reason)}` })),
     ...(ic || []).filter(e => e.auto).map(e => ({ date: e.created_at, dot: 'o', text: `IC-Zeit: <b>${e.user_name}</b> – ${(+e.hours).toFixed(1)}h ${e.notes ? '(' + e.notes + ')' : ''}` })),
   ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 60);
 
@@ -1460,7 +1462,7 @@ async function eow() {
                 ${avatarEl(u, 52)}
                 ${isVoted ? '<div style="position:absolute;bottom:-4px;right:-4px;width:20px;height:20px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center"><i class="fas fa-check" style="font-size:.6rem;color:#fff"></i></div>' : ''}
               </div>
-              <div style="font-weight:700;font-size:.9rem">${u.username}${isSelf ? ' <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(Du)</span>' : ''}</div>
+              <div style="font-weight:700;font-size:.9rem">${esc(u.username)}${isSelf ? ' <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(Du)</span>' : ''}</div>
               ${u.rank ? `<div style="font-size:.7rem;color:var(--orange);font-weight:600">${u.rank}</div>` : ''}
               <div style="font-size:.72rem;color:var(--muted);line-height:1.6">
                 ${tally[u.id] || 0} Mitarbeiter · ${citTally[u.id] || 0} Bürger
@@ -1595,7 +1597,7 @@ window.launchExam = async (e, category_id, mode) => {
             <div style="font-size:1rem;font-weight:700;margin-bottom:.35rem">${citizen_name}</div>
             <div style="font-size:.85rem;color:#ef4444"><i class="fas fa-lock" style="margin-right:.4rem"></i>Gesperrt ${until}</div>
           </div>
-          <div style="font-size:.85rem"><span style="color:var(--muted)">Grund:</span> ${b.reason}</div>
+          <div style="font-size:.85rem"><span style="color:var(--muted)">Grund:</span> ${esc(b.reason)}</div>
           <div style="font-size:.82rem;color:var(--muted);margin-top:.4rem">Gesperrt von: ${b.issued_by_name}</div>
         </div>
         <div class="modal-footer">
@@ -2018,8 +2020,8 @@ window.renderCitizenNotes = (idx, notes) => {
   listEl.innerHTML = notes.map(n => `
     <div style="display:flex;gap:.5rem;align-items:flex-start;padding:.4rem .6rem;background:var(--surface2);border-radius:6px;margin-bottom:.3rem">
       <div style="flex:1;min-width:0">
-        <div style="font-size:.82rem;color:var(--fg);word-break:break-word">${n.note}</div>
-        <div style="font-size:.7rem;color:var(--muted);margin-top:.12rem">${n.created_by_name} · ${fmt(n.created_at)}</div>
+        <div style="font-size:.82rem;color:var(--fg);word-break:break-word">${esc(n.note)}</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:.12rem">${esc(n.created_by_name)} · ${fmt(n.created_at)}</div>
       </div>
       ${(currentUser?.id === n.created_by || isAdmin()) ? `<button class="btn btn-danger btn-sm" style="flex-shrink:0;padding:.18rem .38rem" onclick="deleteCitizenNote(${n.id},${idx})"><i class="fas fa-trash" style="font-size:.68rem"></i></button>` : ''}
     </div>`).join('');
@@ -2072,8 +2074,8 @@ async function faq() {
           <div class="card" style="margin-bottom:.5rem">
             <div style="display:flex;align-items:flex-start;gap:.75rem">
               <div style="flex:1;min-width:0;cursor:pointer" onclick="this.parentElement.parentElement.querySelector('.faq-ans').classList.toggle('hidden')">
-                <div style="font-weight:600;font-size:.92rem"><i class="fas fa-question-circle" style="color:#38bdf8;margin-right:.45rem;font-size:.8rem"></i>${f.question}</div>
-                <div class="faq-ans hidden" style="margin-top:.55rem;font-size:.87rem;color:var(--muted);line-height:1.6;white-space:pre-wrap">${f.answer}</div>
+                <div style="font-weight:600;font-size:.92rem"><i class="fas fa-question-circle" style="color:#38bdf8;margin-right:.45rem;font-size:.8rem"></i>${esc(f.question)}</div>
+                <div class="faq-ans hidden" style="margin-top:.55rem;font-size:.87rem;color:var(--muted);line-height:1.6;white-space:pre-wrap">${esc(f.answer)}</div>
               </div>
               ${isAdmin() ? `
                 <div style="display:flex;gap:.35rem;flex-shrink:0">
@@ -2457,7 +2459,7 @@ async function iczeit() {
             <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.35rem">
               <div class="rank-badge${i === 0 ? '' : i === 1 ? ' r2' : ' r3'}"${i > 2 ? ' style="background:#2a2a2a;color:var(--muted)"' : ''}>${i + 1}</div>
               <div style="flex-shrink:0">${avatarEl(u, 28)}</div>
-              <div style="flex:1;font-size:.87rem;font-weight:600">${u.username}</div>
+              <div style="flex:1;font-size:.87rem;font-weight:600">${esc(u.username)}</div>
               <div style="font-size:.87rem;font-weight:700;color:var(--orange)">${(+u.week).toFixed(1)}h</div>
             </div>
             <div style="height:4px;background:#2a2a2a;border-radius:2px"><div style="height:100%;width:${pct}%;background:var(--orange);border-radius:2px;transition:width .4s"></div></div>
@@ -2473,7 +2475,7 @@ async function iczeit() {
             <thead><tr><th>Mitarbeiter</th><th>Woche</th><th>Monat</th><th>Gesamt</th></tr></thead>
             <tbody>
               ${stats.map(u => `<tr>
-                <td style="font-weight:600;color:var(--text)">${u.username}</td>
+                <td style="font-weight:600;color:var(--text)">${esc(u.username)}</td>
                 <td style="color:var(--orange)">${(+u.week).toFixed(1)}h</td>
                 <td>${(+u.month).toFixed(1)}h</td>
                 <td style="color:var(--muted)">${(+u.total).toFixed(1)}h</td>
@@ -2512,7 +2514,7 @@ window.openLogTime = async () => {
     <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
     <form onsubmit="submitIcTime(event)">
       <div class="form-group"><label>Mitarbeiter</label>
-        <select class="form-control" id="icUser">${(users || []).map(u => `<option value="${u.id}">${u.username}</option>`).join('')}</select>
+        <select class="form-control" id="icUser">${(users || []).map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('')}</select>
       </div>
       <div class="form-row">
         <div class="form-group"><label>Stunden</label><input type="number" class="form-control" id="icHours" step="0.5" min="0.5" max="24" value="2" required></div>
@@ -2608,9 +2610,9 @@ async function bans() {
         <thead><tr><th>Person</th><th>ID</th><th>Grund</th><th>Ausgestellt von</th><th>Dauer</th><th>Datum</th><th>Status</th><th></th></tr></thead>
         <tbody>
           ${rows.map(b => `<tr>
-            <td style="font-weight:600;color:var(--text)">${b.person_name}</td>
+            <td style="font-weight:600;color:var(--text)">${esc(b.person_name)}</td>
             <td>${b.person_id || '—'}</td>
-            <td>${b.reason}</td>
+            <td>${esc(b.reason)}</td>
             <td>${b.issued_by_name}</td>
             <td>${b.duration_days ? b.duration_days + ' Tage' : 'Permanent'}</td>
             <td>${fmt(b.issued_at)}</td>
@@ -2702,8 +2704,8 @@ async function prices() {
             ${items.map(item => `
             <div style="display:flex;align-items:center;gap:.75rem;padding:.55rem .65rem;border-radius:8px;background:var(--surface2);transition:background .15s" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">
               <div style="flex:1;min-width:0">
-                <div style="font-weight:600;font-size:.88rem">${item.name}</div>
-                ${item.notes ? `<div style="font-size:.72rem;color:var(--muted);margin-top:.1rem">${item.notes}</div>` : ''}
+                <div style="font-weight:600;font-size:.88rem">${esc(item.name)}</div>
+                ${item.notes ? `<div style="font-size:.72rem;color:var(--muted);margin-top:.1rem">${esc(item.notes)}</div>` : ''}
               </div>
               <div style="font-size:.95rem;font-weight:800;color:${m.col};white-space:nowrap">${item.price}</div>
               ${canEdit ? `
@@ -2732,8 +2734,8 @@ window.openRechnungModal = () => {
       <label style="display:flex;align-items:center;gap:.65rem;padding:.45rem .6rem;border-radius:8px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
         <input type="checkbox" class="rech-check" data-id="${item.id}" data-name="${item.name.replace(/"/g,'&quot;')}" data-price="${item.price}" data-notes="${(item.notes||'').replace(/"/g,'&quot;')}" data-cat="${cat.replace(/"/g,'&quot;')}" onchange="rechUpdateTotal()" style="width:16px;height:16px;accent-color:var(--orange);flex-shrink:0">
         <div style="flex:1;min-width:0">
-          <div style="font-size:.85rem;font-weight:600">${item.name}</div>
-          ${item.notes ? `<div style="font-size:.7rem;color:var(--muted)">${item.notes}</div>` : ''}
+          <div style="font-size:.85rem;font-weight:600">${esc(item.name)}</div>
+          ${item.notes ? `<div style="font-size:.7rem;color:var(--muted)">${esc(item.notes)}</div>` : ''}
         </div>
         <span style="font-size:.85rem;font-weight:700;color:#22c55e;white-space:nowrap">${item.price}</span>
         <input type="number" class="rech-qty form-control" data-id="${item.id}" value="1" min="1" max="99"
@@ -3092,7 +3094,7 @@ window.openEditPrice = (id, encoded) => {
     <form onsubmit="submitEditPrice(event,${id})">
       <div class="form-row">
         <div class="form-group"><label>Kategorie</label><input class="form-control" id="epCat" value="${item.category}" required></div>
-        <div class="form-group"><label>Bezeichnung</label><input class="form-control" id="epName" value="${item.name}" required></div>
+        <div class="form-group"><label>Bezeichnung</label><input class="form-control" id="epName" value="${esc(item.name)}" required></div>
       </div>
       <div class="form-group"><label>Preis</label><input class="form-control" id="epPrice" value="${item.price}" required></div>
       <div class="form-group"><label>Hinweis (optional)</label><input class="form-control" id="epNotes" value="${item.notes||''}"></div>
@@ -3160,7 +3162,7 @@ async function organigramm() {
     return `<div style="background:var(--surface);border:1px solid ${borderCol};border-radius:var(--r);padding:1.25rem 1rem;display:flex;flex-direction:column;align-items:center;gap:.55rem;text-align:center;transition:transform .12s,box-shadow .12s${isLeitung?';box-shadow:0 0 18px rgba(201,162,39,.18)':''}" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px ${isLeitung?'rgba(201,162,39,.25)':'rgba(0,0,0,.25)'}'" onmouseout="this.style.transform='';this.style.boxShadow='${isLeitung?'0 0 18px rgba(201,162,39,.18)':''}'">
       ${crownIcon}
       ${av}
-      <div style="font-weight:700;font-size:${isLeitung?'1rem':'.95rem'}">${u.username}</div>
+      <div style="font-weight:700;font-size:${isLeitung?'1rem':'.95rem'}">${esc(u.username)}</div>
       <span style="font-size:.7rem;font-weight:700;padding:.18rem .6rem;border-radius:20px;background:${roleBg};color:${roleColor}">${roleName}</span>
     </div>`;
   }
@@ -3228,7 +3230,7 @@ async function applications() {
         <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:.3rem">Motivation</div>
         <div style="font-size:.85rem;line-height:1.5;color:var(--text)">${a.motivation}</div>
       </div>
-      ${a.admin_note ? `<div style="background:var(--surface2);border-left:3px solid var(--orange);border-radius:0 6px 6px 0;padding:.5rem .75rem;font-size:.82rem"><span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase">Admin-Notiz:</span><br>${a.admin_note}</div>` : ''}
+      ${a.admin_note ? `<div style="background:var(--surface2);border-left:3px solid var(--orange);border-radius:0 6px 6px 0;padding:.5rem .75rem;font-size:.82rem"><span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase">Admin-Notiz:</span><br>${esc(a.admin_note)}</div>` : ''}
       ${showActions && isAdmin() ? `<div style="display:flex;gap:.5rem;padding-top:.5rem;border-top:1px solid var(--border)">
         <button class="btn btn-primary btn-sm" style="flex:1" onclick="decideApplication(${a.id},'accepted')"><i class="fas fa-check"></i> Annehmen</button>
         <button class="btn btn-danger btn-sm" style="flex:1" onclick="decideApplication(${a.id},'rejected')"><i class="fas fa-times"></i> Ablehnen</button>
@@ -3326,11 +3328,11 @@ window.openListingDetail = id => {
         <button onclick="closeModal()" style="position:absolute;top:.65rem;right:.65rem;background:rgba(0,0,0,.55);border:none;color:#fff;width:34px;height:34px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.9rem;backdrop-filter:blur(4px)"><i class="fas fa-times"></i></button>
       </div>` : `
       <div class="modal-head">
-        <div class="modal-title"><i class="fas fa-car-side" style="color:var(--orange);margin-right:.5rem"></i>${l.car}</div>
+        <div class="modal-title"><i class="fas fa-car-side" style="color:var(--orange);margin-right:.5rem"></i>${esc(l.car)}</div>
         <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
       </div>`}
     <div style="padding:1.25rem 1.5rem 1.5rem">
-      ${l.image_data ? `<h2 style="font-size:1.25rem;font-weight:800;margin:0 0 .2rem;padding-right:1rem">${l.car}</h2>` : ''}
+      ${l.image_data ? `<h2 style="font-size:1.25rem;font-weight:800;margin:0 0 .2rem;padding-right:1rem">${esc(l.car)}</h2>` : ''}
       <div style="font-size:1.45rem;font-weight:800;color:#f97316;margin-bottom:.5rem">
         ${l.price}$${isRent && dur ? `<span style="font-size:.85rem;font-weight:600;color:var(--muted);margin-left:.4rem">/ ${dur}</span>` : ''}
       </div>
@@ -3338,16 +3340,16 @@ window.openListingDetail = id => {
       <div style="display:flex;flex-direction:column;gap:.7rem;border-top:1px solid var(--border);padding-top:1rem">
         <div style="display:flex;align-items:center;gap:.85rem">
           <div style="width:36px;height:36px;border-radius:9px;background:#f9731618;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-user" style="color:#f97316;font-size:.85rem"></i></div>
-          <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.1rem">Anbieter</div><div style="font-weight:700">${l.name}</div></div>
+          <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.1rem">Anbieter</div><div style="font-weight:700">${esc(l.name)}</div></div>
         </div>
         <div style="display:flex;align-items:center;gap:.85rem">
           <div style="width:36px;height:36px;border-radius:9px;background:#f9731618;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-phone" style="color:#f97316;font-size:.85rem"></i></div>
-          <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.1rem">Telefon</div><div style="font-weight:700">${l.phone}</div></div>
+          <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.1rem">Telefon</div><div style="font-weight:700">${esc(l.phone)}</div></div>
         </div>
         ${l.notes ? `
         <div style="display:flex;align-items:flex-start;gap:.85rem">
           <div style="width:36px;height:36px;border-radius:9px;background:#f9731618;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-align-left" style="color:#f97316;font-size:.85rem"></i></div>
-          <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.1rem">Beschreibung</div><div style="line-height:1.55">${l.notes}</div></div>
+          <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.1rem">Beschreibung</div><div style="line-height:1.55">${esc(l.notes)}</div></div>
         </div>` : ''}
         <div style="display:flex;align-items:center;gap:.85rem">
           <div style="width:36px;height:36px;border-radius:9px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-clock" style="color:var(--muted);font-size:.85rem"></i></div>
@@ -3381,17 +3383,17 @@ function listingCard(l, canEditAny) {
   return `
   <div class="card" onclick="openListingDetail(${l.id})" style="display:flex;flex-direction:column;gap:0;padding:0;overflow:hidden;cursor:pointer;transition:transform .12s,box-shadow .12s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 24px rgba(0,0,0,.18)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
     ${l.image_data
-      ? `<div class="listing-img-wrap"><img class="listing-img" src="${l.image_data}" alt="${l.car}" loading="lazy"></div>`
+      ? `<div class="listing-img-wrap"><img class="listing-img" src="${l.image_data}" alt="${esc(l.car)}" loading="lazy"></div>`
       : `<div class="listing-no-img"><i class="fas fa-${isRent ? 'key' : 'car-side'}" style="color:var(--orange);font-size:1.6rem;opacity:.45"></i></div>`}
     <div style="padding:.9rem;display:flex;flex-direction:column;gap:.45rem;flex:1">
       <div>
-        <div style="font-weight:800;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${l.car}">${l.car}</div>
+        <div style="font-weight:800;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(l.car)}">${esc(l.car)}</div>
         <div style="font-size:1.1rem;font-weight:800;color:#f97316">${l.price}$${isRent && dur ? `<span style="font-size:.75rem;font-weight:600;color:var(--muted);margin-left:.3rem">/ ${dur}</span>` : ''}</div>
       </div>
       <div>${listingTypeBadge(l)}</div>
       <div style="display:flex;flex-direction:column;gap:.2rem;font-size:.83rem;color:var(--muted)">
-        <div><i class="fas fa-user" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.name}</div>
-        <div><i class="fas fa-phone" style="width:14px;text-align:center;margin-right:.35rem"></i>${l.phone}</div>
+        <div><i class="fas fa-user" style="width:14px;text-align:center;margin-right:.35rem"></i>${esc(l.name)}</div>
+        <div><i class="fas fa-phone" style="width:14px;text-align:center;margin-right:.35rem"></i>${esc(l.phone)}</div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:.5rem;border-top:1px solid var(--border)">
         <div style="font-size:.72rem;color:var(--muted)">${ago(l.created_at)}</div>
@@ -3523,12 +3525,12 @@ window.openEditListing = (id, encoded) => {
           <option value="1_monat" ${l.duration === '1_monat' ? 'selected' : ''}>1 Monat</option>
         </select>
       </div>
-      <div class="form-group"><label>Fahrzeug *</label><input class="form-control" id="elCar" value="${l.car}" required></div>
+      <div class="form-group"><label>Fahrzeug *</label><input class="form-control" id="elCar" value="${esc(l.car)}" required></div>
       <div class="form-row">
         <div class="form-group"><label id="elPriceLabel">${isRent ? 'Mietpreis *' : 'Wunschpreis *'}</label><input class="form-control" id="elPrice" value="${l.price}" oninput="fmtListingPrice(this)" required></div>
-        <div class="form-group"><label>Telefonnummer *</label><input class="form-control" id="elPhone" value="${l.phone}" required></div>
+        <div class="form-group"><label>Telefonnummer *</label><input class="form-control" id="elPhone" value="${esc(l.phone)}" required></div>
       </div>
-      <div class="form-group"><label>Name *</label><input class="form-control" id="elName" value="${l.name}" required></div>
+      <div class="form-group"><label>Name *</label><input class="form-control" id="elName" value="${esc(l.name)}" required></div>
       <div class="form-group"><label>Notizen</label><textarea class="form-control" id="elNotes" rows="3" style="resize:vertical">${l.notes || ''}</textarea></div>
       <div class="form-group">
         <label>Fahrzeugfoto</label>
@@ -3615,7 +3617,7 @@ async function admin() {
                 <td>
                   <div style="display:flex;align-items:center;gap:.6rem">
                     ${avatarEl(u, 26)}
-                    <span style="font-weight:600;font-size:.85rem">${u.username}</span>
+                    <span style="font-weight:600;font-size:.85rem">${esc(u.username)}</span>
                   </div>
                 </td>
                 <td>
@@ -3657,8 +3659,8 @@ async function admin() {
         <div class="tbl-wrap" style="max-height:340px;overflow-y:auto"><table class="data-tbl">
           <thead><tr><th>Bürger</th><th>Betreff</th><th>Nachricht</th><th>Datum</th><th>Status</th><th></th></tr></thead>
           <tbody>${complaints.map(c => `<tr style="cursor:pointer" onclick="openComplaint(${c.id})">
-            <td style="font-weight:600">${c.citizen_name}</td>
-            <td>${c.subject}</td>
+            <td style="font-weight:600">${esc(c.citizen_name)}</td>
+            <td>${esc(c.subject)}</td>
             <td style="font-size:.8rem;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.message}</td>
             <td style="font-size:.78rem;color:var(--muted)">${new Date(c.created_at).toLocaleDateString('de-DE')}</td>
             <td><span style="font-size:.75rem;padding:.15rem .5rem;border-radius:6px;font-weight:600;background:${c.status==='offen'?'rgba(239,68,68,.15)':'rgba(34,197,94,.15)'};color:${c.status==='offen'?'#ef4444':'#22c55e'}">${c.status}</span></td>
@@ -3696,7 +3698,7 @@ async function admin() {
           <div style="padding:.6rem .75rem;background:var(--input);border-radius:var(--r);margin-bottom:.4rem${a.is_pinned ? ';border-left:3px solid var(--orange)' : ''}">
             <div style="display:flex;align-items:center;gap:.5rem">
               ${a.is_pinned ? '<i class="fas fa-thumbtack" style="color:var(--orange);font-size:.72rem"></i>' : ''}
-              <div style="font-weight:600;font-size:.88rem;flex:1">${a.title}</div>
+              <div style="font-weight:600;font-size:.88rem;flex:1">${esc(a.title)}</div>
               <button class="btn btn-ghost btn-sm" onclick="pinAnnouncement(${a.id})" title="${a.is_pinned ? 'Loslösen' : 'Anheften'}"><i class="fas fa-thumbtack"></i></button>
               <button class="btn btn-danger btn-sm" onclick="deleteAnnouncement(${a.id})"><i class="fas fa-trash"></i></button>
             </div>
@@ -3967,13 +3969,13 @@ window.openComplaint = (id) => {
     </div>
     <div style="display:flex;flex-direction:column;gap:.7rem">
       <div style="display:flex;gap:.6rem;flex-wrap:wrap;font-size:.82rem;color:var(--muted)">
-        <span><i class="fas fa-user" style="margin-right:.3rem"></i><b style="color:var(--fg)">${c.citizen_name}</b></span>
+        <span><i class="fas fa-user" style="margin-right:.3rem"></i><b style="color:var(--fg)">${esc(c.citizen_name)}</b></span>
         <span><i class="fas fa-calendar" style="margin-right:.3rem"></i>${new Date(c.created_at).toLocaleDateString('de-DE')}</span>
         <span style="padding:.15rem .5rem;border-radius:6px;font-weight:600;font-size:.75rem;background:${statusColor(c.status)}22;color:${statusColor(c.status)}">${statusLabel(c.status)}</span>
       </div>
-      <div style="font-weight:700;font-size:1rem">${c.subject}</div>
+      <div style="font-weight:700;font-size:1rem">${esc(c.subject)}</div>
       <div style="background:var(--input);border-radius:var(--r);padding:.85rem 1rem;font-size:.87rem;line-height:1.65;white-space:pre-wrap;color:var(--fg)">${c.message}</div>
-      ${c.admin_response ? `<div style="padding:.6rem .8rem;background:rgba(59,130,246,.1);border-left:3px solid #3b82f6;border-radius:6px;font-size:.85rem"><b style="color:#3b82f6">Bisherige Antwort:</b><br>${c.admin_response}</div>` : ''}
+      ${c.admin_response ? `<div style="padding:.6rem .8rem;background:rgba(59,130,246,.1);border-left:3px solid #3b82f6;border-radius:6px;font-size:.85rem"><b style="color:#3b82f6">Bisherige Antwort:</b><br>${esc(c.admin_response)}</div>` : ''}
       <div class="form-group" style="margin:0">
         <label style="font-size:.8rem">Antwort an Bürger (optional)</label>
         <textarea class="form-control" id="complaint-response" rows="3" placeholder="Diese Antwort wird dem Bürger angezeigt…" style="resize:vertical">${c.admin_response||''}</textarea>
@@ -4070,7 +4072,7 @@ window.openProfileModal = async id => {
         ${url ? `<img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='${initials(u.username)}'">` : initials(u.username)}
       </div>
       <div>
-        <div class="profile-name">${u.username}</div>
+        <div class="profile-name">${esc(u.username)}</div>
         <div style="display:flex;align-items:center;gap:.4rem;margin-top:.2rem">
           <span style="font-size:.78rem;font-weight:700;padding:.15rem .55rem;border-radius:20px;background:${rankColor}22;color:${rankColor};border:1px solid ${rankColor}44">${rank}</span>
           ${u.role === 'admin' ? '<span style="font-size:.72rem;font-weight:600;padding:.1rem .45rem;border-radius:20px;background:rgba(249,115,22,.15);color:var(--orange)">Admin</span>' : ''}
@@ -4238,7 +4240,7 @@ window.startRankExamSetup = async function() {
   const selfId = currentUser?.id;
   const memberOptions = ausbilder
     .filter(u => u.id !== selfId)
-    .map(u => `<option value="${u.id}">${u.username}</option>`)
+    .map(u => `<option value="${u.id}">${esc(u.username)}</option>`)
     .join('');
   openModal(`
     <div class="modal-head">

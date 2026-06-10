@@ -4,7 +4,9 @@ const fetch = require('node-fetch');
 const cron  = require('node-cron');
 
 const SERVER_URL      = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`;
-const BOT_SECRET      = process.env.BOT_API_SECRET || 'acls-bot-secret';
+const BOT_SECRET      = process.env.BOT_API_SECRET || (process.env.NODE_ENV === 'production'
+  ? (() => { console.error('[FATAL] BOT_API_SECRET nicht gesetzt'); process.exit(1); })()
+  : 'acls-bot-secret-dev');
 const GUILD_ID        = process.env.DISCORD_GUILD_ID;
 const TRACK_ALL       = process.env.TRACK_ALL_CHANNELS === 'true';
 const IC_KEYWORDS     = (process.env.IC_CHANNEL_KEYWORDS || 'IC,Dienst,Fahrstunde,Prüfung,Service,Einsatz')
