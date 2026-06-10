@@ -309,18 +309,26 @@ function runEowEvaluation() {
 // ════════════════════════════════════════════════════════════════
 //  DISCORD OAUTH
 // ════════════════════════════════════════════════════════════════
-function oauthState(sessionId) {
-  return crypto.createHmac('sha256', GAME_SECRET).update(sessionId).digest('hex').slice(0, 32);
+function parseCookie(req, name) {
+  const header = req.headers.cookie || '';
+  const match = header.split(';').map(c => c.trim()).find(c => c.startsWith(name + '='));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
 }
 
 app.get('/auth/discord', (req, res) => {
-  const state = oauthState(req.sessionID);
+  const state = crypto.randomBytes(16).toString('hex');
   const params = new URLSearchParams({
     client_id:     process.env.DISCORD_CLIENT_ID,
     redirect_uri:  process.env.DISCORD_REDIRECT_URI,
     response_type: 'code',
     scope:         'identify',
     state,
+  });
+  res.cookie('oauth_state', state, {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 5 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production',
   });
   res.redirect(`${DISCORD_AUTH_URL}?${params}`);
 });
@@ -329,8 +337,10 @@ app.get('/auth/callback', async (req, res) => {
   const ip = req.ip || req.socket.remoteAddress;
   if (rateLimit(`oauth:${ip}`, 10, 60_000)) return res.status(429).redirect('/?error=rate_limit');
   const { code, state } = req.query;
+  const savedState = parseCookie(req, 'oauth_state');
+  res.clearCookie('oauth_state', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
   if (!code) return res.redirect('/?error=no_code');
-  if (!state || !secretEqual(state, oauthState(req.sessionID))) return res.redirect('/?error=state_mismatch');
+  if (!state || !savedState || !secretEqual(state, savedState)) return res.redirect('/?error=state_mismatch');
 
   try {
     // Exchange code → token
