@@ -4964,6 +4964,7 @@ function txLabel(reason) {
     'duel:win': '⚔️ Duell gewonnen', 'duel:loss': '⚔️ Duell verloren', 'duel:draw': '⚔️ Duell unentschieden',
     'blackjack:bet': '🃏 Blackjack-Einsatz', 'blackjack:win': '🃏 Blackjack-Gewinn',
     'blackjack:push': '🃏 Blackjack-Push', 'blackjack:double': '🃏 Blackjack verdoppelt',
+    'blackjack:refund': '🃏 Blackjack erstattet (Neustart)',
     'exam:blitz': '📋 Blitz-Prüfung abgehalten', 'exam:standard': '📋 Prüfung abgehalten',
     'exam:praxis': '📋 Praxisprüfung abgehalten',
     'lottery:ticket': '🎟️ Lotterie-Lose gekauft', 'lottery:win': '🎟️ Lotterie-Jackpot!',

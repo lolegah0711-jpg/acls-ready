@@ -1349,9 +1349,13 @@ app.patch('/api/users/me/goal', requireAuth, (req, res) => {
 
 // ── SSE Echtzeit-Events ──────────────────────────────────────────
 const sseClients = new Set();
-function sseEmit(event, data) {
+function sseEmit(event, data, onlyDiscordId = null) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  sseClients.forEach(res => { try { res.write(msg); } catch {} });
+  sseClients.forEach(res => {
+    // Personenbezogene Events (z. B. Kontostand) nur an den Betroffenen
+    if (onlyDiscordId && res._discordId !== onlyDiscordId) return;
+    try { res.write(msg); } catch {}
+  });
 }
 
 // Auch Bürger (Voter-Session) dürfen Live-Events empfangen (z. B. Quiz-Duell)
@@ -1367,6 +1371,7 @@ app.get('/api/sse', requireAnySession, (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
   res.write('event: connected\ndata: {}\n\n');
+  res._discordId = coinIdent(req)?.id || null;
   sseClients.add(res);
   req.on('close', () => sseClients.delete(res));
 });
@@ -2519,7 +2524,7 @@ function addCoins(discordId, username, amount, reason, meta) {
   db.prepare('INSERT INTO coin_transactions (discord_id, amount, reason, meta) VALUES (?, ?, ?, ?)')
     .run(discordId, amount, reason, meta ? JSON.stringify(meta) : null);
   const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(discordId).balance;
-  sseEmit('coins', { discord_id: discordId, balance: bal });
+  sseEmit('coins', { discord_id: discordId, balance: bal }, discordId);
   return bal;
 }
 
@@ -3151,6 +3156,17 @@ app.post('/api/duels/:code/answer', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 const bjGames = new Map(); // discordId -> aktive Hand
 
+// Bei Server-Neustart gingen laufende Hände (RAM) verloren →
+// vermerkte Einsätze automatisch erstatten
+{
+  const pending = db.prepare('SELECT * FROM blackjack_pending').all();
+  for (const p of pending) {
+    addCoins(p.discord_id, p.username, p.bet, 'blackjack:refund', { reason: 'Server-Neustart' });
+    console.log(`[Blackjack] Einsatz erstattet nach Neustart: ${p.username} +${p.bet}`);
+  }
+  if (pending.length) db.prepare('DELETE FROM blackjack_pending').run();
+}
+
 function bjShuffledDeck() {
   const suits = ['♠', '♥', '♦', '♣'];
   const ranks = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
@@ -3195,6 +3211,7 @@ function bjResolve(g, ident) {
   if (g.natural && result === 'win') payout = Math.floor(g.bet * 2.5);
   if (payout > 0) addCoins(ident.id, ident.name, payout, 'blackjack:' + result, { bet: g.bet });
   bjGames.delete(ident.id);
+  db.prepare('DELETE FROM blackjack_pending WHERE discord_id = ?').run(ident.id);
   // Größter Netto-Gewinn als Highscore
   const net = payout - g.bet;
   if (net > 0) {
@@ -3237,6 +3254,7 @@ app.post('/api/blackjack/start', (req, res) => {
   const deck = bjShuffledDeck();
   const g = { deck, bet, doubled: false, player: [deck.pop(), deck.pop()], dealer: [deck.pop(), deck.pop()], natural: false };
   bjGames.set(ident.id, g);
+  db.prepare('INSERT OR REPLACE INTO blackjack_pending (discord_id, username, bet) VALUES (?, ?, ?)').run(ident.id, ident.name, bet);
 
   // Natural Blackjack → sofort auswerten
   if (bjValue(g.player) === 21) {
@@ -3271,6 +3289,7 @@ app.post('/api/blackjack/double', (req, res) => {
   const extra = addCoins(ident.id, ident.name, -g.bet, 'blackjack:double');
   if (extra === null) return res.status(400).json({ error: 'Nicht genug Coins zum Verdoppeln' });
   g.bet *= 2; g.doubled = true;
+  db.prepare('UPDATE blackjack_pending SET bet = ? WHERE discord_id = ?').run(g.bet, ident.id);
   g.player.push(g.deck.pop());
   const { result, payout } = bjResolve(g, ident);
   const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;

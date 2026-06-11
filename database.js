@@ -425,6 +425,13 @@ function initDb() {
       PRIMARY KEY (week, discord_id)
     );
 
+    CREATE TABLE IF NOT EXISTS blackjack_pending (
+      discord_id  TEXT PRIMARY KEY,
+      username    TEXT,
+      bet         INTEGER NOT NULL,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS user_perks (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       discord_id  TEXT NOT NULL,
