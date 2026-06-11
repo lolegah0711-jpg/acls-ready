@@ -4956,15 +4956,22 @@ async function turnier() {
 // ════════════════════════════════════════════════════════════════
 //  QUIZ-DUELL (1v1 live)
 // ════════════════════════════════════════════════════════════════
-let _duel = { code: null, answering: false, t0: 0, viewingResult: false };
+let _duel = { code: null, answering: false, t0: 0, viewingResult: false, gen: 0 };
 // Duell rendert wahlweise ins Staff-SPA (pageContent) oder in die Voter-Section
 const duelEl      = () => document.getElementById(window._duelContainer || 'pageContent');
 const duelVisible = () => _activePage === 'duell' || !!window._duelActive;
+function duelClearTimer() {
+  if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
+}
 
 async function duell() {
-  if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
+  duelClearTimer();
+  // Generationszähler: jede neuere Render-Anforderung macht ältere ungültig,
+  // damit sich SSE-Event und Polling nicht gegenseitig überschreiben
+  const gen = ++_duel.gen;
   _duel.viewingResult = false;
   const data = await api('/api/duels');
+  if (gen !== _duel.gen) return;
   if (!data) return;
   if (data.myDuel) { duelArena(data.myDuel.code); return; }
   _duel.code = null;
@@ -5051,9 +5058,15 @@ function duelPlayerBox(p, score, progress, total, align) {
 
 async function duelArena(code) {
   _duel.code = code;
-  if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
+  const gen = ++_duel.gen;
+  duelClearTimer();
   const s = await api(`/api/duels/${code}/state`);
-  if (!s) { duell(); return; }
+  if (gen !== _duel.gen) return; // eine neuere Instanz hat übernommen
+  if (!s) {
+    // Netzwerkfehler: NICHT in die Lobby springen, sondern kurz neu versuchen
+    setTimeout(() => { if (duelVisible() && _duel.code === code && gen === _duel.gen) duelArena(code); }, 3000);
+    return;
+  }
 
   // ── Wartend auf Gegner ──
   if (s.status === 'waiting') {
@@ -5066,7 +5079,7 @@ async function duelArena(code) {
         <button class="btn btn-ghost btn-sm" onclick="duelCancel()"><i class="fas fa-times"></i> Duell abbrechen</button>
       </div>`;
     // Fallback-Polling falls SSE hängt
-    window._duelTimer = setInterval(() => { if (duelVisible()) duelArena(code); }, 5000);
+    window._duelTimer = setInterval(() => { if (duelVisible() && gen === _duel.gen) duelArena(code); }, 5000);
     return;
   }
 
@@ -5105,7 +5118,7 @@ async function duelArena(code) {
         <div class="loader" style="margin:1.2rem auto 0"></div>
       </div>`;
     // Fallback-Polling falls SSE hängt
-    window._duelTimer = setInterval(() => { if (duelVisible()) duelArena(code); }, 5000);
+    window._duelTimer = setInterval(() => { if (duelVisible() && gen === _duel.gen) duelArena(code); }, 5000);
     return;
   }
 
@@ -5132,18 +5145,19 @@ async function duelArena(code) {
 
   // Countdown
   window._duelTimer = setInterval(() => {
+    if (gen !== _duel.gen) { duelClearTimer(); return; } // verwaister Timer einer alten Runde
     const left = Math.max(0, s.timeMs - (Date.now() - _duel.t0));
     const bar = $('duel-timer-bar'), txt = $('duel-timer-txt');
     if (bar) bar.style.width = (left / s.timeMs * 100) + '%';
     if (txt) txt.textContent = (left / 1000).toFixed(1) + 's';
-    if (left <= 0) duelAnswer(-1);
+    if (left <= 0) { duelClearTimer(); duelAnswer(-1); }
   }, 100);
 }
 
 window.duelAnswer = async answer => {
   if (_duel.answering || !_duel.code) return;
   _duel.answering = true;
-  if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
+  duelClearTimer();
   const ms = Date.now() - _duel.t0;
   const r = await api(`/api/duels/${_duel.code}/answer`, { method: 'POST', body: { answer, ms } });
   if (!r) { _duel.answering = false; if (_duel.code) duelArena(_duel.code); return; }
