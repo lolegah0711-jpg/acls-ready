@@ -65,9 +65,9 @@ async function postSession(discord_id, session, leftAt) {
   const date            = new Date().toISOString().split('T')[0];
 
   try {
-    await fetch(`${SERVER_URL}/api/voice-session`, {
+    const resp = await fetch(`${SERVER_URL}/api/voice-session`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
       body: JSON.stringify({
         bot_secret:       BOT_SECRET,
         discord_id,
@@ -81,6 +81,10 @@ async function postSession(discord_id, session, leftAt) {
         notes: `${session.channelName} – ${durationMinutes} Min`,
       }),
     });
+    if (!resp.ok) {
+      console.error(`[Bot] voice-session ABGELEHNT (HTTP ${resp.status}): ${discord_id} – ${durationMinutes} Min gehen verloren!`);
+      return;
+    }
     if (durationMinutes >= 1) {
       console.log(`[Bot] IC-Zeit: ${discord_id} – ${durationMinutes} Min in „${session.channelName}"`);
     }
@@ -694,7 +698,7 @@ client.once(Events.ClientReady, async c => {
         activeSessions.set(userId, { channelId: vs.channelId, channelName: vs.channel.name, joinedAt });
         fetch(`${SERVER_URL}/api/active-session`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
           body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: userId, username: member?.displayName || userId, channel_name: vs.channel.name, joined_at: joinedAt.toISOString() }),
         }).catch(() => {});
         setDutyRole(member, true);
@@ -753,7 +757,7 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
       await postSession(discordId, session, new Date());
       fetch(`${SERVER_URL}/api/active-session`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
         body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: discordId, joined_at: null }),
       }).catch(() => {});
       setDutyRole(oldState.member || newState.member, false);
@@ -772,7 +776,7 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
       console.log(`[Bot] Tracking: ${newState.member?.displayName} → ${joinedChannel.name}`);
       fetch(`${SERVER_URL}/api/active-session`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
         body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: discordId, username: newState.member?.displayName, channel_name: joinedChannel.name, joined_at: joinedAt.toISOString() }),
       }).catch(() => {});
       setDutyRole(newState.member, true);
@@ -882,7 +886,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
       .setTimestamp());
     try {
       await fetch(`${SERVER_URL}/api/sync-member`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
         body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: newMember.id, username: newNick, avatar: newMember.user.avatar }),
       });
     } catch {}
