@@ -4796,6 +4796,8 @@ function txLabel(reason) {
     'duel:win': '⚔️ Duell gewonnen', 'duel:loss': '⚔️ Duell verloren', 'duel:draw': '⚔️ Duell unentschieden',
     'blackjack:bet': '🃏 Blackjack-Einsatz', 'blackjack:win': '🃏 Blackjack-Gewinn',
     'blackjack:push': '🃏 Blackjack-Push', 'blackjack:double': '🃏 Blackjack verdoppelt',
+    'exam:blitz': '📋 Blitz-Prüfung abgehalten', 'exam:standard': '📋 Prüfung abgehalten',
+    'exam:praxis': '📋 Praxisprüfung abgehalten',
   };
   if (map[reason]) return map[reason];
   if (reason.startsWith('game:')) return '🎮 ' + (GAME_NAMES_DE[reason.slice(5)] || reason.slice(5));
@@ -4853,6 +4855,7 @@ async function shop() {
       <div style="font-weight:700;font-size:.85rem;margin-bottom:.5rem"><i class="fas fa-info-circle" style="color:var(--orange);margin-right:.4rem"></i>So verdienst du Coins</div>
       <div style="display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.78rem;color:var(--muted)">
         <span>🎮 Minispiele spielen (bis 150/Tag pro Spiel)</span>
+        <span>📋 Prüfung abhalten: Blitz +25 · Standard/Praxis +50</span>
         <span>🏆 Wochenturnier: 500 / 250 / 100 für Top 3</span>
         <span>⚔️ Quiz-Duell: 150 für den Sieger</span>
         <span>📅 Tagesbonus: +25</span>

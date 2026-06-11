@@ -675,6 +675,12 @@ app.post('/api/exams/submit', requireAuth, (req, res) => {
     banId = b.lastInsertRowid;
   }
 
+  // ACLS-Coins für den Prüfer (nur echte Bürger-Prüfungen): Blitz 25, Standard 50
+  if (exam.citizenName) {
+    const coins = exam.mode === 'flash' ? 25 : 50;
+    addCoins(user.discord_id, user.username, coins, exam.mode === 'flash' ? 'exam:blitz' : 'exam:standard', { category: category?.name });
+  }
+
   delete req.session.activeExam;
   checkAndAwardBadges(user.id);
   queueNotification('exam', null, {
@@ -709,6 +715,10 @@ app.post('/api/exams/ko-fail', requireAuth, (req, res) => {
     db.prepare(`INSERT INTO registry (citizen_name, citizen_id, category_id, examiner_id, exam_type, passed, notes) VALUES (?, ?, ?, ?, 'Theorie', 0, ?)`)
       .run(citizen_name, citizen_id || null, +category_id, user.id, notesJson);
     banId = createBan(db, citizen_name, citizen_id, `K.O.-Frage falsch – ${category?.name || ''}`, user.id);
+    // Auch eine per K.O. beendete Prüfung wurde abgehalten → Coins für den Prüfer
+    const koMode = req.session.activeExam?.mode;
+    const coins = koMode === 'flash' ? 25 : 50;
+    addCoins(user.discord_id, user.username, coins, koMode === 'flash' ? 'exam:blitz' : 'exam:standard', { category: category?.name, ko: true });
   }
   delete req.session.activeExam;
   res.json({ banId });
@@ -726,6 +736,8 @@ app.post('/api/exams/practical', requireAuth, (req, res) => {
     banId = createBan(db, citizen_name, citizen_id, `Praxisprüfung nicht bestanden – ${errors.join(', ')}`, user.id);
   }
   const practCat = db.prepare('SELECT name FROM exam_categories WHERE id = ?').get(+category_id);
+  // Coins für den Prüfer: Praxisprüfung zählt wie eine Standard-Prüfung
+  addCoins(user.discord_id, user.username, 50, 'exam:praxis', { category: practCat?.name });
   queueNotification('exam', null, {
     channelType: 'practical',
     examType: `${practCat?.name || 'Unbekannt'} Praxis`,
