@@ -252,6 +252,7 @@ hr { border: none; border-bottom: 1px solid #d8d4d0; margin-top: 20px; margin-bo
 </div>
 
 <script src='https://cdnjs.cloudflare.com/ajax/libs/hammer.js/1.0.6/hammer.min.js'></script>
+<script src="/game-auth.js"></script>
 <script>
 // ── LEADERBOARD & USER ────────────────────────────────────────────
 var currentUser = null;
@@ -627,6 +628,5 @@ function Tile(position, value) {
 Tile.prototype.savePosition   = function () { this.previousPosition = { x: this.x, y: this.y }; };
 Tile.prototype.updatePosition = function (position) { this.x = position.x; this.y = position.y; };
 </script>
-<script src="/game-auth.js"></script>
 </body>
 </html>

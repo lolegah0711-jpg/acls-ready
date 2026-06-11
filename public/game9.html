@@ -246,7 +246,7 @@ const UPGRADE_MULT = [
 ];
 
 const ENEMY_TYPES = {
-  normal:   {hp:100,  speed:1.2, reward:8,  color:'#ef4444', size:.36, score:10,  armor:0},
+  normal:   {hp:85,   speed:1.2, reward:8,  color:'#ef4444', size:.36, score:10,  armor:0},
   fast:     {hp:55,   speed:3.0, reward:10, color:'#f97316', size:.28, score:15,  armor:0},
   tank:     {hp:520,  speed:0.5, reward:25, color:'#8b5cf6', size:.46, score:30,  armor:0.1},
   armored:  {hp:260,  speed:0.75,reward:20, color:'#64748b', size:.40, score:25,  armor:.58},
@@ -257,7 +257,7 @@ const ENEMY_TYPES = {
 
 function waveEnemies(wave) {
   const list = [];
-  const count = 10 + wave * 6;
+  const count = 8 + wave * 5;
   const types = ['normal'];
   if (wave >= 2)  types.push('fast');
   if (wave >= 3)  types.push('fast');   // fast enemies appear more often early
@@ -272,7 +272,7 @@ function waveEnemies(wave) {
     if (wave >= 8) list.push({type:'boss', delay:3}); // two bosses from wave 8
   }
   for (let i = 0; i < count; i++) {
-    list.push({type: types[Math.floor(Math.random() * types.length)], delay: 2 + i * 0.42});
+    list.push({type: types[Math.floor(Math.random() * types.length)], delay: 2 + i * 0.5});
   }
   return list;
 }
@@ -771,11 +771,11 @@ function triggerGameOver() {
 function resetGame() {
   cancelAnimationFrame(animId);
   towers=[];enemies=[];bullets=[];particles=[];
-  lives=15;gold=120;score=0;kills=0;wave=0;
+  lives=15;gold=250;score=0;kills=0;wave=0;
   waveActive=false;speed=1;selectedTower=null;gameOverFlag=false;
   spawnQueue=[];spawnTimer=0;lastTs=0;
   document.getElementById('lives-val').textContent=15;
-  document.getElementById('gold-val').textContent=120;
+  document.getElementById('gold-val').textContent=250;
   document.getElementById('wave-val').textContent=0;
   document.getElementById('score-val').textContent=0;
   document.getElementById('kills-val').textContent=0;
