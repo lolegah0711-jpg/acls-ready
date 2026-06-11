@@ -423,7 +423,7 @@ app.get('/auth/me', (req, res) => {
   const u = getUser(req);
   if (u) {
     if (u.role === 'citizen') return res.json({ voter: true, discord_id: u.discord_id, username: u.username, avatar: u.avatar });
-    return res.json({ id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, role: u.role });
+    return res.json({ id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, role: u.role, rank: u.rank });
   }
   if (req.session.voterDiscordId) return res.json({
     voter: true,
@@ -2773,8 +2773,22 @@ app.post('/api/admin/custom-titles/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// VIP-Test für die Leitung (Rang 12): 10 Minuten Probelauf, 1× pro Tag
+app.post('/api/shop/vip-test', requireAuth, (req, res) => {
+  const u = getUser(req);
+  if (u.rank !== 'Rang 12') return res.status(403).json({ error: 'Nur für Rang 12' });
+  if (getPerk(u.discord_id, 'vip')) return res.status(400).json({ error: 'VIP ist bereits aktiv' });
+  if (getPerk(u.discord_id, 'vip_test_cd')) return res.status(400).json({ error: 'Test nur einmal pro Tag möglich' });
+  const until = extendPerk(u.discord_id, 'vip', 10 / 60); // 10 Minuten
+  extendPerk(u.discord_id, 'vip_test_cd', 24);            // Cooldown bis morgen
+  queueNotification('vip', u.discord_id, { username: u.username, until, test: true });
+  auditLog(req, 'vip_test', 'VIP-Rolle 10 Minuten getestet');
+  res.json({ ok: true, until });
+});
+
 // Abgelaufene Perks: VIP-Rolle entziehen, Booster still löschen
-cron.schedule('*/30 * * * *', () => {
+// (alle 2 Minuten, damit auch der 10-Minuten-VIP-Test pünktlich endet)
+cron.schedule('*/2 * * * *', () => {
   const expiredVips = db.prepare(`SELECT discord_id FROM user_perks WHERE perk = 'vip' AND expires_at <= datetime('now')`).all();
   for (const v of expiredVips) queueNotification('vip_remove', v.discord_id, {});
   const r = db.prepare(`DELETE FROM user_perks WHERE expires_at <= datetime('now')`).run();

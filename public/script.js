@@ -5103,9 +5103,10 @@ async function shop() {
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.7rem;margin-bottom:.8rem">
       ${consumables.map(itemCard).join('')}
     </div>
-    ${me.vipUntil || me.boosterUntil ? `<div style="font-size:.72rem;color:var(--muted);margin-bottom:1.2rem">
-      ${me.vipUntil ? `⭐ VIP aktiv bis <b style="color:#fbbf24">${fmtUntil(me.vipUntil)}</b> &nbsp; ` : ''}
-      ${me.boosterUntil ? `⚡ Coin-Booster aktiv bis <b style="color:#4ade80">${fmtUntil(me.boosterUntil)}</b>` : ''}
+    ${me.vipUntil || me.boosterUntil || currentUser?.rank === 'Rang 12' ? `<div style="font-size:.72rem;color:var(--muted);margin-bottom:1.2rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+      ${me.vipUntil ? `<span>⭐ VIP aktiv bis <b style="color:#fbbf24">${fmtUntil(me.vipUntil)}</b></span>` : ''}
+      ${me.boosterUntil ? `<span>⚡ Coin-Booster aktiv bis <b style="color:#4ade80">${fmtUntil(me.boosterUntil)}</b></span>` : ''}
+      ${currentUser?.rank === 'Rang 12' && !me.vipUntil ? `<button class="btn btn-ghost btn-sm" style="font-size:.7rem" onclick="vipTest()"><i class="fas fa-flask" style="color:#fbbf24"></i> VIP 10 Min testen (Rang 12)</button>` : ''}
     </div>` : '<div style="margin-bottom:.7rem"></div>'}
 
     <!-- Wunsch-Titel -->
@@ -5203,6 +5204,11 @@ window.shopBuy = async (itemId, price) => {
   else if (r.boosterUntil) toast('Coin-Booster aktiv – 24h doppelte Spiel-Coins! ⚡', 'ok');
   else                     toast('Gekauft & ausgerüstet! 🎉', 'ok');
   renderUserWidget(); shop();
+};
+
+window.vipTest = async () => {
+  const r = await api('/api/shop/vip-test', { method: 'POST' });
+  if (r) { toast('VIP-Test gestartet – der Bot vergibt dir die Rolle für 10 Minuten ⭐', 'ok'); shop(); }
 };
 
 window.buyCustomTitle = async () => {

@@ -149,7 +149,11 @@ async function pollNotifications() {
               if (member) {
                 if (n.type === 'vip') {
                   await member.roles.add(role).catch(e => console.error('[Bot] VIP-Rolle add:', e.message));
-                  try { await member.send(`⭐ Du bist jetzt **VIP** auf dem ACLS-Server – 30 Tage lang! Viel Spaß!`); } catch (_) {}
+                  try {
+                    await member.send(p.test
+                      ? `⭐ **VIP-Test aktiviert!** Du hast die VIP-Rolle jetzt für **10 Minuten** zum Ausprobieren.`
+                      : `⭐ Du bist jetzt **VIP** auf dem ACLS-Server – 30 Tage lang! Viel Spaß!`);
+                  } catch (_) {}
                 } else {
                   await member.roles.remove(role).catch(e => console.error('[Bot] VIP-Rolle remove:', e.message));
                   try { await member.send(`⭐ Deine **VIP-Rolle** ist abgelaufen. Du kannst sie jederzeit im Coin-Shop verlängern!`); } catch (_) {}
