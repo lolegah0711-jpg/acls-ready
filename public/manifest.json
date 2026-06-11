@@ -1,0 +1,22 @@
+{
+  "name": "ACLS – Automobil Club Los Santos",
+  "short_name": "ACLS",
+  "description": "Das ACLS-Portal: Prüfungen, Coins, Minispiele, Turniere und mehr.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f0f0f",
+  "theme_color": "#0f0f0f",
+  "lang": "de",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Coin-Shop",     "url": "/?page=shop",    "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Wochenturnier", "url": "/?page=turnier", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Quiz-Duell",    "url": "/?page=duell",   "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

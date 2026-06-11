@@ -951,7 +951,9 @@ function bootApp() {
       navigate(el.dataset.page);
     });
   });
-  navigate('dashboard');
+  // PWA-Shortcuts (/?page=shop etc.) direkt auf die gewünschte Seite springen
+  const startPage = new URLSearchParams(location.search).get('page');
+  navigate(startPage && PAGES[startPage] ? startPage : 'dashboard');
   // Abzeichen alle 30 Minuten neu laden wenn Dashboard aktiv
   setInterval(() => { if (_activePage === 'dashboard') dashboard(); }, 30 * 60 * 1000);
 }
