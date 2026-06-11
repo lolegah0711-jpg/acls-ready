@@ -136,6 +136,27 @@ async function pollNotifications() {
             } catch (e) { console.error('[Bot] EoW-Kanal Fehler:', e.message); }
           }
         }
+        if (n.type === 'lottery') {
+          if (n.discord_id) {
+            try {
+              const u = await client.users.fetch(n.discord_id);
+              await u.send(`🎟️ JACKPOT! Du hast die **Wochenlotterie** gewonnen: **${p.pot} ACLS-Coins**! 🎉`);
+            } catch (_) {}
+          }
+          if (EOW_CHANNEL_ID) {
+            try {
+              const ch = await client.channels.fetch(EOW_CHANNEL_ID);
+              const embed = new EmbedBuilder()
+                .setColor(0x22c55e)
+                .setTitle('🎟️ Wochenlotterie – Ziehung!')
+                .setDescription(`🏆 **${p.username}** gewinnt den Pot von **${p.pot} 🪙 ACLS-Coins**!`)
+                .addFields({ name: '📊 Statistik', value: `${p.totalTickets} Lose von ${p.players} Spieler${p.players !== 1 ? 'n' : ''} · Gewinnchance: ${Math.round(p.tickets / p.totalTickets * 100)}%` })
+                .setFooter({ text: 'Neue Lose gibt es ab Montag im Coin-Shop auf der Website' })
+                .setTimestamp();
+              await ch.send({ embeds: [embed] });
+            } catch (e) { console.error('[Bot] Lotterie-Kanal Fehler:', e.message); }
+          }
+        }
         if (n.type === 'tournament') {
           const medals = ['🥇', '🥈', '🥉'];
           const lines = (p.top || []).map(t => `${medals[t.place - 1] || t.place + '.'} **${t.username}** – ${Number(t.score).toLocaleString('de-DE')} Punkte (+${t.prize} 🪙)`).join('\n');
@@ -437,6 +458,31 @@ async function sendEowReminder() {
 // Jeden Freitag um 18:00 Berliner Zeit
 cron.schedule('0 18 * * 5', sendEowReminder, { timezone: 'Europe/Berlin' });
 
+// ── Turnier-Endspurt: Freitag 18:05 (direkt nach der MdW-Erinnerung) ──
+async function sendTournamentSprint() {
+  if (!EOW_CHANNEL_ID) return;
+  try {
+    const res = await fetch(`${SERVER_URL}/api/bot/tournament`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+    const d   = res?.ok ? await res.json() : null;
+    if (!d) return;
+    const medals = ['🥇', '🥈', '🥉'];
+    const board = d.leaderboard.length
+      ? d.leaderboard.slice(0, 5).map((r, i) => `${medals[i] || `**${i + 1}.**`} **${r.username || 'Unbekannt'}** — ${(+r.score).toLocaleString('de-DE')}`).join('\n')
+      : '_Noch keine Teilnehmer — deine Chance auf 500 Coins!_';
+    const embed = new EmbedBuilder()
+      .setColor(0xf97316)
+      .setTitle(`🏁 Turnier-Endspurt – ${d.gameName}`)
+      .setDescription(`Das Wochenturnier endet **Sonntag um 20:00 Uhr**!\n\n${board}`)
+      .addFields({ name: '🎁 Preise', value: `🥇 ${d.prizes[0]} · 🥈 ${d.prizes[1]} · 🥉 ${d.prizes[2]} ACLS-Coins` })
+      .setFooter({ text: 'Bester Score zählt – jetzt auf der Website spielen!' })
+      .setTimestamp();
+    const ch = await client.channels.fetch(EOW_CHANNEL_ID);
+    await ch.send({ embeds: [embed] });
+    console.log('[Bot] Turnier-Endspurt gesendet');
+  } catch (e) { console.error('[Bot] Turnier-Endspurt Fehler:', e.message); }
+}
+cron.schedule('5 18 * * 5', sendTournamentSprint, { timezone: 'Europe/Berlin' });
+
 // ── Automatischer Wochenbericht: Montag 18:00 → Bot-Channel ──────
 async function sendWochenbericht() {
   const channelId = COMMANDS_CHANNEL_ID || EOW_CHANNEL_ID;
@@ -591,7 +637,15 @@ client.once(Events.ClientReady, async c => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: userId, username: member?.displayName || userId, channel_name: vs.channel.name, joined_at: joinedAt.toISOString() }),
         }).catch(() => {});
+        setDutyRole(member, true);
         found++;
+      }
+      // Dienst-Rolle bei allen entfernen, die nicht (mehr) im Dienst-Channel sind
+      const dutyRole = guild.roles.cache.find(r => r.name === DUTY_ROLE_NAME);
+      if (dutyRole) {
+        for (const [, m] of dutyRole.members) {
+          if (!activeSessions.has(m.id)) setDutyRole(m, false);
+        }
       }
       console.log(`[Bot] Startup-Scan: ${found} Mitglied(er) bereits im Dienst-Channel – Tracking gestartet`);
     } catch (e) { console.error('[Bot] Startup-Scan Fehler:', e.message); }
@@ -601,6 +655,25 @@ client.once(Events.ClientReady, async c => {
 
   setInterval(pollNotifications, 30_000);
 });
+
+// ── „Im Dienst"-Rolle: automatisch bei IC-Voice-Join/-Leave ──────
+const DUTY_ROLE_NAME = process.env.DUTY_ROLE_NAME || 'Im Dienst';
+async function setDutyRole(member, on) {
+  if (!member || member.user?.bot) return;
+  try {
+    const guild = member.guild;
+    let role = guild.roles.cache.find(r => r.name === DUTY_ROLE_NAME);
+    if (!role && on) {
+      role = await guild.roles.create({ name: DUTY_ROLE_NAME, color: 0x22c55e, mentionable: false, reason: 'ACLS Dienst-Status (automatisch erstellt)' }).catch(e => {
+        console.error('[Bot] Dienst-Rolle erstellen fehlgeschlagen:', e.message);
+        return null;
+      });
+    }
+    if (!role) return;
+    if (on  && !member.roles.cache.has(role.id)) await member.roles.add(role).catch(e => console.error('[Bot] Dienst-Rolle vergeben:', e.message));
+    if (!on &&  member.roles.cache.has(role.id)) await member.roles.remove(role).catch(e => console.error('[Bot] Dienst-Rolle entfernen:', e.message));
+  } catch (e) { console.error('[Bot] Dienst-Rolle Fehler:', e.message); }
+}
 
 client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   // Nur Ereignisse im konfigurierten Server
@@ -623,6 +696,7 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: discordId, joined_at: null }),
       }).catch(() => {});
+      setDutyRole(oldState.member || newState.member, false);
     }
   }
 
@@ -641,6 +715,7 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: discordId, username: newState.member?.displayName, channel_name: joinedChannel.name, joined_at: joinedAt.toISOString() }),
       }).catch(() => {});
+      setDutyRole(newState.member, true);
     }
   }
 });

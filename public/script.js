@@ -526,9 +526,10 @@ async function loadVoterTeam() {
   const mitarbeiter = staff.filter(u => u.role !== 'admin' && u.role !== 'ausbilder' && !leitIds.has(u.id));
   function av(u, isL) {
     const sz = isL ? 68 : 56;
+    const glow = frameGlow(u.equipped_frame);
     return (u.avatar && u.discord_id)
-      ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover${isL?';border:2px solid #c9a227':''}" onerror="this.outerHTML='<div style=&quot;width:${sz}px;height:${sz}px;border-radius:50%;background:${isL?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isL?'1.5':'1.3'}rem;font-weight:700&quot;>${(u.username||'?')[0].toUpperCase()}</div>'">`
-      : `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${isL?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isL?'1.5':'1.3'}rem;font-weight:700">${(u.username||'?')[0].toUpperCase()}</div>`;
+      ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;${glow}${isL?'border:2px solid #c9a227':''}" onerror="this.outerHTML='<div style=&quot;width:${sz}px;height:${sz}px;border-radius:50%;background:${isL?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isL?'1.5':'1.3'}rem;font-weight:700&quot;>${(u.username||'?')[0].toUpperCase()}</div>'">`
+      : `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${isL?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isL?'1.5':'1.3'}rem;font-weight:700;${glow}">${(u.username||'?')[0].toUpperCase()}</div>`;
   }
   function card(u, isL = false) {
     const rc = isL?'#c9a227':u.role==='admin'?'#f97316':u.role==='ausbilder'?'#60a5fa':'var(--muted)';
@@ -539,6 +540,7 @@ async function loadVoterTeam() {
       ${isL?'<i class="fas fa-crown" style="color:#c9a227;font-size:.8rem"></i>':''}
       ${av(u, isL)}
       <div style="font-weight:700;font-size:.9rem">${esc(u.username)}</div>
+      ${titleLine(u.equipped_title)}
       <span style="font-size:.68rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;background:${rb};color:${rc}">${rn}</span>
     </div>`;
   }
@@ -976,6 +978,28 @@ const SHOP_FRAME_COLORS = {
   frame_gold: '#ffd700', frame_neon: '#00f5ff', frame_feuer: '#f97316',
   frame_lila: '#a855f7', frame_regenbogen: 'rainbow',
 };
+
+function ensureRainbowStyle() {
+  if (document.getElementById('rainbowGlowStyle')) return;
+  const st = document.createElement('style');
+  st.id = 'rainbowGlowStyle';
+  st.textContent = '@keyframes rainbowGlow{0%{box-shadow:0 0 10px 2px #ef4444}25%{box-shadow:0 0 10px 2px #fbbf24}50%{box-shadow:0 0 10px 2px #4ade80}75%{box-shadow:0 0 10px 2px #38bdf8}100%{box-shadow:0 0 10px 2px #ef4444}}';
+  document.head.appendChild(st);
+}
+
+// CSS für gekauften Avatar-Rahmen (überall einsetzbar)
+function frameGlow(frameId) {
+  const c = SHOP_FRAME_COLORS[frameId];
+  if (!c) return '';
+  if (c === 'rainbow') { ensureRainbowStyle(); return 'box-shadow:0 0 10px 2px #f97316;animation:rainbowGlow 3s linear infinite;'; }
+  return `box-shadow:0 0 10px 2px ${c};`;
+}
+
+// Gekaufter Titel als kleine goldene Zeile unter dem Namen
+function titleLine(titleId, size = '.66rem') {
+  const n = SHOP_TITLE_NAMES[titleId];
+  return n ? `<div style="font-size:${size};font-weight:700;color:#fbbf24">${n}</div>` : '';
+}
 
 function updateCoinChip(balance) {
   const el = $('coinChipVal');
@@ -3380,9 +3404,10 @@ async function organigramm() {
   const mitarbeiter = staff.filter(u => u.role !== 'admin' && u.role !== 'ausbilder' && !leitungIds.has(u.id));
 
   function memberCard(u, isLeitung = false) {
+    const glow = frameGlow(u.equipped_frame);
     const av = (u.avatar && u.discord_id)
-      ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;object-fit:cover;${isLeitung?'border:2px solid #c9a227':''}" onerror="this.outerHTML='<div style=\'width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;background:${isLeitung?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isLeitung?'1.8':'1.5'}rem;font-weight:700\'>${(u.username||'?')[0].toUpperCase()}</div>'">`
-      : `<div style="width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;background:${isLeitung?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isLeitung?'1.8':'1.5'}rem;font-weight:700">${(u.username||'?')[0].toUpperCase()}</div>`;
+      ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;object-fit:cover;${glow}${isLeitung?'border:2px solid #c9a227':''}" onerror="this.outerHTML='<div style=\'width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;background:${isLeitung?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isLeitung?'1.8':'1.5'}rem;font-weight:700\'>${(u.username||'?')[0].toUpperCase()}</div>'">`
+      : `<div style="width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;background:${isLeitung?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isLeitung?'1.8':'1.5'}rem;font-weight:700;${glow}">${(u.username||'?')[0].toUpperCase()}</div>`;
     const roleColor = isLeitung ? '#c9a227' : u.role === 'admin' ? '#f97316' : u.role === 'ausbilder' ? '#60a5fa' : 'var(--muted)';
     const roleName  = isLeitung ? 'Rang 12' : u.role === 'admin' ? 'Administration' : u.role === 'ausbilder' ? 'Ausbilder' : 'Mitarbeiter';
     const roleBg    = isLeitung ? 'rgba(201,162,39,.18)' : u.role === 'admin' ? 'rgba(249,115,22,.15)' : u.role === 'ausbilder' ? 'rgba(96,165,250,.12)' : 'rgba(255,255,255,.06)';
@@ -3392,6 +3417,7 @@ async function organigramm() {
       ${crownIcon}
       ${av}
       <div style="font-weight:700;font-size:${isLeitung?'1rem':'.95rem'}">${esc(u.username)}</div>
+      ${titleLine(u.equipped_title)}
       <span style="font-size:.7rem;font-weight:700;padding:.18rem .6rem;border-radius:20px;background:${roleBg};color:${roleColor}">${roleName}</span>
     </div>`;
   }
@@ -3952,8 +3978,95 @@ async function admin() {
         </div>
       </div>
     </div><!-- /col-right -->
+    </div>
+    <!-- Statistiken -->
+    <div class="card" style="margin-top:1rem">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(56,189,248,.15)"><i class="fas fa-chart-line" style="color:#38bdf8"></i></div>
+        <div><div class="card-title">Statistiken</div><div class="card-sub">Entwicklung der letzten 12 Wochen</div></div>
+      </div>
+      <div id="adminStatsSummary" style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1.1rem"></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.4rem">
+        <div>
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem">📋 Prüfungen pro Woche</div>
+          <canvas id="chartExams" height="190"></canvas>
+        </div>
+        <div>
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem">⏱️ IC-Stunden pro Woche</div>
+          <canvas id="chartIc" height="190"></canvas>
+        </div>
+        <div>
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem">🪙 Coin-Wirtschaft pro Woche</div>
+          <canvas id="chartCoins" height="190"></canvas>
+        </div>
+      </div>
     </div>`;
   loadPollAdmin();
+  loadAdminStats();
+}
+
+let _adminCharts = [];
+async function loadAdminStats() {
+  if (typeof Chart === 'undefined') return; // CDN nicht geladen
+  const d = await api('/api/admin/stats');
+  if (!d || _activePage !== 'admin') return;
+
+  const chip = (label, val, color) => `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:.5rem .9rem">
+      <div style="font-size:1.05rem;font-weight:800;color:${color}">${(+val).toLocaleString('de-DE')}</div>
+      <div style="font-size:.66rem;color:var(--muted)">${label}</div>
+    </div>`;
+  const sumEl = $('adminStatsSummary');
+  if (sumEl) sumEl.innerHTML =
+    chip('Aktive Mitarbeiter', d.summary.activeStaff, 'var(--text)') +
+    chip('Prüfungen gesamt', d.summary.examsTotal, '#22c55e') +
+    chip('Coins im Umlauf', d.summary.coinsInUmlauf, '#fbbf24') +
+    chip('Coins jemals verdient', d.summary.coinsTotal, '#fbbf24');
+
+  _adminCharts.forEach(c => { try { c.destroy(); } catch {} });
+  _adminCharts = [];
+  const wkLabel = r => 'KW ' + isoWeek(r.wk);
+  const tick = '#9ca3af', grid = 'rgba(128,128,128,.14)';
+  const baseOpts = {
+    responsive: true,
+    plugins: { legend: { labels: { color: tick, boxWidth: 12, font: { size: 10 } } } },
+    scales: {
+      x: { ticks: { color: tick, font: { size: 10 } }, grid: { color: grid } },
+      y: { beginAtZero: true, ticks: { color: tick, font: { size: 10 } }, grid: { color: grid } },
+    },
+  };
+  const mk = (id, cfg) => { const el = $(id); if (el) _adminCharts.push(new Chart(el, cfg)); };
+
+  mk('chartExams', {
+    type: 'bar',
+    data: {
+      labels: d.exams.map(wkLabel),
+      datasets: [
+        { label: 'Bestanden',       data: d.exams.map(r => r.p),       backgroundColor: '#22c55e' },
+        { label: 'Nicht bestanden', data: d.exams.map(r => r.c - r.p), backgroundColor: '#ef4444' },
+      ],
+    },
+    options: { ...baseOpts, scales: { x: { stacked: true, ...baseOpts.scales.x }, y: { stacked: true, ...baseOpts.scales.y } } },
+  });
+  mk('chartIc', {
+    type: 'line',
+    data: {
+      labels: d.ic.map(wkLabel),
+      datasets: [{ label: 'IC-Stunden', data: d.ic.map(r => r.h), borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,.15)', fill: true, tension: .3 }],
+    },
+    options: baseOpts,
+  });
+  mk('chartCoins', {
+    type: 'line',
+    data: {
+      labels: d.coins.map(wkLabel),
+      datasets: [
+        { label: 'Verdient',   data: d.coins.map(r => r.earned), borderColor: '#22c55e', tension: .3 },
+        { label: 'Ausgegeben', data: d.coins.map(r => r.spent),  borderColor: '#ef4444', tension: .3 },
+      ],
+    },
+    options: baseOpts,
+  });
 }
 
 async function loadPollAdmin() {
@@ -4262,11 +4375,12 @@ window.openProfileModal = async id => {
     <div class="modal-head"><div class="modal-title">Profil</div>
     <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
     <div class="profile-header">
-      <div class="profile-av" style="${url ? 'background:transparent;padding:0;overflow:hidden' : ''}">
+      <div class="profile-av" style="${url ? 'background:transparent;padding:0;overflow:hidden;' : ''}${frameGlow(u.equipped_frame)}">
         ${url ? `<img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='${initials(u.username)}'">` : initials(u.username)}
       </div>
       <div>
         <div class="profile-name">${esc(u.username)}</div>
+        ${titleLine(u.equipped_title, '.75rem')}
         <div style="display:flex;align-items:center;gap:.4rem;margin-top:.2rem">
           <span style="font-size:.78rem;font-weight:700;padding:.15rem .55rem;border-radius:20px;background:${rankColor}22;color:${rankColor};border:1px solid ${rankColor}44">${rank}</span>
           ${u.role === 'admin' ? '<span style="font-size:.72rem;font-weight:600;padding:.1rem .45rem;border-radius:20px;background:rgba(249,115,22,.15);color:var(--orange)">Admin</span>' : ''}
@@ -4798,6 +4912,7 @@ function txLabel(reason) {
     'blackjack:push': '🃏 Blackjack-Push', 'blackjack:double': '🃏 Blackjack verdoppelt',
     'exam:blitz': '📋 Blitz-Prüfung abgehalten', 'exam:standard': '📋 Prüfung abgehalten',
     'exam:praxis': '📋 Praxisprüfung abgehalten',
+    'lottery:ticket': '🎟️ Lotterie-Lose gekauft', 'lottery:win': '🎟️ Lotterie-Jackpot!',
   };
   if (map[reason]) return map[reason];
   if (reason.startsWith('game:')) return '🎮 ' + (GAME_NAMES_DE[reason.slice(5)] || reason.slice(5));
@@ -4805,7 +4920,7 @@ function txLabel(reason) {
 }
 
 async function shop() {
-  const [me, shopData] = await Promise.all([api('/api/coins/me'), api('/api/shop')]);
+  const [me, shopData, lotto] = await Promise.all([api('/api/coins/me'), api('/api/shop'), api('/api/lottery')]);
   if (!me || !shopData) return;
 
   const itemCard = it => {
@@ -4851,6 +4966,27 @@ async function shop() {
       </div>
     </div>
 
+    ${lotto ? `
+    <div class="card" style="padding:1.1rem 1.2rem;margin-bottom:1.25rem;background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(34,197,94,.02));border-color:rgba(34,197,94,.3)">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div style="font-size:2rem">🎟️</div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:800;font-size:1rem">Wochenlotterie</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:.15rem">Los: ${lotto.ticketPrice} 🪙 · Ziehung Sonntag 19:00 Uhr · Der Gewinner bekommt den ganzen Pot!</div>
+          ${lotto.lastDraw?.winner_username ? `<div style="font-size:.72rem;color:#4ade80;margin-top:.25rem"><i class="fas fa-crown"></i> Letzte Ziehung: <b>${esc(lotto.lastDraw.winner_username)}</b> gewann ${(+lotto.lastDraw.pot).toLocaleString('de-DE')} 🪙</div>` : ''}
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:1.4rem;font-weight:800;color:#4ade80">${lotto.pot.toLocaleString('de-DE')} 🪙</div>
+          <div style="font-size:.68rem;color:var(--muted)">Pot · ${lotto.totalTickets} Lose · ${lotto.players} Spieler</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.4rem;align-items:stretch">
+          <button class="btn btn-sm" style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:#4ade80" onclick="lotteryBuy(1)">1 Los kaufen</button>
+          <button class="btn btn-sm" style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:#4ade80" onclick="lotteryBuy(5)">5 Lose kaufen</button>
+          <div style="font-size:.68rem;color:var(--muted);text-align:center">Deine Lose: <b>${lotto.myTickets}</b>/${lotto.maxTickets}</div>
+        </div>
+      </div>
+    </div>` : ''}
+
     <div class="card" style="padding:1rem 1.2rem;margin-bottom:1.25rem">
       <div style="font-weight:700;font-size:.85rem;margin-bottom:.5rem"><i class="fas fa-info-circle" style="color:var(--orange);margin-right:.4rem"></i>So verdienst du Coins</div>
       <div style="display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.78rem;color:var(--muted)">
@@ -4879,6 +5015,11 @@ async function shop() {
         </div>`).join('') : '<div style="padding:.8rem 0;color:var(--muted);font-size:.8rem">Noch keine Transaktionen – spiel ein Minispiel!</div>'}
     </div>`;
 }
+
+window.lotteryBuy = async count => {
+  const r = await api('/api/lottery/buy', { method: 'POST', body: { count } });
+  if (r) { toast(`${count} Los${count > 1 ? 'e' : ''} gekauft – viel Glück! 🍀`, 'ok'); updateCoinChip(r.balance); shop(); }
+};
 
 window.claimDaily = async () => {
   const r = await api('/api/coins/daily', { method: 'POST' });
@@ -4917,8 +5058,8 @@ async function turnier() {
   if (!t) return;
   const medals = ['🥇', '🥈', '🥉'];
   const avEl = r => r.avatar
-    ? `<img src="https://cdn.discordapp.com/avatars/${r.discord_id}/${r.avatar}.png?size=64" style="width:30px;height:30px;border-radius:50%;object-fit:cover">`
-    : `<div style="width:30px;height:30px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700">${initials(r.username)}</div>`;
+    ? `<img src="https://cdn.discordapp.com/avatars/${r.discord_id}/${r.avatar}.png?size=64" style="width:30px;height:30px;border-radius:50%;object-fit:cover;${frameGlow(r.equipped_frame)}">`
+    : `<div style="width:30px;height:30px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;${frameGlow(r.equipped_frame)}">${initials(r.username)}</div>`;
 
   $('pageContent').innerHTML = `
     <div class="card" style="padding:1.4rem;margin-bottom:1.25rem;background:linear-gradient(135deg,rgba(251,191,36,.10),rgba(251,191,36,.02));border-color:rgba(251,191,36,.35)">
@@ -4949,7 +5090,7 @@ async function turnier() {
         <div style="display:flex;align-items:center;gap:.7rem;padding:.55rem 0;border-bottom:1px solid var(--border);${currentUser && r.discord_id === currentUser.discord_id ? 'background:rgba(251,191,36,.06);border-radius:8px;padding-left:.5rem;padding-right:.5rem' : ''}">
           <div style="width:28px;text-align:center;font-weight:800;font-size:.9rem">${medals[i] || (i + 1) + '.'}</div>
           ${avEl(r)}
-          <div style="flex:1;font-weight:600;font-size:.85rem">${esc(r.username || 'Unbekannt')}</div>
+          <div style="flex:1"><div style="font-weight:600;font-size:.85rem">${esc(r.username || 'Unbekannt')}</div>${titleLine(r.equipped_title, '.62rem')}</div>
           ${i < 3 ? `<span style="font-size:.7rem;color:#fbbf24;font-weight:700">+${t.prizes[i]} 🪙</span>` : ''}
           <div style="font-weight:800;color:#fbbf24;font-size:.9rem">${(+r.score).toLocaleString('de-DE')}</div>
         </div>`).join('') : '<div style="padding:1.2rem 0;text-align:center;color:var(--muted);font-size:.85rem">Noch keine Teilnehmer – sei der Erste! 🚀</div>'}

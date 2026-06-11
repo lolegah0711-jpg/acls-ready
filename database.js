@@ -425,6 +425,23 @@ function initDb() {
       PRIMARY KEY (week, discord_id)
     );
 
+    CREATE TABLE IF NOT EXISTS lottery_tickets (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      week        TEXT NOT NULL,
+      discord_id  TEXT NOT NULL,
+      username    TEXT,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS lottery_draws (
+      week               TEXT PRIMARY KEY,
+      winner_discord_id  TEXT,
+      winner_username    TEXT,
+      pot                INTEGER DEFAULT 0,
+      tickets_total      INTEGER DEFAULT 0,
+      drawn_at           DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS quiz_duels (
       id               INTEGER PRIMARY KEY AUTOINCREMENT,
       code             TEXT UNIQUE NOT NULL,

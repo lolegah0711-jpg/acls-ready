@@ -1296,6 +1296,9 @@ function requireAuthOrBot(req, res, next) {
 app.get('/api/profile/:id', requireAuthOrBot, (req, res) => {
   const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank, ic_weekly_goal, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!u) return res.status(404).json({ error: 'Nicht gefunden' });
+  const cosm = db.prepare('SELECT equipped_title, equipped_frame FROM coin_balances WHERE discord_id = ?').get(u.discord_id);
+  u.equipped_title = cosm?.equipped_title || null;
+  u.equipped_frame = cosm?.equipped_frame || null;
   const examStats   = db.prepare('SELECT COUNT(*) as total, COALESCE(SUM(passed),0) as passed FROM exam_sessions WHERE user_id=?').get(u.id);
   const conducted   = db.prepare('SELECT COUNT(*) as c FROM registry WHERE examiner_id=?').get(u.id).c;
   const eowWins     = db.prepare('SELECT COUNT(*) as c FROM eow_winners WHERE user_id=?').get(u.id).c;
@@ -2275,9 +2278,11 @@ app.get('/quiz', (req, res) => {
 // ── ORGANIGRAMM (öffentlich) ──────────────────────────────────────
 app.get('/api/organigramm', (req, res) => {
   const staff = db.prepare(`
-    SELECT id, username, avatar, discord_id, role, rank
-    FROM users WHERE is_active = 1
-    ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'ausbilder' THEN 1 ELSE 2 END, username
+    SELECT u.id, u.username, u.avatar, u.discord_id, u.role, u.rank,
+           cb.equipped_title, cb.equipped_frame
+    FROM users u LEFT JOIN coin_balances cb ON cb.discord_id = u.discord_id
+    WHERE u.is_active = 1
+    ORDER BY CASE u.role WHEN 'admin' THEN 0 WHEN 'ausbilder' THEN 1 ELSE 2 END, u.username
   `).all();
   res.json(staff);
 });
@@ -2652,7 +2657,12 @@ app.get('/api/tournament', (req, res) => {
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const t = ensureTournament();
   const info = TOURNAMENT_GAMES[t.game] || { name: t.game, url: '/' };
-  const board = db.prepare('SELECT discord_id, username, avatar, score, updated_at FROM tournament_scores WHERE week = ? ORDER BY score DESC LIMIT 15').all(t.week);
+  const board = db.prepare(`
+    SELECT ts.discord_id, ts.username, ts.avatar, ts.score, ts.updated_at,
+           cb.equipped_title, cb.equipped_frame
+    FROM tournament_scores ts LEFT JOIN coin_balances cb ON cb.discord_id = ts.discord_id
+    WHERE ts.week = ? ORDER BY ts.score DESC LIMIT 15
+  `).all(t.week);
   const mine  = db.prepare('SELECT score FROM tournament_scores WHERE week = ? AND discord_id = ?').get(t.week, ident.id);
   const last  = db.prepare('SELECT * FROM tournaments WHERE finished = 1 ORDER BY week DESC LIMIT 1').get();
   res.json({
@@ -2683,6 +2693,101 @@ function finalizeTournament() {
 
 // Sonntag 20:00 Berliner Zeit — Wochenturnier auswerten
 cron.schedule('0 20 * * 0', finalizeTournament, { timezone: 'Europe/Berlin' });
+
+// ════════════════════════════════════════════════════════════════
+//  WOCHENLOTTERIE — Lose kaufen, Sonntag 19:00 Ziehung
+// ════════════════════════════════════════════════════════════════
+const LOTTERY_TICKET_PRICE = 50;
+const LOTTERY_MAX_TICKETS  = 20; // pro Person und Woche
+
+app.get('/api/lottery', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const wk = weekKey();
+  const total = db.prepare('SELECT COUNT(*) AS c FROM lottery_tickets WHERE week = ?').get(wk).c;
+  const mine  = db.prepare('SELECT COUNT(*) AS c FROM lottery_tickets WHERE week = ? AND discord_id = ?').get(wk, ident.id).c;
+  const players = db.prepare('SELECT COUNT(DISTINCT discord_id) AS c FROM lottery_tickets WHERE week = ?').get(wk).c;
+  const last = db.prepare('SELECT * FROM lottery_draws ORDER BY week DESC LIMIT 1').get() || null;
+  res.json({
+    week: wk, ticketPrice: LOTTERY_TICKET_PRICE, maxTickets: LOTTERY_MAX_TICKETS,
+    pot: total * LOTTERY_TICKET_PRICE, totalTickets: total, players, myTickets: mine,
+    lastDraw: last,
+  });
+});
+
+app.post('/api/lottery/buy', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`lottery:${ident.id}`, 20, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
+  const count = Math.floor(+req.body.count || 1);
+  if (count < 1 || count > LOTTERY_MAX_TICKETS) return res.status(400).json({ error: 'Ungültige Anzahl' });
+  const wk = weekKey();
+  const mine = db.prepare('SELECT COUNT(*) AS c FROM lottery_tickets WHERE week = ? AND discord_id = ?').get(wk, ident.id).c;
+  if (mine + count > LOTTERY_MAX_TICKETS) return res.status(400).json({ error: `Maximal ${LOTTERY_MAX_TICKETS} Lose pro Woche (du hast ${mine})` });
+  const bal = addCoins(ident.id, ident.name, -count * LOTTERY_TICKET_PRICE, 'lottery:ticket', { week: wk, count });
+  if (bal === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+  const ins = db.prepare('INSERT INTO lottery_tickets (week, discord_id, username) VALUES (?, ?, ?)');
+  for (let i = 0; i < count; i++) ins.run(wk, ident.id, ident.name);
+  res.json({ ok: true, balance: bal, myTickets: mine + count });
+});
+
+function drawLottery() {
+  const wk = weekKey();
+  if (db.prepare('SELECT 1 FROM lottery_draws WHERE week = ?').get(wk)) return;
+  const tickets = db.prepare('SELECT discord_id, username FROM lottery_tickets WHERE week = ?').all(wk);
+  if (!tickets.length) {
+    db.prepare('INSERT INTO lottery_draws (week, pot, tickets_total) VALUES (?, 0, 0)').run(wk);
+    console.log(`[Lotterie] ${wk}: keine Lose verkauft`);
+    return;
+  }
+  const winner = tickets[crypto.randomInt(tickets.length)];
+  const pot = tickets.length * LOTTERY_TICKET_PRICE;
+  addCoins(winner.discord_id, winner.username, pot, 'lottery:win', { week: wk });
+  db.prepare('INSERT INTO lottery_draws (week, winner_discord_id, winner_username, pot, tickets_total) VALUES (?, ?, ?, ?, ?)')
+    .run(wk, winner.discord_id, winner.username, pot, tickets.length);
+  const winnerTickets = tickets.filter(t => t.discord_id === winner.discord_id).length;
+  const players = new Set(tickets.map(t => t.discord_id)).size;
+  queueNotification('lottery', winner.discord_id, {
+    username: winner.username, pot, week: wk,
+    tickets: winnerTickets, totalTickets: tickets.length, players,
+  });
+  sseEmit('lottery', { week: wk });
+  console.log(`[Lotterie] ${wk}: ${winner.username} gewinnt ${pot} Coins (${tickets.length} Lose, ${players} Spieler)`);
+}
+
+// Sonntag 19:00 Berliner Zeit — Lotterie ziehen (vor der Turnier-Auswertung um 20:00)
+cron.schedule('0 19 * * 0', drawLottery, { timezone: 'Europe/Berlin' });
+
+// ════════════════════════════════════════════════════════════════
+//  ADMIN-STATISTIK — Wochendaten für Diagramme
+// ════════════════════════════════════════════════════════════════
+app.get('/api/admin/stats', requireAdmin, (req, res) => {
+  // Gruppierung nach Wochen-Montag der letzten 12 Wochen
+  const exams = db.prepare(`
+    SELECT date(registered_at, 'weekday 0', '-6 days') AS wk, COUNT(*) AS c, COALESCE(SUM(passed), 0) AS p
+    FROM registry WHERE registered_at >= datetime('now', '-84 days')
+    GROUP BY wk ORDER BY wk
+  `).all();
+  const ic = db.prepare(`
+    SELECT date(date, 'weekday 0', '-6 days') AS wk, ROUND(SUM(hours), 1) AS h
+    FROM ic_log WHERE date >= date('now', '-84 days')
+    GROUP BY wk ORDER BY wk
+  `).all();
+  const coins = db.prepare(`
+    SELECT date(created_at, 'weekday 0', '-6 days') AS wk,
+           SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS earned,
+           SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS spent
+    FROM coin_transactions WHERE created_at >= datetime('now', '-84 days')
+    GROUP BY wk ORDER BY wk
+  `).all();
+  const summary = {
+    activeStaff:   db.prepare("SELECT COUNT(*) AS c FROM users WHERE is_active = 1 AND role != 'citizen'").get().c,
+    coinsInUmlauf: db.prepare('SELECT COALESCE(SUM(balance), 0) AS s FROM coin_balances').get().s,
+    coinsTotal:    db.prepare('SELECT COALESCE(SUM(total_earned), 0) AS s FROM coin_balances').get().s,
+    examsTotal:    db.prepare('SELECT COUNT(*) AS c FROM registry').get().c,
+  };
+  res.json({ exams, ic, coins, summary });
+});
 
 // ════════════════════════════════════════════════════════════════
 //  QUIZ-DUELL — 1v1 live (nur Mitarbeiter)
