@@ -28,6 +28,10 @@ const BADGE_LABELS = {
   exams_10: '10 Prüfungen abgenommen', exams_50: '50 Prüfungen abgenommen', exams_100: '100 Prüfungen abgenommen',
   eow_1: '1x Mitarbeiter der Woche', eow_3: '3x Mitarbeiter der Woche', eow_5: '5x Mitarbeiter der Woche',
   cat_pkw: 'PKW-Prüfer', cat_lkw: 'LKW-Prüfer', cat_motorrad: 'Motorrad-Prüfer', cat_flugschein: 'Flugschein-Prüfer',
+  game_3: '3 Minispiele gespielt', game_10: '10 Minispiele gespielt',
+  duel_5: '5 Duell-Siege', duel_25: '25 Duell-Siege',
+  coins_1k: '1.000 Coins verdient', coins_10k: '10.000 Coins verdient',
+  tow_pro: 'Abschlepp-Profi (1.000+ Punkte)', bj_500: 'High Roller (500+ Blackjack-Gewinn)',
 };
 
 // Laufende Sessions: discord_id → { channelId, channelName, joinedAt, sessionStart }
@@ -135,6 +139,36 @@ async function pollNotifications() {
               const ch = await client.channels.fetch(EOW_CHANNEL_ID);
               await ch.send(msg);
             } catch (e) { console.error('[Bot] EoW-Kanal Fehler:', e.message); }
+          }
+        }
+        if (n.type === 'bracket') {
+          if (EOW_CHANNEL_ID) {
+            try {
+              const ch = await client.channels.fetch(EOW_CHANNEL_ID);
+              if (p.action === 'start') {
+                const embed = new EmbedBuilder()
+                  .setColor(0xf472b6)
+                  .setTitle('⚔️ Duell-Turnier gestartet!')
+                  .setDescription(`8 Spieler kämpfen im K.o.-System um **${p.pot} 🪙**:\n${p.players.map(n2 => `• **${n2}**`).join('\n')}`)
+                  .setFooter({ text: 'Viertelfinale läuft – jedes Match: 8 Fragen, 6 Minuten Zeit' })
+                  .setTimestamp();
+                await ch.send({ embeds: [embed] });
+              }
+              if (p.action === 'done') {
+                const embed = new EmbedBuilder()
+                  .setColor(0xfbbf24)
+                  .setTitle('⚔️ Duell-Turnier beendet!')
+                  .setDescription(`🏆 **${p.username}** gewinnt das Turnier und **${p.prize} 🪙**!${p.runner ? `\n🥈 **${p.runner}** erhält ${p.prize2} 🪙` : ''}`)
+                  .setTimestamp();
+                await ch.send({ embeds: [embed] });
+              }
+            } catch (e) { console.error('[Bot] Bracket-Kanal Fehler:', e.message); }
+          }
+          if (p.action === 'done' && n.discord_id) {
+            try {
+              const u = await client.users.fetch(n.discord_id);
+              await u.send(`⚔️ Glückwunsch! Du hast das **Duell-Turnier** gewonnen: **+${p.prize} ACLS-Coins**! 🏆`);
+            } catch (_) {}
           }
         }
         if (n.type === 'vip' || n.type === 'vip_remove') {

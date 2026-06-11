@@ -425,6 +425,34 @@ function initDb() {
       PRIMARY KEY (week, discord_id)
     );
 
+    CREATE TABLE IF NOT EXISTS duel_brackets (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      status      TEXT DEFAULT 'open',
+      entry_fee   INTEGER DEFAULT 100,
+      pot         INTEGER DEFAULT 0,
+      winner_did  TEXT,
+      winner_name TEXT,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      finished_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS duel_bracket_players (
+      bracket_id       INTEGER NOT NULL,
+      discord_id       TEXT NOT NULL,
+      username         TEXT,
+      avatar           TEXT,
+      eliminated_round INTEGER,
+      PRIMARY KEY (bracket_id, discord_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS onboarding_progress (
+      user_id  INTEGER NOT NULL REFERENCES users(id),
+      item_id  TEXT NOT NULL,
+      done_by  INTEGER REFERENCES users(id),
+      done_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, item_id)
+    );
+
     CREATE TABLE IF NOT EXISTS blackjack_pending (
       discord_id  TEXT PRIMARY KEY,
       username    TEXT,
@@ -521,6 +549,9 @@ function initDb() {
   }
 
   // Migrations — Spalten nachrüsten falls nicht vorhanden
+  try { db.exec(`ALTER TABLE quiz_duels ADD COLUMN bracket_id INTEGER`); } catch {}
+  try { db.exec(`ALTER TABLE quiz_duels ADD COLUMN bracket_round INTEGER`); } catch {}
+  try { db.exec(`ALTER TABLE quiz_duels ADD COLUMN bracket_match INTEGER`); } catch {}
   try { db.exec(`ALTER TABLE coin_balances ADD COLUMN equipped_truck TEXT`); } catch {}
   try { db.exec(`ALTER TABLE coin_balances ADD COLUMN equipped_deck TEXT`); } catch {}
   try { db.exec(`ALTER TABLE coin_balances ADD COLUMN equipped_banner TEXT`); } catch {}

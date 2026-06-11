@@ -1192,6 +1192,27 @@ app.patch('/api/users/:id/rank', requireAdmin, (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  BADGES
 // ════════════════════════════════════════════════════════════════
+// ── Spiel-Achievements: nach Score-Submit, Blackjack-Gewinn, Duell-Ende ──
+function checkGameBadges(userId, discordId) {
+  try {
+    const distinct = db.prepare('SELECT COUNT(DISTINCT game) AS c FROM game_scores WHERE user_id = ?').get(userId).c;
+    if (distinct >= 3)  awardBadge(userId, 'game_3');
+    if (distinct >= 10) awardBadge(userId, 'game_10');
+    const tow = db.prepare(`SELECT score FROM game_scores WHERE user_id = ? AND game = 'tow'`).get(userId)?.score || 0;
+    if (tow >= 1000) awardBadge(userId, 'tow_pro');
+    const bj = db.prepare(`SELECT score FROM game_scores WHERE user_id = ? AND game = 'blackjack'`).get(userId)?.score || 0;
+    if (bj >= 500) awardBadge(userId, 'bj_500');
+    if (discordId) {
+      const wins = db.prepare(`SELECT COUNT(*) AS c FROM quiz_duels WHERE winner_did = ? AND status = 'done'`).get(discordId).c;
+      if (wins >= 5)  awardBadge(userId, 'duel_5');
+      if (wins >= 25) awardBadge(userId, 'duel_25');
+      const earned = db.prepare('SELECT total_earned FROM coin_balances WHERE discord_id = ?').get(discordId)?.total_earned || 0;
+      if (earned >= 1000)  awardBadge(userId, 'coins_1k');
+      if (earned >= 10000) awardBadge(userId, 'coins_10k');
+    }
+  } catch (e) { console.error('[Badges]', e.message); }
+}
+
 function queueNotification(type, discordId, payload) {
   try {
     db.prepare('INSERT INTO bot_notifications (type, discord_id, payload) VALUES (?, ?, ?)')
@@ -1244,7 +1265,13 @@ app.get('/api/my-badges', requireAuth, (req, res) => {
   const conducted = db.prepare('SELECT COUNT(*) as c FROM registry WHERE examiner_id = ?').get(u.id).c;
   const eowWins   = db.prepare('SELECT COUNT(*) as c FROM eow_winners WHERE user_id = ?').get(u.id).c;
   const icTotal   = db.prepare('SELECT COALESCE(SUM(hours),0) as h FROM ic_log WHERE user_id = ?').get(u.id).h;
-  res.json({ badges, stats: { conducted, eowWins, icTotal: +icTotal } });
+  // Gaming-Statistiken für die Spiel-Achievements
+  const distinctGames = db.prepare('SELECT COUNT(DISTINCT game) as c FROM game_scores WHERE user_id = ?').get(u.id).c;
+  const duelWins      = db.prepare(`SELECT COUNT(*) as c FROM quiz_duels WHERE winner_did = ? AND status = 'done'`).get(u.discord_id).c;
+  const coinsEarned   = db.prepare('SELECT COALESCE(total_earned, 0) as e FROM coin_balances WHERE discord_id = ?').get(u.discord_id)?.e || 0;
+  const towBest       = db.prepare(`SELECT COALESCE(score, 0) as s FROM game_scores WHERE user_id = ? AND game = 'tow'`).get(u.id)?.s || 0;
+  const bjBest        = db.prepare(`SELECT COALESCE(score, 0) as s FROM game_scores WHERE user_id = ? AND game = 'blackjack'`).get(u.id)?.s || 0;
+  res.json({ badges, stats: { conducted, eowWins, icTotal: +icTotal, distinctGames, duelWins, coinsEarned, towBest, bjBest } });
 });
 
 app.get('/api/badges/:userId', requireAuth, (req, res) => {
@@ -2134,6 +2161,7 @@ app.post('/api/game-scores/:game', (req, res) => {
         score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
         updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END
     `).run(user.id, game, score);
+    checkGameBadges(user.id, user.discord_id);
     return res.json({ ok: true, coinsEarned });
   }
   const username = req.session.voterUsername || 'Bürger';
@@ -2997,8 +3025,14 @@ function finishDuel(d) {
       addCoins(winnerDid, winName,  DUEL_COINS_WIN,  'duel:win',  { code: d.code });
       addCoins(loserDid,  loseName, DUEL_COINS_LOSS, 'duel:loss', { code: d.code });
     }
+    // Gaming-Achievements für beide Teilnehmer (sofern Mitarbeiter)
+    for (const did of [d.host_did, d.guest_did]) {
+      const u = db.prepare('SELECT id FROM users WHERE discord_id = ?').get(did);
+      if (u) checkGameBadges(u.id, did);
+    }
   }
   sseEmit('duel', { code: d.code, action: 'done' });
+  if (d.bracket_id) advanceBracket(d);
 }
 
 // Lobby: offene Duelle + mein laufendes Duell (Mitarbeiter UND Bürger)
@@ -3152,6 +3186,232 @@ app.post('/api/duels/:code/answer', (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════
+//  DUELL-TURNIER — 8 Spieler, K.o.-Bracket, Einsatz 100 → Pot 800
+// ════════════════════════════════════════════════════════════════
+const BRACKET_SIZE = 8;
+const BRACKET_FEE  = 100;
+
+function currentBracket() {
+  return db.prepare(`SELECT * FROM duel_brackets WHERE status != 'done' ORDER BY id DESC LIMIT 1`).get();
+}
+function bracketPlayers(bid) {
+  return db.prepare('SELECT * FROM duel_bracket_players WHERE bracket_id = ? ORDER BY rowid').all(bid);
+}
+
+function bracketCreateMatch(bid, round, matchIdx, p1, p2) {
+  const qs = db.prepare('SELECT id FROM exam_questions WHERE is_active = 1 ORDER BY RANDOM() LIMIT ?').all(DUEL_QUESTIONS);
+  const code = crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 5);
+  db.prepare(`
+    INSERT INTO quiz_duels (code, host_did, host_name, host_avatar, guest_did, guest_name, guest_avatar,
+      question_ids, status, started_at, bracket_id, bracket_round, bracket_match)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, ?, ?, ?)
+  `).run(code, p1.discord_id, p1.username, p1.avatar, p2.discord_id, p2.username, p2.avatar,
+    JSON.stringify(qs.map(q => q.id)), bid, round, matchIdx);
+  return code;
+}
+
+function startBracket(bid) {
+  const players = bracketPlayers(bid);
+  for (let i = players.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    [players[i], players[j]] = [players[j], players[i]];
+  }
+  for (let m = 0; m < BRACKET_SIZE / 2; m++) bracketCreateMatch(bid, 1, m, players[m * 2], players[m * 2 + 1]);
+  db.prepare(`UPDATE duel_brackets SET status = 'running' WHERE id = ?`).run(bid);
+  const b = db.prepare('SELECT pot FROM duel_brackets WHERE id = ?').get(bid);
+  queueNotification('bracket', null, { action: 'start', players: players.map(p => p.username), pot: b.pot });
+  sseEmit('bracket', { action: 'start' });
+  sseEmit('duel', { code: '', action: 'start' }); // Teilnehmer landen direkt im Match
+  console.log(`[Bracket] Turnier #${bid} gestartet (${players.length} Spieler, Pot ${b.pot})`);
+}
+
+function advanceBracket(d) {
+  // Gewinner sicherstellen — bei Gleichstand entscheidet das Los
+  let winnerDid = db.prepare('SELECT winner_did FROM quiz_duels WHERE id = ?').get(d.id).winner_did;
+  if (!winnerDid) {
+    winnerDid = crypto.randomInt(2) === 0 ? d.host_did : d.guest_did;
+    db.prepare('UPDATE quiz_duels SET winner_did = ? WHERE id = ?').run(winnerDid, d.id);
+  }
+  const loserDid = winnerDid === d.host_did ? d.guest_did : d.host_did;
+  db.prepare('UPDATE duel_bracket_players SET eliminated_round = ? WHERE bracket_id = ? AND discord_id = ?')
+    .run(d.bracket_round, d.bracket_id, loserDid);
+
+  const openMatches = db.prepare(`SELECT COUNT(*) AS c FROM quiz_duels WHERE bracket_id = ? AND bracket_round = ? AND status != 'done'`)
+    .get(d.bracket_id, d.bracket_round).c;
+  if (openMatches > 0) { sseEmit('bracket', { action: 'progress' }); return; }
+
+  const winners = db.prepare(`SELECT winner_did FROM quiz_duels WHERE bracket_id = ? AND bracket_round = ? ORDER BY bracket_match`)
+    .all(d.bracket_id, d.bracket_round)
+    .map(r => db.prepare('SELECT * FROM duel_bracket_players WHERE bracket_id = ? AND discord_id = ?').get(d.bracket_id, r.winner_did))
+    .filter(Boolean);
+
+  if (winners.length === 1) {
+    // Finale entschieden → Auszahlung 75 % / 25 %
+    const b = db.prepare('SELECT * FROM duel_brackets WHERE id = ?').get(d.bracket_id);
+    const w = winners[0];
+    const runner = db.prepare('SELECT * FROM duel_bracket_players WHERE bracket_id = ? AND discord_id = ?').get(d.bracket_id, loserDid);
+    const wPrize = Math.round(b.pot * 0.75);
+    const rPrize = b.pot - wPrize;
+    addCoins(w.discord_id, w.username, wPrize, 'bracket:win', { bracket: b.id });
+    if (runner) addCoins(runner.discord_id, runner.username, rPrize, 'bracket:second', { bracket: b.id });
+    db.prepare(`UPDATE duel_brackets SET status = 'done', winner_did = ?, winner_name = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(w.discord_id, w.username, b.id);
+    queueNotification('bracket', w.discord_id, {
+      action: 'done', username: w.username, runner: runner?.username || null,
+      pot: b.pot, prize: wPrize, prize2: rPrize,
+    });
+    sseEmit('bracket', { action: 'done' });
+    console.log(`[Bracket] Turnier #${b.id}: ${w.username} gewinnt ${wPrize} Coins`);
+    return;
+  }
+
+  // Nächste Runde erzeugen
+  for (let m = 0; m < winners.length / 2; m++)
+    bracketCreateMatch(d.bracket_id, d.bracket_round + 1, m, winners[m * 2], winners[m * 2 + 1]);
+  sseEmit('bracket', { action: 'round' });
+  sseEmit('duel', { code: '', action: 'start' });
+}
+
+app.get('/api/bracket', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const last = db.prepare(`SELECT winner_name, pot FROM duel_brackets WHERE status = 'done' ORDER BY id DESC LIMIT 1`).get() || null;
+  const b = currentBracket();
+  if (!b) return res.json({ bracket: null, fee: BRACKET_FEE, size: BRACKET_SIZE, lastWinner: last });
+  const players = bracketPlayers(b.id);
+  const matches = db.prepare(`
+    SELECT code, status, host_did, host_name, guest_did, guest_name, host_score, guest_score, winner_did, bracket_round, bracket_match
+    FROM quiz_duels WHERE bracket_id = ? ORDER BY bracket_round, bracket_match
+  `).all(b.id);
+  res.json({
+    bracket: { id: b.id, status: b.status, pot: b.pot, fee: BRACKET_FEE, size: BRACKET_SIZE },
+    players, matches,
+    joined: players.some(p => p.discord_id === ident.id),
+    lastWinner: last,
+  });
+});
+
+app.post('/api/bracket/join', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`bracket:${ident.id}`, 10, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
+  let b = currentBracket();
+  if (b && b.status === 'running') return res.status(400).json({ error: 'Das Turnier läuft bereits' });
+  if (myActiveDuel(ident.id)) return res.status(400).json({ error: 'Du bist gerade in einem Duell' });
+  if (!b) {
+    const r = db.prepare(`INSERT INTO duel_brackets (status, entry_fee) VALUES ('open', ?)`).run(BRACKET_FEE);
+    b = db.prepare('SELECT * FROM duel_brackets WHERE id = ?').get(r.lastInsertRowid);
+  }
+  if (db.prepare('SELECT 1 FROM duel_bracket_players WHERE bracket_id = ? AND discord_id = ?').get(b.id, ident.id))
+    return res.status(400).json({ error: 'Du bist schon angemeldet' });
+  const bal = addCoins(ident.id, ident.name, -BRACKET_FEE, 'bracket:fee', { bracket: b.id });
+  if (bal === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+  db.prepare('INSERT INTO duel_bracket_players (bracket_id, discord_id, username, avatar) VALUES (?, ?, ?, ?)')
+    .run(b.id, ident.id, ident.name, ident.user?.avatar || null);
+  db.prepare('UPDATE duel_brackets SET pot = pot + ? WHERE id = ?').run(BRACKET_FEE, b.id);
+  sseEmit('bracket', { action: 'join' });
+  if (bracketPlayers(b.id).length >= BRACKET_SIZE) startBracket(b.id);
+  res.json({ ok: true, balance: bal });
+});
+
+app.post('/api/bracket/leave', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const b = currentBracket();
+  if (!b || b.status !== 'open') return res.status(400).json({ error: 'Abmelden nicht mehr möglich' });
+  const row = db.prepare('SELECT 1 FROM duel_bracket_players WHERE bracket_id = ? AND discord_id = ?').get(b.id, ident.id);
+  if (!row) return res.status(400).json({ error: 'Du bist nicht angemeldet' });
+  db.prepare('DELETE FROM duel_bracket_players WHERE bracket_id = ? AND discord_id = ?').run(b.id, ident.id);
+  db.prepare('UPDATE duel_brackets SET pot = pot - ? WHERE id = ?').run(BRACKET_FEE, b.id);
+  addCoins(ident.id, ident.name, BRACKET_FEE, 'bracket:refund', { bracket: b.id });
+  if (!bracketPlayers(b.id).length) db.prepare('DELETE FROM duel_brackets WHERE id = ?').run(b.id);
+  sseEmit('bracket', { action: 'leave' });
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  ONBOARDING-CHECKLISTE für neue Mitarbeiter
+// ════════════════════════════════════════════════════════════════
+const ONBOARDING_ITEMS = [
+  { id: 'regelwerk',   label: 'Regelwerk & StVO gelesen' },
+  { id: 'discord',     label: 'Discord-Rollen & Kanäle eingerichtet' },
+  { id: 'funk',        label: 'Funk-Einweisung erhalten' },
+  { id: 'hq_tour',     label: 'HQ-Tour (Werkstatt, Foyer, Abschlepphof)' },
+  { id: 'dispatch',    label: 'Dispatch-System erklärt bekommen' },
+  { id: 'erste_fahrt', label: 'Erste Abschleppfahrt begleitet' },
+  { id: 'kunde',       label: 'Kundengespräch begleitet' },
+  { id: 'doku',        label: 'Dokumentation & Beweisfotos geübt' },
+  { id: 'probe',       label: 'Probeprüfung Theorie bestanden' },
+  { id: 'geselle',     label: 'Zur Gesellenprüfung angemeldet' },
+];
+
+function onboardingFor(userId) {
+  const done = new Map(db.prepare(`
+    SELECT op.item_id, op.done_at, u.username AS done_by_name
+    FROM onboarding_progress op LEFT JOIN users u ON u.id = op.done_by
+    WHERE op.user_id = ?
+  `).all(userId).map(r => [r.item_id, r]));
+  return ONBOARDING_ITEMS.map(it => ({
+    ...it,
+    done:       done.has(it.id),
+    doneAt:     done.get(it.id)?.done_at || null,
+    doneByName: done.get(it.id)?.done_by_name || null,
+  }));
+}
+
+// Eigener Fortschritt (Dashboard-Karte für neue Mitarbeiter)
+app.get('/api/onboarding/mine', requireAuth, (req, res) => {
+  const u = getUser(req);
+  const items = onboardingFor(u.id);
+  const doneCount = items.filter(i => i.done).length;
+  const ageDays = (Date.now() - new Date(u.created_at.replace(' ', 'T') + 'Z').getTime()) / 86400000;
+  res.json({
+    items, done: doneCount, total: items.length,
+    // Karte zeigen: solange nicht fertig UND (schon begonnen ODER frisch dabei)
+    show: doneCount < items.length && (doneCount > 0 || ageDays < 45),
+  });
+});
+
+// Übersicht aller Mitarbeiter (für Ausbilder)
+app.get('/api/onboarding', requireAusbilder, (req, res) => {
+  const users = db.prepare(`
+    SELECT u.id, u.username, u.avatar, u.discord_id, u.rank, u.created_at,
+      (SELECT COUNT(*) FROM onboarding_progress op WHERE op.user_id = u.id) AS done
+    FROM users u WHERE u.is_active = 1 AND u.role != 'citizen'
+    ORDER BY done ASC, u.created_at DESC
+  `).all();
+  res.json({ users, total: ONBOARDING_ITEMS.length });
+});
+
+app.get('/api/onboarding/:userId', requireAusbilder, (req, res) => {
+  const u = db.prepare('SELECT id, username FROM users WHERE id = ?').get(+req.params.userId);
+  if (!u) return res.status(404).json({ error: 'Nicht gefunden' });
+  res.json({ user: u, items: onboardingFor(u.id), total: ONBOARDING_ITEMS.length });
+});
+
+app.post('/api/onboarding/:userId/toggle', requireAusbilder, (req, res) => {
+  const me = getUser(req);
+  const userId = +req.params.userId;
+  const item = ONBOARDING_ITEMS.find(i => i.id === req.body.item);
+  if (!item) return res.status(400).json({ error: 'Unbekannter Punkt' });
+  const exists = db.prepare('SELECT 1 FROM onboarding_progress WHERE user_id = ? AND item_id = ?').get(userId, item.id);
+  if (exists) {
+    db.prepare('DELETE FROM onboarding_progress WHERE user_id = ? AND item_id = ?').run(userId, item.id);
+  } else {
+    db.prepare('INSERT INTO onboarding_progress (user_id, item_id, done_by) VALUES (?, ?, ?)').run(userId, item.id, me.id);
+  }
+  res.json({ ok: true, done: !exists });
+});
+
+// Hängende aktive Duelle (auch Bracket-Matches) nach 6 Minuten auswerten
+cron.schedule('* * * * *', () => {
+  const stale = db.prepare(`SELECT * FROM quiz_duels WHERE status = 'active' AND started_at <= datetime('now', '-6 minutes')`).all();
+  for (const d of stale) {
+    try { finishDuel(d); } catch (e) { console.error('[Duell] Timeout-Auswertung:', e.message); }
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
 //  BLACKJACK — serverseitig, Einsatz in ACLS-Coins
 // ════════════════════════════════════════════════════════════════
 const bjGames = new Map(); // discordId -> aktive Hand
@@ -3212,6 +3472,7 @@ function bjResolve(g, ident) {
   if (payout > 0) addCoins(ident.id, ident.name, payout, 'blackjack:' + result, { bet: g.bet });
   bjGames.delete(ident.id);
   db.prepare('DELETE FROM blackjack_pending WHERE discord_id = ?').run(ident.id);
+  if (ident.user) checkGameBadges(ident.user.id, ident.id);
   // Größter Netto-Gewinn als Highscore
   const net = payout - g.bet;
   if (net > 0) {

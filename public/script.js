@@ -32,6 +32,14 @@ const BADGE_DEFS = {
   eow_1:          { icon: 'fa-trophy',         color: '#cd7f32', label: 'MdW-Sieger',        desc: '1× Mitarbeiter der Woche',   progress: s => ({ cur: s.eowWins,    max: 1   }) },
   eow_3:          { icon: 'fa-trophy',         color: '#a8a9ad', label: 'Dreifach-Sieger',   desc: '3× Mitarbeiter der Woche',   progress: s => ({ cur: s.eowWins,    max: 3   }) },
   eow_5:          { icon: 'fa-trophy',         color: '#ffd700', label: 'Legende',           desc: '5× Mitarbeiter der Woche',   progress: s => ({ cur: s.eowWins,    max: 5   }) },
+  game_3:         { icon: 'fa-gamepad',        color: '#cd7f32', label: 'Spieler',           desc: '3 verschiedene Minispiele gespielt',  progress: s => ({ cur: s.distinctGames || 0, max: 3  }) },
+  game_10:        { icon: 'fa-gamepad',        color: '#ffd700', label: 'Zocker',            desc: '10 verschiedene Minispiele gespielt', progress: s => ({ cur: s.distinctGames || 0, max: 10 }) },
+  duel_5:         { icon: 'fa-bolt',           color: '#f472b6', label: 'Duellant',          desc: '5 Quiz-Duelle gewonnen',     progress: s => ({ cur: s.duelWins || 0,    max: 5    }) },
+  duel_25:        { icon: 'fa-bolt',           color: '#ffd700', label: 'Duell-Meister',     desc: '25 Quiz-Duelle gewonnen',    progress: s => ({ cur: s.duelWins || 0,    max: 25   }) },
+  tow_pro:        { icon: 'fa-truck-pickup',   color: '#fb923c', label: 'Abschlepp-Profi',   desc: '1.000+ Punkte im Simulator', progress: s => ({ cur: s.towBest || 0,     max: 1000 }) },
+  bj_500:         { icon: 'fa-heart',          color: '#ef4444', label: 'High Roller',       desc: '500+ Coins in einer Blackjack-Hand', progress: s => ({ cur: s.bjBest || 0, max: 500 }) },
+  coins_1k:       { icon: 'fa-coins',          color: '#cd7f32', label: 'Sparer',            desc: '1.000 Coins verdient',       progress: s => ({ cur: s.coinsEarned || 0, max: 1000  }) },
+  coins_10k:      { icon: 'fa-coins',          color: '#ffd700', label: 'Krösus',            desc: '10.000 Coins verdient',      progress: s => ({ cur: s.coinsEarned || 0, max: 10000 }) },
 };
 
 function renderBadge(key, b, earned, isNext, date, stats) {
@@ -1141,10 +1149,10 @@ async function loadTwitchWidget() {
 }
 
 async function dashboard() {
-  const [d, announcements, myBadgesRes] = await Promise.all([api('/api/dashboard'), api('/api/announcements'), api('/api/my-badges')]);
+  const [d, announcements, myBadgesRes, myOnb] = await Promise.all([api('/api/dashboard'), api('/api/announcements'), api('/api/my-badges'), api('/api/onboarding/mine')]);
   if (!d) return;
   const myBadgesList = myBadgesRes?.badges || [];
-  const badgeStats   = myBadgesRes?.stats  || { conducted: 0, eowWins: 0, icTotal: 0 };
+  const badgeStats   = myBadgesRes?.stats  || { conducted: 0, eowWins: 0, icTotal: 0, distinctGames: 0, duelWins: 0, coinsEarned: 0, towBest: 0, bjBest: 0 };
   const earnedSet    = new Set(myBadgesList.map(b => b.badge_type));
   const badgeMap     = Object.fromEntries(myBadgesList.map(b => [b.badge_type, b.earned_at]));
 
@@ -1218,6 +1226,25 @@ async function dashboard() {
       ${winnerCard}
       ${voteCard}
     </div>
+
+    <!-- Onboarding-Fortschritt für neue Mitarbeiter -->
+    ${myOnb?.show ? `
+    <div class="card" style="border-color:rgba(74,222,128,.3)">
+      <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">
+        <div style="width:36px;height:36px;border-radius:50%;background:rgba(74,222,128,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fas fa-tasks" style="color:#4ade80;font-size:.85rem"></i>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:700;font-size:.92rem">Dein Onboarding · ${myOnb.done}/${myOnb.total} erledigt</div>
+          <div style="height:6px;background:var(--input);border-radius:3px;overflow:hidden;margin-top:.35rem;max-width:340px">
+            <div style="height:100%;width:${Math.round(myOnb.done / myOnb.total * 100)}%;background:#4ade80"></div>
+          </div>
+        </div>
+        <div style="font-size:.74rem;color:var(--muted);max-width:320px">
+          Noch offen: ${myOnb.items.filter(i => !i.done).slice(0, 3).map(i => i.label).join(' · ')}${myOnb.items.filter(i => !i.done).length > 3 ? ' …' : ''}
+        </div>
+      </div>
+    </div>` : ''}
 
     <!-- Umfrage-Widget -->
     <div id="staffPollWidget"></div>
@@ -1328,6 +1355,7 @@ async function dashboard() {
         { label: 'Prüfungen', icon: 'fa-clipboard-check', color: '#f97316', keys: ['cat_pkw','cat_motorrad','cat_boot','cat_lkw','cat_flugschein','exams_10','exams_50','exams_100'] },
         { label: 'IC-Zeit',   icon: 'fa-clock',           color: '#22c55e', keys: ['ic_10','ic_50','ic_100','ic_250','ic_500'] },
         { label: 'Mitarbeiter der Woche', icon: 'fa-trophy', color: '#facc15', keys: ['eow_1','eow_3','eow_5'] },
+        { label: 'Gaming',    icon: 'fa-gamepad',         color: '#f472b6', keys: ['game_3','game_10','duel_5','duel_25','tow_pro','bj_500','coins_1k','coins_10k'] },
       ].map(group => {
         // Index des ersten noch nicht verdienten Abzeichens = nächstes Ziel
         const nextGoalIdx = group.keys.findIndex(k => !earnedSet.has(k));
@@ -1412,6 +1440,10 @@ function connectSSE() {
         const d = JSON.parse(e.data);
         if (duelVisible()) handleDuelEvent(d);
       } catch {}
+    });
+    _sseSource.addEventListener('bracket', () => {
+      // Turnier-Updates: Lobby aktualisieren (nicht mitten im eigenen Match)
+      if (duelVisible() && !_duel.code) duell();
     });
     _sseSource.onerror = () => { _sseSource.close(); _sseSource = null; setTimeout(connectSSE, 30_000); };
   } catch {}
@@ -4414,6 +4446,14 @@ const BADGE_META = {
   eow_1:     { icon: 'fa-crown',  color: '#f97316', label: '1x Mitarbeiter der Woche' },
   eow_3:     { icon: 'fa-gem',    color: '#a855f7', label: '3x Mitarbeiter der Woche' },
   eow_5:     { icon: 'fa-award',  color: '#f59e0b', label: '5x Mitarbeiter der Woche' },
+  game_3:    { icon: 'fa-gamepad',      color: '#cd7f32', label: '3 Minispiele gespielt' },
+  game_10:   { icon: 'fa-gamepad',      color: '#f59e0b', label: '10 Minispiele gespielt' },
+  duel_5:    { icon: 'fa-bolt',         color: '#f472b6', label: '5 Duell-Siege' },
+  duel_25:   { icon: 'fa-bolt',         color: '#f59e0b', label: '25 Duell-Siege' },
+  tow_pro:   { icon: 'fa-truck-pickup', color: '#fb923c', label: 'Abschlepp-Profi' },
+  bj_500:    { icon: 'fa-heart',        color: '#ef4444', label: 'High Roller' },
+  coins_1k:  { icon: 'fa-coins',        color: '#cd7f32', label: '1.000 Coins verdient' },
+  coins_10k: { icon: 'fa-coins',        color: '#f59e0b', label: '10.000 Coins verdient' },
 };
 const RANK_COLOR = { Azubi: '#6b7280', Mitarbeiter: '#3b82f6', Senior: '#f97316', Führungskraft: '#a855f7' };
 
@@ -4559,15 +4599,38 @@ const M3_LABELS  = ['Mangelhaft','Befriedigend','Gut','Sehr Gut'];
 const M3_COLORS  = ['#ef4444','#f97316','#22c55e','#16a34a'];
 
 async function ausbildung() {
-  const [exams, qs] = await Promise.all([api('/api/rank-exams'), api('/api/rank-questions')]);
+  const [exams, qs, onb] = await Promise.all([api('/api/rank-exams'), api('/api/rank-questions'), api('/api/onboarding')]);
   const total  = exams?.length || 0;
   const passed = exams?.filter(e => e.passed).length || 0;
+  const onbCard = onb ? `
+    <div class="card" style="margin-bottom:1.25rem">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(74,222,128,.15)"><i class="fas fa-tasks" style="color:#4ade80"></i></div>
+        <div><div class="card-title">Onboarding neuer Mitarbeiter</div><div class="card-sub">Einarbeitungs-Checkliste · ${onb.total} Punkte pro Person</div></div>
+      </div>
+      ${onb.users.map(u => {
+        const pct = Math.round(u.done / onb.total * 100);
+        const complete = u.done >= onb.total;
+        return `<div style="display:flex;align-items:center;gap:.75rem;padding:.5rem 0;border-bottom:1px solid var(--border)">
+          ${avatarEl(u, 28)}
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:.85rem">${esc(u.username)} <span style="font-size:.7rem;color:var(--muted)">· ${u.rank || 'Mitarbeiter'}</span></div>
+            <div style="height:5px;background:var(--input);border-radius:3px;overflow:hidden;margin-top:.25rem;max-width:260px">
+              <div style="height:100%;width:${pct}%;background:${complete ? '#22c55e' : 'var(--orange)'};transition:width .3s"></div>
+            </div>
+          </div>
+          <span style="font-size:.74rem;font-weight:700;color:${complete ? '#22c55e' : 'var(--muted)'}">${u.done}/${onb.total}</span>
+          <button class="btn btn-ghost btn-sm" onclick="openOnboardingModal(${u.id})"><i class="fas fa-clipboard-check"></i> Checkliste</button>
+        </div>`;
+      }).join('')}
+    </div>` : '';
   $('pageContent').innerHTML = `
     <div class="stats-row" style="margin-bottom:1.25rem">
       <div class="stat-card"><div class="stat-val">${total}</div><div class="stat-lab">Gesamtprüfungen</div></div>
       <div class="stat-card"><div class="stat-val">${passed}</div><div class="stat-lab">Bestanden</div></div>
       <div class="stat-card"><div class="stat-val">${total ? Math.round(passed/total*100) : 0}%</div><div class="stat-lab">Bestehensquote</div></div>
     </div>
+    ${onbCard}
     <div class="card">
       <div class="card-head">
         <div class="card-head-icon orange"><i class="fas fa-graduation-cap"></i></div>
@@ -4595,6 +4658,36 @@ async function ausbildung() {
     </div>`;
   animateCountUps();
 }
+
+window.openOnboardingModal = async userId => {
+  const d = await api(`/api/onboarding/${userId}`);
+  if (!d) return;
+  const done = d.items.filter(i => i.done).length;
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-tasks" style="color:#4ade80;margin-right:.5rem"></i>Onboarding – ${esc(d.user.username)}</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="font-size:.78rem;color:var(--muted);margin-bottom:.8rem">${done} von ${d.total} Punkten erledigt · Klick zum Abhaken</div>
+    <div style="display:flex;flex-direction:column;gap:.4rem;max-height:380px;overflow-y:auto">
+      ${d.items.map(it => `
+        <div onclick="toggleOnboarding(${userId}, '${it.id}')" style="display:flex;align-items:center;gap:.7rem;padding:.55rem .7rem;background:var(--input);border-radius:8px;cursor:pointer;border:1px solid ${it.done ? 'rgba(34,197,94,.35)' : 'var(--border)'}">
+          <div style="width:22px;height:22px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${it.done ? 'rgba(34,197,94,.2)' : 'var(--surface2)'};border:1px solid ${it.done ? '#22c55e' : 'var(--border)'}">
+            ${it.done ? '<i class="fas fa-check" style="color:#22c55e;font-size:.7rem"></i>' : ''}
+          </div>
+          <div style="flex:1">
+            <div style="font-size:.85rem;font-weight:600;${it.done ? 'color:var(--muted);text-decoration:line-through' : ''}">${it.label}</div>
+            ${it.done && it.doneByName ? `<div style="font-size:.68rem;color:var(--muted)">✓ ${esc(it.doneByName)} · ${fmt(it.doneAt)}</div>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal();ausbildung()">Schließen</button></div>`);
+};
+
+window.toggleOnboarding = async (userId, itemId) => {
+  const r = await api(`/api/onboarding/${userId}/toggle`, { method: 'POST', body: { item: itemId } });
+  if (r) openOnboardingModal(userId);
+};
 
 window.startRankExamSetup = async function() {
   const members = await api('/api/users') || [];
@@ -4971,6 +5064,8 @@ function txLabel(reason) {
     'shop:vip_30': '⭐ VIP-Rolle gekauft', 'shop:booster_24': '⚡ Coin-Booster gekauft',
     'shop:mystery_box': '🎲 Mystery-Box gekauft', 'mystery:coins': '🎲 Mystery-Box Gewinn',
     'shop:custom_title': '✏️ Wunsch-Titel beantragt', 'shop:custom_title_refund': '✏️ Wunsch-Titel erstattet',
+    'bracket:fee': '🏟️ Turnier-Einsatz', 'bracket:win': '🏟️ Turnier gewonnen!',
+    'bracket:second': '🏟️ Turnier-Finalist', 'bracket:refund': '🏟️ Turnier-Einsatz zurück',
   };
   if (map[reason]) return map[reason];
   if (reason.startsWith('game:')) return '🎮 ' + (GAME_NAMES_DE[reason.slice(5)] || reason.slice(5));
@@ -5297,13 +5392,93 @@ function duelClearTimer() {
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
 }
 
+// ── Duell-Turnier (8er K.o.-Bracket) ─────────────────────────────
+function bracketCard(br) {
+  if (!br) return '';
+  const lastLine = br.lastWinner
+    ? `<div style="font-size:.72rem;color:var(--muted);margin-top:.35rem"><i class="fas fa-crown" style="color:#fbbf24"></i> Letztes Turnier: <b>${esc(br.lastWinner.winner_name || '–')}</b> gewann ${Math.round(br.lastWinner.pot * 0.75).toLocaleString('de-DE')} 🪙</div>`
+    : '';
+  // Kein offenes Turnier → Werbe-Karte
+  if (!br.bracket) {
+    return `<div class="card" style="padding:1.1rem 1.3rem;margin-bottom:1.25rem;background:linear-gradient(135deg,rgba(168,85,247,.10),rgba(168,85,247,.02));border-color:rgba(168,85,247,.35)">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div style="font-size:2rem">🏟️</div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:800;font-size:1rem">Duell-Turnier</div>
+          <div style="font-size:.74rem;color:var(--muted)">${br.size} Spieler · K.o.-System · Einsatz ${br.fee} 🪙 → Pot ${br.size * br.fee} 🪙 (75 % Sieger / 25 % Finalist)</div>
+          ${lastLine}
+        </div>
+        <button class="btn btn-primary" onclick="bracketJoin()"><i class="fas fa-sign-in-alt"></i> Anmelden (${br.fee} 🪙)</button>
+      </div>
+    </div>`;
+  }
+  const b = br.bracket;
+  // Anmeldephase
+  if (b.status === 'open') {
+    return `<div class="card" style="padding:1.1rem 1.3rem;margin-bottom:1.25rem;border-color:rgba(168,85,247,.35)">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.7rem">
+        <div style="font-size:1.7rem">🏟️</div>
+        <div style="flex:1">
+          <div style="font-weight:800">Duell-Turnier · Anmeldung läuft (${br.players.length}/${b.size})</div>
+          <div style="font-size:.74rem;color:var(--muted)">Startet automatisch bei ${b.size} Spielern · Pot aktuell: <b style="color:#fbbf24">${b.pot} 🪙</b></div>
+        </div>
+        ${br.joined
+          ? `<button class="btn btn-ghost btn-sm" onclick="bracketLeave()"><i class="fas fa-sign-out-alt"></i> Abmelden (${b.fee} 🪙 zurück)</button>`
+          : `<button class="btn btn-primary" onclick="bracketJoin()"><i class="fas fa-sign-in-alt"></i> Anmelden (${b.fee} 🪙)</button>`}
+      </div>
+      <div style="display:flex;gap:.45rem;flex-wrap:wrap">
+        ${br.players.map(p => `<span style="display:inline-flex;align-items:center;gap:.35rem;background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:.25rem .7rem;font-size:.76rem;font-weight:600">
+          ${p.avatar ? `<img src="https://cdn.discordapp.com/avatars/${p.discord_id}/${p.avatar}.png?size=32" style="width:18px;height:18px;border-radius:50%">` : '👤'} ${esc(p.username)}
+        </span>`).join('')}
+        ${Array.from({ length: Math.max(0, b.size - br.players.length) }, () => '<span style="background:var(--surface2);opacity:.4;border:1px dashed var(--border);border-radius:999px;padding:.25rem .8rem;font-size:.76rem">frei</span>').join('')}
+      </div>
+    </div>`;
+  }
+  // Turnier läuft → Bracket-Baum
+  const roundName = { 1: 'Viertelfinale', 2: 'Halbfinale', 3: 'Finale' };
+  const rounds = [...new Set(br.matches.map(m => m.bracket_round))].sort();
+  const matchRow = m => {
+    const done = m.status === 'done';
+    const winHost  = done && m.winner_did === m.host_did;
+    const winGuest = done && m.winner_did === m.guest_did;
+    const mine = !done && (m.host_did === currentUser?.discord_id || m.guest_did === currentUser?.discord_id);
+    return `<div style="background:var(--surface2);border:1px solid ${mine ? 'rgba(244,114,182,.5)' : 'var(--border)'};border-radius:8px;padding:.45rem .6rem;margin-bottom:.45rem;font-size:.76rem">
+      <div style="display:flex;justify-content:space-between;gap:.5rem;${winHost ? 'color:#4ade80;font-weight:700' : done && !winHost ? 'opacity:.55' : ''}"><span>${esc(m.host_name || '?')}</span><span>${m.host_score || 0}</span></div>
+      <div style="display:flex;justify-content:space-between;gap:.5rem;${winGuest ? 'color:#4ade80;font-weight:700' : done && !winGuest ? 'opacity:.55' : ''}"><span>${esc(m.guest_name || '?')}</span><span>${m.guest_score || 0}</span></div>
+      ${mine ? `<button class="btn btn-primary btn-sm" style="width:100%;margin-top:.35rem" onclick="duelArena('${m.code}')">▶ Jetzt spielen!</button>` : ''}
+    </div>`;
+  };
+  return `<div class="card" style="padding:1.1rem 1.3rem;margin-bottom:1.25rem;border-color:rgba(168,85,247,.35)">
+    <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.8rem;flex-wrap:wrap">
+      <div style="font-size:1.5rem">🏟️</div>
+      <div style="font-weight:800">Duell-Turnier läuft · Pot ${b.pot} 🪙</div>
+      <span style="font-size:.68rem;color:var(--muted);margin-left:auto">Pro Match max. 6 Minuten – wer nicht antritt, scheidet aus</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(${rounds.length || 1},1fr);gap:.8rem;align-items:start">
+      ${rounds.map(r => `<div>
+        <div style="font-size:.66rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem">${roundName[r] || 'Runde ' + r}</div>
+        ${br.matches.filter(m => m.bracket_round === r).map(matchRow).join('')}
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+window.bracketJoin = async () => {
+  const r = await api('/api/bracket/join', { method: 'POST' });
+  if (r) { toast('Angemeldet – viel Erfolg! ⚔️', 'ok'); updateCoinChip(r.balance); duell(); }
+};
+window.bracketLeave = async () => {
+  const r = await api('/api/bracket/leave', { method: 'POST' });
+  if (r) { toast('Abgemeldet – Einsatz zurückerstattet', 'ok'); loadCoins(); duell(); }
+};
+
 async function duell() {
   duelClearTimer();
   // Generationszähler: jede neuere Render-Anforderung macht ältere ungültig,
   // damit sich SSE-Event und Polling nicht gegenseitig überschreiben
   const gen = ++_duel.gen;
   _duel.viewingResult = false;
-  const data = await api('/api/duels');
+  const [data, br] = await Promise.all([api('/api/duels'), api('/api/bracket')]);
   if (gen !== _duel.gen) return;
   if (!data) return;
   if (data.myDuel) { duelArena(data.myDuel.code); return; }
@@ -5325,6 +5500,8 @@ async function duell() {
         <div style="font-size:.7rem;color:var(--muted)">Siege : Niederlagen</div>
       </div>
     </div>
+
+    ${bracketCard(br)}
 
     <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">Offene Herausforderungen</div>
     <div id="duel-open-list">
