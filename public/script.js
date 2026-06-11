@@ -539,7 +539,7 @@ async function loadVoterTeam() {
     return `<div style="background:var(--surface);border:1px solid ${bc};border-radius:var(--r);padding:1rem .85rem;display:flex;flex-direction:column;align-items:center;gap:.5rem;text-align:center${isL?';box-shadow:0 0 14px rgba(201,162,39,.15)':''}">
       ${isL?'<i class="fas fa-crown" style="color:#c9a227;font-size:.8rem"></i>':''}
       ${av(u, isL)}
-      <div style="font-weight:700;font-size:.9rem">${esc(u.username)}</div>
+      <div style="font-weight:700;font-size:.9rem;${nameColorCss(u.equipped_namecolor)}">${decoEmoji(u.equipped_deco)}${esc(u.username)}</div>
       ${titleLine(u.equipped_title)}
       <span style="font-size:.68rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;background:${rb};color:${rc}">${rn}</span>
     </div>`;
@@ -979,6 +979,20 @@ const SHOP_FRAME_COLORS = {
   frame_lila: '#a855f7', frame_regenbogen: 'rainbow',
 };
 
+const BANNER_CSS = {
+  banner_sunset:  'linear-gradient(135deg,#7c2d12,#f97316 45%,#fbbf24)',
+  banner_skyline: 'linear-gradient(180deg,#0c1830,#1e3a8a 60%,#0ea5e9)',
+  banner_neon:    'linear-gradient(135deg,#0f0524,#7c3aed 50%,#00f5ff)',
+};
+const DECO_EMOJI  = { deco_crown: '👑', deco_wrench: '🔧', deco_blitz: '⚡', deco_halo: '😇' };
+const NAME_COLORS = { namecolor_gold: '#ffd700' };
+const DECK_CSS = {
+  deck_gold:   'repeating-linear-gradient(45deg,#7a5800,#7a5800 6px,#b8860b 6px,#b8860b 12px)',
+  deck_carbon: 'repeating-linear-gradient(135deg,#0d0d0d,#0d0d0d 4px,#2e2e2e 4px,#2e2e2e 8px)',
+};
+const decoEmoji    = id => DECO_EMOJI[id] ? DECO_EMOJI[id] + ' ' : '';
+const nameColorCss = id => NAME_COLORS[id] ? `color:${NAME_COLORS[id]};` : '';
+
 function ensureRainbowStyle() {
   if (document.getElementById('rainbowGlowStyle')) return;
   const st = document.createElement('style');
@@ -995,10 +1009,11 @@ function frameGlow(frameId) {
   return `box-shadow:0 0 10px 2px ${c};`;
 }
 
-// Gekaufter Titel als kleine goldene Zeile unter dem Namen
+// Gekaufter Titel als kleine goldene Zeile unter dem Namen (inkl. Wunsch-Titel)
 function titleLine(titleId, size = '.66rem') {
-  const n = SHOP_TITLE_NAMES[titleId];
-  return n ? `<div style="font-size:${size};font-weight:700;color:#fbbf24">${n}</div>` : '';
+  if (!titleId) return '';
+  const n = titleId.startsWith('custom:') ? '✨ ' + titleId.slice(7) : SHOP_TITLE_NAMES[titleId];
+  return n ? `<div style="font-size:${size};font-weight:700;color:#fbbf24">${esc(n)}</div>` : '';
 }
 
 function updateCoinChip(balance) {
@@ -1014,9 +1029,17 @@ async function loadCoins() {
     window._coinInfo = d;
     updateCoinChip(d.balance);
     // Ausgerüsteter Titel ersetzt die Rollen-Zeile
-    if (d.equippedTitle && SHOP_TITLE_NAMES[d.equippedTitle]) {
+    const tName = d.equippedTitle?.startsWith('custom:') ? '✨ ' + d.equippedTitle.slice(7) : SHOP_TITLE_NAMES[d.equippedTitle];
+    if (tName) {
       const role = $('uRoleLine');
-      if (role) { role.textContent = SHOP_TITLE_NAMES[d.equippedTitle]; role.style.color = '#fbbf24'; }
+      if (role) { role.textContent = tName; role.style.color = '#fbbf24'; }
+    }
+    // Namensfarbe + Deko im Topbar-Widget
+    const nameEl = document.querySelector('#userWidget .u-name');
+    if (nameEl) {
+      if (!nameEl.dataset.base) nameEl.dataset.base = nameEl.textContent;
+      nameEl.textContent = decoEmoji(d.equippedDeco) + nameEl.dataset.base;
+      nameEl.style.color = NAME_COLORS[d.equippedNamecolor] || '';
     }
     // Avatar-Rahmen
     const av = $('uAvatarBox');
@@ -3416,7 +3439,7 @@ async function organigramm() {
     return `<div style="background:var(--surface);border:1px solid ${borderCol};border-radius:var(--r);padding:1.25rem 1rem;display:flex;flex-direction:column;align-items:center;gap:.55rem;text-align:center;transition:transform .12s,box-shadow .12s${isLeitung?';box-shadow:0 0 18px rgba(201,162,39,.18)':''}" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px ${isLeitung?'rgba(201,162,39,.25)':'rgba(0,0,0,.25)'}'" onmouseout="this.style.transform='';this.style.boxShadow='${isLeitung?'0 0 18px rgba(201,162,39,.18)':''}'">
       ${crownIcon}
       ${av}
-      <div style="font-weight:700;font-size:${isLeitung?'1rem':'.95rem'}">${esc(u.username)}</div>
+      <div style="font-weight:700;font-size:${isLeitung?'1rem':'.95rem'};${nameColorCss(u.equipped_namecolor)}">${decoEmoji(u.equipped_deco)}${esc(u.username)}</div>
       ${titleLine(u.equipped_title)}
       <span style="font-size:.7rem;font-weight:700;padding:.18rem .6rem;border-radius:20px;background:${roleBg};color:${roleColor}">${roleName}</span>
     </div>`;
@@ -3979,6 +4002,14 @@ async function admin() {
       </div>
     </div><!-- /col-right -->
     </div>
+    <!-- Wunsch-Titel Freigaben -->
+    <div class="card" style="margin-top:1rem;display:none" id="customTitleCard">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-pen" style="color:#fbbf24"></i></div>
+        <div><div class="card-title">Wunsch-Titel Anfragen</div><div class="card-sub">Gekaufte Titel freigeben oder ablehnen (Ablehnung erstattet 2.500 Coins)</div></div>
+      </div>
+      <div id="customTitleList"></div>
+    </div>
     <!-- Statistiken -->
     <div class="card" style="margin-top:1rem">
       <div class="card-head">
@@ -4003,7 +4034,30 @@ async function admin() {
     </div>`;
   loadPollAdmin();
   loadAdminStats();
+  loadCustomTitles();
 }
+
+async function loadCustomTitles() {
+  const card = $('customTitleCard'), list = $('customTitleList');
+  if (!card || !list) return;
+  const rows = await api('/api/admin/custom-titles');
+  if (!rows?.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  list.innerHTML = rows.map(r => `
+    <div style="display:flex;align-items:center;gap:.75rem;padding:.6rem 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:.88rem">„✨ ${esc(r.text)}"</div>
+        <div style="font-size:.72rem;color:var(--muted)">von ${esc(r.username || r.discord_id)} · ${ago(r.created_at)}</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="decideCustomTitle(${r.id}, 'approve')"><i class="fas fa-check"></i> Freigeben</button>
+      <button class="btn btn-danger btn-sm" onclick="decideCustomTitle(${r.id}, 'reject')"><i class="fas fa-times"></i> Ablehnen</button>
+    </div>`).join('');
+}
+
+window.decideCustomTitle = async (id, action) => {
+  const r = await api(`/api/admin/custom-titles/${id}`, { method: 'POST', body: { action } });
+  if (r) { toast(action === 'approve' ? 'Titel freigegeben! ✨' : 'Abgelehnt – Coins erstattet', 'ok'); loadCustomTitles(); }
+};
 
 let _adminCharts = [];
 async function loadAdminStats() {
@@ -4374,12 +4428,12 @@ window.openProfileModal = async id => {
   openModal(`
     <div class="modal-head"><div class="modal-title">Profil</div>
     <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
-    <div class="profile-header">
+    <div class="profile-header" style="${u.equipped_banner && BANNER_CSS[u.equipped_banner] ? `background:${BANNER_CSS[u.equipped_banner]};border-radius:12px;padding:1rem;` : ''}">
       <div class="profile-av" style="${url ? 'background:transparent;padding:0;overflow:hidden;' : ''}${frameGlow(u.equipped_frame)}">
         ${url ? `<img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent='${initials(u.username)}'">` : initials(u.username)}
       </div>
       <div>
-        <div class="profile-name">${esc(u.username)}</div>
+        <div class="profile-name" style="${nameColorCss(u.equipped_namecolor)}">${decoEmoji(u.equipped_deco)}${esc(u.username)}</div>
         ${titleLine(u.equipped_title, '.75rem')}
         <div style="display:flex;align-items:center;gap:.4rem;margin-top:.2rem">
           <span style="font-size:.78rem;font-weight:700;padding:.15rem .55rem;border-radius:20px;background:${rankColor}22;color:${rankColor};border:1px solid ${rankColor}44">${rank}</span>
@@ -4913,6 +4967,9 @@ function txLabel(reason) {
     'exam:blitz': '📋 Blitz-Prüfung abgehalten', 'exam:standard': '📋 Prüfung abgehalten',
     'exam:praxis': '📋 Praxisprüfung abgehalten',
     'lottery:ticket': '🎟️ Lotterie-Lose gekauft', 'lottery:win': '🎟️ Lotterie-Jackpot!',
+    'shop:vip_30': '⭐ VIP-Rolle gekauft', 'shop:booster_24': '⚡ Coin-Booster gekauft',
+    'shop:mystery_box': '🎲 Mystery-Box gekauft', 'mystery:coins': '🎲 Mystery-Box Gewinn',
+    'shop:custom_title': '✏️ Wunsch-Titel beantragt', 'shop:custom_title_refund': '✏️ Wunsch-Titel erstattet',
   };
   if (map[reason]) return map[reason];
   if (reason.startsWith('game:')) return '🎮 ' + (GAME_NAMES_DE[reason.slice(5)] || reason.slice(5));
@@ -4924,23 +4981,47 @@ async function shop() {
   if (!me || !shopData) return;
 
   const itemCard = it => {
-    const isFrame = it.type === 'frame';
     const myAv = avatarUrl(currentUser);
-    // Rahmen-Vorschau auf dem eigenen Avatar
-    const preview = isFrame
-      ? (myAv
+    // Typ-spezifische Vorschau
+    let preview;
+    switch (it.type) {
+      case 'frame':
+        preview = myAv
           ? `<img src="${myAv}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;${frameGlow(it.id)}">`
-          : `<div style="width:52px;height:52px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;${frameGlow(it.id)}">${initials(currentUser.username)}</div>`)
-      : `<div style="font-size:1.6rem">${it.name.split(' ')[0]}</div>`;
+          : `<div style="width:52px;height:52px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;${frameGlow(it.id)}">${initials(currentUser.username)}</div>`;
+        break;
+      case 'truck':
+        preview = `<div style="width:58px;height:30px;border-radius:6px;background:${it.color};border:2px solid rgba(255,255,255,.25);position:relative;margin:.6rem 0">
+          <div style="position:absolute;top:-5px;left:50%;transform:translateX(-50%);width:9px;height:9px;border-radius:50%;background:${it.id === 'skin_truck_police' ? '#3b82f6' : '#fbbf24'};box-shadow:0 0 6px ${it.id === 'skin_truck_police' ? '#3b82f6' : '#fbbf24'}"></div>
+        </div>`;
+        break;
+      case 'deck':
+        preview = `<div style="width:38px;height:54px;border-radius:6px;border:2px solid #f8fafc;background:${DECK_CSS[it.id] || '#7c2d12'}"></div>`;
+        break;
+      case 'banner':
+        preview = `<div style="width:86px;height:32px;border-radius:8px;background:${BANNER_CSS[it.id] || 'var(--surface2)'}"></div>`;
+        break;
+      case 'namecolor':
+        preview = `<div style="font-weight:800;font-size:.95rem;color:${NAME_COLORS[it.id] || '#fff'}">${esc(currentUser.username)}</div>`;
+        break;
+      case 'deco':
+        preview = `<div style="font-size:1.6rem">${it.name.split(' ')[0]}</div>`;
+        break;
+      default:
+        preview = `<div style="font-size:1.6rem">${it.name.split(' ')[0]}</div>`;
+    }
     let btn;
+    const equippable = !['perk', 'consumable'].includes(it.type);
     if (it.equipped)
       btn = `<button class="btn btn-ghost btn-sm" onclick="shopUnequip('${it.type}')"><i class="fas fa-check" style="color:#22c55e"></i> Ausgerüstet</button>`;
-    else if (it.owned)
+    else if (it.owned && equippable)
       btn = `<button class="btn btn-primary btn-sm" onclick="shopEquip('${it.id}')">Ausrüsten</button>`;
+    else if (it.owned)
+      btn = `<span class="badge" style="background:rgba(34,197,94,.12);color:#22c55e">Gekauft ✓</span>`;
     else
       btn = `<button class="btn btn-sm" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);color:#fbbf24" onclick="shopBuy('${it.id}', ${it.price})">🪙 ${it.price.toLocaleString('de-DE')}</button>`;
-    // Live-Vorschau am Topbar-Avatar (nur für noch nicht ausgerüstete Rahmen)
-    const previewBtn = isFrame && !it.equipped
+    // Live-Vorschau am Topbar-Avatar (nur Rahmen)
+    const previewBtn = it.type === 'frame' && !it.equipped
       ? `<button class="btn btn-ghost btn-sm" style="font-size:.68rem;padding:.25rem .6rem" onclick="framePreview('${it.id}')"><i class="fas fa-eye"></i> Vorschau</button>`
       : '';
     return `<div class="card" style="display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:1rem;text-align:center">
@@ -4952,8 +5033,17 @@ async function shop() {
     </div>`;
   };
 
-  const titles = shopData.items.filter(i => i.type === 'title');
-  const frames = shopData.items.filter(i => i.type === 'frame');
+  const fmtUntil = u => u ? new Date(u.replace(' ', 'T') + 'Z').toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' Uhr' : '';
+  const groupsOrder = [
+    ['title',     'Titel'],
+    ['frame',     'Avatar-Rahmen'],
+    ['deco',      'Avatar-Deko'],
+    ['namecolor', 'Namensfarbe'],
+    ['banner',    'Profil-Banner'],
+    ['truck',     'Truck-Skins (Abschlepp-Simulator)'],
+    ['deck',      'Kartendecks (Blackjack)'],
+  ];
+  const consumables = shopData.items.filter(i => i.type === 'consumable' || i.type === 'perk');
 
   $('pageContent').innerHTML = `
     <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem">
@@ -5008,11 +5098,41 @@ async function shop() {
       </div>
     </div>
 
-    <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">Titel</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.7rem;margin-bottom:1.5rem">${titles.map(itemCard).join('')}</div>
+    <!-- Extras: Verbrauchsartikel & Freischaltungen -->
+    <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">Extras & Boosts</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.7rem;margin-bottom:.8rem">
+      ${consumables.map(itemCard).join('')}
+    </div>
+    ${me.vipUntil || me.boosterUntil ? `<div style="font-size:.72rem;color:var(--muted);margin-bottom:1.2rem">
+      ${me.vipUntil ? `⭐ VIP aktiv bis <b style="color:#fbbf24">${fmtUntil(me.vipUntil)}</b> &nbsp; ` : ''}
+      ${me.boosterUntil ? `⚡ Coin-Booster aktiv bis <b style="color:#4ade80">${fmtUntil(me.boosterUntil)}</b>` : ''}
+    </div>` : '<div style="margin-bottom:.7rem"></div>'}
 
-    <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">Avatar-Rahmen</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.7rem;margin-bottom:1.5rem">${frames.map(itemCard).join('')}</div>
+    <!-- Wunsch-Titel -->
+    <div class="card" style="padding:1rem 1.2rem;margin-bottom:1.5rem;border-color:rgba(251,191,36,.3)">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div style="font-size:1.6rem">✏️</div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:700;font-size:.9rem">Wunsch-Titel <span style="color:#fbbf24">· 2.500 🪙</span></div>
+          <div style="font-size:.72rem;color:var(--muted)">Dein eigener Titel-Text (3–30 Zeichen). Ein Admin prüft ihn vor der Freischaltung – bei Ablehnung gibt es die Coins zurück.</div>
+          ${me.customTitle?.status === 'pending' ? `<div style="font-size:.74rem;color:#fbbf24;margin-top:.3rem"><i class="fas fa-clock"></i> Wartet auf Freigabe: „${esc(me.customTitle.text)}"</div>` : ''}
+          ${me.customTitle?.status === 'approved' && me.equippedTitle?.startsWith('custom:') ? `<div style="font-size:.74rem;color:#4ade80;margin-top:.3rem"><i class="fas fa-check"></i> Freigeschaltet: „${esc(me.equippedTitle.slice(7))}"</div>` : ''}
+        </div>
+        ${me.customTitle?.status !== 'pending' ? `
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <input class="form-control" id="customTitleInput" maxlength="30" placeholder="z. B. Der Nachtschlepper" style="width:200px;font-size:.82rem">
+          <button class="btn btn-sm" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);color:#fbbf24;white-space:nowrap" onclick="buyCustomTitle()">Beantragen</button>
+        </div>` : ''}
+      </div>
+    </div>
+
+    ${groupsOrder.map(([type, label]) => {
+      const items = shopData.items.filter(i => i.type === type);
+      if (!items.length) return '';
+      return `
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">${label}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.7rem;margin-bottom:1.5rem">${items.map(itemCard).join('')}</div>`;
+    }).join('')}
 
     <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">Letzte Transaktionen</div>
     <div class="card" style="padding:.4rem .9rem">
@@ -5059,7 +5179,37 @@ window.claimDaily = async () => {
 };
 window.shopBuy = async (itemId, price) => {
   const r = await api('/api/shop/buy', { method: 'POST', body: { itemId } });
-  if (r) { toast('Gekauft & ausgerüstet! 🎉', 'ok'); renderUserWidget(); shop(); }
+  if (!r) return;
+  updateCoinChip(r.balance);
+  if (r.mystery) {
+    const m = r.mystery;
+    const inner = m.kind === 'coins'
+      ? `<div style="font-size:3rem">🪙</div><div style="font-size:1.3rem;font-weight:800;color:#fbbf24;margin:.4rem 0">+${m.amount} Coins!</div>`
+      : m.kind === 'ticket'
+        ? `<div style="font-size:3rem">🎟️</div><div style="font-size:1.1rem;font-weight:800;margin:.4rem 0">Ein Lotterie-Los für diese Woche!</div>`
+        : `<div style="font-size:3rem">✨</div><div style="font-size:1.1rem;font-weight:800;margin:.4rem 0">${esc(m.name)} freigeschaltet!</div>`;
+    openModal(`
+      <div class="modal-head"><div class="modal-title">🎲 Mystery-Box</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+      <div style="text-align:center;padding:1.2rem 0">${inner}</div>
+      <div class="modal-footer" style="justify-content:center">
+        <button class="btn btn-primary" onclick="closeModal();shopBuy('mystery_box')">🎲 Noch eine (200 🪙)</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Schließen</button>
+      </div>`);
+    renderUserWidget(); shop();
+    return;
+  }
+  if (r.vipUntil)          toast('VIP aktiviert! Der Bot vergibt dir die Rolle gleich ⭐', 'ok');
+  else if (r.boosterUntil) toast('Coin-Booster aktiv – 24h doppelte Spiel-Coins! ⚡', 'ok');
+  else                     toast('Gekauft & ausgerüstet! 🎉', 'ok');
+  renderUserWidget(); shop();
+};
+
+window.buyCustomTitle = async () => {
+  const text = $('customTitleInput')?.value.trim();
+  if (!text || text.length < 3) { toast('Mindestens 3 Zeichen', 'err'); return; }
+  const r = await api('/api/shop/custom-title', { method: 'POST', body: { text } });
+  if (r) { toast('Anfrage eingereicht – ein Admin prüft deinen Titel! ✏️', 'ok'); updateCoinChip(r.balance); shop(); }
 };
 window.shopEquip = async itemId => {
   const r = await api('/api/shop/equip', { method: 'POST', body: { itemId } });
@@ -5122,7 +5272,7 @@ async function turnier() {
         <div style="display:flex;align-items:center;gap:.7rem;padding:.55rem 0;border-bottom:1px solid var(--border);${currentUser && r.discord_id === currentUser.discord_id ? 'background:rgba(251,191,36,.06);border-radius:8px;padding-left:.5rem;padding-right:.5rem' : ''}">
           <div style="width:28px;text-align:center;font-weight:800;font-size:.9rem">${medals[i] || (i + 1) + '.'}</div>
           ${avEl(r)}
-          <div style="flex:1"><div style="font-weight:600;font-size:.85rem">${esc(r.username || 'Unbekannt')}</div>${titleLine(r.equipped_title, '.62rem')}</div>
+          <div style="flex:1"><div style="font-weight:600;font-size:.85rem;${nameColorCss(r.equipped_namecolor)}">${decoEmoji(r.equipped_deco)}${esc(r.username || 'Unbekannt')}</div>${titleLine(r.equipped_title, '.62rem')}</div>
           ${i < 3 ? `<span style="font-size:.7rem;color:#fbbf24;font-weight:700">+${t.prizes[i]} 🪙</span>` : ''}
           <div style="font-weight:800;color:#fbbf24;font-size:.9rem">${(+r.score).toLocaleString('de-DE')}</div>
         </div>`).join('') : '<div style="padding:1.2rem 0;text-align:center;color:var(--muted);font-size:.85rem">Noch keine Teilnehmer – sei der Erste! 🚀</div>'}
@@ -5198,10 +5348,34 @@ window.duelCancel = async () => {
 
 function handleDuelEvent(d) {
   if (_duel.code && d.code === _duel.code) {
+    if (d.action === 'emote') {
+      if (d.fromDid !== currentUser?.discord_id) showDuelEmote(d.emote, d.from);
+      return;
+    }
     if (d.action === 'start' || d.action === 'done') { duelArena(_duel.code); return; }
     if (d.action === 'progress') { duelUpdateOpp(); return; }
   }
   if (!_duel.code && !_duel.viewingResult && (d.action === 'open' || d.action === 'start')) duell();
+}
+
+window.duelEmote = async emote => {
+  if (!_duel.code) return;
+  try {
+    await fetch(`/api/duels/${_duel.code}/emote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emote }) });
+    showDuelEmote(emote, 'Du');
+  } catch {}
+};
+
+// Großes Emote schwebt kurz über dem Duell
+function showDuelEmote(emote, from) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:22%;left:50%;transform:translateX(-50%);z-index:9999;text-align:center;pointer-events:none;transition:opacity .4s,transform 1.8s ease-out';
+  el.innerHTML = `<div style="font-size:3.2rem;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5))">${emote}</div>
+    <div style="font-size:.72rem;color:#fff;background:rgba(0,0,0,.6);border-radius:8px;padding:.15rem .55rem;display:inline-block">${esc(from)}</div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => { el.style.transform = 'translateX(-50%) translateY(-36px)'; });
+  setTimeout(() => { el.style.opacity = '0'; }, 1400);
+  setTimeout(() => el.remove(), 2000);
 }
 
 async function duelUpdateOpp() {
@@ -5259,12 +5433,17 @@ async function duelArena(code) {
     return;
   }
 
+  const emoteBar = s.emotes && s.status === 'active'
+    ? `<div style="display:flex;gap:.4rem;justify-content:center;margin-bottom:1rem">
+        ${(s.emoteList || []).map(e => `<button onclick="duelEmote('${e}')" title="Emote senden" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:1.05rem;padding:.25rem .55rem;cursor:pointer;transition:transform .1s" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform=''">${e}</button>`).join('')}
+      </div>`
+    : '';
   const header = `
-    <div class="card" style="padding:.9rem 1.2rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+    <div class="card" style="padding:.9rem 1.2rem;margin-bottom:${s.emotes && s.status === 'active' ? '.5rem' : '1rem'};display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
       ${duelPlayerBox(s.isHost ? s.host : s.guest, s.myScore, s.myIdx, s.total, 'left')}
       <div style="font-weight:800;color:var(--muted);font-size:.9rem">VS</div>
       ${duelPlayerBox(s.isHost ? s.guest : s.host, s.oppScore, s.oppIdx, s.total, 'right')}
-    </div>`;
+    </div>${emoteBar}`;
 
   // ── Fertig ──
   if (s.status === 'done') {

@@ -247,6 +247,19 @@ async function openLb(){
 }
 function closeLb(){$('ov-lb').classList.add('hidden');}
 
+// Gekaufte Kartendeck-Designs aus dem Coin-Shop
+const DECK_DESIGNS={
+  deck_gold:'repeating-linear-gradient(45deg,#7a5800,#7a5800 6px,#b8860b 6px,#b8860b 12px)',
+  deck_carbon:'repeating-linear-gradient(135deg,#0d0d0d,#0d0d0d 4px,#2e2e2e 4px,#2e2e2e 8px)',
+};
+function applyDeck(deck){
+  const css=DECK_DESIGNS[deck];
+  if(!css)return;
+  const st=document.createElement('style');
+  st.textContent=`.card.back{background:${css} !important;}`;
+  document.head.appendChild(st);
+}
+
 async function init(){
   try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
   try{
@@ -254,6 +267,7 @@ async function init(){
     if(r.status===401){$('ov-login').classList.remove('hidden');return;}
     const d=await r.json();
     setBalance(d.balance);
+    applyDeck(d.deck);
     if(d.hand){renderHand(d.hand);uiPhase('play');inHand=true;}
     else uiPhase('bet');
   }catch{$('ov-login').classList.remove('hidden');}

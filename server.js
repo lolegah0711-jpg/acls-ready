@@ -1296,9 +1296,12 @@ function requireAuthOrBot(req, res, next) {
 app.get('/api/profile/:id', requireAuthOrBot, (req, res) => {
   const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank, ic_weekly_goal, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!u) return res.status(404).json({ error: 'Nicht gefunden' });
-  const cosm = db.prepare('SELECT equipped_title, equipped_frame FROM coin_balances WHERE discord_id = ?').get(u.discord_id);
-  u.equipped_title = cosm?.equipped_title || null;
-  u.equipped_frame = cosm?.equipped_frame || null;
+  const cosm = db.prepare('SELECT equipped_title, equipped_frame, equipped_banner, equipped_namecolor, equipped_deco FROM coin_balances WHERE discord_id = ?').get(u.discord_id);
+  u.equipped_title     = cosm?.equipped_title || null;
+  u.equipped_frame     = cosm?.equipped_frame || null;
+  u.equipped_banner    = cosm?.equipped_banner || null;
+  u.equipped_namecolor = cosm?.equipped_namecolor || null;
+  u.equipped_deco      = cosm?.equipped_deco || null;
   const examStats   = db.prepare('SELECT COUNT(*) as total, COALESCE(SUM(passed),0) as passed FROM exam_sessions WHERE user_id=?').get(u.id);
   const conducted   = db.prepare('SELECT COUNT(*) as c FROM registry WHERE examiner_id=?').get(u.id).c;
   const eowWins     = db.prepare('SELECT COUNT(*) as c FROM eow_winners WHERE user_id=?').get(u.id).c;
@@ -2096,6 +2099,8 @@ app.post('/api/game-scores/:game', (req, res) => {
     const div = GAME_COIN_DIV[game];
     if (div) {
       let coins = Math.min(COINS_MAX_PER_SUBMIT, Math.floor(score / div));
+      // Coin-Booster: doppelte Spiel-Coins (Tagescap bleibt bestehen)
+      if (coins > 0 && getPerk(cDid, 'booster')) coins *= 2;
       if (coins > 0) {
         const today = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM coin_transactions
           WHERE discord_id = ? AND reason = ? AND date(created_at) = date('now')`).get(cDid, `game:${game}`).s;
@@ -2279,7 +2284,7 @@ app.get('/quiz', (req, res) => {
 app.get('/api/organigramm', (req, res) => {
   const staff = db.prepare(`
     SELECT u.id, u.username, u.avatar, u.discord_id, u.role, u.rank,
-           cb.equipped_title, cb.equipped_frame
+           cb.equipped_title, cb.equipped_frame, cb.equipped_namecolor, cb.equipped_deco
     FROM users u LEFT JOIN coin_balances cb ON cb.discord_id = u.discord_id
     WHERE u.is_active = 1
     ORDER BY CASE u.role WHEN 'admin' THEN 0 WHEN 'ausbilder' THEN 1 ELSE 2 END, u.username
@@ -2525,6 +2530,7 @@ function berlinDateStr() {
 }
 
 const SHOP_ITEMS = [
+  // Titel
   { id: 'title_rennfahrer', type: 'title', name: '🏎️ Rennfahrer',      price: 250,  desc: 'Titel unter deinem Namen' },
   { id: 'title_blitz',      type: 'title', name: '⚡ Blitzschnell',     price: 250,  desc: 'Titel unter deinem Namen' },
   { id: 'title_schrauber',  type: 'title', name: '🔧 Meisterschrauber', price: 350,  desc: 'Titel unter deinem Namen' },
@@ -2532,23 +2538,107 @@ const SHOP_ITEMS = [
   { id: 'title_abschlepp',  type: 'title', name: '🚛 Abschleppkönig',   price: 500,  desc: 'Titel unter deinem Namen' },
   { id: 'title_champion',   type: 'title', name: '🏆 Turnier-Champion', price: 800,  desc: 'Titel unter deinem Namen' },
   { id: 'title_legende',    type: 'title', name: '👑 ACLS-Legende',     price: 1500, desc: 'Der teuerste Titel' },
+  // Avatar-Rahmen
   { id: 'frame_gold',       type: 'frame', name: 'Gold-Rahmen',         price: 500,  desc: 'Goldener Avatar-Glow', color: '#ffd700' },
   { id: 'frame_neon',       type: 'frame', name: 'Neon-Rahmen',         price: 500,  desc: 'Cyan Avatar-Glow',     color: '#00f5ff' },
   { id: 'frame_feuer',      type: 'frame', name: 'Feuer-Rahmen',        price: 500,  desc: 'Oranger Avatar-Glow',  color: '#f97316' },
   { id: 'frame_lila',       type: 'frame', name: 'Twilight-Rahmen',     price: 500,  desc: 'Lila Avatar-Glow',     color: '#a855f7' },
   { id: 'frame_regenbogen', type: 'frame', name: 'Regenbogen-Rahmen',   price: 1200, desc: 'Animierter Regenbogen-Glow', color: 'rainbow' },
+  // Truck-Skins (Abschlepp-Simulator)
+  { id: 'skin_truck_black',  type: 'truck', name: 'Night-Ops Truck',     price: 400, desc: 'Schwarzer Abschlepper im Simulator', color: '#1f2937' },
+  { id: 'skin_truck_gold',   type: 'truck', name: 'Goldener Truck',      price: 800, desc: 'Goldener Abschlepper im Simulator',  color: '#fbbf24' },
+  { id: 'skin_truck_police', type: 'truck', name: 'Interceptor-Truck',   price: 600, desc: 'Weißer Truck mit Blaulicht',         color: '#e5e7eb' },
+  // Kartendecks (Blackjack)
+  { id: 'deck_gold',   type: 'deck', name: 'Gold-Deck',   price: 500, desc: 'Goldener Kartenrücken beim Blackjack' },
+  { id: 'deck_carbon', type: 'deck', name: 'Carbon-Deck', price: 500, desc: 'Carbon-Kartenrücken beim Blackjack' },
+  // Profil-Banner
+  { id: 'banner_sunset',  type: 'banner', name: 'Sunset-Banner',  price: 600, desc: 'Hintergrund in deinem Profil' },
+  { id: 'banner_skyline', type: 'banner', name: 'Skyline-Banner', price: 800, desc: 'Hintergrund in deinem Profil' },
+  { id: 'banner_neon',    type: 'banner', name: 'Neon-Banner',    price: 600, desc: 'Hintergrund in deinem Profil' },
+  // Namensfarbe
+  { id: 'namecolor_gold', type: 'namecolor', name: 'Goldener Name', price: 750, desc: 'Dein Name in Gold – Team & Ranglisten' },
+  // Avatar-Deko
+  { id: 'deco_crown',  type: 'deco', name: '👑 Krone',              price: 600, desc: 'Deko neben deinem Namen' },
+  { id: 'deco_wrench', type: 'deco', name: '🔧 Schraubenschlüssel', price: 450, desc: 'Deko neben deinem Namen' },
+  { id: 'deco_blitz',  type: 'deco', name: '⚡ Blitz',              price: 450, desc: 'Deko neben deinem Namen' },
+  { id: 'deco_halo',   type: 'deco', name: '😇 Heiligenschein',     price: 600, desc: 'Deko neben deinem Namen' },
+  // Freischaltungen
+  { id: 'emotes_pack', type: 'perk', name: '😏 Duell-Emotes', price: 250, desc: 'Sende Emotes im Quiz-Duell' },
+  // Verbrauchsartikel
+  { id: 'vip_30',      type: 'consumable', name: '⭐ VIP-Rolle (30 Tage)', price: 2000, desc: 'Goldene VIP-Rolle im Discord' },
+  { id: 'booster_24',  type: 'consumable', name: '⚡ Coin-Booster (24h)',  price: 300,  desc: 'Doppelte Minispiel-Coins für 24 Stunden' },
+  { id: 'mystery_box', type: 'consumable', name: '🎲 Mystery-Box',        price: 200,  desc: 'Coins, Lotterie-Los oder Rahmen – Überraschung!' },
 ];
+
+// Welche Artikel-Typen in welchem coin_balances-Slot ausgerüstet werden
+const EQUIP_SLOTS = {
+  title: 'equipped_title', frame: 'equipped_frame', truck: 'equipped_truck',
+  deck: 'equipped_deck', banner: 'equipped_banner', namecolor: 'equipped_namecolor', deco: 'equipped_deco',
+};
+
+// ── Zeitlich begrenzte Perks (VIP, Coin-Booster) ────────────────
+function getPerk(did, perk) {
+  return db.prepare(`SELECT * FROM user_perks WHERE discord_id = ? AND perk = ? AND expires_at > datetime('now')`).get(did, perk) || null;
+}
+function extendPerk(did, perk, hours) {
+  const cur  = db.prepare('SELECT expires_at FROM user_perks WHERE discord_id = ? AND perk = ?').get(did, perk);
+  const curD = cur ? new Date(cur.expires_at.replace(' ', 'T') + 'Z') : null;
+  const base = curD && curD > new Date() ? curD : new Date();
+  const iso  = new Date(base.getTime() + hours * 3600_000).toISOString().slice(0, 19).replace('T', ' ');
+  db.prepare(`INSERT INTO user_perks (discord_id, perk, expires_at) VALUES (?, ?, ?)
+    ON CONFLICT(discord_id, perk) DO UPDATE SET expires_at = excluded.expires_at`).run(did, perk, iso);
+  return iso;
+}
+
+// Mystery-Box öffnen: Coins, Lotterie-Los oder ein fehlender Rahmen
+function openMysteryBox(ident) {
+  const roll = crypto.randomInt(100);
+  if (roll < 50) {
+    const amount = 50 + crypto.randomInt(201); // 50–250
+    addCoins(ident.id, ident.name, amount, 'mystery:coins');
+    return { kind: 'coins', amount };
+  }
+  if (roll < 75) {
+    db.prepare('INSERT INTO lottery_tickets (week, discord_id, username) VALUES (?, ?, ?)').run(weekKey(), ident.id, ident.name);
+    return { kind: 'ticket' };
+  }
+  if (roll < 90) {
+    const amount = 300 + crypto.randomInt(201); // 300–500
+    addCoins(ident.id, ident.name, amount, 'mystery:coins');
+    return { kind: 'coins', amount };
+  }
+  const owned = new Set(db.prepare('SELECT item_id FROM shop_purchases WHERE discord_id = ?').all(ident.id).map(r => r.item_id));
+  const avail = SHOP_ITEMS.filter(i => i.type === 'frame' && !owned.has(i.id));
+  if (!avail.length) {
+    addCoins(ident.id, ident.name, 500, 'mystery:coins');
+    return { kind: 'coins', amount: 500 };
+  }
+  const f = avail[crypto.randomInt(avail.length)];
+  db.prepare('INSERT INTO shop_purchases (discord_id, item_id, price) VALUES (?, ?, 0)').run(ident.id, f.id);
+  return { kind: 'frame', id: f.id, name: f.name };
+}
 
 app.get('/api/coins/me', (req, res) => {
   const ident = coinIdent(req);
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const row = db.prepare('SELECT * FROM coin_balances WHERE discord_id = ?').get(ident.id);
   const tx  = db.prepare('SELECT amount, reason, created_at FROM coin_transactions WHERE discord_id = ? ORDER BY id DESC LIMIT 15').all(ident.id);
+  const vip     = getPerk(ident.id, 'vip');
+  const booster = getPerk(ident.id, 'booster');
+  const ctr     = db.prepare('SELECT text, status FROM custom_title_requests WHERE discord_id = ? ORDER BY id DESC LIMIT 1').get(ident.id);
   res.json({
     balance:        row?.balance ?? 0,
     totalEarned:    row?.total_earned ?? 0,
     equippedTitle:  row?.equipped_title || null,
     equippedFrame:  row?.equipped_frame || null,
+    equippedTruck:  row?.equipped_truck || null,
+    equippedDeck:   row?.equipped_deck || null,
+    equippedBanner: row?.equipped_banner || null,
+    equippedNamecolor: row?.equipped_namecolor || null,
+    equippedDeco:   row?.equipped_deco || null,
+    vipUntil:       vip?.expires_at || null,
+    boosterUntil:   booster?.expires_at || null,
+    customTitle:    ctr || null,
     dailyAvailable: (row?.last_daily || '') !== berlinDateStr(),
     transactions:   tx,
   });
@@ -2590,14 +2680,37 @@ app.post('/api/shop/buy', (req, res) => {
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const item = SHOP_ITEMS.find(i => i.id === req.body.itemId);
   if (!item) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+
+  // Verbrauchsartikel: immer wieder kaufbar, sofortige Wirkung
+  if (item.type === 'consumable') {
+    if (rateLimit(`shopc:${ident.id}`, 15, 60_000)) return res.status(429).json({ error: 'Zu schnell' });
+    const bal = addCoins(ident.id, ident.name, -item.price, 'shop:' + item.id);
+    if (bal === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+    if (item.id === 'vip_30') {
+      const until = extendPerk(ident.id, 'vip', 30 * 24);
+      queueNotification('vip', ident.id, { username: ident.name, until });
+      auditLog(req, 'shop_buy', 'VIP-Rolle 30 Tage');
+      return res.json({ ok: true, balance: bal, vipUntil: until });
+    }
+    if (item.id === 'booster_24') {
+      const until = extendPerk(ident.id, 'booster', 24);
+      return res.json({ ok: true, balance: bal, boosterUntil: until });
+    }
+    if (item.id === 'mystery_box') {
+      const mystery = openMysteryBox(ident);
+      const newBal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+      return res.json({ ok: true, balance: newBal, mystery });
+    }
+  }
+
   const owned = db.prepare('SELECT 1 FROM shop_purchases WHERE discord_id = ? AND item_id = ?').get(ident.id, item.id);
   if (owned) return res.status(400).json({ error: 'Bereits gekauft' });
   const bal = addCoins(ident.id, ident.name, -item.price, 'shop:buy', { item: item.id });
   if (bal === null) return res.status(400).json({ error: 'Nicht genug Coins' });
   db.prepare('INSERT INTO shop_purchases (discord_id, item_id, price) VALUES (?, ?, ?)').run(ident.id, item.id, item.price);
-  // Direkt ausrüsten
-  const col = item.type === 'title' ? 'equipped_title' : 'equipped_frame';
-  db.prepare(`UPDATE coin_balances SET ${col} = ? WHERE discord_id = ?`).run(item.id, ident.id);
+  // Direkt ausrüsten (falls der Typ einen Slot hat)
+  const col = EQUIP_SLOTS[item.type];
+  if (col) db.prepare(`UPDATE coin_balances SET ${col} = ? WHERE discord_id = ?`).run(item.id, ident.id);
   auditLog(req, 'shop_buy', `${item.name} für ${item.price} Coins`);
   res.json({ ok: true, balance: bal });
 });
@@ -2609,16 +2722,63 @@ app.post('/api/shop/equip', (req, res) => {
   if (itemId) {
     const item = SHOP_ITEMS.find(i => i.id === itemId);
     if (!item) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+    const col = EQUIP_SLOTS[item.type];
+    if (!col) return res.status(400).json({ error: 'Nicht ausrüstbar' });
     const owned = db.prepare('SELECT 1 FROM shop_purchases WHERE discord_id = ? AND item_id = ?').get(ident.id, itemId);
     if (!owned) return res.status(403).json({ error: 'Nicht gekauft' });
-    const col = item.type === 'title' ? 'equipped_title' : 'equipped_frame';
     db.prepare(`INSERT INTO coin_balances (discord_id, username) VALUES (?, ?) ON CONFLICT(discord_id) DO NOTHING`).run(ident.id, ident.name);
     db.prepare(`UPDATE coin_balances SET ${col} = ? WHERE discord_id = ?`).run(itemId, ident.id);
   } else {
-    const col = slot === 'title' ? 'equipped_title' : 'equipped_frame';
+    const col = EQUIP_SLOTS[slot];
+    if (!col) return res.status(400).json({ error: 'Ungültiger Slot' });
     db.prepare(`UPDATE coin_balances SET ${col} = NULL WHERE discord_id = ?`).run(ident.id);
   }
   res.json({ ok: true });
+});
+
+// ── Wunsch-Titel (2500 Coins, Admin-Freigabe nötig) ─────────────
+const CUSTOM_TITLE_PRICE = 2500;
+
+app.post('/api/shop/custom-title', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const text = String(req.body.text || '').trim().replace(/\s+/g, ' ');
+  if (text.length < 3 || text.length > 30) return res.status(400).json({ error: 'Titel muss 3–30 Zeichen lang sein' });
+  const pending = db.prepare(`SELECT 1 FROM custom_title_requests WHERE discord_id = ? AND status = 'pending'`).get(ident.id);
+  if (pending) return res.status(400).json({ error: 'Du hast bereits eine offene Anfrage' });
+  const bal = addCoins(ident.id, ident.name, -CUSTOM_TITLE_PRICE, 'shop:custom_title', { text });
+  if (bal === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+  db.prepare('INSERT INTO custom_title_requests (discord_id, username, text) VALUES (?, ?, ?)').run(ident.id, ident.name, text);
+  auditLog(req, 'shop_buy', `Wunsch-Titel beantragt: "${text}"`);
+  res.json({ ok: true, balance: bal });
+});
+
+app.get('/api/admin/custom-titles', requireAdmin, (req, res) => {
+  res.json(db.prepare(`SELECT * FROM custom_title_requests WHERE status = 'pending' ORDER BY id ASC`).all());
+});
+
+app.post('/api/admin/custom-titles/:id', requireAdmin, (req, res) => {
+  const r = db.prepare('SELECT * FROM custom_title_requests WHERE id = ? AND status = ?').get(+req.params.id, 'pending');
+  if (!r) return res.status(404).json({ error: 'Anfrage nicht gefunden' });
+  if (req.body.action === 'approve') {
+    db.prepare(`INSERT INTO coin_balances (discord_id, username) VALUES (?, ?) ON CONFLICT(discord_id) DO NOTHING`).run(r.discord_id, r.username);
+    db.prepare('UPDATE coin_balances SET equipped_title = ? WHERE discord_id = ?').run('custom:' + r.text, r.discord_id);
+    db.prepare(`UPDATE custom_title_requests SET status = 'approved' WHERE id = ?`).run(r.id);
+    auditLog(req, 'custom_title', `Freigegeben: "${r.text}" (${r.username})`);
+  } else {
+    addCoins(r.discord_id, r.username, CUSTOM_TITLE_PRICE, 'shop:custom_title_refund');
+    db.prepare(`UPDATE custom_title_requests SET status = 'rejected' WHERE id = ?`).run(r.id);
+    auditLog(req, 'custom_title', `Abgelehnt: "${r.text}" (${r.username}) – Coins erstattet`);
+  }
+  res.json({ ok: true });
+});
+
+// Abgelaufene Perks: VIP-Rolle entziehen, Booster still löschen
+cron.schedule('*/30 * * * *', () => {
+  const expiredVips = db.prepare(`SELECT discord_id FROM user_perks WHERE perk = 'vip' AND expires_at <= datetime('now')`).all();
+  for (const v of expiredVips) queueNotification('vip_remove', v.discord_id, {});
+  const r = db.prepare(`DELETE FROM user_perks WHERE expires_at <= datetime('now')`).run();
+  if (r.changes > 0) console.log(`[Perks] ${r.changes} abgelaufene Perk(s) entfernt`);
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -2659,7 +2819,7 @@ app.get('/api/tournament', (req, res) => {
   const info = TOURNAMENT_GAMES[t.game] || { name: t.game, url: '/' };
   const board = db.prepare(`
     SELECT ts.discord_id, ts.username, ts.avatar, ts.score, ts.updated_at,
-           cb.equipped_title, cb.equipped_frame
+           cb.equipped_title, cb.equipped_frame, cb.equipped_namecolor, cb.equipped_deco
     FROM tournament_scores ts LEFT JOIN coin_balances cb ON cb.discord_id = ts.discord_id
     WHERE ts.week = ? ORDER BY ts.score DESC LIMIT 15
   `).all(t.week);
@@ -2795,6 +2955,7 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 const DUEL_QUESTIONS  = 8;
 const DUEL_TIME_MS    = 15000;
 const DUEL_COINS_WIN  = 150, DUEL_COINS_LOSS = 25, DUEL_COINS_DRAW = 75;
+const DUEL_EMOTES     = ['😏', '🔥', '💀', '😂', '👏', '😱'];
 
 function duelByCode(code) {
   return db.prepare('SELECT * FROM quiz_duels WHERE code = ?').get(String(code || '').toUpperCase());
@@ -2906,8 +3067,10 @@ app.get('/api/duels/:code/state', (req, res) => {
   let result = null;
   if (d.status === 'done' && isParticipant)
     result = !d.winner_did ? 'draw' : d.winner_did === ident.id ? 'win' : 'loss';
+  const hasEmotes = !!db.prepare('SELECT 1 FROM shop_purchases WHERE discord_id = ? AND item_id = ?').get(ident.id, 'emotes_pack');
   res.json({
     code: d.code, status: d.status, isHost,
+    emotes: hasEmotes, emoteList: DUEL_EMOTES,
     host:  { username: d.host_name, avatar: d.host_avatar, discord_id: d.host_did },
     guest: d.guest_did ? { username: d.guest_name, avatar: d.guest_avatar, discord_id: d.guest_did } : null,
     total: qIds.length,
@@ -2920,6 +3083,22 @@ app.get('/api/duels/:code/state', (req, res) => {
     result,
     coins: { win: DUEL_COINS_WIN, loss: DUEL_COINS_LOSS, draw: DUEL_COINS_DRAW },
   });
+});
+
+// Emote an den Gegner senden (benötigt gekauftes Emote-Pack)
+app.post('/api/duels/:code/emote', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const d = duelByCode(req.params.code);
+  if (!d || d.status !== 'active') return res.status(400).json({ error: 'Duell nicht aktiv' });
+  if (d.host_did !== ident.id && d.guest_did !== ident.id) return res.status(403).json({ error: 'Kein Zugriff' });
+  if (!db.prepare('SELECT 1 FROM shop_purchases WHERE discord_id = ? AND item_id = ?').get(ident.id, 'emotes_pack'))
+    return res.status(403).json({ error: 'Duell-Emotes gibt es im Coin-Shop' });
+  const emote = String(req.body.emote || '');
+  if (!DUEL_EMOTES.includes(emote)) return res.status(400).json({ error: 'Ungültiges Emote' });
+  if (rateLimit(`emote:${ident.id}`, 10, 30_000)) return res.status(429).json({ error: 'Langsam!' });
+  sseEmit('duel', { code: d.code, action: 'emote', emote, from: ident.name, fromDid: ident.id });
+  res.json({ ok: true });
 });
 
 app.post('/api/duels/:code/answer', (req, res) => {
@@ -3026,9 +3205,9 @@ function bjResolve(g, ident) {
 app.get('/api/blackjack/state', (req, res) => {
   const ident = coinIdent(req);
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
-  const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+  const row = db.prepare('SELECT balance, equipped_deck FROM coin_balances WHERE discord_id = ?').get(ident.id);
   const g = bjGames.get(ident.id);
-  res.json({ balance: bal, hand: g ? bjPublic(g, false) : null, username: ident.name });
+  res.json({ balance: row?.balance ?? 0, hand: g ? bjPublic(g, false) : null, username: ident.name, deck: row?.equipped_deck || null });
 });
 
 app.post('/api/blackjack/start', (req, res) => {

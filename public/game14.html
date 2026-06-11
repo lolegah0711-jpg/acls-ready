@@ -73,6 +73,13 @@ const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
 const W=1600,H=1000;             // virtuelle Weltgröße
 let SCALE=1,VX=0,VY=0;           // Skalierung + Offset auf den Bildschirm
 let currentUser=null;
+// Truck-Skins aus dem Coin-Shop
+let TRUCK_COLOR='#f97316',BEACON_ON='#fbbf24',BEACON_OFF='#92660a',BEACON_GLOW='rgba(251,191,36,.25)';
+const TRUCK_SKINS={
+  skin_truck_black:{c:'#1f2937'},
+  skin_truck_gold:{c:'#fbbf24'},
+  skin_truck_police:{c:'#e5e7eb',bOn:'#3b82f6',bOff:'#1e3a8a',bGlow:'rgba(59,130,246,.3)'},
+};
 
 function resize(){
   canvas.width=window.innerWidth;canvas.height=window.innerHeight;
@@ -259,9 +266,9 @@ function drawCar(x,y,a,len,wid,col,beacon){
   ctx.fillRect(len/2-9,-wid/2-2,7,3);ctx.fillRect(len/2-9,wid/2-1,7,3);
   if(beacon){
     const on=Math.floor(performance.now()/200)%2===0;
-    ctx.fillStyle=on?'#fbbf24':'#92660a';
+    ctx.fillStyle=on?BEACON_ON:BEACON_OFF;
     ctx.beginPath();ctx.arc(-len*0.12,0,4.5,0,Math.PI*2);ctx.fill();
-    if(on){ctx.fillStyle='rgba(251,191,36,.25)';ctx.beginPath();ctx.arc(-len*0.12,0,11,0,Math.PI*2);ctx.fill();}
+    if(on){ctx.fillStyle=BEACON_GLOW;ctx.beginPath();ctx.arc(-len*0.12,0,11,0,Math.PI*2);ctx.fill();}
   }
   ctx.restore();
 }
@@ -338,7 +345,7 @@ function draw(ts){
       drawCar(towed.x,towed.y,towed.a,40,20,towed.hue,false);
     }
     // Truck
-    drawCar(truck.x,truck.y,truck.a,52,24,'#f97316',true);
+    drawCar(truck.x,truck.y,truck.a,52,24,TRUCK_COLOR,true);
     // Zielpfeil (zeigt zum Wrack bzw. Hof)
     const tx=towed?(DEPOT.x1+DEPOT.x2)/2:(wreck?wreck.x:truck.x);
     const ty=towed?(DEPOT.y1+DEPOT.y2)/2:(wreck?wreck.y:truck.y);
@@ -426,6 +433,18 @@ function closeLb(){document.getElementById('ov-lb').classList.add('hidden');}
 
 async function init(){
   try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  // Gekauften Truck-Skin laden
+  try{
+    const r=await fetch('/api/coins/me');
+    if(r.ok){
+      const d=await r.json();
+      const skin=TRUCK_SKINS[d.equippedTruck];
+      if(skin){
+        TRUCK_COLOR=skin.c;
+        if(skin.bOn){BEACON_ON=skin.bOn;BEACON_OFF=skin.bOff;BEACON_GLOW=skin.bGlow;}
+      }
+    }
+  }catch{}
   await GameAuth.init('tow');
   requestAnimationFrame(draw);
 }

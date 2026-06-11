@@ -19,6 +19,7 @@ const IC_LOG_CHANNEL_ID   = process.env.IC_LOG_CHANNEL_ID   || '';
 const COMMANDS_CHANNEL_ID = process.env.COMMANDS_CHANNEL_ID || '';
 const MOD_LOG_CHANNEL_ID  = process.env.MOD_LOG_CHANNEL_ID  || '1476285851402113182';
 const TOURNAMENT_CHANNEL_ID = process.env.TOURNAMENT_CHANNEL_ID || process.env.EOW_CHANNEL_ID || '';
+const VIP_ROLE_NAME         = process.env.VIP_ROLE_NAME || 'VIP ⭐';
 const AUTO_ROLE_NAME      = process.env.AUTO_ROLE_NAME       || 'ACLS Member';
 
 const BADGE_LABELS = {
@@ -135,6 +136,27 @@ async function pollNotifications() {
               await ch.send(msg);
             } catch (e) { console.error('[Bot] EoW-Kanal Fehler:', e.message); }
           }
+        }
+        if (n.type === 'vip' || n.type === 'vip_remove') {
+          try {
+            const guild = client.guilds.cache.get(GUILD_ID) || await client.guilds.fetch(GUILD_ID);
+            let role = guild.roles.cache.find(r => r.name === VIP_ROLE_NAME);
+            if (!role && n.type === 'vip') {
+              role = await guild.roles.create({ name: VIP_ROLE_NAME, color: 0xffd700, hoist: true, reason: 'ACLS VIP (Coin-Shop)' }).catch(() => null);
+            }
+            if (role && n.discord_id) {
+              const member = await guild.members.fetch(n.discord_id).catch(() => null);
+              if (member) {
+                if (n.type === 'vip') {
+                  await member.roles.add(role).catch(e => console.error('[Bot] VIP-Rolle add:', e.message));
+                  try { await member.send(`⭐ Du bist jetzt **VIP** auf dem ACLS-Server – 30 Tage lang! Viel Spaß!`); } catch (_) {}
+                } else {
+                  await member.roles.remove(role).catch(e => console.error('[Bot] VIP-Rolle remove:', e.message));
+                  try { await member.send(`⭐ Deine **VIP-Rolle** ist abgelaufen. Du kannst sie jederzeit im Coin-Shop verlängern!`); } catch (_) {}
+                }
+              }
+            }
+          } catch (e) { console.error('[Bot] VIP Fehler:', e.message); }
         }
         if (n.type === 'lottery') {
           if (n.discord_id) {

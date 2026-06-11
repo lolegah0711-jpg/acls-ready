@@ -425,6 +425,24 @@ function initDb() {
       PRIMARY KEY (week, discord_id)
     );
 
+    CREATE TABLE IF NOT EXISTS user_perks (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id  TEXT NOT NULL,
+      perk        TEXT NOT NULL,
+      expires_at  DATETIME NOT NULL,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(discord_id, perk)
+    );
+
+    CREATE TABLE IF NOT EXISTS custom_title_requests (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id  TEXT NOT NULL,
+      username    TEXT,
+      text        TEXT NOT NULL,
+      status      TEXT DEFAULT 'pending',
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS lottery_tickets (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       week        TEXT NOT NULL,
@@ -496,6 +514,11 @@ function initDb() {
   }
 
   // Migrations — Spalten nachrüsten falls nicht vorhanden
+  try { db.exec(`ALTER TABLE coin_balances ADD COLUMN equipped_truck TEXT`); } catch {}
+  try { db.exec(`ALTER TABLE coin_balances ADD COLUMN equipped_deck TEXT`); } catch {}
+  try { db.exec(`ALTER TABLE coin_balances ADD COLUMN equipped_banner TEXT`); } catch {}
+  try { db.exec(`ALTER TABLE coin_balances ADD COLUMN equipped_namecolor TEXT`); } catch {}
+  try { db.exec(`ALTER TABLE coin_balances ADD COLUMN equipped_deco TEXT`); } catch {}
   try { db.exec(`ALTER TABLE complaints ADD COLUMN admin_response TEXT`); } catch {}
   try { db.exec(`ALTER TABLE complaints ADD COLUMN admin_response_at DATETIME`); } catch {}
   try { db.exec(`ALTER TABLE users ADD COLUMN ic_weekly_goal REAL DEFAULT 0`); } catch {}
