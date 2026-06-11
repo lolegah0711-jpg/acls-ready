@@ -1336,7 +1336,13 @@ function sseEmit(event, data) {
   sseClients.forEach(res => { try { res.write(msg); } catch {} });
 }
 
-app.get('/api/sse', requireAuth, (req, res) => {
+// Auch Bürger (Voter-Session) dürfen Live-Events empfangen (z. B. Quiz-Duell)
+function requireAnySession(req, res, next) {
+  if (getUser(req) || req.session?.voterDiscordId) return next();
+  return res.status(401).json({ error: 'Nicht angemeldet' });
+}
+
+app.get('/api/sse', requireAnySession, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -2676,104 +2682,103 @@ const DUEL_COINS_WIN  = 150, DUEL_COINS_LOSS = 25, DUEL_COINS_DRAW = 75;
 function duelByCode(code) {
   return db.prepare('SELECT * FROM quiz_duels WHERE code = ?').get(String(code || '').toUpperCase());
 }
-function duelUserInfo(id) {
-  if (!id) return null;
-  const u = db.prepare('SELECT id, username, avatar, discord_id FROM users WHERE id = ?').get(id);
-  return u ? { id: u.id, username: u.username, avatar: u.avatar, discord_id: u.discord_id } : null;
-}
-function myActiveDuel(userId) {
-  return db.prepare(`SELECT * FROM quiz_duels WHERE (host_id = ? OR guest_id = ?) AND status IN ('waiting','active') ORDER BY id DESC LIMIT 1`).get(userId, userId);
+function myActiveDuel(did) {
+  return db.prepare(`SELECT * FROM quiz_duels WHERE (host_did = ? OR guest_did = ?) AND status IN ('waiting','active') ORDER BY id DESC LIMIT 1`).get(did, did);
 }
 
 function finishDuel(d) {
-  const winnerId = d.host_score > d.guest_score ? d.host_id : d.guest_score > d.host_score ? d.guest_id : null;
-  db.prepare(`UPDATE quiz_duels SET status = 'done', winner_id = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`).run(winnerId, d.id);
-  const host  = duelUserInfo(d.host_id);
-  const guest = duelUserInfo(d.guest_id);
-  if (host && guest) {
-    if (!winnerId) {
-      addCoins(host.discord_id,  host.username,  DUEL_COINS_DRAW, 'duel:draw', { code: d.code });
-      addCoins(guest.discord_id, guest.username, DUEL_COINS_DRAW, 'duel:draw', { code: d.code });
+  const winnerDid = d.host_score > d.guest_score ? d.host_did : d.guest_score > d.host_score ? d.guest_did : null;
+  db.prepare(`UPDATE quiz_duels SET status = 'done', winner_did = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`).run(winnerDid, d.id);
+  if (d.guest_did) {
+    if (!winnerDid) {
+      addCoins(d.host_did,  d.host_name,  DUEL_COINS_DRAW, 'duel:draw', { code: d.code });
+      addCoins(d.guest_did, d.guest_name, DUEL_COINS_DRAW, 'duel:draw', { code: d.code });
     } else {
-      const w = winnerId === d.host_id ? host : guest;
-      const l = winnerId === d.host_id ? guest : host;
-      addCoins(w.discord_id, w.username, DUEL_COINS_WIN,  'duel:win',  { code: d.code });
-      addCoins(l.discord_id, l.username, DUEL_COINS_LOSS, 'duel:loss', { code: d.code });
+      const loserDid  = winnerDid === d.host_did ? d.guest_did  : d.host_did;
+      const winName   = winnerDid === d.host_did ? d.host_name  : d.guest_name;
+      const loseName  = winnerDid === d.host_did ? d.guest_name : d.host_name;
+      addCoins(winnerDid, winName,  DUEL_COINS_WIN,  'duel:win',  { code: d.code });
+      addCoins(loserDid,  loseName, DUEL_COINS_LOSS, 'duel:loss', { code: d.code });
     }
   }
   sseEmit('duel', { code: d.code, action: 'done' });
 }
 
-// Lobby: offene Duelle + mein laufendes Duell
-app.get('/api/duels', requireAuth, (req, res) => {
-  const me = getUser(req);
+// Lobby: offene Duelle + mein laufendes Duell (Mitarbeiter UND Bürger)
+app.get('/api/duels', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const open = db.prepare(`
-    SELECT d.code, d.created_at, u.username, u.avatar, u.discord_id
-    FROM quiz_duels d JOIN users u ON u.id = d.host_id
-    WHERE d.status = 'waiting' ORDER BY d.id DESC LIMIT 20
+    SELECT code, created_at, host_name AS username, host_avatar AS avatar, host_did AS discord_id
+    FROM quiz_duels WHERE status = 'waiting' ORDER BY id DESC LIMIT 20
   `).all();
-  const mine = myActiveDuel(me.id);
+  const mine = myActiveDuel(ident.id);
   const stats = db.prepare(`
     SELECT
-      SUM(CASE WHEN winner_id = ? THEN 1 ELSE 0 END) AS wins,
-      SUM(CASE WHEN winner_id IS NOT NULL AND winner_id != ? AND (host_id = ? OR guest_id = ?) THEN 1 ELSE 0 END) AS losses
-    FROM quiz_duels WHERE status = 'done' AND (host_id = ? OR guest_id = ?)
-  `).get(me.id, me.id, me.id, me.id, me.id, me.id);
+      SUM(CASE WHEN winner_did = ? THEN 1 ELSE 0 END) AS wins,
+      SUM(CASE WHEN winner_did IS NOT NULL AND winner_did != ? THEN 1 ELSE 0 END) AS losses
+    FROM quiz_duels WHERE status = 'done' AND (host_did = ? OR guest_did = ?)
+  `).get(ident.id, ident.id, ident.id, ident.id);
   res.json({ open, myDuel: mine ? { code: mine.code, status: mine.status } : null, stats: { wins: stats?.wins || 0, losses: stats?.losses || 0 } });
 });
 
-app.post('/api/duels', requireAuth, (req, res) => {
-  const me = getUser(req);
-  const existing = myActiveDuel(me.id);
+app.post('/api/duels', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`duel:${ident.id}`, 10, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
+  const existing = myActiveDuel(ident.id);
   if (existing) return res.json({ ok: true, code: existing.code });
   const qs = db.prepare(`SELECT id FROM exam_questions WHERE is_active = 1 ORDER BY RANDOM() LIMIT ?`).all(DUEL_QUESTIONS);
   if (qs.length < DUEL_QUESTIONS) return res.status(400).json({ error: 'Zu wenige Fragen in der Datenbank' });
   const code = crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 5);
-  db.prepare('INSERT INTO quiz_duels (code, host_id, question_ids) VALUES (?, ?, ?)')
-    .run(code, me.id, JSON.stringify(qs.map(q => q.id)));
+  db.prepare('INSERT INTO quiz_duels (code, host_did, host_name, host_avatar, question_ids) VALUES (?, ?, ?, ?, ?)')
+    .run(code, ident.id, ident.name, ident.user?.avatar || null, JSON.stringify(qs.map(q => q.id)));
   sseEmit('duel', { code, action: 'open' });
   res.json({ ok: true, code });
 });
 
-app.post('/api/duels/:code/cancel', requireAuth, (req, res) => {
-  const me = getUser(req);
+app.post('/api/duels/:code/cancel', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const d = duelByCode(req.params.code);
-  if (!d || d.host_id !== me.id || d.status !== 'waiting') return res.status(400).json({ error: 'Nicht möglich' });
+  if (!d || d.host_did !== ident.id || d.status !== 'waiting') return res.status(400).json({ error: 'Nicht möglich' });
   db.prepare('DELETE FROM quiz_duels WHERE id = ?').run(d.id);
   sseEmit('duel', { code: d.code, action: 'open' });
   res.json({ ok: true });
 });
 
-app.post('/api/duels/:code/join', requireAuth, (req, res) => {
-  const me = getUser(req);
+app.post('/api/duels/:code/join', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const d = duelByCode(req.params.code);
   if (!d) return res.status(404).json({ error: 'Duell nicht gefunden' });
   if (d.status !== 'waiting') return res.status(400).json({ error: 'Duell läuft bereits' });
-  if (d.host_id === me.id) return res.status(400).json({ error: 'Du kannst nicht gegen dich selbst spielen' });
-  if (myActiveDuel(me.id)) return res.status(400).json({ error: 'Du bist bereits in einem Duell' });
-  db.prepare(`UPDATE quiz_duels SET guest_id = ?, status = 'active', started_at = CURRENT_TIMESTAMP WHERE id = ?`).run(me.id, d.id);
+  if (d.host_did === ident.id) return res.status(400).json({ error: 'Du kannst nicht gegen dich selbst spielen' });
+  if (myActiveDuel(ident.id)) return res.status(400).json({ error: 'Du bist bereits in einem Duell' });
+  db.prepare(`UPDATE quiz_duels SET guest_did = ?, guest_name = ?, guest_avatar = ?, status = 'active', started_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(ident.id, ident.name, ident.user?.avatar || null, d.id);
   sseEmit('duel', { code: d.code, action: 'start' });
   res.json({ ok: true, code: d.code });
 });
 
-app.get('/api/duels/:code/state', requireAuth, (req, res) => {
-  const me = getUser(req);
+app.get('/api/duels/:code/state', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   let d = duelByCode(req.params.code);
   if (!d) return res.status(404).json({ error: 'Duell nicht gefunden' });
-  if (d.host_id !== me.id && d.guest_id !== me.id && d.status !== 'done') {
-    if (d.status !== 'waiting') return res.status(403).json({ error: 'Kein Zugriff' });
-  }
+  const isParticipant = d.host_did === ident.id || d.guest_did === ident.id;
+  if (!isParticipant && d.status === 'active') return res.status(403).json({ error: 'Kein Zugriff' });
   // Auto-Timeout: aktives Duell älter als 6 Minuten wird ausgewertet
   if (d.status === 'active' && d.started_at) {
     const ageMs = Date.now() - new Date(d.started_at.replace(' ', 'T') + 'Z').getTime();
     if (ageMs > 6 * 60 * 1000) { finishDuel(d); d = duelByCode(req.params.code); }
   }
-  const isHost  = d.host_id === me.id;
-  const myAns   = JSON.parse(isHost ? d.host_answers : d.guest_answers);
-  const oppAns  = JSON.parse(isHost ? d.guest_answers : d.host_answers);
+  const isHost  = d.host_did === ident.id;
+  const myAns   = isParticipant ? JSON.parse(isHost ? d.host_answers : d.guest_answers) : [];
+  const oppAns  = isParticipant ? JSON.parse(isHost ? d.guest_answers : d.host_answers) : [];
   const qIds    = JSON.parse(d.question_ids);
   let question  = null;
-  if (d.status === 'active' && myAns.length < qIds.length) {
+  if (d.status === 'active' && isParticipant && myAns.length < qIds.length) {
     const q = db.prepare('SELECT id, question, option_a, option_b, option_c, option_d FROM exam_questions WHERE id = ?').get(qIds[myAns.length]);
     if (q) question = {
       idx: myAns.length,
@@ -2781,9 +2786,13 @@ app.get('/api/duels/:code/state', requireAuth, (req, res) => {
       options: [q.option_a, q.option_b, q.option_c, q.option_d].filter(o => o && o.trim() !== ''),
     };
   }
+  let result = null;
+  if (d.status === 'done' && isParticipant)
+    result = !d.winner_did ? 'draw' : d.winner_did === ident.id ? 'win' : 'loss';
   res.json({
     code: d.code, status: d.status, isHost,
-    host: duelUserInfo(d.host_id), guest: duelUserInfo(d.guest_id),
+    host:  { username: d.host_name, avatar: d.host_avatar, discord_id: d.host_did },
+    guest: d.guest_did ? { username: d.guest_name, avatar: d.guest_avatar, discord_id: d.guest_did } : null,
     total: qIds.length,
     myIdx: myAns.length, oppIdx: oppAns.length,
     myScore:  isHost ? d.host_score : d.guest_score,
@@ -2791,17 +2800,18 @@ app.get('/api/duels/:code/state', requireAuth, (req, res) => {
     myAnswers: myAns,
     question,
     timeMs: DUEL_TIME_MS,
-    winnerId: d.winner_id,
+    result,
     coins: { win: DUEL_COINS_WIN, loss: DUEL_COINS_LOSS, draw: DUEL_COINS_DRAW },
   });
 });
 
-app.post('/api/duels/:code/answer', requireAuth, (req, res) => {
-  const me = getUser(req);
+app.post('/api/duels/:code/answer', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const d = duelByCode(req.params.code);
   if (!d || d.status !== 'active') return res.status(400).json({ error: 'Duell nicht aktiv' });
-  if (d.host_id !== me.id && d.guest_id !== me.id) return res.status(403).json({ error: 'Kein Zugriff' });
-  const isHost = d.host_id === me.id;
+  if (d.host_did !== ident.id && d.guest_did !== ident.id) return res.status(403).json({ error: 'Kein Zugriff' });
+  const isHost = d.host_did === ident.id;
   const ansCol = isHost ? 'host_answers' : 'guest_answers';
   const scCol  = isHost ? 'host_score'   : 'guest_score';
   const myAns  = JSON.parse(isHost ? d.host_answers : d.guest_answers);

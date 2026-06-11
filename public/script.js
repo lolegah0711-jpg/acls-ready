@@ -142,7 +142,7 @@ const PAGES = {
   faq:          { title: 'FAQ',                    sub: 'Häufig gestellte Fragen verwalten' },
   auditlog:     { title: 'Audit-Log',             sub: 'Wer hat was wann geändert' },
   turnier:      { title: 'Wochenturnier',         sub: 'Jede Woche ein anderes Spiel – Coins für die Top 3' },
-  duell:        { title: 'Quiz-Duell',            sub: '1-gegen-1 live gegen deine Kollegen' },
+  duell:        { title: 'Quiz-Duell',            sub: '1-gegen-1 live · Mitarbeiter & Bürger' },
   shop:         { title: 'Coin-Shop',             sub: 'ACLS-Coins verdienen & ausgeben' },
 };
 
@@ -304,6 +304,7 @@ const _voterPageMeta = {
   team:      { title: 'Unser Team',       sub: 'ACLS Mitarbeiter & Organigramm' },
   apply:     { title: 'Bewerben',         sub: 'Bewirb dich beim ACLS Automobil-Club' },
   faq:       { title: 'FAQ',              sub: 'Häufig gestellte Fragen' },
+  duel:      { title: 'Quiz-Duell',       sub: '1-gegen-1 live · Sieger bekommt 150 Coins' },
 };
 
 async function renderVoterScreen() {
@@ -338,6 +339,7 @@ async function renderVoterScreen() {
         <a class="nav-item"        id="vnTeam"      onclick="voterTab('team')"     style="cursor:pointer"><i class="fas fa-users"></i><span>Unser Team</span></a>
         <a class="nav-item"        id="vnApply"     onclick="voterTab('apply')"    style="cursor:pointer"><i class="fas fa-file-alt" style="color:#a78bfa"></i><span style="color:#a78bfa">Bewerben</span></a>
         <a class="nav-item"        id="vnFaq"       onclick="voterTab('faq')"      style="cursor:pointer"><i class="fas fa-question-circle" style="color:#38bdf8"></i><span style="color:#38bdf8">FAQ</span></a>
+        <a class="nav-item"        id="vnDuel"      onclick="voterTab('duel')"     style="cursor:pointer"><i class="fas fa-bolt" style="color:#f472b6"></i><span style="color:#f472b6">Quiz-Duell</span></a>
 
         <!-- Minispiele -->
         <div id="vGamesToggle" onclick="(function(){var l=document.getElementById('vGamesList'),o=l.style.maxHeight!=='0px';l.style.maxHeight=o?'0px':'900px';document.getElementById('vGamesChev').style.transform=o?'rotate(-90deg)':'';})()" style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
@@ -498,6 +500,9 @@ async function renderVoterScreen() {
           <div id="voterFaqContent"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
         </div>
 
+        <!-- Quiz-Duell -->
+        <div id="duelSection" style="display:none"></div>
+
       </main>
     </div><!-- /main-wrapper -->
   </div>`;
@@ -507,6 +512,7 @@ async function renderVoterScreen() {
   loadVoterTeam();
   loadVoterApply();
   loadPollWidget('vPollWidget');
+  connectSSE();
 }
 
 async function loadVoterTeam() {
@@ -740,7 +746,7 @@ async function loadChallengesWidget(containerId) {
 }
 
 window.voterTab = tab => {
-  ['price','vote','complaint','market','team','apply','faq'].forEach(t => {
+  ['price','vote','complaint','market','team','apply','faq','duel'].forEach(t => {
     const sec = document.getElementById(t + 'Section');
     if (sec) sec.style.display = t === tab ? '' : 'none';
     const nav = document.getElementById('vn' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -753,6 +759,10 @@ window.voterTab = tab => {
     if (tEl) tEl.textContent = p.title;
     if (sEl) sEl.textContent = p.sub;
   }
+  // Quiz-Duell rendert in eigene Section (statt ins Staff-pageContent)
+  window._duelActive = tab === 'duel';
+  if (tab !== 'duel' && window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
+  if (tab === 'duel') { window._duelContainer = 'duelSection'; duell(); }
   if (tab === 'market')    loadVoterMarket();
   if (tab === 'price')     { loadVoterPrices(); loadPollWidget('vPollWidget'); }
   if (tab === 'complaint') loadMyComplaints();
@@ -1353,7 +1363,7 @@ function connectSSE() {
     _sseSource.addEventListener('duel', e => {
       try {
         const d = JSON.parse(e.data);
-        if (_activePage === 'duell') handleDuelEvent(d);
+        if (duelVisible()) handleDuelEvent(d);
       } catch {}
     });
     _sseSource.onerror = () => { _sseSource.close(); _sseSource = null; setTimeout(connectSSE, 30_000); };
@@ -4947,6 +4957,9 @@ async function turnier() {
 //  QUIZ-DUELL (1v1 live)
 // ════════════════════════════════════════════════════════════════
 let _duel = { code: null, answering: false, t0: 0, viewingResult: false };
+// Duell rendert wahlweise ins Staff-SPA (pageContent) oder in die Voter-Section
+const duelEl      = () => document.getElementById(window._duelContainer || 'pageContent');
+const duelVisible = () => _activePage === 'duell' || !!window._duelActive;
 
 async function duell() {
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
@@ -4956,12 +4969,12 @@ async function duell() {
   if (data.myDuel) { duelArena(data.myDuel.code); return; }
   _duel.code = null;
 
-  $('pageContent').innerHTML = `
+  duelEl().innerHTML = `
     <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem">
       <div class="card" style="flex:2;min-width:260px;padding:1.4rem;display:flex;align-items:center;gap:1.2rem;background:linear-gradient(135deg,rgba(244,114,182,.10),rgba(244,114,182,.02));border-color:rgba(244,114,182,.35)">
         <div style="font-size:2.6rem">⚔️</div>
         <div style="flex:1">
-          <div style="font-size:1.2rem;font-weight:800">Fordere einen Kollegen heraus!</div>
+          <div style="font-size:1.2rem;font-weight:800">Fordere jemanden heraus!</div>
           <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">8 Fragen · 15 Sekunden pro Frage · Schnelligkeit gibt Bonuspunkte<br>Sieger: <b style="color:#fbbf24">+150 🪙</b> · Verlierer: +25 🪙</div>
         </div>
         <button class="btn btn-primary" onclick="duelCreate()"><i class="fas fa-bolt"></i> Duell erstellen</button>
@@ -5044,16 +5057,16 @@ async function duelArena(code) {
 
   // ── Wartend auf Gegner ──
   if (s.status === 'waiting') {
-    $('pageContent').innerHTML = `
+    duelEl().innerHTML = `
       <div class="card" style="max-width:480px;margin:2rem auto;padding:2.2rem;text-align:center">
         <div style="font-size:2.6rem;margin-bottom:.6rem">⏳</div>
         <div style="font-size:1.15rem;font-weight:800;margin-bottom:.3rem">Warte auf einen Gegner…</div>
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1.2rem">Dein Duell ist für alle Mitarbeiter sichtbar.<br>Sobald jemand annimmt, geht es automatisch los!</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1.2rem">Dein Duell ist für alle Mitarbeiter & Bürger sichtbar.<br>Sobald jemand annimmt, geht es automatisch los!</div>
         <div class="loader" style="margin:0 auto 1.2rem"></div>
         <button class="btn btn-ghost btn-sm" onclick="duelCancel()"><i class="fas fa-times"></i> Duell abbrechen</button>
       </div>`;
     // Fallback-Polling falls SSE hängt
-    window._duelTimer = setInterval(() => { if (_activePage === 'duell') duelArena(code); }, 5000);
+    window._duelTimer = setInterval(() => { if (duelVisible()) duelArena(code); }, 5000);
     return;
   }
 
@@ -5068,10 +5081,9 @@ async function duelArena(code) {
   if (s.status === 'done') {
     _duel.code = null;
     _duel.viewingResult = true;
-    const me = s.isHost ? s.host : s.guest;
-    const won  = s.winnerId && me && s.winnerId === me.id;
-    const draw = !s.winnerId;
-    $('pageContent').innerHTML = header + `
+    const won  = s.result === 'win';
+    const draw = s.result === 'draw';
+    duelEl().innerHTML = header + `
       <div class="card" style="max-width:480px;margin:1.5rem auto;padding:2.2rem;text-align:center">
         <div style="font-size:3rem;margin-bottom:.5rem">${draw ? '🤝' : won ? '🏆' : '😢'}</div>
         <div style="font-size:1.4rem;font-weight:800;color:${draw ? 'var(--text)' : won ? '#4ade80' : '#ef4444'}">${draw ? 'Unentschieden!' : won ? 'Gewonnen!' : 'Verloren!'}</div>
@@ -5085,7 +5097,7 @@ async function duelArena(code) {
 
   // ── Aktiv: alle eigenen Fragen beantwortet → auf Gegner warten ──
   if (!s.question) {
-    $('pageContent').innerHTML = header + `
+    duelEl().innerHTML = header + `
       <div class="card" style="max-width:480px;margin:1.5rem auto;padding:2.2rem;text-align:center">
         <div style="font-size:2.4rem;margin-bottom:.6rem">✅</div>
         <div style="font-weight:800;font-size:1.05rem;margin-bottom:.3rem">Du bist fertig!</div>
@@ -5093,14 +5105,14 @@ async function duelArena(code) {
         <div class="loader" style="margin:1.2rem auto 0"></div>
       </div>`;
     // Fallback-Polling falls SSE hängt
-    window._duelTimer = setInterval(() => { if (_activePage === 'duell') duelArena(code); }, 5000);
+    window._duelTimer = setInterval(() => { if (duelVisible()) duelArena(code); }, 5000);
     return;
   }
 
   // ── Aktiv: Frage anzeigen ──
   _duel.t0 = Date.now();
   _duel.answering = false;
-  $('pageContent').innerHTML = header + `
+  duelEl().innerHTML = header + `
     <div class="card" style="max-width:640px;margin:0 auto;padding:1.6rem">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem">
         <span style="font-size:.75rem;font-weight:700;color:var(--muted)">Frage ${s.question.idx + 1} von ${s.total}</span>
@@ -5144,7 +5156,7 @@ window.duelAnswer = async answer => {
     if (mine) { mine.style.borderColor = '#ef4444'; mine.style.background = 'rgba(239,68,68,.12)'; }
   }
   if (r.correct) toast(`Richtig! +${r.points} Punkte`, 'ok');
-  setTimeout(() => { if (_activePage === 'duell' && _duel.code) duelArena(_duel.code); }, 1100);
+  setTimeout(() => { if (duelVisible() && _duel.code) duelArena(_duel.code); }, 1100);
 };
 
 // ── Start ─────────────────────────────────────────────────────────

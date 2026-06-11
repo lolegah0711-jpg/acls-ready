@@ -428,20 +428,55 @@ function initDb() {
     CREATE TABLE IF NOT EXISTS quiz_duels (
       id               INTEGER PRIMARY KEY AUTOINCREMENT,
       code             TEXT UNIQUE NOT NULL,
-      host_id          INTEGER NOT NULL REFERENCES users(id),
-      guest_id         INTEGER REFERENCES users(id),
+      host_did         TEXT NOT NULL,
+      host_name        TEXT,
+      host_avatar      TEXT,
+      guest_did        TEXT,
+      guest_name       TEXT,
+      guest_avatar     TEXT,
       question_ids     TEXT NOT NULL,
       status           TEXT DEFAULT 'waiting',
       host_answers     TEXT DEFAULT '[]',
       guest_answers    TEXT DEFAULT '[]',
       host_score       INTEGER DEFAULT 0,
       guest_score      INTEGER DEFAULT 0,
-      winner_id        INTEGER,
+      winner_did       TEXT,
       started_at       DATETIME,
       finished_at      DATETIME,
       created_at       DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // Quiz-Duell: altes Schema (users-IDs) auf Discord-IDs umstellen, damit
+  // auch Bürger ohne users-Eintrag duellieren können. Alte Duelle sind
+  // kurzlebig → Tabelle wird einfach neu angelegt.
+  {
+    const duelCols = db.prepare("PRAGMA table_info(quiz_duels)").all().map(c => c.name);
+    if (duelCols.includes('host_id')) {
+      db.exec('DROP TABLE quiz_duels');
+      db.exec(`CREATE TABLE quiz_duels (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        code             TEXT UNIQUE NOT NULL,
+        host_did         TEXT NOT NULL,
+        host_name        TEXT,
+        host_avatar      TEXT,
+        guest_did        TEXT,
+        guest_name       TEXT,
+        guest_avatar     TEXT,
+        question_ids     TEXT NOT NULL,
+        status           TEXT DEFAULT 'waiting',
+        host_answers     TEXT DEFAULT '[]',
+        guest_answers    TEXT DEFAULT '[]',
+        host_score       INTEGER DEFAULT 0,
+        guest_score      INTEGER DEFAULT 0,
+        winner_did       TEXT,
+        started_at       DATETIME,
+        finished_at      DATETIME,
+        created_at       DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+      console.log('[Migration] quiz_duels auf Discord-IDs umgestellt');
+    }
+  }
 
   // Migrations — Spalten nachrüsten falls nicht vorhanden
   try { db.exec(`ALTER TABLE complaints ADD COLUMN admin_response TEXT`); } catch {}
