@@ -4925,8 +4925,12 @@ async function shop() {
 
   const itemCard = it => {
     const isFrame = it.type === 'frame';
+    const myAv = avatarUrl(currentUser);
+    // Rahmen-Vorschau auf dem eigenen Avatar
     const preview = isFrame
-      ? `<div style="width:46px;height:46px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;${it.color === 'rainbow' ? 'animation:rainbowGlow 3s linear infinite;box-shadow:0 0 10px 2px #f97316' : `box-shadow:0 0 10px 2px ${it.color}`}">${initials(currentUser.username)}</div>`
+      ? (myAv
+          ? `<img src="${myAv}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;${frameGlow(it.id)}">`
+          : `<div style="width:52px;height:52px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;${frameGlow(it.id)}">${initials(currentUser.username)}</div>`)
       : `<div style="font-size:1.6rem">${it.name.split(' ')[0]}</div>`;
     let btn;
     if (it.equipped)
@@ -4935,11 +4939,16 @@ async function shop() {
       btn = `<button class="btn btn-primary btn-sm" onclick="shopEquip('${it.id}')">Ausrüsten</button>`;
     else
       btn = `<button class="btn btn-sm" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);color:#fbbf24" onclick="shopBuy('${it.id}', ${it.price})">🪙 ${it.price.toLocaleString('de-DE')}</button>`;
+    // Live-Vorschau am Topbar-Avatar (nur für noch nicht ausgerüstete Rahmen)
+    const previewBtn = isFrame && !it.equipped
+      ? `<button class="btn btn-ghost btn-sm" style="font-size:.68rem;padding:.25rem .6rem" onclick="framePreview('${it.id}')"><i class="fas fa-eye"></i> Vorschau</button>`
+      : '';
     return `<div class="card" style="display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:1rem;text-align:center">
       ${preview}
       <div style="font-weight:700;font-size:.85rem">${it.name}</div>
       <div style="font-size:.7rem;color:var(--muted)">${it.desc || ''}</div>
       ${btn}
+      ${previewBtn}
     </div>`;
   };
 
@@ -5015,6 +5024,29 @@ async function shop() {
         </div>`).join('') : '<div style="padding:.8rem 0;color:var(--muted);font-size:.8rem">Noch keine Transaktionen – spiel ein Minispiel!</div>'}
     </div>`;
 }
+
+// Rahmen 6 Sekunden live am Topbar-Avatar testen
+let _framePreviewTimer = null;
+window.framePreview = frameId => {
+  const av = $('uAvatarBox');
+  if (!av) return;
+  clearTimeout(_framePreviewTimer);
+  const css = frameGlow(frameId);
+  av.style.boxShadow = '';
+  av.style.animation = '';
+  // frameGlow liefert "box-shadow:…;animation:…;" → als Inline-Styles anwenden
+  css.split(';').filter(Boolean).forEach(rule => {
+    const [prop, val] = rule.split(/:(.+)/);
+    if (prop === 'box-shadow') av.style.boxShadow = val;
+    if (prop === 'animation')  av.style.animation = val;
+  });
+  toast('Vorschau aktiv – 6 Sekunden ⏱️', '');
+  _framePreviewTimer = setTimeout(() => {
+    av.style.boxShadow = '';
+    av.style.animation = '';
+    loadCoins(); // eigenen (gekauften) Rahmen wiederherstellen
+  }, 6000);
+};
 
 window.lotteryBuy = async count => {
   const r = await api('/api/lottery/buy', { method: 'POST', body: { count } });
