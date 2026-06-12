@@ -384,9 +384,10 @@ app.get('/auth/callback', async (req, res) => {
     // Check whitelist
     const dbUser = db.prepare('SELECT * FROM users WHERE discord_id = ? AND is_active = 1').get(dUser.id);
     if (!dbUser) {
-      // Non-whitelisted user → voter-only session
+      // Non-whitelisted user → voter-only session (Wunschname überlebt den Re-Login)
+      const custom = db.prepare('SELECT username FROM voter_names WHERE discord_id = ?').get(dUser.id)?.username;
       req.session.voterDiscordId  = dUser.id;
-      req.session.voterUsername   = dUser.username;
+      req.session.voterUsername   = custom || dUser.username;
       req.session.voterAvatar     = dUser.avatar;
       return res.redirect('/?mode=vote');
     }
@@ -405,6 +406,11 @@ app.get('/auth/callback', async (req, res) => {
           avatarHash  = member.user?.avatar ?? avatarHash;
         }
       } catch (_) { /* Fallback auf globalen Namen */ }
+    }
+    // Bürger mit users-Eintrag: selbst gewählter Name hat Vorrang vor Discord-Sync
+    if (dbUser.role === 'citizen') {
+      const custom = db.prepare('SELECT username FROM voter_names WHERE discord_id = ?').get(dUser.id)?.username;
+      if (custom) displayName = custom;
     }
     db.prepare('UPDATE users SET username = ?, avatar = ? WHERE id = ?').run(displayName, avatarHash, dbUser.id);
 
@@ -998,12 +1004,38 @@ app.get('/api/users/public', (req, res) => {
 app.post('/api/sync-member', (req, res) => {
   const { bot_secret, discord_id, username, avatar } = req.body;
   if (!secretEqual(bot_secret, BOT_API_SECRET)) return res.status(403).end();
-  const user = db.prepare('SELECT id FROM users WHERE discord_id = ? AND is_active = 1').get(discord_id);
+  const user = db.prepare('SELECT id, role FROM users WHERE discord_id = ? AND is_active = 1').get(discord_id);
   if (user) {
-    if (username) db.prepare('UPDATE users SET username = ? WHERE id = ?').run(username, user.id);
+    // Bürger mit Wunschnamen: Discord-Sync überschreibt den Namen nicht
+    const hasCustom = user.role === 'citizen'
+      && db.prepare('SELECT 1 FROM voter_names WHERE discord_id = ?').get(discord_id);
+    if (username && !hasCustom) db.prepare('UPDATE users SET username = ? WHERE id = ?').run(username, user.id);
     if (avatar !== undefined) db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(avatar, user.id);
   }
   res.json({ ok: true });
+});
+
+// ── Bürger: eigenen Anzeigenamen ändern ─────────────────────────
+app.post('/api/voter/name', (req, res) => {
+  const u = getUser(req);
+  const did = u ? u.discord_id : req.session?.voterDiscordId;
+  if (!did) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (u && u.role !== 'citizen')
+    return res.status(403).json({ error: 'Mitarbeiter-Namen werden über Discord synchronisiert' });
+  if (rateLimit(`rename:${did}`, 3, 3600_000))
+    return res.status(429).json({ error: 'Maximal 3 Namensänderungen pro Stunde' });
+  const name = String(req.body.username || '').trim().replace(/[\u0000-\u001f\u007f]/g, '');
+  if (name.length < 2 || name.length > 32)
+    return res.status(400).json({ error: 'Name muss 2–32 Zeichen lang sein' });
+  db.prepare(`INSERT INTO voter_names (discord_id, username) VALUES (?, ?)
+    ON CONFLICT(discord_id) DO UPDATE SET username = excluded.username, updated_at = CURRENT_TIMESTAMP`).run(did, name);
+  if (u) db.prepare('UPDATE users SET username = ? WHERE id = ?').run(name, u.id);
+  if (req.session.voterDiscordId) req.session.voterUsername = name;
+  // Anzeigename überall nachziehen, wo er denormalisiert gespeichert ist
+  db.prepare('UPDATE coin_balances SET username = ? WHERE discord_id = ?').run(name, did);
+  db.prepare('UPDATE visitor_game_scores SET username = ? WHERE discord_id = ?').run(name, did);
+  auditLog(req, 'voter_rename', name);
+  res.json({ ok: true, username: name });
 });
 
 // Admin: alle Guild-Mitglieder manuell synchronisieren
@@ -1334,41 +1366,60 @@ app.delete('/api/friends/:id', requireAuth, (req, res) => {
 
 // ════════════════════════════════════════════════════════════════
 //  GÄSTEBUCH — Kommentare auf Mitarbeiter-Profilen
+//  Schreiben dürfen Mitarbeiter UND Bürger (auch ohne users-Eintrag)
 // ════════════════════════════════════════════════════════════════
 const GUESTBOOK_MAX_LEN = 300;
 
-app.get('/api/guestbook/:userId', requireAuth, (req, res) => {
+// Identität: Mitarbeiter/Citizen (users-Eintrag) oder reine Voter-Session
+function guestbookIdent(req) {
+  const u = getUser(req);
+  if (u) return { user: u, did: u.discord_id, name: u.username, avatar: u.avatar || null };
+  if (req.session?.voterDiscordId)
+    return { user: null, did: req.session.voterDiscordId, name: req.session.voterUsername || 'Bürger', avatar: req.session.voterAvatar || null };
+  return null;
+}
+
+app.get('/api/guestbook/:userId', (req, res) => {
+  if (!guestbookIdent(req)) return res.status(401).json({ error: 'Nicht angemeldet' });
   const rows = db.prepare(`
     SELECT g.id, g.message, g.created_at, g.author_id,
-           u.username AS author_name, u.avatar AS author_avatar, u.discord_id AS author_discord_id
-    FROM guestbook g JOIN users u ON u.id = g.author_id
+           COALESCE(u.username, g.author_name, 'Bürger') AS author_name,
+           COALESCE(u.avatar, g.author_avatar)           AS author_avatar,
+           COALESCE(u.discord_id, g.author_discord_id)   AS author_discord_id
+    FROM guestbook g LEFT JOIN users u ON u.id = g.author_id
     WHERE g.profile_user_id = ?
     ORDER BY g.created_at DESC LIMIT 50
   `).all(+req.params.userId);
   res.json(rows);
 });
 
-app.post('/api/guestbook/:userId', requireAuth, (req, res) => {
-  const u = getUser(req);
-  if (rateLimit(`guestbook:${u.id}`, 5, 5 * 60_000))
+app.post('/api/guestbook/:userId', (req, res) => {
+  const ident = guestbookIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`guestbook:${ident.did}`, 5, 5 * 60_000))
     return res.status(429).json({ error: 'Bitte warte etwas zwischen den Einträgen' });
   const target = db.prepare('SELECT id FROM users WHERE id = ? AND is_active = 1').get(+req.params.userId);
   if (!target) return res.status(404).json({ error: 'Profil nicht gefunden' });
   const message = String(req.body.message || '').trim();
   if (message.length < 2) return res.status(400).json({ error: 'Nachricht zu kurz' });
   if (message.length > GUESTBOOK_MAX_LEN) return res.status(400).json({ error: `Maximal ${GUESTBOOK_MAX_LEN} Zeichen` });
-  db.prepare('INSERT INTO guestbook (profile_user_id, author_id, message) VALUES (?, ?, ?)')
-    .run(target.id, u.id, message);
+  db.prepare(`INSERT INTO guestbook (profile_user_id, author_id, author_discord_id, author_name, author_avatar, message)
+    VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(target.id, ident.user?.id || null, ident.did, ident.name, ident.avatar, message);
   res.json({ ok: true });
 });
 
-// Löschen darf: Autor, Profil-Inhaber oder Admin
-app.delete('/api/guestbook/:id', requireAuth, (req, res) => {
-  const u = getUser(req);
+// Löschen darf: Autor (Mitarbeiter oder Bürger), Profil-Inhaber oder Admin
+app.delete('/api/guestbook/:id', (req, res) => {
+  const ident = guestbookIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const entry = db.prepare('SELECT * FROM guestbook WHERE id = ?').get(+req.params.id);
   if (!entry) return res.status(404).json({ error: 'Nicht gefunden' });
-  if (entry.author_id !== u.id && entry.profile_user_id !== u.id && u.role !== 'admin')
-    return res.status(403).json({ error: 'Kein Zugriff' });
+  const isAuthor  = (entry.author_id && ident.user && entry.author_id === ident.user.id)
+                 || (entry.author_discord_id && entry.author_discord_id === ident.did);
+  const isOwner   = ident.user && entry.profile_user_id === ident.user.id;
+  const isAdminU  = ident.user?.role === 'admin';
+  if (!isAuthor && !isOwner && !isAdminU) return res.status(403).json({ error: 'Kein Zugriff' });
   db.prepare('DELETE FROM guestbook WHERE id = ?').run(entry.id);
   res.json({ ok: true });
 });

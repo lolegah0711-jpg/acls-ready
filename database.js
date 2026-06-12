@@ -503,11 +503,20 @@ function initDb() {
     );
 
     CREATE TABLE IF NOT EXISTS guestbook (
-      id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      profile_user_id INTEGER NOT NULL REFERENCES users(id),
-      author_id       INTEGER NOT NULL REFERENCES users(id),
-      message         TEXT NOT NULL,
-      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_user_id   INTEGER NOT NULL REFERENCES users(id),
+      author_id         INTEGER REFERENCES users(id),
+      author_discord_id TEXT,
+      author_name       TEXT,
+      author_avatar     TEXT,
+      message           TEXT NOT NULL,
+      created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS voter_names (
+      discord_id TEXT PRIMARY KEY,
+      username   TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS quiz_duels (
@@ -577,6 +586,30 @@ function initDb() {
   try { db.exec(`ALTER TABLE users ADD COLUMN ic_weekly_goal REAL DEFAULT 0`); } catch {}
   try { db.exec(`ALTER TABLE coin_balances ADD COLUMN streak INTEGER DEFAULT 0`); } catch {}
   try { db.exec(`ALTER TABLE coin_balances ADD COLUMN best_streak INTEGER DEFAULT 0`); } catch {}
+
+  // Gästebuch: auch Bürger ohne users-Eintrag dürfen schreiben → author_id nullable + Voter-Felder
+  {
+    const gbCols = db.prepare("PRAGMA table_info(guestbook)").all();
+    if (gbCols.length && gbCols.find(c => c.name === 'author_id')?.notnull) {
+      db.exec(`
+        ALTER TABLE guestbook RENAME TO guestbook_old;
+        CREATE TABLE guestbook (
+          id                INTEGER PRIMARY KEY AUTOINCREMENT,
+          profile_user_id   INTEGER NOT NULL REFERENCES users(id),
+          author_id         INTEGER REFERENCES users(id),
+          author_discord_id TEXT,
+          author_name       TEXT,
+          author_avatar     TEXT,
+          message           TEXT NOT NULL,
+          created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO guestbook (id, profile_user_id, author_id, message, created_at)
+          SELECT id, profile_user_id, author_id, message, created_at FROM guestbook_old;
+        DROP TABLE guestbook_old;
+      `);
+      console.log('[Migration] guestbook: Bürger-Autoren erlaubt');
+    }
+  }
 
   // Seed admin users from env vars on first start (Railway: set ADMIN_DISCORD_IDS and ADMIN_USERNAMES)
   const adminIds  = (process.env.ADMIN_DISCORD_IDS  || '').split(',').map(s => s.trim()).filter(Boolean);

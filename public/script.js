@@ -415,7 +415,7 @@ async function renderVoterScreen() {
             ? `<img class="u-avatar" src="${avUrl}" style="object-fit:cover" onerror="this.outerHTML='<div class=u-avatar>${(currentUser.username||'?')[0].toUpperCase()}</div>'">`
             : `<div class="u-avatar">${(currentUser.username||'?')[0].toUpperCase()}</div>`}
           <div class="u-info">
-            <div class="u-name">${currentUser.username}</div>
+            <div class="u-name" id="vUserName">${esc(currentUser.username)} <i class="fas fa-pen" onclick="openVoterRename()" title="Namen ändern" style="font-size:.62rem;color:var(--muted);cursor:pointer;margin-left:.2rem"></i></div>
             <div class="u-role">Bürger</div>
           </div>
         </div>
@@ -547,12 +547,15 @@ async function loadVoterTeam() {
     const rn = isL?'Rang 12':u.role==='admin'?'Administration':u.role==='ausbilder'?'Ausbilder':'Mitarbeiter';
     const rb = isL?'rgba(201,162,39,.18)':u.role==='admin'?'rgba(249,115,22,.15)':u.role==='ausbilder'?'rgba(96,165,250,.12)':'rgba(255,255,255,.06)';
     const bc = isL?'rgba(201,162,39,.45)':u.role==='admin'?'rgba(249,115,22,.3)':u.role==='ausbilder'?'rgba(96,165,250,.2)':'var(--border)';
-    return `<div style="background:var(--surface);border:1px solid ${bc};border-radius:var(--r);padding:1rem .85rem;display:flex;flex-direction:column;align-items:center;gap:.5rem;text-align:center${isL?';box-shadow:0 0 14px rgba(201,162,39,.15)':''}">
+    window._gbNames = window._gbNames || {};
+    window._gbNames[u.id] = u.username;
+    return `<div onclick="openGuestbookModal(${u.id})" title="Gästebuch öffnen" style="cursor:pointer;background:var(--surface);border:1px solid ${bc};border-radius:var(--r);padding:1rem .85rem;display:flex;flex-direction:column;align-items:center;gap:.5rem;text-align:center;transition:transform .12s${isL?';box-shadow:0 0 14px rgba(201,162,39,.15)':''}" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
       ${isL?'<i class="fas fa-crown" style="color:#c9a227;font-size:.8rem"></i>':''}
       ${av(u, isL)}
       <div style="font-weight:700;font-size:.9rem;${nameColorCss(u.equipped_namecolor)}">${decoEmoji(u.equipped_deco)}${esc(u.username)}</div>
       ${titleLine(u.equipped_title)}
       <span style="font-size:.68rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;background:${rb};color:${rc}">${rn}</span>
+      <span style="font-size:.62rem;color:var(--muted)"><i class="fas fa-book-open" style="margin-right:.25rem"></i>Gästebuch</span>
     </div>`;
   }
   function tier(label, icon, color, members, isL = false) {
@@ -570,6 +573,95 @@ async function loadVoterTeam() {
     + tier('Ausbilder','fa-graduation-cap','#60a5fa',ausbilder)
     + tier('Mitarbeiter','fa-users','var(--muted)',mitarbeiter);
 }
+
+// ── Gästebuch-Modal („Unser Team" – für Bürger & Mitarbeiter) ────
+window.openGuestbookModal = async userId => {
+  const name = window._gbNames?.[userId] || 'Mitarbeiter';
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title">📖 Gästebuch – ${esc(name)}</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:flex;gap:.5rem;margin:.6rem 0 1rem;align-items:flex-start">
+      <textarea id="gbModalInput" maxlength="300" rows="2" placeholder="Hinterlasse ${esc(name)} eine Nachricht…"
+        class="form-control" style="flex:1;resize:vertical;font-size:.85rem"></textarea>
+      <button class="btn btn-primary btn-sm" onclick="gbModalPost(${userId})">Senden</button>
+    </div>
+    <div id="gbModalList" style="max-height:320px;overflow-y:auto"><div style="color:var(--muted);font-size:.8rem;padding:.5rem 0">Wird geladen…</div></div>`);
+  loadGuestbookModal(userId);
+};
+
+async function loadGuestbookModal(userId) {
+  const el = $('gbModalList');
+  if (!el) return;
+  try {
+    const res = await fetch('/api/guestbook/' + userId);
+    if (!res.ok) { el.innerHTML = '<div style="color:var(--muted);font-size:.8rem">Kein Zugriff.</div>'; return; }
+    const entries = await res.json();
+    if (!entries.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.8rem;padding:.5rem 0">Noch keine Einträge – sei der Erste! ✍️</div>'; return; }
+    el.innerHTML = entries.map(e => {
+      const av = e.author_avatar && e.author_discord_id
+        ? `<img src="https://cdn.discordapp.com/avatars/${e.author_discord_id}/${e.author_avatar}.png" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">`
+        : `<div style="width:28px;height:28px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;flex-shrink:0">${esc((e.author_name||'?').slice(0,2).toUpperCase())}</div>`;
+      const mine    = currentUser?.discord_id && e.author_discord_id === currentUser.discord_id;
+      const isOwner = currentUser?.id && currentUser.id === +userId;
+      const canDel  = mine || isOwner || currentUser?.role === 'admin';
+      return `<div style="display:flex;gap:.6rem;padding:.55rem 0;border-bottom:1px solid var(--border)">
+        ${av}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:.5rem">
+            <span style="font-weight:700;font-size:.8rem">${esc(e.author_name)}</span>
+            <span style="font-size:.66rem;color:var(--muted)">${ago(e.created_at)}</span>
+            ${canDel ? `<button onclick="gbModalDelete(${e.id}, ${userId})" title="Löschen" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:.72rem"><i class="fas fa-trash"></i></button>` : ''}
+          </div>
+          <div style="font-size:.82rem;margin-top:.1rem;white-space:pre-wrap;word-break:break-word">${esc(e.message)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch { el.innerHTML = '<div style="color:#ef4444;font-size:.8rem">Fehler beim Laden.</div>'; }
+}
+
+window.gbModalPost = async userId => {
+  const input = $('gbModalInput');
+  const message = input?.value.trim();
+  if (!message || message.length < 2) { toast('Bitte eine Nachricht eingeben (min. 2 Zeichen)', 'err'); return; }
+  const r = await api('/api/guestbook/' + userId, { method: 'POST', body: { message } });
+  if (r) { input.value = ''; toast('Eintrag gespeichert! ✍️', 'ok'); loadGuestbookModal(userId); }
+};
+
+window.gbModalDelete = async (entryId, userId) => {
+  const r = await api('/api/guestbook/' + entryId, { method: 'DELETE' });
+  if (r) { toast('Eintrag gelöscht', ''); loadGuestbookModal(userId); }
+};
+
+// ── Bürger: Namen ändern ─────────────────────────────────────────
+window.openVoterRename = () => {
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-pen" style="color:var(--orange);margin-right:.4rem"></i>Namen ändern</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="font-size:.78rem;color:var(--muted);margin:.4rem 0 .8rem">Dein Anzeigename auf der Website (Abstimmung, Ranglisten, Gästebuch). Max. 3 Änderungen pro Stunde.</div>
+    <input class="form-control" id="voterNameInput" maxlength="32" value="${esc(currentUser?.username || '')}" style="margin-bottom:.8rem">
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveVoterName()">Speichern</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+    </div>`);
+  setTimeout(() => $('voterNameInput')?.focus(), 50);
+};
+
+window.saveVoterName = async () => {
+  const username = $('voterNameInput')?.value.trim();
+  if (!username || username.length < 2) { toast('Name muss mindestens 2 Zeichen haben', 'err'); return; }
+  const r = await api('/api/voter/name', { method: 'POST', body: { username } });
+  if (r) {
+    currentUser.username = r.username;
+    const nameEl = document.getElementById('vUserName');
+    if (nameEl) nameEl.childNodes[0].textContent = r.username + ' ';
+    closeModal();
+    toast(`Name geändert: ${r.username} ✓`, 'ok');
+  }
+};
 
 async function loadVoterApply() {
   const el = document.getElementById('voterApplyContent');
@@ -3473,7 +3565,7 @@ async function organigramm() {
     const roleBg    = isLeitung ? 'rgba(201,162,39,.18)' : u.role === 'admin' ? 'rgba(249,115,22,.15)' : u.role === 'ausbilder' ? 'rgba(96,165,250,.12)' : 'rgba(255,255,255,.06)';
     const borderCol = isLeitung ? 'rgba(201,162,39,.5)' : u.role === 'admin' ? 'rgba(249,115,22,.35)' : u.role === 'ausbilder' ? 'rgba(96,165,250,.25)' : 'var(--border)';
     const crownIcon = isLeitung ? '<i class="fas fa-crown" style="color:#c9a227;font-size:.85rem"></i>' : '';
-    return `<div style="background:var(--surface);border:1px solid ${borderCol};border-radius:var(--r);padding:1.25rem 1rem;display:flex;flex-direction:column;align-items:center;gap:.55rem;text-align:center;transition:transform .12s,box-shadow .12s${isLeitung?';box-shadow:0 0 18px rgba(201,162,39,.18)':''}" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px ${isLeitung?'rgba(201,162,39,.25)':'rgba(0,0,0,.25)'}'" onmouseout="this.style.transform='';this.style.boxShadow='${isLeitung?'0 0 18px rgba(201,162,39,.18)':''}'">
+    return `<div onclick="window.open('/profil/${u.id}','_blank')" title="Profil & Gästebuch öffnen" style="cursor:pointer;background:var(--surface);border:1px solid ${borderCol};border-radius:var(--r);padding:1.25rem 1rem;display:flex;flex-direction:column;align-items:center;gap:.55rem;text-align:center;transition:transform .12s,box-shadow .12s${isLeitung?';box-shadow:0 0 18px rgba(201,162,39,.18)':''}" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px ${isLeitung?'rgba(201,162,39,.25)':'rgba(0,0,0,.25)'}'" onmouseout="this.style.transform='';this.style.boxShadow='${isLeitung?'0 0 18px rgba(201,162,39,.18)':''}'">
       ${crownIcon}
       ${av}
       <div style="font-weight:700;font-size:${isLeitung?'1rem':'.95rem'};${nameColorCss(u.equipped_namecolor)}">${decoEmoji(u.equipped_deco)}${esc(u.username)}</div>

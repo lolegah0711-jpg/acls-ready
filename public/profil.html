@@ -182,7 +182,8 @@ async function loadGuestbook() {
       const av = e.author_avatar && e.author_discord_id
         ? `<img src="https://cdn.discordapp.com/avatars/${e.author_discord_id}/${e.author_avatar}.png" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">`
         : `<div style="width:30px;height:30px;border-radius:50%;background:#333;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;flex-shrink:0">${esc((e.author_name||'?').slice(0,2).toUpperCase())}</div>`;
-      const canDelete = me?.id && (me.id === e.author_id || me.id === +id || me.role === 'admin');
+      const canDelete = (me?.id && (me.id === e.author_id || me.id === +id || me.role === 'admin'))
+        || (me?.discord_id && me.discord_id === e.author_discord_id);
       return `<div style="display:flex;gap:.65rem;padding:.65rem 0;border-bottom:1px solid #252525">
         ${av}
         <div style="flex:1;min-width:0">
