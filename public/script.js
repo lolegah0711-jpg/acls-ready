@@ -5100,7 +5100,8 @@ const GAME_NAMES_DE = {
   race: 'Autorennen', brick: 'Brick Breaker', deadzone: 'Dead Zone', snake: 'Snake',
   tetris: 'Tetris', bookofra: 'Book of Ra', skycop: 'Sky Cop', doodlejump: 'Doodle Jump',
   towerdefense: 'Tower Defense', '2048': '2048', quiz: 'Quiz Survival', idle: 'Werkstatt',
-  rpg: 'Dungeon RPG', tow: 'Abschlepp-Simulator', blackjack: 'Blackjack', wordle: 'Wort-Raten',
+  rpg: 'Dungeon RPG', tow: 'Abschlepp-Simulator', blackjack: 'Blackjack', memory: 'Memory',
+  wordle: 'Wort-Raten', // entfernt – Label bleibt für alte Transaktionen
 };
 function txLabel(reason) {
   const map = {

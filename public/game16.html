@@ -3,31 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wort-Raten – ACLS</title>
+  <title>Memory – ACLS</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     body{background:#050505;font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:14px 8px;}
-    .hud{display:flex;gap:22px;margin:34px 0 10px;font-size:13px;font-weight:700;}
+    .hud{display:flex;gap:22px;margin:34px 0 8px;font-size:13px;font-weight:700;flex-wrap:wrap;justify-content:center;}
     .hud span{color:#6b7280;font-weight:600;margin-right:5px;}
-    #board{display:grid;grid-template-rows:repeat(6,1fr);gap:6px;margin-bottom:14px;}
-    .row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;}
-    .tile{width:54px;height:54px;border:2px solid #1e1e1e;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;text-transform:uppercase;transition:transform .12s,background .25s,border-color .25s;}
-    .tile.filled{border-color:#374151;transform:scale(1.04);}
-    .tile.green{background:#16a34a;border-color:#16a34a;}
-    .tile.yellow{background:#ca8a04;border-color:#ca8a04;}
-    .tile.gray{background:#1f2937;border-color:#1f2937;color:#9ca3af;}
-    .row.shake{animation:shake .35s;}
-    @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
-    #kbd{display:flex;flex-direction:column;gap:6px;align-items:center;width:100%;max-width:520px;}
-    .krow{display:flex;gap:5px;justify-content:center;width:100%;}
-    .key{flex:1;max-width:46px;height:50px;background:#1f2937;border:none;border-radius:7px;color:#e5e7eb;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;text-transform:uppercase;transition:background .15s;}
-    .key:active{background:#374151;}
-    .key.wide{max-width:74px;flex:1.6;font-size:11px;}
-    .key.green{background:#16a34a;color:#fff;}
-    .key.yellow{background:#ca8a04;color:#fff;}
-    .key.gray{background:#111827;color:#4b5563;}
-    .msg{height:22px;font-size:13px;font-weight:700;color:#fbbf24;margin-bottom:6px;}
+    #timebar-wrap{width:100%;max-width:560px;height:7px;background:#141414;border-radius:4px;margin-bottom:14px;overflow:hidden;}
+    #timebar{height:100%;width:100%;background:#38bdf8;border-radius:4px;transition:width .25s linear,background .3s;}
+    #grid{display:grid;gap:8px;perspective:900px;}
+    .mcard{position:relative;width:var(--cs);height:var(--cs);cursor:pointer;transform-style:preserve-3d;transition:transform .35s;}
+    .mcard.flip{transform:rotateY(180deg);}
+    .mcard.done{cursor:default;}
+    .face{position:absolute;inset:0;border-radius:10px;display:flex;align-items:center;justify-content:center;backface-visibility:hidden;-webkit-backface-visibility:hidden;}
+    .back{background:linear-gradient(135deg,#0e1726,#101b30);border:1.5px solid #1f2c44;font-size:calc(var(--cs)*.34);color:#1f3a5f;}
+    .back::after{content:'AC';font-weight:800;letter-spacing:.04em;}
+    .front{background:#101b30;border:1.5px solid #38bdf8;transform:rotateY(180deg);font-size:calc(var(--cs)*.5);}
+    .mcard.done .front{background:#0a2018;border-color:#16a34a;opacity:.85;}
+    .mcard.wrong .front{border-color:#ef4444;background:#200a0a;}
+    .msg{height:22px;font-size:13px;font-weight:700;color:#fbbf24;margin-top:10px;}
     .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.88);z-index:100;}
     .ov.hidden{display:none;}
     .ov-card{background:#0c0c0c;border:1px solid #1e1e1e;border-radius:18px;padding:36px 42px;max-width:400px;width:92%;text-align:center;}
@@ -35,37 +30,38 @@
     .sub{color:#6b7280;font-size:14px;margin-bottom:20px;line-height:1.55;}
     .btn{display:inline-block;padding:11px 26px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;border:none;font-family:inherit;transition:opacity .15s;}
     .btn:hover{opacity:.85;}
-    .btn-green{background:#16a34a;color:#fff;}
+    .btn-blue{background:#0284c7;color:#fff;}
     .btn-gray{background:#1f2937;color:#d1d5db;border:1px solid #374151;}
     .lb-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #141414;font-size:13px;}
     .lb-rank{width:24px;text-align:center;font-weight:700;}
     .lb-av{width:26px;height:26px;border-radius:50%;background:#1f2937;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;overflow:hidden;flex-shrink:0;}
     .lb-av img{width:100%;height:100%;object-fit:cover;}
-    .lb-name{flex:1;font-weight:600;text-align:left;}.lb-score{font-weight:700;color:#4ade80;}
-    @media(max-width:420px){.tile{width:44px;height:44px;font-size:20px;}.key{height:46px;}}
+    .lb-name{flex:1;font-weight:600;text-align:left;}.lb-score{font-weight:700;color:#38bdf8;}
+    .lvlup{position:fixed;top:42%;left:50%;transform:translate(-50%,-50%);font-size:30px;font-weight:800;color:#38bdf8;text-shadow:0 0 24px rgba(56,189,248,.6);z-index:50;pointer-events:none;animation:pop 1.4s forwards;}
+    @keyframes pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.6)}20%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-70%) scale(1)}}
   </style>
 </head>
 <body>
 <a href="/" onclick="window.close()" style="position:fixed;top:10px;left:10px;z-index:999;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;font-family:Inter,sans-serif;backdrop-filter:blur(4px)">← Portal</a>
 
 <div class="hud">
-  <div><span>Score</span><b id="hud-score" style="color:#4ade80">0</b></div>
-  <div><span>Wort</span><b id="hud-word">1</b></div>
-  <div><span>Versuch</span><b id="hud-try">1/6</b></div>
+  <div><span>Score</span><b id="hud-score" style="color:#38bdf8">0</b></div>
+  <div><span>Level</span><b id="hud-level">1</b></div>
+  <div><span>Paare</span><b id="hud-pairs">0/6</b></div>
+  <div><span>Combo</span><b id="hud-combo" style="color:#fbbf24">–</b></div>
 </div>
+<div id="timebar-wrap"><div id="timebar"></div></div>
+<div id="grid"></div>
 <div class="msg" id="msg"></div>
-<div id="board"></div>
-<div id="kbd"></div>
 
 <div class="ov" id="ov-start">
   <div class="ov-card">
-    <div style="font-size:48px;margin-bottom:8px">🔤</div>
-    <h2 style="color:#fbbf24">WORT-RATEN</h2>
-    <p class="sub">Errate das 5-Buchstaben-Wort in 6 Versuchen.<br>
-    🟩 = richtiger Buchstabe, richtige Stelle<br>
-    🟨 = richtiger Buchstabe, falsche Stelle<br><br>
-    <b style="color:#e5e7eb">Endlos-Modus:</b> Nach jedem gelösten Wort kommt sofort das nächste. Je weniger Versuche, desto mehr Punkte – bis du ein Wort nicht schaffst!</p>
-    <button class="btn btn-green" onclick="startGame()" style="font-size:15px;padding:13px 32px">▶ STARTEN</button>
+    <div style="font-size:48px;margin-bottom:8px">🃏</div>
+    <h2 style="color:#38bdf8">MEMORY</h2>
+    <p class="sub">Finde alle Kartenpaare, bevor die Zeit abläuft!<br><br>
+    <b style="color:#e5e7eb">Endlos-Modus:</b> Jedes Level wird größer und bringt mehr Punkte pro Paar. Treffer in Folge geben Combo-Bonus, Restzeit gibt Level-Bonus.<br>
+    Läuft die Zeit ab, ist Schluss.</p>
+    <button class="btn btn-blue" onclick="startGame()" style="font-size:15px;padding:13px 32px">▶ STARTEN</button>
     <br><br>
     <button class="btn btn-gray" onclick="openLb()">🏆 Rangliste</button>
   </div>
@@ -73,11 +69,11 @@
 
 <div class="ov hidden" id="ov-dead">
   <div class="ov-card">
-    <div style="font-size:40px;margin-bottom:8px">💀</div>
-    <h2 style="color:#ef4444">VORBEI!</h2>
+    <div style="font-size:40px;margin-bottom:8px">⏰</div>
+    <h2 style="color:#ef4444">ZEIT ABGELAUFEN!</h2>
     <p class="sub" id="go-stats"></p>
     <div style="display:flex;gap:10px;justify-content:center">
-      <button class="btn btn-green" onclick="startGame()">Nochmal</button>
+      <button class="btn btn-blue" onclick="startGame()">Nochmal</button>
       <button class="btn btn-gray" onclick="openLb()">🏆 Rangliste</button>
     </div>
   </div>
@@ -86,171 +82,130 @@
 <div class="ov hidden" id="ov-lb">
   <div class="ov-card">
     <h2 style="margin-bottom:4px">🏆 Rangliste</h2>
-    <p class="sub">Wort-Raten – Höchster Score</p>
+    <p class="sub">Memory – Höchster Score</p>
     <div id="lb-list" style="text-align:left;max-height:280px;overflow-y:auto"></div>
     <button class="btn btn-gray" onclick="closeLb()" style="margin-top:16px">Schließen</button>
   </div>
 </div>
 
 <script>
-// ── Wortliste: deutsche 5-Buchstaben-Wörter (ohne Umlaute), Auto-Themen zuerst ──
-const WORDS = [
-  'AMPEL','MOTOR','KURVE','PEDAL','TURBO','WAGEN','TACHO','ACHSE','ROUTE','RADAR',
-  'PILOT','FELGE','BLITZ','HUPEN','CHROM','RAMPE','SPURT','BLECH','POKAL','SPORT',
-  'ABEND','ACKER','ADLER','ANKER','APFEL','ARENA','ASCHE','BADEN','BAUER','BAUCH',
-  'BEERE','BERGE','BESEN','BIBER','BIENE','BIRNE','BLATT','BLICK','BLUME','BLUSE',
-  'BODEN','BOGEN','BOHNE','BOXER','BRAND','BRETT','BRIEF','BRUCH','BUCHE','BUSCH',
-  'DACHS','DAMPF','DATUM','DECKE','DRAHT','DRUCK','EBENE','EIMER','EISEN','ENGEL',
-  'ERBSE','ESSIG','FARBE','FEDER','FEIER','FERSE','FEUER','FISCH','FLUSS','FOLIE',
-  'FORST','FRAGE','FROST','FUCHS','FUNKE','GABEL','GLANZ','GLEIS','GRUBE','GRUND',
-  'GURKE','HAFEN','HAFER','HAGEL','HALLE','HARFE','HAUBE','HECKE','HEBEL','HERDE',
-  'HIRSE','HOBEL','HONIG','HOTEL','INSEL','JACKE','JOKER','JUWEL','KABEL','KAKAO',
-  'KAMEL','KAMIN','KANAL','KANNE','KARTE','KASSE','KATZE','KEGEL','KELLE','KERZE',
-  'KETTE','KISTE','KLANG','KLIMA','KNOPF','KOALA','KOHLE','KRANZ','KRAUT','KREIS',
-  'KRONE','KUGEL','LACHS','LADEN','LAGER','LAMPE','LAUNE','LEHRE','LEINE','LIEBE',
-  'LILIE','LINIE','LISTE','LOCKE','LOTSE','MACHT','MAGEN','MANGO','MAPPE','MARKE',
-  'MASKE','MAUER','MEERE','MESSE','METER','MILCH','MINZE','MUSIK','NACHT','NADEL',
-  'NAGEL','NEBEL','NELKE','NIERE','NUDEL','ORGEL','OTTER','PALME','PANDA','PASTA',
-  'PAUSE','PERLE','PFEIL','PFERD','PIZZA','PLATZ','PUDEL','PUMPE','PUNKT','QUARK',
-  'RADIO','RAUPE','REGAL','REGEN','REISE','RIESE','ROBBE','ROLLE','RUDER','SALAT',
-  'SALBE','SAUNA','SCHAF','SEGEL','SEIFE','SEITE','SENSE','SOCKE','SONNE','SPATZ',
-  'SPECK','SPIEL','STADT','STAUB','STERN','STIEL','STIER','STIFT','STOFF','STUHL',
-  'STURM','TADEL','TAFEL','TANGO','TANNE','TANTE','TASSE','TASTE','TAUBE','TEICH',
-  'TIGER','TINTE','TISCH','TITEL','TONNE','TORTE','TRAUM','TREUE','TRUHE','TULPE',
-  'VOGEL','WAAGE','WACHE','WALZE','WANGE','WELLE','WESPE','WIESE','WIPPE','WOLKE',
-  'WURST','ZANGE','ZEBRA','ZIEGE','ZUNGE','ZWERG',
-];
+const EMOJIS=['🚗','🚕','🚙','🚌','🏎️','🚓','🚑','🚒','🚚','🚛','🚜','🏍️','🛵','🚲','🔧','⛽','🚦','🔑'];
+// Level: Spalten × Reihen (Paare = Felder/2), Zeit = Paare × 7s
+const LEVELS=[[4,3],[4,4],[5,4],[6,4],[6,5],[6,6]];
 
-const KEYS = [['Q','W','E','R','T','Z','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['ENTER','Y','X','C','V','B','N','M','BACK']];
-let target='',guesses=[],cur='',score=0,wordNum=0,solvedWords=0,gameState='idle',usedWords=[],keyState={};
+let level,score,combo,pairsFound,pairsTotal,cards,first,locked,timeLeft,timeMax,timerIv,gameState='idle';
 let currentUser=null;
-
 const $=id=>document.getElementById(id);
 
-function buildBoard(){
-  $('board').innerHTML=Array.from({length:6},(_,r)=>
-    `<div class="row" id="row${r}">${Array.from({length:5},(_,c)=>`<div class="tile" id="t${r}_${c}"></div>`).join('')}</div>`).join('');
-}
-function buildKbd(){
-  $('kbd').innerHTML=KEYS.map(row=>
-    `<div class="krow">${row.map(k=>{
-      const label=k==='BACK'?'⌫':k==='ENTER'?'OK':k;
-      const wide=k.length>1?' wide':'';
-      return `<button class="key${wide}" id="key${k}" onclick="press('${k}')">${label}</button>`;
-    }).join('')}</div>`).join('');
-}
+function layout(lv){return LEVELS[Math.min(lv-1,LEVELS.length-1)];}
 
-function pickWord(){
-  if(usedWords.length>=WORDS.length)usedWords=[];
-  let w;
-  do{w=WORDS[Math.floor(Math.random()*WORDS.length)];}while(usedWords.includes(w));
-  usedWords.push(w);
-  return w;
-}
-
-function newWord(){
-  target=pickWord();guesses=[];cur='';wordNum++;keyState={};
-  buildBoard();
-  document.querySelectorAll('.key').forEach(k=>k.classList.remove('green','yellow','gray'));
-  updateHud();
+function buildLevel(){
+  const [cols,rows]=layout(level);
+  pairsTotal=cols*rows/2;pairsFound=0;first=null;locked=false;
+  // Karten mischen: Paare aus dem Emoji-Pool (bei >18 Paaren unmöglich, max ist 18)
+  const pool=[...EMOJIS].sort(()=>Math.random()-.5).slice(0,pairsTotal);
+  cards=[...pool,...pool].sort(()=>Math.random()-.5);
+  // Kartengröße an Bildschirm anpassen
+  const maxW=Math.min(window.innerWidth-24,560);
+  const maxH=window.innerHeight-190;
+  const cs=Math.floor(Math.min((maxW-(cols-1)*8)/cols,(maxH-(rows-1)*8)/rows,86));
+  const grid=$('grid');
+  grid.style.setProperty('--cs',cs+'px');
+  grid.style.gridTemplateColumns=`repeat(${cols},${cs}px)`;
+  grid.innerHTML=cards.map((e,i)=>
+    `<div class="mcard" id="c${i}" onclick="flip(${i})"><div class="face back"></div><div class="face front">${e}</div></div>`).join('');
+  // Zeit: 7s pro Paar
+  timeMax=pairsTotal*7;timeLeft=timeMax;
+  updateHud();updateTimebar();
 }
 
 function updateHud(){
   $('hud-score').textContent=score.toLocaleString('de-DE');
-  $('hud-word').textContent=wordNum;
-  $('hud-try').textContent=`${guesses.length+1}/6`;
+  $('hud-level').textContent=level;
+  $('hud-pairs').textContent=`${pairsFound}/${pairsTotal}`;
+  $('hud-combo').textContent=combo>1?`×${combo} 🔥`:'–';
+}
+function updateTimebar(){
+  const pct=Math.max(0,timeLeft/timeMax*100);
+  const bar=$('timebar');
+  bar.style.width=pct+'%';
+  bar.style.background=pct<20?'#ef4444':pct<45?'#fbbf24':'#38bdf8';
 }
 
-function showMsg(t,ms=1600){
+function showMsg(t,ms=1500){
   $('msg').textContent=t;
   if(ms)setTimeout(()=>{if($('msg').textContent===t)$('msg').textContent='';},ms);
 }
 
-function renderCur(){
-  const r=guesses.length;
-  for(let c=0;c<5;c++){
-    const tile=$(`t${r}_${c}`);
-    tile.textContent=cur[c]||'';
-    tile.classList.toggle('filled',!!cur[c]);
-  }
-}
-
-// Standard-Wordle-Färbung inkl. doppelter Buchstaben
-function colorize(guess){
-  const res=Array(5).fill('gray');
-  const counts={};
-  for(const ch of target)counts[ch]=(counts[ch]||0)+1;
-  for(let i=0;i<5;i++)if(guess[i]===target[i]){res[i]='green';counts[guess[i]]--;}
-  for(let i=0;i<5;i++)if(res[i]==='gray'&&counts[guess[i]]>0){res[i]='yellow';counts[guess[i]]--;}
-  return res;
-}
-
-function press(k){
-  if(gameState!=='playing')return;
-  if(k==='BACK'){cur=cur.slice(0,-1);renderCur();return;}
-  if(k==='ENTER'){submitGuess();return;}
-  if(cur.length<5&&/^[A-Z]$/.test(k)){cur+=k;renderCur();}
-}
-
-function submitGuess(){
-  if(cur.length<5){
-    $(`row${guesses.length}`).classList.add('shake');
-    setTimeout(()=>$(`row${guesses.length}`)?.classList.remove('shake'),400);
-    showMsg('Zu kurz – 5 Buchstaben!');
-    return;
-  }
-  const r=guesses.length;
-  const colors=colorize(cur);
-  for(let c=0;c<5;c++){
-    const tile=$(`t${r}_${c}`);
-    setTimeout(()=>{tile.classList.add(colors[c]);},c*120);
-    // Tastatur einfärben (grün überschreibt gelb überschreibt grau)
-    const key=$(`key${cur[c]}`);
-    const rank={green:3,yellow:2,gray:1};
-    if(key&&(rank[colors[c]]>(rank[keyState[cur[c]]]||0))){
-      keyState[cur[c]]=colors[c];
-      setTimeout(()=>{key.classList.remove('green','yellow','gray');key.classList.add(keyState[cur[c]]);},620);
-    }
-  }
-  guesses.push(cur);
-  const guess=cur;cur='';
-
-  if(guess===target){
-    const pts=(7-guesses.length)*100;
-    score+=pts;solvedWords++;
+function flip(i){
+  if(gameState!=='playing'||locked)return;
+  const el=$('c'+i);
+  if(el.classList.contains('flip')||el.classList.contains('done'))return;
+  el.classList.add('flip');
+  if(first===null){first=i;return;}
+  const a=first,b=i;first=null;
+  if(cards[a]===cards[b]){
+    combo++;pairsFound++;
+    const pts=100*level+(combo>1?(combo-1)*25:0);
+    score+=pts;
+    $('c'+a).classList.add('done');$('c'+b).classList.add('done');
+    showMsg(`+${pts}${combo>1?` (Combo ×${combo})`:''}`);
     updateHud();
+    if(pairsFound===pairsTotal)levelDone();
+  }else{
+    combo=0;locked=true;
+    $('c'+a).classList.add('wrong');$('c'+b).classList.add('wrong');
     setTimeout(()=>{
-      showMsg(`✅ ${target} gelöst! +${pts} Punkte`,2000);
-      setTimeout(newWord,900);
+      [a,b].forEach(x=>{const e=$('c'+x);e.classList.remove('flip','wrong');});
+      locked=false;
     },700);
-    return;
+    updateHud();
   }
-  if(guesses.length>=6){
-    setTimeout(()=>endGame(),800);
-    return;
-  }
+}
+
+function levelDone(){
+  clearInterval(timerIv);
+  const bonus=Math.round(timeLeft*10);
+  score+=bonus;
   updateHud();
+  const el=document.createElement('div');
+  el.className='lvlup';
+  el.textContent=`Level ${level} geschafft! +${bonus} Zeitbonus`;
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),1400);
+  level++;
+  setTimeout(()=>{if(gameState==='playing'){buildLevel();startTimer();}},1300);
+}
+
+function startTimer(){
+  clearInterval(timerIv);
+  timerIv=setInterval(()=>{
+    timeLeft-=0.25;
+    updateTimebar();
+    if(timeLeft<=0){clearInterval(timerIv);endGame();}
+  },250);
 }
 
 async function endGame(){
-  gameState='dead';
-  let txt=`Das Wort war: ${target}\nGelöste Wörter: ${solvedWords} · Score: ${score.toLocaleString('de-DE')}`;
+  gameState='dead';locked=true;
+  // Alle Karten aufdecken
+  document.querySelectorAll('.mcard').forEach(c=>c.classList.add('flip','done'));
   let coins=0;
   try{
-    const r=await fetch('/api/game-scores/wordle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(GameAuth.body(score))});
+    const r=await fetch('/api/game-scores/memory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(GameAuth.body(score))});
     if(r.ok){const d=await r.json();coins=d.coinsEarned||0;}
   }catch{}
-  $('go-stats').innerHTML=`Das Wort war: <b style="color:#fbbf24">${target}</b><br>Gelöste Wörter: <b>${solvedWords}</b> · Score: <b style="color:#4ade80">${score.toLocaleString('de-DE')}</b>${coins>0?`<br>🪙 <b style="color:#fbbf24">+${coins} ACLS-Coins</b>`:''}`;
-  $('ov-dead').classList.remove('hidden');
+  $('go-stats').innerHTML=`Level <b>${level}</b> erreicht · Score: <b style="color:#38bdf8">${score.toLocaleString('de-DE')}</b>${coins>0?`<br>🪙 <b style="color:#fbbf24">+${coins} ACLS-Coins</b>`:''}`;
+  setTimeout(()=>$('ov-dead').classList.remove('hidden'),900);
 }
 
 function startGame(){
   $('ov-start').classList.add('hidden');
   $('ov-dead').classList.add('hidden');
-  score=0;wordNum=0;solvedWords=0;usedWords=[];
-  gameState='playing';
-  GameAuth.init('wordle'); // frischer Token pro Runde
-  newWord();
+  level=1;score=0;combo=0;gameState='playing';
+  GameAuth.init('memory'); // frischer Token pro Runde
+  buildLevel();
+  startTimer();
 }
 
 async function openLb(){
@@ -258,13 +213,13 @@ async function openLb(){
   const el=$('lb-list');
   el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Laden…</div>';
   try{
-    const r=await fetch('/api/game-scores/wordle'),data=await r.json();
+    const r=await fetch('/api/game-scores/memory'),data=await r.json();
     if(!data.length){el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Noch keine Einträge</div>';return;}
     el.innerHTML=data.map((row,i)=>{
       const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
       const me=currentUser&&row.discord_id===currentUser.discord_id;
       const av=row.avatar?`<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`:(row.username||'?').slice(0,2).toUpperCase();
-      return`<div class="lb-row" style="${me?'background:#1a1505;border-radius:5px;':''}">
+      return`<div class="lb-row" style="${me?'background:#06141f;border-radius:5px;':''}">
         <div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
         <div class="lb-name">${row.username||'Unbekannt'}</div>
         <div class="lb-score">${row.score.toLocaleString()}</div>
@@ -274,16 +229,9 @@ async function openLb(){
 }
 function closeLb(){$('ov-lb').classList.add('hidden');}
 
-window.addEventListener('keydown',e=>{
-  if(e.key==='Enter')press('ENTER');
-  else if(e.key==='Backspace')press('BACK');
-  else if(/^[a-zA-Z]$/.test(e.key))press(e.key.toUpperCase());
-});
-
 async function init(){
   try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
-  await GameAuth.init('wordle');
-  buildBoard();buildKbd();
+  await GameAuth.init('memory');
 }
 init();
 </script>

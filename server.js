@@ -62,14 +62,14 @@ const GAME_LIMITS = {
   idle:         { minSec: 60,  maxScore: 1e15    },
   rpg:          { minSec: 60,  maxScore: 1e9     },
   tow:          { minSec: 20,  maxScore: 200000  },
-  wordle:       { minSec: 15,  maxScore: 30000   },
+  memory:       { minSec: 15,  maxScore: 200000  },
 };
 
 // ── ACLS-Coins: Umrechnung pro Spiel (score / divisor = Coins) ──
 const GAME_COIN_DIV = {
   race: 2000, brick: 1200, deadzone: 30000, tetris: 20000, snake: 50,
   skycop: 20000, doodlejump: 15000, '2048': 30000, bookofra: 500000,
-  towerdefense: 800, quiz: 150, idle: 1e12, rpg: 5e6, tow: 60, wordle: 50,
+  towerdefense: 800, quiz: 150, idle: 1e12, rpg: 5e6, tow: 60, memory: 150,
 };
 const COINS_MAX_PER_SUBMIT = 60;   // max Coins pro Spielrunde
 const COINS_DAILY_GAME_CAP = 150;  // max Coins pro Spiel pro Tag
@@ -1329,6 +1329,47 @@ app.post('/api/friends/:id', requireAuth, (req, res) => {
 app.delete('/api/friends/:id', requireAuth, (req, res) => {
   const u = getUser(req);
   db.prepare('DELETE FROM friends WHERE user_id = ? AND friend_id = ?').run(u.id, +req.params.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  GÄSTEBUCH — Kommentare auf Mitarbeiter-Profilen
+// ════════════════════════════════════════════════════════════════
+const GUESTBOOK_MAX_LEN = 300;
+
+app.get('/api/guestbook/:userId', requireAuth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT g.id, g.message, g.created_at, g.author_id,
+           u.username AS author_name, u.avatar AS author_avatar, u.discord_id AS author_discord_id
+    FROM guestbook g JOIN users u ON u.id = g.author_id
+    WHERE g.profile_user_id = ?
+    ORDER BY g.created_at DESC LIMIT 50
+  `).all(+req.params.userId);
+  res.json(rows);
+});
+
+app.post('/api/guestbook/:userId', requireAuth, (req, res) => {
+  const u = getUser(req);
+  if (rateLimit(`guestbook:${u.id}`, 5, 5 * 60_000))
+    return res.status(429).json({ error: 'Bitte warte etwas zwischen den Einträgen' });
+  const target = db.prepare('SELECT id FROM users WHERE id = ? AND is_active = 1').get(+req.params.userId);
+  if (!target) return res.status(404).json({ error: 'Profil nicht gefunden' });
+  const message = String(req.body.message || '').trim();
+  if (message.length < 2) return res.status(400).json({ error: 'Nachricht zu kurz' });
+  if (message.length > GUESTBOOK_MAX_LEN) return res.status(400).json({ error: `Maximal ${GUESTBOOK_MAX_LEN} Zeichen` });
+  db.prepare('INSERT INTO guestbook (profile_user_id, author_id, message) VALUES (?, ?, ?)')
+    .run(target.id, u.id, message);
+  res.json({ ok: true });
+});
+
+// Löschen darf: Autor, Profil-Inhaber oder Admin
+app.delete('/api/guestbook/:id', requireAuth, (req, res) => {
+  const u = getUser(req);
+  const entry = db.prepare('SELECT * FROM guestbook WHERE id = ?').get(+req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Nicht gefunden' });
+  if (entry.author_id !== u.id && entry.profile_user_id !== u.id && u.role !== 'admin')
+    return res.status(403).json({ error: 'Kein Zugriff' });
+  db.prepare('DELETE FROM guestbook WHERE id = ?').run(entry.id);
   res.json({ ok: true });
 });
 
@@ -2981,7 +3022,7 @@ const TOURNAMENT_GAMES = {
   '2048':       { name: '2048',                url: '/game10' },
   quiz:         { name: 'Quiz Survival',       url: '/game11' },
   tow:          { name: 'Abschlepp-Simulator', url: '/game14' },
-  wordle:       { name: 'Wort-Raten',          url: '/game16' },
+  memory:       { name: 'Memory',              url: '/game16' },
 };
 const TOURNAMENT_PRIZES = [500, 250, 100];
 

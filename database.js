@@ -502,6 +502,14 @@ function initDb() {
       PRIMARY KEY (user_id, friend_id)
     );
 
+    CREATE TABLE IF NOT EXISTS guestbook (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_user_id INTEGER NOT NULL REFERENCES users(id),
+      author_id       INTEGER NOT NULL REFERENCES users(id),
+      message         TEXT NOT NULL,
+      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS quiz_duels (
       id               INTEGER PRIMARY KEY AUTOINCREMENT,
       code             TEXT UNIQUE NOT NULL,
