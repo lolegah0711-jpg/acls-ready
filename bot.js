@@ -32,6 +32,7 @@ const BADGE_LABELS = {
   duel_5: '5 Duell-Siege', duel_25: '25 Duell-Siege',
   coins_1k: '1.000 Coins verdient', coins_10k: '10.000 Coins verdient',
   tow_pro: 'Abschlepp-Profi (1.000+ Punkte)', bj_500: 'High Roller (500+ Blackjack-Gewinn)',
+  streak_7: '7-Tage-Login-Serie', streak_30: '30-Tage-Login-Serie',
 };
 
 // Laufende Sessions: discord_id → { channelId, channelName, joinedAt, sessionStart }

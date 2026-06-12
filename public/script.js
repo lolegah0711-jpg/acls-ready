@@ -40,6 +40,8 @@ const BADGE_DEFS = {
   bj_500:         { icon: 'fa-heart',          color: '#ef4444', label: 'High Roller',       desc: '500+ Coins in einer Blackjack-Hand', progress: s => ({ cur: s.bjBest || 0, max: 500 }) },
   coins_1k:       { icon: 'fa-coins',          color: '#cd7f32', label: 'Sparer',            desc: '1.000 Coins verdient',       progress: s => ({ cur: s.coinsEarned || 0, max: 1000  }) },
   coins_10k:      { icon: 'fa-coins',          color: '#ffd700', label: 'Krösus',            desc: '10.000 Coins verdient',      progress: s => ({ cur: s.coinsEarned || 0, max: 10000 }) },
+  streak_7:       { icon: 'fa-fire',           color: '#fb923c', label: '7-Tage-Serie',      desc: '7 Tage in Folge Tagesbonus abgeholt',  progress: s => ({ cur: s.bestStreak || 0, max: 7  }) },
+  streak_30:      { icon: 'fa-fire',           color: '#ffd700', label: '30-Tage-Serie',     desc: '30 Tage in Folge Tagesbonus abgeholt', progress: s => ({ cur: s.bestStreak || 0, max: 30 }) },
 };
 
 function renderBadge(key, b, earned, isNext, date, stats) {
@@ -152,6 +154,7 @@ const PAGES = {
   turnier:      { title: 'Wochenturnier',         sub: 'Jede Woche ein anderes Spiel – Coins für die Top 3' },
   duell:        { title: 'Quiz-Duell',            sub: '1-gegen-1 live · Mitarbeiter & Bürger' },
   shop:         { title: 'Coin-Shop',             sub: 'ACLS-Coins verdienen & ausgeben' },
+  freunde:      { title: 'Freunde',               sub: 'Freundesliste & Statistik-Vergleich' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -1092,7 +1095,7 @@ function navigate(page) {
   $('pageContent').innerHTML    = loading();
 
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, freunde };
   (renders[page] || dashboard)();
 }
 
@@ -1357,7 +1360,7 @@ async function dashboard() {
         { label: 'Prüfungen', icon: 'fa-clipboard-check', color: '#f97316', keys: ['cat_pkw','cat_motorrad','cat_boot','cat_lkw','cat_flugschein','exams_10','exams_50','exams_100'] },
         { label: 'IC-Zeit',   icon: 'fa-clock',           color: '#22c55e', keys: ['ic_10','ic_50','ic_100','ic_250','ic_500'] },
         { label: 'Mitarbeiter der Woche', icon: 'fa-trophy', color: '#facc15', keys: ['eow_1','eow_3','eow_5'] },
-        { label: 'Gaming',    icon: 'fa-gamepad',         color: '#f472b6', keys: ['game_3','game_10','duel_5','duel_25','tow_pro','bj_500','coins_1k','coins_10k'] },
+        { label: 'Gaming',    icon: 'fa-gamepad',         color: '#f472b6', keys: ['game_3','game_10','duel_5','duel_25','tow_pro','bj_500','coins_1k','coins_10k','streak_7','streak_30'] },
       ].map(group => {
         // Index des ersten noch nicht verdienten Abzeichens = nächstes Ziel
         const nextGoalIdx = group.keys.findIndex(k => !earnedSet.has(k));
@@ -4064,6 +4067,18 @@ async function admin() {
           <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem">🪙 Coin-Wirtschaft pro Woche</div>
           <canvas id="chartCoins" height="190"></canvas>
         </div>
+        <div>
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem">🎮 Beliebteste Spiele (12 Wochen)</div>
+          <canvas id="chartGames" height="190"></canvas>
+        </div>
+        <div>
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem">👥 Aktive Spieler pro Woche</div>
+          <canvas id="chartPlayers" height="190"></canvas>
+        </div>
+        <div>
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.5rem">🔥 Längste Login-Serien</div>
+          <div id="topStreaksList" style="font-size:.82rem"></div>
+        </div>
       </div>
     </div>`;
   loadPollAdmin();
@@ -4109,7 +4124,9 @@ async function loadAdminStats() {
     chip('Aktive Mitarbeiter', d.summary.activeStaff, 'var(--text)') +
     chip('Prüfungen gesamt', d.summary.examsTotal, '#22c55e') +
     chip('Coins im Umlauf', d.summary.coinsInUmlauf, '#fbbf24') +
-    chip('Coins jemals verdient', d.summary.coinsTotal, '#fbbf24');
+    chip('Coins jemals verdient', d.summary.coinsTotal, '#fbbf24') +
+    chip('Aktive Spieler (7 Tage)', d.summary.activeWeek ?? 0, '#60a5fa') +
+    chip('Transfers (7 Tage)', d.summary.transfers7d ?? 0, '#4ade80');
 
   _adminCharts.forEach(c => { try { c.destroy(); } catch {} });
   _adminCharts = [];
@@ -4155,6 +4172,38 @@ async function loadAdminStats() {
     },
     options: baseOpts,
   });
+  if (d.games?.length) mk('chartGames', {
+    type: 'bar',
+    data: {
+      labels: d.games.map(g => GAME_NAMES_DE[g.game] || g.game),
+      datasets: [{ label: 'Spielrunden', data: d.games.map(g => g.plays), backgroundColor: '#a855f7' }],
+    },
+    options: { ...baseOpts, indexAxis: 'y', plugins: { legend: { display: false } } },
+  });
+  if (d.activePlayers?.length) {
+    const dcByWk = Object.fromEntries((d.dailyClaims || []).map(r => [r.wk, r.c]));
+    mk('chartPlayers', {
+      type: 'line',
+      data: {
+        labels: d.activePlayers.map(wkLabel),
+        datasets: [
+          { label: 'Aktive Spieler', data: d.activePlayers.map(r => r.c), borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,.15)', fill: true, tension: .3 },
+          { label: 'Tagesbonus-Abholungen', data: d.activePlayers.map(r => dcByWk[r.wk] || 0), borderColor: '#fb923c', tension: .3 },
+        ],
+      },
+      options: baseOpts,
+    });
+  }
+  const streakEl = $('topStreaksList');
+  if (streakEl) streakEl.innerHTML = (d.topStreaks || []).length
+    ? d.topStreaks.map((s, i) => `
+      <div style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px solid var(--border)">
+        <span style="width:22px;text-align:center;font-weight:700">${['🥇','🥈','🥉'][i] || (i + 1) + '.'}</span>
+        <span style="flex:1;font-weight:600">${esc(s.username || '?')}</span>
+        <span style="color:#fb923c;font-weight:700">🔥 ${s.best_streak}</span>
+        <span style="color:var(--muted);font-size:.7rem">aktuell: ${s.streak}</span>
+      </div>`).join('')
+    : '<div style="color:var(--muted);font-size:.78rem;padding:.5rem 0">Noch keine Login-Serien</div>';
 }
 
 async function loadPollAdmin() {
@@ -5051,7 +5100,7 @@ const GAME_NAMES_DE = {
   race: 'Autorennen', brick: 'Brick Breaker', deadzone: 'Dead Zone', snake: 'Snake',
   tetris: 'Tetris', bookofra: 'Book of Ra', skycop: 'Sky Cop', doodlejump: 'Doodle Jump',
   towerdefense: 'Tower Defense', '2048': '2048', quiz: 'Quiz Survival', idle: 'Werkstatt',
-  rpg: 'Dungeon RPG', tow: 'Abschlepp-Simulator', blackjack: 'Blackjack',
+  rpg: 'Dungeon RPG', tow: 'Abschlepp-Simulator', blackjack: 'Blackjack', wordle: 'Wort-Raten',
 };
 function txLabel(reason) {
   const map = {
@@ -5068,6 +5117,7 @@ function txLabel(reason) {
     'shop:custom_title': '✏️ Wunsch-Titel beantragt', 'shop:custom_title_refund': '✏️ Wunsch-Titel erstattet',
     'bracket:fee': '🏟️ Turnier-Einsatz', 'bracket:win': '🏟️ Turnier gewonnen!',
     'bracket:second': '🏟️ Turnier-Finalist', 'bracket:refund': '🏟️ Turnier-Einsatz zurück',
+    'transfer:out': '💸 Coins gesendet', 'transfer:in': '💝 Coins erhalten',
   };
   if (map[reason]) return map[reason];
   if (reason.startsWith('game:')) return '🎮 ' + (GAME_NAMES_DE[reason.slice(5)] || reason.slice(5));
@@ -5154,12 +5204,31 @@ async function shop() {
       </div>
       <div class="card" style="flex:1;min-width:220px;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.1rem">
         <div>
-          <div style="font-weight:700;font-size:.9rem">📅 Tagesbonus</div>
-          <div style="font-size:.73rem;color:var(--muted)">Jeden Tag +25 Coins gratis</div>
+          <div style="font-weight:700;font-size:.9rem">📅 Tagesbonus
+            ${me.streak > 0 ? `<span style="margin-left:.4rem;font-size:.78rem;color:#fb923c">🔥 ${me.streak} Tage-Serie</span>` : ''}
+          </div>
+          <div style="font-size:.73rem;color:var(--muted)">Serie nicht abreißen lassen – der Bonus wächst täglich (max. 50)${me.bestStreak > 1 ? ` · Rekord: ${me.bestStreak} Tage` : ''}</div>
+          ${me.streak > 0 && me.streak < 30 ? `<div style="font-size:.68rem;color:var(--muted);margin-top:.2rem">Nächster Meilenstein: ${me.streak < 7 ? `Tag 7 (+75 extra)` : `Tag 30 (+300 extra)`}</div>` : ''}
         </div>
         ${me.dailyAvailable
-          ? `<button class="btn btn-primary btn-sm" onclick="claimDaily()">+25 abholen</button>`
+          ? `<button class="btn btn-primary btn-sm" onclick="claimDaily()">+${me.nextDaily || 25} abholen</button>`
           : `<span class="badge" style="background:var(--surface2);color:var(--muted)">Heute abgeholt ✓</span>`}
+      </div>
+    </div>
+
+    <!-- Coins senden (Tauschsystem) -->
+    <div class="card" style="padding:1rem 1.2rem;margin-bottom:1.25rem;border-color:rgba(74,222,128,.25)">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div style="font-size:1.6rem">💸</div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:700;font-size:.9rem">Coins senden</div>
+          <div style="font-size:.72rem;color:var(--muted)">Schenke einem Mitglied Coins – max. 200 pro Tag</div>
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <select class="form-control" id="transferTarget" style="width:180px;font-size:.82rem"><option value="">Empfänger wählen…</option></select>
+          <input class="form-control" id="transferAmount" type="number" min="1" max="200" placeholder="Betrag" style="width:90px;font-size:.82rem">
+          <button class="btn btn-sm" style="background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.4);color:#4ade80;white-space:nowrap" onclick="sendCoins()">Senden</button>
+        </div>
       </div>
     </div>
 
@@ -5242,7 +5311,151 @@ async function shop() {
           <span style="color:var(--muted);font-size:.7rem;white-space:nowrap">${ago(t.created_at)}</span>
         </div>`).join('') : '<div style="padding:.8rem 0;color:var(--muted);font-size:.8rem">Noch keine Transaktionen – spiel ein Minispiel!</div>'}
     </div>`;
+
+  // Empfängerliste fürs Coins-Senden nachladen
+  fetch('/api/users/public').then(r => r.json()).then(users => {
+    const sel = $('transferTarget');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Empfänger wählen…</option>' + users
+      .filter(u => u.discord_id && u.discord_id !== currentUser?.discord_id)
+      .map(u => `<option value="${u.discord_id}">${esc(u.username)}</option>`).join('');
+  }).catch(() => {});
 }
+
+window.sendCoins = async () => {
+  const toDiscordId = $('transferTarget')?.value;
+  const amount      = parseInt($('transferAmount')?.value, 10);
+  if (!toDiscordId) { toast('Bitte Empfänger wählen', 'err'); return; }
+  if (!amount || amount < 1) { toast('Bitte gültigen Betrag eingeben', 'err'); return; }
+  const name = $('transferTarget').selectedOptions[0]?.textContent || 'Mitglied';
+  const r = await api('/api/coins/transfer', { method: 'POST', body: { toDiscordId, amount } });
+  if (r) {
+    toast(`${amount} Coins an ${name} gesendet! 💸 (heute: ${r.sentToday}/${r.limit})`, 'ok');
+    updateCoinChip(r.balance);
+    shop();
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  FREUNDE — Liste & Statistik-Vergleich
+// ════════════════════════════════════════════════════════════════
+async function freunde() {
+  const [data, allUsers] = await Promise.all([api('/api/friends'), api('/api/users/public')]);
+  if (!data) return;
+  const friendIds = new Set(data.friends.map(f => f.id));
+  const addable = (allUsers || []).filter(u => u.id !== currentUser.id && !friendIds.has(u.id));
+
+  const statChip = (icon, val, label, color) => `
+    <div style="display:flex;align-items:center;gap:.35rem;font-size:.72rem;color:var(--muted)" title="${label}">
+      <i class="fas ${icon}" style="color:${color};font-size:.7rem"></i><b style="color:var(--text)">${val}</b>
+    </div>`;
+
+  $('pageContent').innerHTML = `
+    <div class="card" style="padding:1rem 1.2rem;margin-bottom:1.25rem">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div style="font-size:1.6rem">🤝</div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:700;font-size:.9rem">Freund hinzufügen</div>
+          <div style="font-size:.72rem;color:var(--muted)">Füge bis zu 30 Mitglieder hinzu und vergleiche eure Statistiken</div>
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <select class="form-control" id="friendSelect" style="width:200px;font-size:.82rem">
+            <option value="">Mitglied wählen…</option>
+            ${addable.map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('')}
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="addFriend()"><i class="fas fa-user-plus"></i> Hinzufügen</button>
+        </div>
+      </div>
+    </div>
+
+    ${data.friends.length ? `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:.8rem">
+      ${data.friends.map(f => `
+      <div class="card" style="padding:1rem 1.1rem">
+        <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.7rem">
+          ${avatarEl(f, 40)}
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.username)}</div>
+            <div style="font-size:.68rem;color:var(--muted)">${esc(f.rank || 'Mitarbeiter')}${f.streak > 0 ? ` · 🔥 ${f.streak}` : ''}</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="removeFriend(${f.id})" title="Entfernen" style="color:var(--muted)"><i class="fas fa-user-minus"></i></button>
+        </div>
+        <div style="display:flex;gap:.9rem;flex-wrap:wrap;margin-bottom:.8rem">
+          ${statChip('fa-coins', (+f.coins_earned).toLocaleString('de-DE'), 'Coins verdient', '#fbbf24')}
+          ${statChip('fa-clock', f.ic_week + 'h', 'IC-Zeit diese Woche', '#60a5fa')}
+          ${statChip('fa-medal', f.badges, 'Abzeichen', '#facc15')}
+          ${statChip('fa-gamepad', f.games_played, 'Spiele gespielt', '#f472b6')}
+        </div>
+        <div style="display:flex;gap:.4rem">
+          <button class="btn btn-primary btn-sm" style="flex:1" onclick="compareFriend(${f.id})"><i class="fas fa-balance-scale"></i> Vergleichen</button>
+          <a href="/profil/${f.id}" target="_blank" class="btn btn-ghost btn-sm" style="text-decoration:none"><i class="fas fa-user"></i> Profil</a>
+        </div>
+      </div>`).join('')}
+    </div>` : `
+    <div class="empty"><i class="fas fa-user-friends"></i><p>Noch keine Freunde hinzugefügt.<br>Wähle oben ein Mitglied aus und starte den Vergleich!</p></div>`}`;
+}
+
+window.addFriend = async () => {
+  const id = $('friendSelect')?.value;
+  if (!id) { toast('Bitte Mitglied wählen', 'err'); return; }
+  const r = await api(`/api/friends/${id}`, { method: 'POST' });
+  if (r) { toast('Freund hinzugefügt! 🤝', 'ok'); freunde(); }
+};
+
+window.removeFriend = async id => {
+  const r = await api(`/api/friends/${id}`, { method: 'DELETE' });
+  if (r) { toast('Entfernt', ''); freunde(); }
+};
+
+window.compareFriend = async id => {
+  const d = await api(`/api/friends/compare/${id}`);
+  if (!d) return;
+  const m = d.me, f = d.friend;
+  const fmtN = v => (+v).toLocaleString('de-DE');
+  const rows = [
+    ['🪙 Coins verdient',     fmtN(m.coins_earned),  fmtN(f.coins_earned),  m.coins_earned - f.coins_earned],
+    ['💰 Kontostand',         fmtN(m.coins_balance), fmtN(f.coins_balance), m.coins_balance - f.coins_balance],
+    ['🔥 Beste Login-Serie',  m.best_streak,         f.best_streak,         m.best_streak - f.best_streak],
+    ['⏱️ IC-Zeit gesamt',     m.ic_total + 'h',      f.ic_total + 'h',      m.ic_total - f.ic_total],
+    ['📅 IC-Zeit Woche',      m.ic_week + 'h',       f.ic_week + 'h',       m.ic_week - f.ic_week],
+    ['🎖️ Abzeichen',          m.badges,              f.badges,              m.badges - f.badges],
+    ['📋 Prüfungen abgen.',   m.exams,               f.exams,               m.exams - f.exams],
+    ['🏆 MdW-Titel',          m.eow_wins,            f.eow_wins,            m.eow_wins - f.eow_wins],
+    ['⚔️ Duell-Siege',        m.duel_wins,           f.duel_wins,           m.duel_wins - f.duel_wins],
+    ['🎮 Versch. Spiele',     m.games_played,        f.games_played,        m.games_played - f.games_played],
+  ];
+  const cell = (val, win) => `<td style="text-align:center;font-weight:${win ? '800' : '500'};color:${win ? '#4ade80' : 'var(--text)'};padding:.45rem .5rem">${val}${win ? ' 👑' : ''}</td>`;
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-balance-scale" style="color:var(--orange);margin-right:.4rem"></i>Vergleich</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-around;margin:.6rem 0 1rem">
+      <div style="text-align:center">${avatarEl(m, 46)}<div style="font-weight:700;font-size:.85rem;margin-top:.3rem">${esc(m.username)}</div></div>
+      <div style="font-size:1.3rem;font-weight:800;color:var(--muted)">VS</div>
+      <div style="text-align:center">${avatarEl(f, 46)}<div style="font-weight:700;font-size:.85rem;margin-top:.3rem">${esc(f.username)}</div></div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+      ${rows.map(([label, mv, fv, diff]) => `
+      <tr style="border-bottom:1px solid var(--border)">
+        ${cell(mv, diff > 0)}
+        <td style="text-align:center;color:var(--muted);font-size:.74rem;padding:.45rem .5rem;white-space:nowrap">${label}</td>
+        ${cell(fv, diff < 0)}
+      </tr>`).join('')}
+    </table>
+    ${d.games.length ? `
+    <div style="font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:1rem 0 .4rem">🎮 Spiel-Bestscores</div>
+    <table style="width:100%;border-collapse:collapse;font-size:.8rem">
+      ${d.games.map(g => {
+        const my = g.my_score || 0, th = g.their_score || 0;
+        return `<tr style="border-bottom:1px solid var(--border)">
+          ${cell(fmtN(my), my > th)}
+          <td style="text-align:center;color:var(--muted);font-size:.72rem;padding:.4rem .5rem">${GAME_NAMES_DE[g.game] || g.game}</td>
+          ${cell(fmtN(th), th > my)}
+        </tr>`;
+      }).join('')}
+    </table>` : ''}`);
+};
 
 // Rahmen 6 Sekunden live am Topbar-Avatar testen
 let _framePreviewTimer = null;
@@ -5274,7 +5487,12 @@ window.lotteryBuy = async count => {
 
 window.claimDaily = async () => {
   const r = await api('/api/coins/daily', { method: 'POST' });
-  if (r) { toast(`+${r.amount} Coins Tagesbonus! 🪙`, 'ok'); updateCoinChip(r.balance); shop(); }
+  if (r) {
+    const extra = r.milestone ? ` 🎉 ${r.streak}-Tage-Meilenstein: +${r.milestone} extra!` : '';
+    toast(`+${r.amount} Coins Tagesbonus! 🔥 Serie: ${r.streak} Tag${r.streak > 1 ? 'e' : ''}${extra}`, 'ok');
+    updateCoinChip(r.balance);
+    shop();
+  }
 };
 window.shopBuy = async (itemId, price) => {
   const r = await api('/api/shop/buy', { method: 'POST', body: { itemId } });

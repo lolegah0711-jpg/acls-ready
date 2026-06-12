@@ -62,13 +62,14 @@ const GAME_LIMITS = {
   idle:         { minSec: 60,  maxScore: 1e15    },
   rpg:          { minSec: 60,  maxScore: 1e9     },
   tow:          { minSec: 20,  maxScore: 200000  },
+  wordle:       { minSec: 15,  maxScore: 30000   },
 };
 
 // ── ACLS-Coins: Umrechnung pro Spiel (score / divisor = Coins) ──
 const GAME_COIN_DIV = {
   race: 2000, brick: 1200, deadzone: 30000, tetris: 20000, snake: 50,
   skycop: 20000, doodlejump: 15000, '2048': 30000, bookofra: 500000,
-  towerdefense: 800, quiz: 150, idle: 1e12, rpg: 5e6, tow: 60,
+  towerdefense: 800, quiz: 150, idle: 1e12, rpg: 5e6, tow: 60, wordle: 50,
 };
 const COINS_MAX_PER_SUBMIT = 60;   // max Coins pro Spielrunde
 const COINS_DAILY_GAME_CAP = 150;  // max Coins pro Spiel pro Tag
@@ -1271,11 +1272,79 @@ app.get('/api/my-badges', requireAuth, (req, res) => {
   const coinsEarned   = db.prepare('SELECT COALESCE(total_earned, 0) as e FROM coin_balances WHERE discord_id = ?').get(u.discord_id)?.e || 0;
   const towBest       = db.prepare(`SELECT COALESCE(score, 0) as s FROM game_scores WHERE user_id = ? AND game = 'tow'`).get(u.id)?.s || 0;
   const bjBest        = db.prepare(`SELECT COALESCE(score, 0) as s FROM game_scores WHERE user_id = ? AND game = 'blackjack'`).get(u.id)?.s || 0;
-  res.json({ badges, stats: { conducted, eowWins, icTotal: +icTotal, distinctGames, duelWins, coinsEarned, towBest, bjBest } });
+  const bestStreak    = db.prepare('SELECT COALESCE(best_streak, 0) as s FROM coin_balances WHERE discord_id = ?').get(u.discord_id)?.s || 0;
+  res.json({ badges, stats: { conducted, eowWins, icTotal: +icTotal, distinctGames, duelWins, coinsEarned, towBest, bjBest, bestStreak } });
 });
 
 app.get('/api/badges/:userId', requireAuth, (req, res) => {
   res.json(db.prepare('SELECT badge_type, earned_at FROM user_badges WHERE user_id = ? ORDER BY earned_at ASC').all(req.params.userId));
+});
+
+// ════════════════════════════════════════════════════════════════
+//  FREUNDESLISTE + VERGLEICH
+// ════════════════════════════════════════════════════════════════
+function friendStats(userId) {
+  const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank FROM users WHERE id = ? AND is_active = 1').get(userId);
+  if (!u) return null;
+  const coins = db.prepare('SELECT balance, total_earned, streak, best_streak FROM coin_balances WHERE discord_id = ?').get(u.discord_id);
+  return {
+    id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, role: u.role, rank: u.rank,
+    coins_earned:  coins?.total_earned || 0,
+    coins_balance: coins?.balance || 0,
+    streak:        coins?.streak || 0,
+    best_streak:   coins?.best_streak || 0,
+    ic_total:      +(db.prepare('SELECT COALESCE(SUM(hours),0) AS h FROM ic_log WHERE user_id = ?').get(u.id).h.toFixed(1)),
+    ic_week:       +(db.prepare("SELECT COALESCE(SUM(hours),0) AS h FROM ic_log WHERE user_id = ? AND date >= date('now','-7 days')").get(u.id).h.toFixed(1)),
+    badges:        db.prepare('SELECT COUNT(*) AS c FROM user_badges WHERE user_id = ?').get(u.id).c,
+    exams:         db.prepare('SELECT COUNT(*) AS c FROM registry WHERE examiner_id = ?').get(u.id).c,
+    eow_wins:      db.prepare('SELECT COUNT(*) AS c FROM eow_winners WHERE user_id = ?').get(u.id).c,
+    games_played:  db.prepare('SELECT COUNT(DISTINCT game) AS c FROM game_scores WHERE user_id = ?').get(u.id).c,
+    duel_wins:     db.prepare(`SELECT COUNT(*) AS c FROM quiz_duels WHERE winner_did = ? AND status = 'done'`).get(u.discord_id).c,
+  };
+}
+
+app.get('/api/friends', requireAuth, (req, res) => {
+  const u = getUser(req);
+  const rows = db.prepare('SELECT friend_id, created_at FROM friends WHERE user_id = ? ORDER BY created_at ASC').all(u.id);
+  const friends = rows.map(r => {
+    const s = friendStats(r.friend_id);
+    return s ? { ...s, since: r.created_at } : null;
+  }).filter(Boolean);
+  res.json({ me: friendStats(u.id), friends });
+});
+
+app.post('/api/friends/:id', requireAuth, (req, res) => {
+  const u = getUser(req);
+  const fid = +req.params.id;
+  if (fid === u.id) return res.status(400).json({ error: 'Du kannst dich nicht selbst hinzufügen' });
+  const target = db.prepare('SELECT id FROM users WHERE id = ? AND is_active = 1').get(fid);
+  if (!target) return res.status(404).json({ error: 'Mitglied nicht gefunden' });
+  const count = db.prepare('SELECT COUNT(*) AS c FROM friends WHERE user_id = ?').get(u.id).c;
+  if (count >= 30) return res.status(400).json({ error: 'Maximal 30 Freunde' });
+  try { db.prepare('INSERT INTO friends (user_id, friend_id) VALUES (?, ?)').run(u.id, fid); }
+  catch { return res.status(400).json({ error: 'Bereits in deiner Liste' }); }
+  res.json({ ok: true });
+});
+
+app.delete('/api/friends/:id', requireAuth, (req, res) => {
+  const u = getUser(req);
+  db.prepare('DELETE FROM friends WHERE user_id = ? AND friend_id = ?').run(u.id, +req.params.id);
+  res.json({ ok: true });
+});
+
+// Detail-Vergleich: ich vs. Freund (Spiel-Bestscores beider Seiten)
+app.get('/api/friends/compare/:id', requireAuth, (req, res) => {
+  const u = getUser(req);
+  const mine   = friendStats(u.id);
+  const theirs = friendStats(+req.params.id);
+  if (!theirs) return res.status(404).json({ error: 'Nicht gefunden' });
+  const games = db.prepare(`
+    SELECT game,
+      MAX(CASE WHEN user_id = ? THEN score END) AS my_score,
+      MAX(CASE WHEN user_id = ? THEN score END) AS their_score
+    FROM game_scores WHERE user_id IN (?, ?) GROUP BY game ORDER BY game
+  `).all(u.id, +req.params.id, u.id, +req.params.id);
+  res.json({ me: mine, friend: theirs, games });
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -2304,6 +2373,7 @@ app.get('/game12', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ga
 app.get('/game13', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game13.html')));
 app.get('/game14', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game14.html')));
 app.get('/game15', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game15.html')));
+app.get('/game16', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game16.html')));
 app.get('/quiz', (req, res) => {
   const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
   const fs = require('fs');
@@ -2535,7 +2605,8 @@ function coinIdent(req) {
 }
 
 // Coins gutschreiben/abziehen. Gibt neuen Kontostand zurück, null wenn nicht gedeckt.
-function addCoins(discordId, username, amount, reason, meta) {
+// countEarned=false: zählt nicht zu total_earned (z. B. empfangene Transfers)
+function addCoins(discordId, username, amount, reason, meta, countEarned = true) {
   amount = Math.round(amount);
   if (!amount) return db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(discordId)?.balance ?? 0;
   const cur = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(discordId)?.balance ?? 0;
@@ -2548,7 +2619,7 @@ function addCoins(discordId, username, amount, reason, meta) {
       total_earned = total_earned + excluded.total_earned,
       username     = COALESCE(excluded.username, username),
       updated_at   = CURRENT_TIMESTAMP
-  `).run(discordId, username || null, amount, amount > 0 ? amount : 0);
+  `).run(discordId, username || null, amount, amount > 0 && countEarned ? amount : 0);
   db.prepare('INSERT INTO coin_transactions (discord_id, amount, reason, meta) VALUES (?, ?, ?, ?)')
     .run(discordId, amount, reason, meta ? JSON.stringify(meta) : null);
   const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(discordId).balance;
@@ -2560,6 +2631,21 @@ function addCoins(discordId, username, amount, reason, meta) {
 function berlinDateStr() {
   const { y, m, d } = _berlinParts();
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+// Berliner Datum von gestern als YYYY-MM-DD (für Streak-Prüfung)
+function berlinYesterdayStr() {
+  const { y, m, d } = _berlinParts();
+  const yest = new Date(y, m - 1, d - 1);
+  return `${yest.getFullYear()}-${String(yest.getMonth() + 1).padStart(2, '0')}-${String(yest.getDate()).padStart(2, '0')}`;
+}
+
+// ── Login-Streak: Bonus wächst mit der Serie ────────────────────
+// Tag 1: 25 · ab Tag 2: +5 pro Tag bis max. 50 · Meilenstein-Extra bei 7/30 Tagen
+const STREAK_MILESTONES = { 7: 75, 30: 300 };
+function streakBonus(streak) {
+  const base = Math.min(25 + (streak - 1) * 5, 50);
+  return base + (STREAK_MILESTONES[streak] || 0);
 }
 
 const SHOP_ITEMS = [
@@ -2673,6 +2759,10 @@ app.get('/api/coins/me', (req, res) => {
     boosterUntil:   booster?.expires_at || null,
     customTitle:    ctr || null,
     dailyAvailable: (row?.last_daily || '') !== berlinDateStr(),
+    // Streak gilt als aktiv, wenn heute oder gestern abgeholt wurde – sonst startet die Serie neu
+    streak:         (row?.last_daily === berlinDateStr() || row?.last_daily === berlinYesterdayStr()) ? (row?.streak || 0) : 0,
+    bestStreak:     row?.best_streak || 0,
+    nextDaily:      streakBonus((row?.last_daily === berlinYesterdayStr()) ? (row?.streak || 0) + 1 : 1),
     transactions:   tx,
   });
 });
@@ -2681,16 +2771,65 @@ app.post('/api/coins/daily', (req, res) => {
   const ident = coinIdent(req);
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const today = berlinDateStr();
-  const row = db.prepare('SELECT last_daily FROM coin_balances WHERE discord_id = ?').get(ident.id);
+  const row = db.prepare('SELECT last_daily, streak, best_streak FROM coin_balances WHERE discord_id = ?').get(ident.id);
   if (row?.last_daily === today) return res.status(400).json({ error: 'Tagesbonus heute schon abgeholt' });
-  const bal = addCoins(ident.id, ident.name, 25, 'daily');
-  db.prepare('UPDATE coin_balances SET last_daily = ? WHERE discord_id = ?').run(today, ident.id);
-  res.json({ ok: true, balance: bal, amount: 25 });
+
+  // Streak: gestern abgeholt → +1, sonst Neustart bei 1
+  const streak = (row?.last_daily === berlinYesterdayStr()) ? (row?.streak || 0) + 1 : 1;
+  const best   = Math.max(streak, row?.best_streak || 0);
+  const amount = streakBonus(streak);
+  const bal = addCoins(ident.id, ident.name, amount, 'daily', { streak });
+  db.prepare('UPDATE coin_balances SET last_daily = ?, streak = ?, best_streak = ? WHERE discord_id = ?')
+    .run(today, streak, best, ident.id);
+  // Streak-Badges (nur Mitarbeiter mit users-Eintrag)
+  if (ident.user) {
+    if (streak >= 7)  awardBadge(ident.user.id, 'streak_7');
+    if (streak >= 30) awardBadge(ident.user.id, 'streak_30');
+  }
+  res.json({ ok: true, balance: bal, amount, streak, milestone: STREAK_MILESTONES[streak] || 0 });
 });
 
 app.get('/api/coins/leaderboard', (req, res) => {
   const rows = db.prepare('SELECT discord_id, username, balance, total_earned FROM coin_balances ORDER BY total_earned DESC LIMIT 10').all();
   res.json(rows);
+});
+
+// ── Tauschsystem: Coins an andere Mitglieder senden ─────────────
+const TRANSFER_DAILY_LIMIT = 200; // max gesendete Coins pro Tag
+const TRANSFER_MAX_SINGLE  = 200; // max pro Überweisung
+
+app.post('/api/coins/transfer', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const ip = req.ip || req.socket?.remoteAddress || '';
+  if (rateLimit(`transfer:${ip}`, 10, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
+
+  const { toDiscordId, amount } = req.body;
+  if (!Number.isInteger(amount) || amount < 1 || amount > TRANSFER_MAX_SINGLE)
+    return res.status(400).json({ error: `Betrag muss zwischen 1 und ${TRANSFER_MAX_SINGLE} liegen` });
+  if (!toDiscordId || toDiscordId === ident.id)
+    return res.status(400).json({ error: 'Ungültiger Empfänger' });
+
+  const recipient = db.prepare('SELECT username, discord_id FROM users WHERE discord_id = ? AND is_active = 1').get(toDiscordId)
+    || db.prepare('SELECT username, discord_id FROM coin_balances WHERE discord_id = ?').get(toDiscordId);
+  if (!recipient) return res.status(404).json({ error: 'Empfänger nicht gefunden' });
+
+  // Tageslimit: Summe der heute bereits gesendeten Coins (Berliner Tag via UTC-Datum genügt hier)
+  const sentToday = db.prepare(`SELECT COALESCE(SUM(-amount), 0) AS s FROM coin_transactions
+    WHERE discord_id = ? AND reason = 'transfer:out' AND date(created_at) = date('now')`).get(ident.id).s;
+  if (sentToday + amount > TRANSFER_DAILY_LIMIT)
+    return res.status(400).json({ error: `Tageslimit erreicht (${TRANSFER_DAILY_LIMIT} Coins/Tag, heute schon ${sentToday} gesendet)` });
+
+  const result = db.transaction(() => {
+    const newBal = addCoins(ident.id, ident.name, -amount, 'transfer:out', { to: toDiscordId, toName: recipient.username });
+    if (newBal === null) return null;
+    addCoins(toDiscordId, recipient.username, amount, 'transfer:in', { from: ident.id, fromName: ident.name }, false);
+    return newBal;
+  })();
+  if (result === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+
+  auditLog(req, 'coin_transfer', `${amount} Coins an ${recipient.username} (${toDiscordId})`);
+  res.json({ ok: true, balance: result, sentToday: sentToday + amount, limit: TRANSFER_DAILY_LIMIT });
 });
 
 app.get('/api/shop', (req, res) => {
@@ -2842,6 +2981,7 @@ const TOURNAMENT_GAMES = {
   '2048':       { name: '2048',                url: '/game10' },
   quiz:         { name: 'Quiz Survival',       url: '/game11' },
   tow:          { name: 'Abschlepp-Simulator', url: '/game14' },
+  wordle:       { name: 'Wort-Raten',          url: '/game16' },
 };
 const TOURNAMENT_PRIZES = [500, 250, 100];
 
@@ -2987,13 +3127,38 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
     FROM coin_transactions WHERE created_at >= datetime('now', '-84 days')
     GROUP BY wk ORDER BY wk
   `).all();
+  // Beliebteste Spiele (nach Spielrunden mit Coin-Gutschrift, letzte 12 Wochen)
+  const games = db.prepare(`
+    SELECT substr(reason, 6) AS game, COUNT(*) AS plays, SUM(amount) AS coins
+    FROM coin_transactions
+    WHERE reason LIKE 'game:%' AND created_at >= datetime('now', '-84 days')
+    GROUP BY reason ORDER BY plays DESC LIMIT 10
+  `).all();
+  // Aktive Spieler pro Woche (mind. 1 Coin-Transaktion)
+  const activePlayers = db.prepare(`
+    SELECT date(created_at, 'weekday 0', '-6 days') AS wk, COUNT(DISTINCT discord_id) AS c
+    FROM coin_transactions WHERE created_at >= datetime('now', '-84 days')
+    GROUP BY wk ORDER BY wk
+  `).all();
+  // Tagesbonus-Abholungen pro Woche (Engagement-Indikator)
+  const dailyClaims = db.prepare(`
+    SELECT date(created_at, 'weekday 0', '-6 days') AS wk, COUNT(*) AS c
+    FROM coin_transactions WHERE reason = 'daily' AND created_at >= datetime('now', '-84 days')
+    GROUP BY wk ORDER BY wk
+  `).all();
+  const topStreaks = db.prepare(`
+    SELECT username, streak, best_streak FROM coin_balances
+    WHERE best_streak > 0 ORDER BY best_streak DESC, streak DESC LIMIT 5
+  `).all();
   const summary = {
     activeStaff:   db.prepare("SELECT COUNT(*) AS c FROM users WHERE is_active = 1 AND role != 'citizen'").get().c,
     coinsInUmlauf: db.prepare('SELECT COALESCE(SUM(balance), 0) AS s FROM coin_balances').get().s,
     coinsTotal:    db.prepare('SELECT COALESCE(SUM(total_earned), 0) AS s FROM coin_balances').get().s,
     examsTotal:    db.prepare('SELECT COUNT(*) AS c FROM registry').get().c,
+    activeWeek:    db.prepare("SELECT COUNT(DISTINCT discord_id) AS c FROM coin_transactions WHERE created_at >= datetime('now', '-7 days')").get().c,
+    transfers7d:   db.prepare("SELECT COALESCE(SUM(-amount), 0) AS s FROM coin_transactions WHERE reason = 'transfer:out' AND created_at >= datetime('now', '-7 days')").get().s,
   };
-  res.json({ exams, ic, coins, summary });
+  res.json({ exams, ic, coins, games, activePlayers, dailyClaims, topStreaks, summary });
 });
 
 // ════════════════════════════════════════════════════════════════

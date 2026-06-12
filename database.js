@@ -495,6 +495,13 @@ function initDb() {
       drawn_at           DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS friends (
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      friend_id  INTEGER NOT NULL REFERENCES users(id),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, friend_id)
+    );
+
     CREATE TABLE IF NOT EXISTS quiz_duels (
       id               INTEGER PRIMARY KEY AUTOINCREMENT,
       code             TEXT UNIQUE NOT NULL,
@@ -560,6 +567,8 @@ function initDb() {
   try { db.exec(`ALTER TABLE complaints ADD COLUMN admin_response TEXT`); } catch {}
   try { db.exec(`ALTER TABLE complaints ADD COLUMN admin_response_at DATETIME`); } catch {}
   try { db.exec(`ALTER TABLE users ADD COLUMN ic_weekly_goal REAL DEFAULT 0`); } catch {}
+  try { db.exec(`ALTER TABLE coin_balances ADD COLUMN streak INTEGER DEFAULT 0`); } catch {}
+  try { db.exec(`ALTER TABLE coin_balances ADD COLUMN best_streak INTEGER DEFAULT 0`); } catch {}
 
   // Seed admin users from env vars on first start (Railway: set ADMIN_DISCORD_IDS and ADMIN_USERNAMES)
   const adminIds  = (process.env.ADMIN_DISCORD_IDS  || '').split(',').map(s => s.trim()).filter(Boolean);
