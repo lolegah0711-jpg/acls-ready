@@ -2331,6 +2331,15 @@ app.post('/api/game-scores/:game', (req, res) => {
     }
   } catch (e) { console.error('[Coins]', e.message); }
 
+  // ── Saison-Pass: XP + Wochen-Quest-Fortschritt ──
+  try {
+    seasonIncQuest(cDid, 'games', 1);
+    if (coinsEarned > 0) {
+      seasonIncQuest(cDid, 'game_coins', coinsEarned);
+      addSeasonXp(cDid, cName, coinsEarned); // XP wächst mit verdienten Coins
+    }
+  } catch (e) { console.error('[Season]', e.message); }
+
   if (user) {
     db.prepare(`
       INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
@@ -2362,13 +2371,15 @@ app.get('/api/idle-save', (req, res) => {
     gold: row.gold, totalEarned: row.total_earned,
     buildings: JSON.parse(row.buildings), upgrades: JSON.parse(row.upgrades),
     prestige: row.prestige, clickPower: row.click_power,
+    prestigePoints: row.prestige_points || 0,
+    prestigeUpgrades: JSON.parse(row.prestige_upgrades || '{}'),
   });
 });
 
 app.post('/api/idle-save', (req, res) => {
   const user = getUser(req);
   if (!user) return res.status(401).json({ error: 'Nicht angemeldet' });
-  const { gold, totalEarned, buildings, upgrades, prestige, clickPower } = req.body;
+  const { gold, totalEarned, buildings, upgrades, prestige, clickPower, prestigePoints, prestigeUpgrades } = req.body;
   if (typeof gold !== 'number' || gold < 0 || !isFinite(gold))
     return res.status(400).json({ error: 'Ungültig' });
 
@@ -2395,15 +2406,24 @@ app.post('/api/idle-save', (req, res) => {
       return res.status(400).json({ error: 'Ungültige Daten' });
   }
 
+  // Prestige-Quest + Saison-XP: ein neuer Prestige-Durchlauf seit dem letzten Save
+  const prestigeDelta = Math.max(0, (prestige || 0) - (row?.prestige || 0));
+  if (prestigeDelta > 0) {
+    seasonIncQuest(user.discord_id, 'prestige', prestigeDelta);
+    addSeasonXp(user.discord_id, user.username, 40 * prestigeDelta, 'prestige');
+  }
+
   db.prepare(`
-    INSERT INTO idle_saves (user_id, gold, total_earned, buildings, upgrades, prestige, click_power)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO idle_saves (user_id, gold, total_earned, buildings, upgrades, prestige, click_power, prestige_points, prestige_upgrades)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
       gold=excluded.gold, total_earned=excluded.total_earned, buildings=excluded.buildings,
       upgrades=excluded.upgrades, prestige=excluded.prestige, click_power=excluded.click_power,
+      prestige_points=excluded.prestige_points, prestige_upgrades=excluded.prestige_upgrades,
       updated_at=CURRENT_TIMESTAMP
   `).run(user.id, gold, totalEarned || 0, JSON.stringify(buildings || {}),
-    JSON.stringify(upgrades || {}), prestige || 0, clickPower || 1);
+    JSON.stringify(upgrades || {}), prestige || 0, clickPower || 1,
+    Math.max(0, Math.floor(prestigePoints || 0)), JSON.stringify(prestigeUpgrades || {}));
   res.json({ ok: true });
 });
 
@@ -2845,6 +2865,159 @@ function openMysteryBox(ident) {
   return { kind: 'frame', id: f.id, name: f.name };
 }
 
+// ════════════════════════════════════════════════════════════════
+//  SAISON-PASS — XP-Leiste, Wochen-Quests & Belohnungsstufen
+// ════════════════════════════════════════════════════════════════
+// Saison = Kalendermonat (Berliner Zeit). Quests laufen wochenweise.
+function seasonKey() {
+  const { y, m } = _berlinParts();
+  return `${y}-${String(m).padStart(2, '0')}`;
+}
+function seasonName() {
+  const { y, m } = _berlinParts();
+  const months = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  return `${months[m - 1]} ${y}`;
+}
+
+const SEASON_XP_PER_LEVEL = 250;
+
+// Wochen-Quests (Reset jeden Montag). metric = Andockpunkt im Code.
+const SEASON_QUESTS = [
+  { id: 'play',     metric: 'games',      goal: 12, xp: 150, icon: '🎮', label: 'Spiele 12 Minispiel-Runden' },
+  { id: 'coins',    metric: 'game_coins', goal: 300, xp: 150, icon: '🪙', label: 'Verdiene 300 Coins in Minispielen' },
+  { id: 'daily',    metric: 'daily',      goal: 3,  xp: 120, icon: '📅', label: 'Hol dir an 3 Tagen den Tagesbonus' },
+  { id: 'duel',     metric: 'duel_win',   goal: 2,  xp: 200, icon: '⚔️', label: 'Gewinne 2 Quiz-Duelle' },
+  { id: 'prestige', metric: 'prestige',   goal: 1,  xp: 250, icon: '⭐', label: 'Mach 1× Prestige in der Werkstatt' },
+];
+
+// Belohnungsstufen. Stufe L wird bei xp >= L*250 erreicht.
+// free = Gratis-Bahn · vip = nur mit aktiver VIP-Rolle.
+const SEASON_REWARDS = [
+  { level: 1,  free: { coins: 100 },              vip: { coins: 100 } },
+  { level: 2,  free: { coins: 150 },              vip: { ticket: 1 } },
+  { level: 3,  free: { ticket: 1 },               vip: { coins: 250 } },
+  { level: 4,  free: { coins: 200 },              vip: { booster: 24 } },
+  { level: 5,  free: { coins: 300 },              vip: { coins: 400 } },
+  { level: 6,  free: { booster: 24 },             vip: { ticket: 2 } },
+  { level: 7,  free: { coins: 350 },              vip: { coins: 500 } },
+  { level: 8,  free: { ticket: 2 },               vip: { booster: 48 } },
+  { level: 9,  free: { coins: 450 },              vip: { coins: 700 } },
+  { level: 10, free: { coins: 600 },              vip: { item: 'frame_neon' } },
+  { level: 11, free: { booster: 48 },             vip: { coins: 1000 } },
+  { level: 12, free: { item: 'frame_gold', coins: 500 }, vip: { item: 'deco_crown', coins: 1000 } },
+];
+const SEASON_MAX_LEVEL = SEASON_REWARDS.length;
+
+function seasonLevel(xp) { return Math.min(SEASON_MAX_LEVEL, Math.floor(xp / SEASON_XP_PER_LEVEL)); }
+
+function addSeasonXp(discordId, username, amount) {
+  amount = Math.floor(amount);
+  if (!discordId || amount <= 0) return;
+  const s = seasonKey();
+  db.prepare(`INSERT INTO season_pass (season, discord_id, username, xp) VALUES (?, ?, ?, ?)
+    ON CONFLICT(season, discord_id) DO UPDATE SET
+      xp = xp + excluded.xp, username = COALESCE(excluded.username, username), updated_at = CURRENT_TIMESTAMP`)
+    .run(s, discordId, username || null, amount);
+  sseEmit('season', { discord_id: discordId }, discordId);
+}
+
+// Quest-Fortschritt erhöhen (über metric). Stoppt automatisch beim Ziel.
+function seasonIncQuest(discordId, metric, amount = 1) {
+  if (!discordId || amount <= 0) return;
+  const wk = weekKey();
+  for (const q of SEASON_QUESTS) {
+    if (q.metric !== metric) continue;
+    const row = db.prepare('SELECT progress FROM season_quest_progress WHERE week = ? AND discord_id = ? AND quest_id = ?').get(wk, discordId, q.id);
+    const cur = row ? row.progress : 0;
+    if (cur >= q.goal) continue;
+    const next = Math.min(q.goal, cur + amount);
+    db.prepare(`INSERT INTO season_quest_progress (week, discord_id, quest_id, progress) VALUES (?, ?, ?, ?)
+      ON CONFLICT(week, discord_id, quest_id) DO UPDATE SET progress = excluded.progress`).run(wk, discordId, q.id, next);
+  }
+}
+
+// Belohnung einlösen (Coins, Lotterie-Los, Booster, Shop-Item)
+function grantSeasonReward(ident, reward) {
+  if (!reward) return;
+  if (reward.coins)   addCoins(ident.id, ident.name, reward.coins, 'season:reward');
+  if (reward.ticket)  { const stmt = db.prepare('INSERT INTO lottery_tickets (week, discord_id, username) VALUES (?, ?, ?)'); for (let i = 0; i < reward.ticket; i++) stmt.run(weekKey(), ident.id, ident.name); }
+  if (reward.booster) extendPerk(ident.id, 'booster', reward.booster);
+  if (reward.item)    db.prepare('INSERT OR IGNORE INTO shop_purchases (discord_id, item_id, price) VALUES (?, ?, 0)').run(ident.id, reward.item);
+}
+
+app.get('/api/season', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const s   = seasonKey();
+  const wk  = weekKey();
+  const row = db.prepare('SELECT xp, claimed FROM season_pass WHERE season = ? AND discord_id = ?').get(s, ident.id);
+  const xp  = row?.xp || 0;
+  const claimed = new Set(JSON.parse(row?.claimed || '[]'));
+  const level   = seasonLevel(xp);
+  const isVip   = !!getPerk(ident.id, 'vip');
+
+  const rewards = SEASON_REWARDS.map(r => ({
+    level: r.level, free: r.free, vip: r.vip,
+    reached: level >= r.level,
+    freeClaimed: claimed.has('f' + r.level),
+    vipClaimed:  claimed.has('v' + r.level),
+  }));
+
+  const prog = db.prepare('SELECT quest_id, progress, claimed FROM season_quest_progress WHERE week = ? AND discord_id = ?').all(wk, ident.id);
+  const pmap = Object.fromEntries(prog.map(p => [p.quest_id, p]));
+  const quests = SEASON_QUESTS.map(q => ({
+    id: q.id, icon: q.icon, label: q.label, goal: q.goal, xp: q.xp,
+    progress: Math.min(q.goal, pmap[q.id]?.progress || 0),
+    claimed:  !!pmap[q.id]?.claimed,
+  }));
+
+  res.json({
+    seasonName: seasonName(),
+    xp, level, maxLevel: SEASON_MAX_LEVEL, xpPerLevel: SEASON_XP_PER_LEVEL,
+    xpInLevel: level >= SEASON_MAX_LEVEL ? SEASON_XP_PER_LEVEL : xp - level * SEASON_XP_PER_LEVEL,
+    isVip, rewards, quests,
+  });
+});
+
+app.post('/api/season/claim-quest', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const q = SEASON_QUESTS.find(x => x.id === req.body.questId);
+  if (!q) return res.status(400).json({ error: 'Unbekannte Quest' });
+  const wk  = weekKey();
+  const row = db.prepare('SELECT progress, claimed FROM season_quest_progress WHERE week = ? AND discord_id = ? AND quest_id = ?').get(wk, ident.id, q.id);
+  if (!row || row.progress < q.goal) return res.status(400).json({ error: 'Quest noch nicht abgeschlossen' });
+  if (row.claimed) return res.status(400).json({ error: 'Bereits eingelöst' });
+  db.prepare('UPDATE season_quest_progress SET claimed = 1 WHERE week = ? AND discord_id = ? AND quest_id = ?').run(wk, ident.id, q.id);
+  addSeasonXp(ident.id, ident.name, q.xp);
+  res.json({ ok: true, xpGained: q.xp });
+});
+
+app.post('/api/season/claim-level', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const { level, track } = req.body;
+  const reward = SEASON_REWARDS.find(r => r.level === level);
+  if (!reward || (track !== 'free' && track !== 'vip')) return res.status(400).json({ error: 'Ungültige Stufe' });
+
+  const s   = seasonKey();
+  const row = db.prepare('SELECT xp, claimed FROM season_pass WHERE season = ? AND discord_id = ?').get(s, ident.id);
+  const xp  = row?.xp || 0;
+  if (seasonLevel(xp) < level) return res.status(400).json({ error: 'Stufe noch nicht erreicht' });
+  if (track === 'vip' && !getPerk(ident.id, 'vip')) return res.status(403).json({ error: 'Nur mit VIP-Rolle' });
+
+  const claimed = new Set(JSON.parse(row?.claimed || '[]'));
+  const key = (track === 'vip' ? 'v' : 'f') + level;
+  if (claimed.has(key)) return res.status(400).json({ error: 'Bereits abgeholt' });
+
+  grantSeasonReward(ident, track === 'vip' ? reward.vip : reward.free);
+  claimed.add(key);
+  db.prepare(`INSERT INTO season_pass (season, discord_id, username, xp, claimed) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(season, discord_id) DO UPDATE SET claimed = excluded.claimed, username = COALESCE(excluded.username, username)`)
+    .run(s, ident.id, ident.name, xp, JSON.stringify([...claimed]));
+  res.json({ ok: true });
+});
+
 app.get('/api/coins/me', (req, res) => {
   const ident = coinIdent(req);
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
@@ -2894,6 +3067,8 @@ app.post('/api/coins/daily', (req, res) => {
     if (streak >= 7)  awardBadge(ident.user.id, 'streak_7');
     if (streak >= 30) awardBadge(ident.user.id, 'streak_30');
   }
+  // Saison-Pass: XP + Wochen-Quest „Tagesbonus"
+  try { seasonIncQuest(ident.id, 'daily', 1); addSeasonXp(ident.id, ident.name, 50); } catch {}
   res.json({ ok: true, balance: bal, amount, streak, milestone: STREAK_MILESTONES[streak] || 0 });
 });
 
@@ -3298,6 +3473,8 @@ function finishDuel(d) {
       const loseName  = winnerDid === d.host_did ? d.guest_name : d.host_name;
       addCoins(winnerDid, winName,  DUEL_COINS_WIN,  'duel:win',  { code: d.code });
       addCoins(loserDid,  loseName, DUEL_COINS_LOSS, 'duel:loss', { code: d.code });
+      // Saison-Pass: Quest „Duell gewinnen" + XP für den Sieger
+      try { seasonIncQuest(winnerDid, 'duel_win', 1); addSeasonXp(winnerDid, winName, 30); } catch {}
     }
     // Gaming-Achievements für beide Teilnehmer (sofern Mitarbeiter)
     for (const did of [d.host_did, d.guest_did]) {

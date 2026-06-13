@@ -154,6 +154,7 @@ const PAGES = {
   turnier:      { title: 'Wochenturnier',         sub: 'Jede Woche ein anderes Spiel – Coins für die Top 3' },
   duell:        { title: 'Quiz-Duell',            sub: '1-gegen-1 live · Mitarbeiter & Bürger' },
   shop:         { title: 'Coin-Shop',             sub: 'ACLS-Coins verdienen & ausgeben' },
+  saison:       { title: 'Saison-Pass',           sub: 'Wochen-Quests, XP & Belohnungen' },
   freunde:      { title: 'Freunde',               sub: 'Freundesliste & Statistik-Vergleich' },
 };
 
@@ -1188,7 +1189,7 @@ function navigate(page) {
   $('pageContent').innerHTML    = loading();
 
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, freunde };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde };
   (renders[page] || dashboard)();
 }
 
@@ -1532,6 +1533,9 @@ function connectSSE() {
     });
     _sseSource.addEventListener('tournament', () => {
       if (_activePage === 'turnier') turnier();
+    });
+    _sseSource.addEventListener('season', () => {
+      if (_activePage === 'saison') saison();
     });
     _sseSource.addEventListener('duel', e => {
       try {
@@ -5739,6 +5743,117 @@ window.shopEquip = async itemId => {
 window.shopUnequip = async slot => {
   const r = await api('/api/shop/equip', { method: 'POST', body: { itemId: null, slot } });
   if (r) { toast('Abgelegt', 'ok'); renderUserWidget(); shop(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  SAISON-PASS
+// ════════════════════════════════════════════════════════════════
+// Belohnung als kurzer Text + Icon darstellen
+function seasonRewardLabel(r) {
+  if (!r) return '–';
+  const parts = [];
+  if (r.coins)   parts.push(`${r.coins} 🪙`);
+  if (r.ticket)  parts.push(`${r.ticket}× 🎟️ Los`);
+  if (r.booster) parts.push(`⚡ Booster ${r.booster}h`);
+  if (r.item)    parts.push(`🎁 ${SHOP_TITLE_NAMES[r.item] || SEASON_ITEM_NAMES[r.item] || r.item}`);
+  return parts.join(' + ') || '–';
+}
+const SEASON_ITEM_NAMES = {
+  frame_gold: 'Gold-Rahmen', frame_neon: 'Neon-Rahmen', frame_feuer: 'Feuer-Rahmen',
+  frame_lila: 'Twilight-Rahmen', frame_regenbogen: 'Regenbogen-Rahmen',
+  deco_crown: '👑 Krone', deco_wrench: '🔧 Schraubenschlüssel', deco_blitz: '⚡ Blitz', deco_halo: '😇 Heiligenschein',
+};
+
+async function saison() {
+  const d = await api('/api/season');
+  if (!d) return;
+  const pct = Math.round((d.xpInLevel / d.xpPerLevel) * 100);
+  const atMax = d.level >= d.maxLevel;
+
+  // Quests
+  const questHtml = d.quests.map(q => {
+    const qpct = Math.round((q.progress / q.goal) * 100);
+    const done = q.progress >= q.goal;
+    return `<div class="card" style="padding:.8rem 1rem;display:flex;align-items:center;gap:.9rem">
+      <div style="font-size:1.5rem">${q.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:.85rem">${esc(q.label)}</div>
+        <div style="height:7px;background:var(--surface2);border-radius:99px;overflow:hidden;margin:.4rem 0 .25rem">
+          <div style="height:100%;width:${qpct}%;background:${done ? '#22c55e' : '#a855f7'};border-radius:99px;transition:width .3s"></div>
+        </div>
+        <div style="font-size:.7rem;color:var(--muted)">${q.progress}/${q.goal} · Belohnung: <b style="color:#a855f7">+${q.xp} XP</b></div>
+      </div>
+      ${q.claimed
+        ? '<span style="font-size:.72rem;color:#22c55e;font-weight:700;white-space:nowrap"><i class="fas fa-check"></i> Erledigt</span>'
+        : done
+          ? `<button class="btn btn-primary btn-sm" onclick="seasonClaimQuest('${q.id}')" style="white-space:nowrap">Einlösen</button>`
+          : '<span style="font-size:.72rem;color:var(--muted);white-space:nowrap">läuft…</span>'}
+    </div>`;
+  }).join('');
+
+  // Belohnungsstufen (Track-Tabelle)
+  const rewardHtml = d.rewards.map(r => {
+    const cell = (track) => {
+      const rew = track === 'vip' ? r.vip : r.free;
+      const claimed = track === 'vip' ? r.vipClaimed : r.freeClaimed;
+      const vipLocked = track === 'vip' && !d.isVip;
+      const claimable = r.reached && !claimed && !vipLocked;
+      return `<div style="flex:1;min-width:130px;padding:.55rem .7rem;border-radius:10px;border:1px solid ${claimed ? 'rgba(34,197,94,.4)' : claimable ? 'rgba(168,85,247,.5)' : 'var(--border)'};background:${claimed ? 'rgba(34,197,94,.07)' : claimable ? 'rgba(168,85,247,.08)' : 'var(--surface2)'};opacity:${r.reached ? 1 : .5}">
+        <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${track === 'vip' ? '#fbbf24' : 'var(--muted)'};margin-bottom:.2rem">${track === 'vip' ? '⭐ VIP' : 'Gratis'}</div>
+        <div style="font-size:.78rem;font-weight:600">${seasonRewardLabel(rew)}</div>
+        ${claimed
+          ? '<div style="font-size:.66rem;color:#22c55e;font-weight:700;margin-top:.3rem"><i class="fas fa-check"></i> Abgeholt</div>'
+          : claimable
+            ? `<button class="btn btn-primary btn-sm" style="margin-top:.35rem;padding:.2rem .6rem;font-size:.7rem" onclick="seasonClaimLevel(${r.level},'${track}')">Abholen</button>`
+            : vipLocked && r.reached
+              ? '<div style="font-size:.64rem;color:#fbbf24;margin-top:.3rem"><i class="fas fa-lock"></i> VIP nötig</div>'
+              : ''}
+      </div>`;
+    };
+    return `<div style="display:flex;align-items:stretch;gap:.6rem;margin-bottom:.6rem">
+      <div style="width:46px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:10px;background:${r.reached ? 'linear-gradient(135deg,#7c3aed,#a855f7)' : 'var(--surface2)'};border:1px solid var(--border)">
+        <div style="font-size:.6rem;color:${r.reached ? 'rgba(255,255,255,.7)' : 'var(--muted)'}">Stufe</div>
+        <div style="font-size:1.1rem;font-weight:800;color:${r.reached ? '#fff' : 'var(--muted)'}">${r.level}</div>
+      </div>
+      ${cell('free')}
+      ${cell('vip')}
+    </div>`;
+  }).join('');
+
+  $('pageContent').innerHTML = `
+    <div class="card" style="padding:1.4rem;margin-bottom:1.25rem;background:linear-gradient(135deg,rgba(168,85,247,.12),rgba(168,85,247,.02));border-color:rgba(168,85,247,.35)">
+      <div style="display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap;margin-bottom:1rem">
+        <div style="font-size:2.6rem">🎖️</div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:.72rem;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:.08em">Saison · ${esc(d.seasonName)}</div>
+          <div style="font-size:1.45rem;font-weight:800;margin:.1rem 0">Stufe ${d.level}${atMax ? ' · MAX 🏆' : ''}</div>
+          <div style="font-size:.78rem;color:var(--muted)">Verdiene XP durch Minispiele, Tagesbonus, Duelle & Quests. Jede Stufe schaltet Belohnungen frei.</div>
+        </div>
+        ${d.isVip ? '<span style="font-size:.7rem;font-weight:800;color:#fbbf24;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.08);padding:.3rem .7rem;border-radius:99px">⭐ VIP aktiv</span>'
+                  : '<span style="font-size:.68rem;color:var(--muted)">VIP-Belohnungen im Shop freischaltbar</span>'}
+      </div>
+      <div style="display:flex;align-items:center;gap:.6rem">
+        <div style="flex:1;height:14px;background:var(--surface2);border-radius:99px;overflow:hidden;position:relative">
+          <div style="height:100%;width:${atMax ? 100 : pct}%;background:linear-gradient(90deg,#7c3aed,#a855f7,#d8b4fe);border-radius:99px;transition:width .4s"></div>
+        </div>
+        <div style="font-size:.74rem;font-weight:700;color:#a855f7;white-space:nowrap">${atMax ? `${d.xp} XP` : `${d.xpInLevel}/${d.xpPerLevel} XP`}</div>
+      </div>
+    </div>
+
+    <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">⚡ Wochen-Quests <span style="color:#a855f7;text-transform:none;letter-spacing:0">· Reset jeden Montag</span></div>
+    <div style="display:grid;gap:.6rem;margin-bottom:1.5rem">${questHtml}</div>
+
+    <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">🎁 Belohnungsstufen</div>
+    <div>${rewardHtml}</div>`;
+}
+
+window.seasonClaimQuest = async (id) => {
+  const r = await api('/api/season/claim-quest', { method: 'POST', body: { questId: id } });
+  if (r) { toast(`+${r.xpGained} XP eingelöst! 🎉`, 'ok'); saison(); }
+};
+window.seasonClaimLevel = async (level, track) => {
+  const r = await api('/api/season/claim-level', { method: 'POST', body: { level, track } });
+  if (r) { toast('Belohnung abgeholt! 🎁', 'ok'); loadCoins(); saison(); }
 };
 
 // ════════════════════════════════════════════════════════════════

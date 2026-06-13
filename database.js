@@ -597,6 +597,30 @@ function initDb() {
   )`);
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_notif_discord ON notifications(discord_id, created_at DESC)'); } catch {}
 
+  // ── Saison-Pass: XP pro Saison (Monat) + abgeholte Belohnungsstufen ──
+  db.exec(`CREATE TABLE IF NOT EXISTS season_pass (
+    season      TEXT NOT NULL,
+    discord_id  TEXT NOT NULL,
+    username    TEXT,
+    xp          INTEGER NOT NULL DEFAULT 0,
+    claimed     TEXT    NOT NULL DEFAULT '[]',
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (season, discord_id)
+  )`);
+  // ── Wochen-Quests: Fortschritt pro Spieler/Woche/Quest ──
+  db.exec(`CREATE TABLE IF NOT EXISTS season_quest_progress (
+    week        TEXT NOT NULL,
+    discord_id  TEXT NOT NULL,
+    quest_id    TEXT NOT NULL,
+    progress    INTEGER NOT NULL DEFAULT 0,
+    claimed     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (week, discord_id, quest_id)
+  )`);
+
+  // ── Idle-Werkstatt: Prestige-Punkte (spendbar) + permanente Prestige-Upgrades ──
+  try { db.exec('ALTER TABLE idle_saves ADD COLUMN prestige_points INTEGER NOT NULL DEFAULT 0'); } catch {}
+  try { db.exec("ALTER TABLE idle_saves ADD COLUMN prestige_upgrades TEXT NOT NULL DEFAULT '{}'"); } catch {}
+
   // Gästebuch: auch Bürger ohne users-Eintrag dürfen schreiben → author_id nullable + Voter-Felder
   {
     const gbCols = db.prepare("PRAGMA table_info(guestbook)").all();

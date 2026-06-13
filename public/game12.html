@@ -113,11 +113,17 @@ body{background:#0a0e13;font-family:'Inter',sans-serif;color:#fff;min-height:100
       <div class="side-title">⭐ Prestige</div>
       <div id="prest-info">
         <span id="prest-count">0</span>
-        <div style="font-size:11px;color:#6b7280;margin:4px 0">Prestige-Level</div>
-        <div style="font-size:11px;color:#a855f7;margin-bottom:8px" id="prest-mult-txt">Bonus: ×1.0</div>
+        <div style="font-size:11px;color:#6b7280;margin:4px 0">Prestige-Punkte ⭐ verfügbar</div>
+        <div style="font-size:11px;color:#a855f7;margin-bottom:6px" id="prest-mult-txt">Produktion: ×1.0</div>
         <div style="font-size:11px;color:#6b7280;margin-bottom:8px" id="prest-need">Benötigt: 1 Mio. GS gesamt</div>
       </div>
       <button class="prest-btn" id="prest-btn" onclick="doPrestige()" disabled>🔁 Prestige!</button>
+      <div style="font-size:10px;color:#6b7280;text-align:center;margin-top:6px">Lebenslang: <span id="prest-lifetime">0</span> ⭐</div>
+    </div>
+    <div class="side-card" id="prest-shop-card" style="display:none">
+      <div class="side-title">🛒 Prestige-Shop</div>
+      <div style="font-size:10px;color:#6b7280;margin-bottom:8px">Permanente Upgrades — bleiben über Prestige hinweg erhalten.</div>
+      <div id="prest-shop-list"></div>
     </div>
     <div class="side-card">
       <div class="side-title">📰 Nachrichten</div>
@@ -171,12 +177,21 @@ const MILESTONES = [
 
 const NEWS = ['Werkstatt brummt – Auftragslage gut!','Neue Felgen angekommen!','Los Santos Tuner fragt nach Angebot.','Rennstrecke bucht VIP-Events.','Fuhrpark wächst stetig.','Fabrik läuft auf Hochtouren!','ACLS expandiert nach Sandy Shores.','Geldfluss: positiv!','Kunden-Zufriedenheit: 98%.','Neue Mitarbeiter eingestellt.'];
 
+// Permanente Prestige-Upgrades (mit ⭐ Prestige-Punkten bezahlt, bleiben nach Prestige erhalten)
+const PRESTIGE_UPGRADES = [
+  {id:'pp_click', name:'Power-Klick',  icon:'🖱️', max:10, baseCost:3, desc:'+50 % Klick-Wert pro Stufe'},
+  {id:'pp_gps',   name:'Effizienz',    icon:'⚙️', max:10, baseCost:5, desc:'+20 % Gesamt-Produktion pro Stufe'},
+  {id:'pp_start', name:'Startkapital', icon:'💰', max:8,  baseCost:4, desc:'Starte nach Prestige mit +25k GS pro Stufe'},
+  {id:'pp_keep',  name:'Routinier',    icon:'🔁', max:5,  baseCost:8, desc:'+10 % mehr Prestige-Punkte pro Stufe'},
+];
+
 const PRESTIGE_THRESHOLD = 1_000_000;
 const SAVE_INTERVAL = 30000;
 
 let state = {
   gold: 0, totalEarned: 0, prestige: 0, clickPower: 1,
-  buildings: {}, upgrades: [], lastSave: Date.now()
+  buildings: {}, upgrades: [], lastSave: Date.now(),
+  prestigePoints: 0, prestigeUpgrades: {}
 };
 let calcGps = 0;
 let saveTimer, tickRaf;
@@ -204,9 +219,27 @@ function getClickPower() {
   return p;
 }
 
+// ── Prestige-Upgrade Helfer ──
+function ppLevel(id) { return state.prestigeUpgrades[id] || 0; }
+function ppCost(u)   { return Math.ceil(u.baseCost * Math.pow(1.6, ppLevel(u.id))); }
+function getClickMultPrest() { return 1 + 0.5 * ppLevel('pp_click'); }
+function getGpsMultPrest()   { return 0.2 * ppLevel('pp_gps'); }   // additiv in prestMult
+function getPpKeepMult()     { return 1 + 0.1 * ppLevel('pp_keep'); }
+function getStartGold()      { return 25000 * ppLevel('pp_start'); }
+// Punkte, die ein Prestige aktuell einbringen würde
+function prestigeGain() {
+  if (state.totalEarned < PRESTIGE_THRESHOLD) return 0;
+  const base = Math.floor(5 * Math.sqrt(state.totalEarned / PRESTIGE_THRESHOLD));
+  return Math.max(1, Math.floor(base * getPpKeepMult()));
+}
+// Gesamt-Produktionsmultiplikator (lebenslange Punkte + Upgrades)
+function prestProdMult() {
+  return 1 + state.prestige * 0.02 + getPrestExtraMult() + getGpsMultPrest();
+}
+
 function getGps() {
   let total = 0;
-  const prestMult = 1 + state.prestige * 0.1 + getPrestExtraMult();
+  const prestMult = prestProdMult();
   for (const b of BUILDINGS) {
     const owned = state.buildings[b.id] || 0;
     if (!owned) continue;
@@ -230,7 +263,7 @@ function getPrestExtraMult() {
 }
 
 function clickCar(ev) {
-  const earned = getClickPower() * (1 + state.prestige * 0.05);
+  const earned = getClickPower() * getClickMultPrest() * (1 + state.prestige * 0.01);
   state.gold += earned;
   state.totalEarned += earned;
   spawnFloat(ev.clientX, ev.clientY, `+${fmt(earned)} GS`);
@@ -276,14 +309,30 @@ function buyUpgrade(uid) {
 }
 
 function doPrestige() {
-  if (state.totalEarned < PRESTIGE_THRESHOLD) return;
-  if (!confirm('Prestige durchführen? Alle Gebäude und Upgrades werden zurückgesetzt, aber dein Multiplikator steigt!')) return;
-  state.prestige++;
-  state.gold = 0;
+  const gain = prestigeGain();
+  if (gain < 1) return;
+  if (!confirm(`Prestige durchführen?\n\nDu erhältst ${gain} Prestige-Punkte ⭐\nGebäude & Upgrades werden zurückgesetzt — Prestige-Upgrades & -Punkte bleiben erhalten!`)) return;
+  state.prestige += gain;          // lebenslang gesammelt (Produktionsbonus + Meilenstein)
+  state.prestigePoints += gain;    // spendbar im Prestige-Shop
+  state.gold = getStartGold();
   state.totalEarned = 0;
   state.buildings = {};
   state.upgrades = [];
-  calcGps = 0;
+  calcGps = getGps();
+  updateAll();
+  saveProgress();
+}
+
+function buyPrestUpgrade(id) {
+  const u = PRESTIGE_UPGRADES.find(x => x.id === id);
+  if (!u) return;
+  const lvl = ppLevel(id);
+  if (lvl >= u.max) return;
+  const cost = ppCost(u);
+  if (state.prestigePoints < cost) return;
+  state.prestigePoints -= cost;
+  state.prestigeUpgrades[id] = lvl + 1;
+  calcGps = getGps();
   updateAll();
   saveProgress();
 }
@@ -304,25 +353,54 @@ function updateHud() {
   document.getElementById('hud-gold').textContent = fmt(state.gold)+' GS';
   document.getElementById('hud-gps').textContent = fmt(calcGps)+'/s';
   document.getElementById('hud-total').textContent = fmt(state.totalEarned)+' GS';
-  const pm = 1 + state.prestige * 0.1 + getPrestExtraMult();
-  document.getElementById('hud-prest').textContent = '×'+pm.toFixed(1);
-  document.getElementById('click-earn-txt').textContent = `+${fmt(getClickPower()*(1+state.prestige*.05))} GS / Klick`;
+  const pm = prestProdMult();
+  document.getElementById('hud-prest').textContent = '×'+pm.toFixed(2);
+  document.getElementById('click-earn-txt').textContent = `+${fmt(getClickPower()*getClickMultPrest()*(1+state.prestige*.01))} GS / Klick`;
   updatePrestigeUI();
   updateBuildingBtns();
 }
 
 function updatePrestigeUI() {
-  const canPrest = state.totalEarned >= PRESTIGE_THRESHOLD;
-  document.getElementById('prest-btn').disabled = !canPrest;
-  document.getElementById('prest-count').textContent = state.prestige;
-  const pm = 1 + state.prestige * 0.1 + getPrestExtraMult();
-  document.getElementById('prest-mult-txt').textContent = `Bonus: ×${pm.toFixed(1)}`;
+  const gain = prestigeGain();
+  const canPrest = gain >= 1;
+  const btn = document.getElementById('prest-btn');
+  btn.disabled = !canPrest;
+  btn.textContent = canPrest ? `🔁 Prestige! +${gain} ⭐` : '🔁 Prestige!';
+  document.getElementById('prest-count').textContent = state.prestigePoints;
+  document.getElementById('prest-lifetime').textContent = state.prestige;
+  document.getElementById('prest-mult-txt').textContent = `Produktion: ×${prestProdMult().toFixed(2)}`;
   if (canPrest) {
-    document.getElementById('prest-need').textContent = '✅ Bereit!';
+    document.getElementById('prest-need').textContent = `✅ Bereit – bringt ${gain} ⭐`;
   } else {
     const need = PRESTIGE_THRESHOLD - state.totalEarned;
-    document.getElementById('prest-need').textContent = `Noch ${fmt(need)} GS`;
+    document.getElementById('prest-need').textContent = `Noch ${fmt(need)} GS bis Prestige`;
   }
+  renderPrestShop();
+}
+
+function renderPrestShop() {
+  const card = document.getElementById('prest-shop-card');
+  // Shop erst zeigen, wenn man schon mindestens 1× Prestige gemacht hat
+  if (state.prestige <= 0 && state.prestigePoints <= 0) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  document.getElementById('prest-shop-list').innerHTML = PRESTIGE_UPGRADES.map(u => {
+    const lvl = ppLevel(u.id);
+    const maxed = lvl >= u.max;
+    const cost = ppCost(u);
+    const afford = state.prestigePoints >= cost;
+    return `<div class="upg" style="margin-bottom:6px">
+      <div class="upg-icon">${u.icon}</div>
+      <div class="upg-info">
+        <div class="upg-name">${u.name} <span style="color:#a855f7;font-size:11px">${lvl}/${u.max}</span></div>
+        <div class="upg-desc">${u.desc}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+        ${maxed ? '<div style="font-size:11px;font-weight:700;color:#22c55e">MAX</div>'
+                : `<div style="font-size:11px;font-weight:700;color:#a855f7">${cost} ⭐</div>
+                   <button class="btn-buy" style="background:#a855f7;color:#fff" onclick="buyPrestUpgrade('${u.id}')" ${afford ? '' : 'disabled'}>Kaufen</button>`}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function renderBuildings() {
@@ -418,11 +496,13 @@ async function saveProgress() {
   try {
     const body = {
       gold: state.gold,
-      total_earned: state.totalEarned,
+      totalEarned: state.totalEarned,
       buildings: state.buildings,
       upgrades: state.upgrades,
       prestige: state.prestige,
-      click_power: getClickPower(),
+      clickPower: getClickPower(),
+      prestigePoints: state.prestigePoints,
+      prestigeUpgrades: state.prestigeUpgrades,
     };
     const r = await fetch('/api/idle-save', {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -451,12 +531,14 @@ async function loadProgress() {
     const r = await fetch('/api/idle-save');
     if (r.ok) {
       const d = await r.json();
-      if (d.gold !== undefined) {
+      if (d && d.gold !== undefined) {
         state.gold = d.gold || 0;
-        state.totalEarned = d.total_earned || 0;
+        state.totalEarned = d.totalEarned || 0;
         state.buildings = d.buildings || {};
         state.upgrades = d.upgrades || [];
         state.prestige = d.prestige || 0;
+        state.prestigePoints = d.prestigePoints || 0;
+        state.prestigeUpgrades = d.prestigeUpgrades || {};
       }
       document.getElementById('save-status').textContent = `📂 Geladen`;
     } else {
