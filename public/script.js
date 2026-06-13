@@ -1051,6 +1051,7 @@ function bootApp() {
   navigate(startPage && PAGES[startPage] ? startPage : 'dashboard');
   // Abzeichen alle 30 Minuten neu laden wenn Dashboard aktiv
   setInterval(() => { if (_activePage === 'dashboard') dashboard(); }, 30 * 60 * 1000);
+  loadNotifCount();
 }
 
 function renderUserWidget() {
@@ -1542,9 +1543,114 @@ function connectSSE() {
       // Turnier-Updates: Lobby aktualisieren (nicht mitten im eigenen Match)
       if (duelVisible() && !_duel.code) duell();
     });
+    _sseSource.addEventListener('notification', () => {
+      loadNotifCount();
+    });
     _sseSource.onerror = () => { _sseSource.close(); _sseSource = null; setTimeout(connectSSE, 30_000); };
   } catch {}
 }
+
+// ════════════════════════════════════════════════════════════════
+//  BENACHRICHTIGUNGSZENTRALE
+// ════════════════════════════════════════════════════════════════
+let _notifPanel = null;
+
+async function loadNotifCount() {
+  try {
+    const r = await fetch('/api/notifications');
+    if (!r.ok) return;
+    const d = await r.json();
+    const badge = $('notifBadge');
+    if (!badge) return;
+    if (d.unread > 0) {
+      badge.style.display = '';
+      badge.textContent = d.unread > 9 ? '9+' : d.unread;
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch {}
+}
+
+function notifRelTime(isoStr) {
+  const diff = Date.now() - new Date(isoStr + (isoStr.endsWith('Z') ? '' : 'Z')).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'gerade eben';
+  if (min < 60) return `vor ${min} Min.`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `vor ${h} Std.`;
+  return `vor ${Math.floor(h / 24)} Tag(en)`;
+}
+
+window.toggleNotifPanel = async function() {
+  if (_notifPanel && document.body.contains(_notifPanel)) {
+    _notifPanel.remove(); _notifPanel = null; return;
+  }
+  const bell = $('notifBell');
+  if (!bell) return;
+  const rect = bell.getBoundingClientRect();
+
+  let data = { unread: 0, notifications: [] };
+  try {
+    const r = await fetch('/api/notifications');
+    if (r.ok) data = await r.json();
+  } catch {}
+
+  // Als gelesen markieren
+  fetch('/api/notifications/read', { method: 'POST' }).catch(() => {});
+  const badge = $('notifBadge');
+  if (badge) badge.style.display = 'none';
+
+  const ICONS = { badge: '🏅', transfer_in: '🪙', guestbook: '✏️' };
+
+  const panel = document.createElement('div');
+  panel.id = 'notifPanel';
+  panel.style.cssText = `position:fixed;top:${rect.bottom + 8}px;right:${Math.max(8, window.innerWidth - rect.right)}px;width:320px;max-height:440px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:12px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.5)`;
+
+  const notifs = data.notifications;
+  if (!notifs.length) {
+    panel.innerHTML = `<div style="padding:2.5rem 1rem;text-align:center;color:var(--muted);font-size:.85rem">
+      <i class="fas fa-bell-slash" style="font-size:1.8rem;margin-bottom:.6rem;display:block;opacity:.4"></i>Keine Benachrichtigungen</div>`;
+  } else {
+    const items = notifs.map(n => {
+      const d = n.data;
+      const time = notifRelTime(n.created_at);
+      const icon = ICONS[n.type] || '🔔';
+      let text = '';
+      if (n.type === 'badge') {
+        const bdef = BADGE_DEFS[d.badgeType];
+        text = bdef ? `Badge erhalten: <b>${esc(bdef.label)}</b>` : 'Neues Badge erhalten';
+      } else if (n.type === 'transfer_in') {
+        text = `<b>${esc(d.from)}</b> hat dir <b style="color:#fbbf24">${d.amount} Coins</b> überwiesen`;
+      } else if (n.type === 'guestbook') {
+        text = `<b>${esc(d.authorName)}</b> hat in dein Gästebuch geschrieben`;
+      }
+      const dot = n.is_read ? '' : `<span style="width:7px;height:7px;min-width:7px;border-radius:50%;background:#ef4444;margin-top:.3rem"></span>`;
+      return `<div style="display:flex;align-items:flex-start;gap:.65rem;padding:.75rem 1rem;border-bottom:1px solid var(--border);font-size:.82rem${n.is_read ? '' : ';background:var(--surface2)'}">
+        <span style="font-size:1.1rem;margin-top:.05rem;flex-shrink:0">${icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="line-height:1.45">${text}</div>
+          <div style="color:var(--muted);font-size:.72rem;margin-top:.2rem">${time}</div>
+        </div>${dot}</div>`;
+    }).join('');
+    panel.innerHTML = `<div style="padding:.65rem 1rem;border-bottom:1px solid var(--border);font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:flex;align-items:center;justify-content:space-between">
+      <span><i class="fas fa-bell" style="margin-right:.4rem"></i>Benachrichtigungen</span>
+      <span style="color:var(--muted);font-weight:400">${notifs.length} Einträge</span>
+    </div>${items}`;
+  }
+
+  document.body.appendChild(panel);
+  _notifPanel = panel;
+
+  setTimeout(() => {
+    function outside(e) {
+      if (!panel.contains(e.target) && e.target !== bell && !bell.contains(e.target)) {
+        panel.remove(); _notifPanel = null;
+        document.removeEventListener('click', outside);
+      }
+    }
+    document.addEventListener('click', outside);
+  }, 10);
+};
 
 // ════════════════════════════════════════════════════════════════
 //  GLOBALE SUCHE

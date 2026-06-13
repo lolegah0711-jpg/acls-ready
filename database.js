@@ -587,6 +587,16 @@ function initDb() {
   try { db.exec(`ALTER TABLE coin_balances ADD COLUMN streak INTEGER DEFAULT 0`); } catch {}
   try { db.exec(`ALTER TABLE coin_balances ADD COLUMN best_streak INTEGER DEFAULT 0`); } catch {}
 
+  db.exec(`CREATE TABLE IF NOT EXISTS notifications (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    discord_id  TEXT NOT NULL,
+    type        TEXT NOT NULL,
+    data        TEXT NOT NULL DEFAULT '{}',
+    is_read     INTEGER DEFAULT 0,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_notif_discord ON notifications(discord_id, created_at DESC)'); } catch {}
+
   // Gästebuch: auch Bürger ohne users-Eintrag dürfen schreiben → author_id nullable + Voter-Felder
   {
     const gbCols = db.prepare("PRAGMA table_info(guestbook)").all();

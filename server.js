@@ -1257,7 +1257,18 @@ function awardBadge(userId, badgeType) {
   try {
     db.prepare('INSERT INTO user_badges (user_id, badge_type) VALUES (?, ?)').run(userId, badgeType);
     const user = db.prepare('SELECT discord_id, username FROM users WHERE id = ?').get(userId);
-    if (user) queueNotification('badge', user.discord_id, { badgeType, username: user.username });
+    if (user) {
+      queueNotification('badge', user.discord_id, { badgeType, username: user.username });
+      createNotif(user.discord_id, 'badge', { badgeType });
+    }
+  } catch(e) {}
+}
+
+function createNotif(discordId, type, data) {
+  try {
+    db.prepare('INSERT INTO notifications (discord_id, type, data) VALUES (?, ?, ?)')
+      .run(discordId, type, JSON.stringify(data));
+    sseEmit('notification', { discord_id: discordId }, discordId);
   } catch(e) {}
 }
 
@@ -1406,6 +1417,11 @@ app.post('/api/guestbook/:userId', (req, res) => {
   db.prepare(`INSERT INTO guestbook (profile_user_id, author_id, author_discord_id, author_name, author_avatar, message)
     VALUES (?, ?, ?, ?, ?, ?)`)
     .run(target.id, ident.user?.id || null, ident.did, ident.name, ident.avatar, message);
+  // Profil-Inhaber benachrichtigen (nicht wenn man selbst schreibt)
+  const profileOwner = db.prepare('SELECT discord_id FROM users WHERE id = ?').get(target.id);
+  if (profileOwner && profileOwner.discord_id !== ident.did) {
+    createNotif(profileOwner.discord_id, 'guestbook', { authorName: ident.name, preview: message.slice(0, 80) });
+  }
   res.json({ ok: true });
 });
 
@@ -2916,6 +2932,7 @@ app.post('/api/coins/transfer', (req, res) => {
     const newBal = addCoins(ident.id, ident.name, -amount, 'transfer:out', { to: toDiscordId, toName: recipient.username });
     if (newBal === null) return null;
     addCoins(toDiscordId, recipient.username, amount, 'transfer:in', { from: ident.id, fromName: ident.name }, false);
+    createNotif(toDiscordId, 'transfer_in', { from: ident.name, amount });
     return newBal;
   })();
   if (result === null) return res.status(400).json({ error: 'Nicht genug Coins' });
@@ -3828,6 +3845,24 @@ app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'public', 'profil.html'));
 });
+// ── Benachrichtigungszentrale ────────────────────────────────────
+app.get('/api/notifications', requireAnySession, (req, res) => {
+  const did = coinIdent(req)?.id;
+  if (!did) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const rows = db.prepare(
+    'SELECT id, type, data, is_read, created_at FROM notifications WHERE discord_id = ? ORDER BY created_at DESC LIMIT 30'
+  ).all(did);
+  const unread = rows.filter(r => !r.is_read).length;
+  res.json({ unread, notifications: rows.map(r => ({ ...r, data: JSON.parse(r.data) })) });
+});
+
+app.post('/api/notifications/read', requireAnySession, (req, res) => {
+  const did = coinIdent(req)?.id;
+  if (!did) return res.status(401).json({ error: 'Nicht angemeldet' });
+  db.prepare('UPDATE notifications SET is_read = 1 WHERE discord_id = ?').run(did);
+  res.json({ ok: true });
+});
+
 app.get('/team', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'public', 'team.html'));

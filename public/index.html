@@ -142,6 +142,10 @@
           <button onclick="navigate('search')" title="Suche" style="background:none;border:1px solid var(--border);color:var(--muted);width:36px;height:36px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .15s,border-color .15s;flex-shrink:0" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--orange)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
             <i class="fas fa-search" style="font-size:.85rem"></i>
           </button>
+          <button id="notifBell" onclick="toggleNotifPanel()" title="Benachrichtigungen" style="position:relative;background:none;border:1px solid var(--border);color:var(--muted);width:36px;height:36px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .15s,border-color .15s;flex-shrink:0" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--orange)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
+            <i class="fas fa-bell" style="font-size:.85rem"></i>
+            <span id="notifBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;font-size:.5rem;font-weight:800;border-radius:999px;padding:0 3px;min-width:14px;height:14px;line-height:14px;text-align:center;pointer-events:none"></span>
+          </button>
           <div class="user-widget" id="userWidget"></div>
         </div>
       </header>
