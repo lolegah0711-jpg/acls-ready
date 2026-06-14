@@ -430,7 +430,6 @@ const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
     }
 
     async function submitScore(score) {
-      if (!currentUserId) return;
       await fetch('/api/game-scores/race', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

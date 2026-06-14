@@ -94,6 +94,31 @@ async function postSession(discord_id, session, leftAt) {
   }
 }
 
+const STALE_CHECK_MS = 5 * 60 * 1000; // alle 5 Min auf verpasste Leave-Events prüfen
+
+// ── Helfer für die persistente active_bot_sessions-Tabelle ───────
+// (überlebt Bot-Crash/Neustart – Grundlage der Geistersession-Heilung)
+function postActiveSession(discord_id, username, channel_name, joinedAt) {
+  return fetch(`${SERVER_URL}/api/active-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
+    body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id, username, channel_name, joined_at: joinedAt.toISOString() }),
+  }).catch(() => {});
+}
+function clearActiveSession(discord_id) {
+  return fetch(`${SERVER_URL}/api/active-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
+    body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id, joined_at: null }),
+  }).catch(() => {});
+}
+async function fetchServerSessions() {
+  try {
+    const res = await fetch(`${SERVER_URL}/api/active-sessions`, { headers: { 'x-bot-secret': BOT_SECRET } });
+    return res.ok ? await res.json() : [];
+  } catch { return []; }
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -683,28 +708,46 @@ client.once(Events.ClientReady, async c => {
   console.log(`[Bot] Badge-Kanal: ${BADGE_CHANNEL_ID || 'nicht konfiguriert'}`);
   console.log(`[Bot] EoW-Kanal:   ${EOW_CHANNEL_ID   || 'nicht konfiguriert'}`);
 
-  // Beim Start alle bereits im Channel sitzenden Mitglieder ins Tracking aufnehmen
+  // ── Startup-Reconcile: Geistersession-Heilung ──────────────────
+  // Gleicht den aktuellen Voice-Stand mit den persistenten active_bot_sessions ab.
+  // So überlebt die IC-Zeit einen Bot-Crash/Neustart und Phantom-Sessions werden bereinigt.
   if (GUILD_ID) {
     try {
       // Gecachte Guild nutzen (enthält Voice-States aus GUILD_CREATE).
       // force:true würde per REST fetchen und die Voice-States NICHT mitholen.
       const guild = client.guilds.cache.get(GUILD_ID) || await client.guilds.fetch(GUILD_ID);
       await guild.members.fetch(); // Member-Cache füllen für displayName
-      let found = 0;
+
+      const serverSessions = await fetchServerSessions(); // persistente Sessions (überleben Crash)
+
+      const present = new Set();
+      let tracked = 0, ghosts = 0;
+
+      // Wer sitzt JETZT in einem IC-Channel? → frisch ab jetzt tracken.
+      // Bewusst frisches joined_at: die 15-Min-Ticks haben schon bis zum letzten
+      // Checkpoint gebucht; das alte joined_at fortzuführen würde doppelt zählen.
       for (const [userId, vs] of guild.voiceStates.cache) {
         if (userId === client.user.id) continue;
         if (!vs.channel || !isIcChannel(vs.channel.name)) continue;
-        const joinedAt = new Date();
+        present.add(userId);
         const member   = vs.member;
+        const joinedAt = new Date();
         activeSessions.set(userId, { channelId: vs.channelId, channelName: vs.channel.name, joinedAt });
-        fetch(`${SERVER_URL}/api/active-session`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
-          body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: userId, username: member?.displayName || userId, channel_name: vs.channel.name, joined_at: joinedAt.toISOString() }),
-        }).catch(() => {});
+        postActiveSession(userId, member?.displayName || userId, vs.channel.name, joinedAt);
         setDutyRole(member, true);
-        found++;
+        tracked++;
       }
+
+      // Geister: persistente Sessions, deren Nutzer jetzt NICHT mehr im Voice sind
+      // (während der Downtime gegangen) → Phantom-„Im Dienst" entfernen.
+      for (const s of serverSessions) {
+        if (present.has(s.discord_id)) continue;
+        clearActiveSession(s.discord_id);
+        const m = guild.members.cache.get(s.discord_id);
+        if (m) setDutyRole(m, false);
+        ghosts++;
+      }
+
       // Dienst-Rolle bei allen entfernen, die nicht (mehr) im Dienst-Channel sind
       const dutyRole = guild.roles.cache.find(r => r.name === DUTY_ROLE_NAME);
       if (dutyRole) {
@@ -712,10 +755,10 @@ client.once(Events.ClientReady, async c => {
           if (!activeSessions.has(m.id)) setDutyRole(m, false);
         }
       }
-      console.log(`[Bot] Startup-Scan: ${found} Mitglied(er) bereits im Dienst-Channel – Tracking gestartet`);
-    } catch (e) { console.error('[Bot] Startup-Scan Fehler:', e.message); }
+      console.log(`[Bot] Startup-Reconcile: ${tracked} im Dienst, ${ghosts} Geist-Session(s) bereinigt`);
+    } catch (e) { console.error('[Bot] Startup-Reconcile Fehler:', e.message); }
   } else {
-    console.warn('[Bot] GUILD_ID nicht gesetzt – Startup-Scan übersprungen!');
+    console.warn('[Bot] GUILD_ID nicht gesetzt – Startup-Reconcile übersprungen!');
   }
 
   setInterval(pollNotifications, 30_000);
@@ -756,11 +799,7 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
     if (session) {
       activeSessions.delete(discordId);
       await postSession(discordId, session, new Date());
-      fetch(`${SERVER_URL}/api/active-session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
-        body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: discordId, joined_at: null }),
-      }).catch(() => {});
+      clearActiveSession(discordId);
       setDutyRole(oldState.member || newState.member, false);
     }
   }
@@ -775,15 +814,33 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
         joinedAt,
       });
       console.log(`[Bot] Tracking: ${newState.member?.displayName} → ${joinedChannel.name}`);
-      fetch(`${SERVER_URL}/api/active-session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
-        body: JSON.stringify({ bot_secret: BOT_SECRET, discord_id: discordId, username: newState.member?.displayName, channel_name: joinedChannel.name, joined_at: joinedAt.toISOString() }),
-      }).catch(() => {});
+      postActiveSession(discordId, newState.member?.displayName || discordId, joinedChannel.name, joinedAt);
       setDutyRole(newState.member, true);
     }
   }
 });
+
+// ── Geistersession-Heilung (alle 5 Min) ─────────────────────────
+// Sicherheitsnetz für verpasste Leave-Events (z. B. bei Gateway-Aussetzern):
+// Quelle der Wahrheit ist der Voice-Cache – wer dort nicht (mehr) im IC-Channel
+// sitzt, dessen offene Session wird gebucht und geschlossen.
+function recoverStaleSessions() {
+  if (!GUILD_ID || activeSessions.size === 0) return;
+  const guild = client.guilds.cache.get(GUILD_ID);
+  if (!guild) return;
+  const now = new Date();
+  for (const [discordId, session] of activeSessions) {
+    const vs = guild.voiceStates.cache.get(discordId);
+    if (vs?.channel && isIcChannel(vs.channel.name)) continue; // noch korrekt im Dienst
+    activeSessions.delete(discordId);
+    postSession(discordId, session, now);
+    clearActiveSession(discordId);
+    const m = guild.members.cache.get(discordId);
+    if (m) setDutyRole(m, false);
+    console.log(`[Bot] Stale-Session geschlossen: ${discordId} (Leave-Event verpasst)`);
+  }
+}
+setInterval(recoverStaleSessions, STALE_CHECK_MS);
 
 
 // ── Text-Command-Handler (Fallback für !stats / .stats) ──────────
@@ -1140,18 +1197,28 @@ client.on(Events.GuildMemberRemove, async (member) => {
   await sendModLog(embed);
 });
 
-// Beim Bot-Shutdown offene Sessions speichern
-async function gracefulShutdown() {
-  console.log('[Bot] Shutdown – speichere offene Sessions...');
+// Beim Bot-Shutdown offene Sessions buchen (sauberer Restart/Deploy → kein IC-Zeit-Verlust)
+let _shuttingDown = false;
+async function gracefulShutdown(signal) {
+  if (_shuttingDown) return;
+  _shuttingDown = true;
+  console.log(`[Bot] ${signal || 'Shutdown'} – buche ${activeSessions.size} offene Session(s)…`);
   const now = new Date();
+  const tasks = [];
   for (const [discordId, session] of activeSessions) {
-    await postSession(discordId, session, now);
+    tasks.push(postSession(discordId, session, now));
+    // active_bot_sessions räumen → kein Phantom während der Downtime, kein Doppel-Zählen
+    // beim Neustart (Reconcile trackt anwesende Nutzer dann frisch ab Restart-Zeit).
+    tasks.push(clearActiveSession(discordId));
   }
+  // Best-effort mit Timeout, dann sauber beenden – nicht ewig hängen bleiben
+  await Promise.race([Promise.allSettled(tasks), new Promise(r => setTimeout(r, 4000))]);
+  try { client.destroy(); } catch {}
   process.exit(0);
 }
 
-process.on('SIGINT',  gracefulShutdown);
-process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 if (!process.env.DISCORD_BOT_TOKEN) {
   console.error('[Bot] Kein DISCORD_BOT_TOKEN in .env gesetzt!');

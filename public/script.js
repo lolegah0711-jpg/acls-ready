@@ -4251,6 +4251,32 @@ async function admin() {
       </div>
       <div id="customTitleList"></div>
     </div>
+    <!-- Coins verwalten -->
+    <div class="card" style="margin-top:1rem">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-coins" style="color:#fbbf24"></i></div>
+        <div><div class="card-title">Coins verwalten</div><div class="card-sub">Kontostand setzen oder gutschreiben/abziehen – Staff &amp; Bürger</div></div>
+      </div>
+      <div style="position:relative;max-width:420px">
+        <input class="form-control" id="coinAdminSearch" placeholder="Nutzer suchen (Name oder Discord-ID)…" autocomplete="off" oninput="coinAdminSearch()" onblur="setTimeout(()=>{const b=$('coinAdminResults');if(b)b.style.display='none'},150)">
+        <div id="coinAdminResults" style="position:absolute;z-index:30;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:var(--r);margin-top:.2rem;max-height:240px;overflow:auto;display:none"></div>
+      </div>
+      <div id="coinAdminTarget" style="display:none;margin-top:.85rem;padding:.8rem;background:var(--input);border-radius:var(--r)">
+        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.7rem;flex-wrap:wrap">
+          <span id="coinAdminTargetName" style="font-weight:700"></span>
+          <span class="badge badge-m" id="coinAdminTargetBal"></span>
+        </div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+          <select class="form-control" id="coinAdminMode" style="width:auto">
+            <option value="add">Gutschreiben / Abziehen (+/−)</option>
+            <option value="set">Auf Wert setzen</option>
+          </select>
+          <input class="form-control" id="coinAdminAmount" type="number" step="1" placeholder="Betrag" style="width:140px" onkeydown="if(event.key==='Enter')applyCoinAdmin()">
+          <button class="btn btn-primary btn-sm" onclick="applyCoinAdmin()"><i class="fas fa-check"></i> Anwenden</button>
+        </div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:.5rem">Admin-Korrekturen zählen nicht zu „verdienten" Coins und werden im Audit-Log protokolliert.</div>
+      </div>
+    </div>
     <!-- Statistiken -->
     <div class="card" style="margin-top:1rem">
       <div class="card-head">
@@ -4536,6 +4562,60 @@ window.submitRenameUser = async (e, id) => {
 window.setRank = async (id, rank) => {
   const r = await api(`/api/users/${id}/rank`, { method: 'PATCH', body: { rank } });
   if (r) toast('Rang gespeichert.', 'ok');
+};
+
+// ── Admin: Coins verwalten ───────────────────────────────────────
+let _coinAdminResults = [];
+let _coinAdminTarget  = null;
+let _coinAdminTimer   = null;
+window.coinAdminSearch = () => {
+  clearTimeout(_coinAdminTimer);
+  _coinAdminTimer = setTimeout(async () => {
+    const q   = $('coinAdminSearch').value.trim();
+    const box = $('coinAdminResults');
+    if (!box) return;
+    if (!q) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    const rows = await api('/api/admin/coins/search?q=' + encodeURIComponent(q));
+    _coinAdminResults = rows || [];
+    if (!_coinAdminResults.length) {
+      box.innerHTML = '<div style="padding:.55rem .75rem;color:var(--muted);font-size:.82rem">Niemand gefunden</div>';
+    } else {
+      box.innerHTML = _coinAdminResults.map((r, i) => `
+        <div style="padding:.5rem .75rem;cursor:pointer;display:flex;justify-content:space-between;gap:.6rem;border-bottom:1px solid var(--border)"
+             onmousedown="pickCoinAdmin(${i})">
+          <span style="font-weight:600">${esc(r.username || r.discord_id)}
+            <span style="font-size:.7rem;color:var(--muted)">(${r.role === 'admin' ? 'Admin' : r.role === 'ausbilder' ? 'Ausbilder' : r.role === 'member' ? 'Mitarbeiter' : 'Bürger'})</span>
+          </span>
+          <span style="color:#fbbf24;font-weight:700;white-space:nowrap">${(r.balance || 0).toLocaleString('de-DE')} 🪙</span>
+        </div>`).join('');
+    }
+    box.style.display = '';
+  }, 220);
+};
+window.pickCoinAdmin = (i) => {
+  const t = _coinAdminResults[i];
+  if (!t) return;
+  _coinAdminTarget = t;
+  $('coinAdminResults').style.display = 'none';
+  $('coinAdminSearch').value = t.username || t.discord_id;
+  $('coinAdminTarget').style.display = '';
+  $('coinAdminTargetName').textContent = t.username || t.discord_id;
+  $('coinAdminTargetBal').textContent  = (t.balance || 0).toLocaleString('de-DE') + ' Coins';
+  $('coinAdminAmount').value = '';
+  $('coinAdminAmount').focus();
+};
+window.applyCoinAdmin = async () => {
+  if (!_coinAdminTarget) { toast('Erst einen Nutzer wählen', 'err'); return; }
+  const mode   = $('coinAdminMode').value;
+  const amount = parseInt($('coinAdminAmount').value, 10);
+  if (!Number.isFinite(amount)) { toast('Betrag fehlt', 'err'); return; }
+  const r = await api('/api/admin/coins', { method: 'POST', body: { discord_id: _coinAdminTarget.discord_id, mode, amount } });
+  if (r?.ok) {
+    toast(`${_coinAdminTarget.username || 'Konto'}: jetzt ${r.balance.toLocaleString('de-DE')} Coins`, 'ok');
+    _coinAdminTarget.balance = r.balance;
+    $('coinAdminTargetBal').textContent = r.balance.toLocaleString('de-DE') + ' Coins';
+    $('coinAdminAmount').value = '';
+  }
 };
 
 // ── Bürgeransicht (Admin-Vorschau) ───────────────────────────────
@@ -5557,6 +5637,16 @@ async function freunde() {
       <i class="fas ${icon}" style="color:${color};font-size:.7rem"></i><b style="color:var(--text)">${val}</b>
     </div>`;
 
+  // Rang-Zeile: Staff = ACLS-Rang, Bürger = verdienter Bürger-Titel · dazu Season-Pass-Level
+  const rankLine = (f) => {
+    const main = f.is_staff
+      ? `<span>${esc(f.rank || 'Mitarbeiter')}</span>`
+      : `<span style="color:${f.tier?.color || 'var(--muted)'};font-weight:600">${f.tier?.icon || ''} ${esc(f.tier?.name || 'Bürger')}</span>`;
+    const season = f.season_level > 0 ? ` · <span title="Season-Pass-Level" style="color:#c084fc">🎫 Lvl ${f.season_level}</span>` : '';
+    const streak = f.streak > 0 ? ` · 🔥 ${f.streak}` : '';
+    return main + season + streak;
+  };
+
   $('pageContent').innerHTML = `
     <div class="card" style="padding:1rem 1.2rem;margin-bottom:1.25rem">
       <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
@@ -5583,7 +5673,7 @@ async function freunde() {
           ${avatarEl(f, 40)}
           <div style="flex:1;min-width:0">
             <div style="font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.username)}</div>
-            <div style="font-size:.68rem;color:var(--muted)">${esc(f.rank || 'Mitarbeiter')}${f.streak > 0 ? ` · 🔥 ${f.streak}` : ''}</div>
+            <div style="font-size:.68rem;color:var(--muted)">${rankLine(f)}</div>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="removeFriend(${f.id})" title="Entfernen" style="color:var(--muted)"><i class="fas fa-user-minus"></i></button>
         </div>
@@ -5623,6 +5713,7 @@ window.compareFriend = async id => {
     ['🪙 Coins verdient',     fmtN(m.coins_earned),  fmtN(f.coins_earned),  m.coins_earned - f.coins_earned],
     ['💰 Kontostand',         fmtN(m.coins_balance), fmtN(f.coins_balance), m.coins_balance - f.coins_balance],
     ['🔥 Beste Login-Serie',  m.best_streak,         f.best_streak,         m.best_streak - f.best_streak],
+    ['🎫 Season-Pass-Level',  m.season_level,        f.season_level,        m.season_level - f.season_level],
     ['⏱️ IC-Zeit gesamt',     m.ic_total + 'h',      f.ic_total + 'h',      m.ic_total - f.ic_total],
     ['📅 IC-Zeit Woche',      m.ic_week + 'h',       f.ic_week + 'h',       m.ic_week - f.ic_week],
     ['🎖️ Abzeichen',          m.badges,              f.badges,              m.badges - f.badges],

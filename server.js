@@ -1336,12 +1336,34 @@ app.get('/api/badges/:userId', requireAuth, (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  FREUNDESLISTE + VERGLEICH
 // ════════════════════════════════════════════════════════════════
+// ── Bürger-Rang: Stufen nach insgesamt verdienten Coins ─────────
+// Gilt für Nicht-Staff (role='citizen'). Staff behält den ACLS-Rang.
+const CITIZEN_TIERS = [
+  { min: 0,      name: 'Neubürger',   color: '#9ca3af', icon: '🌱' },
+  { min: 1000,   name: 'Bürger',      color: '#cbd5e1', icon: '🪪' },
+  { min: 10000,  name: 'Stammgast',   color: '#60a5fa', icon: '⭐' },
+  { min: 50000,  name: 'VIP',         color: '#fbbf24', icon: '💎' },
+  { min: 150000, name: 'Ehrenbürger', color: '#f472b6', icon: '👑' },
+];
+function citizenTier(earned) {
+  let t = CITIZEN_TIERS[0];
+  for (const x of CITIZEN_TIERS) if ((earned || 0) >= x.min) t = x;
+  return { name: t.name, color: t.color, icon: t.icon };
+}
+
 function friendStats(userId) {
   const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank FROM users WHERE id = ? AND is_active = 1').get(userId);
   if (!u) return null;
   const coins = db.prepare('SELECT balance, total_earned, streak, best_streak FROM coin_balances WHERE discord_id = ?').get(u.discord_id);
+  const earned  = coins?.total_earned || 0;
+  const sp      = db.prepare('SELECT xp FROM season_pass WHERE season = ? AND discord_id = ?').get(seasonKey(), u.discord_id);
+  const isStaff = u.role !== 'citizen';
   return {
     id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, role: u.role, rank: u.rank,
+    is_staff:      isStaff,
+    season_level:  seasonLevel(sp?.xp || 0),
+    season_max:    SEASON_MAX_LEVEL,
+    tier:          isStaff ? null : citizenTier(earned),
     coins_earned:  coins?.total_earned || 0,
     coins_balance: coins?.balance || 0,
     streak:        coins?.streak || 0,
@@ -2770,6 +2792,61 @@ function addCoins(discordId, username, amount, reason, meta, countEarned = true)
   return bal;
 }
 
+// ── Admin: Coins verwalten (setzen / +/- buchen) ────────────────
+// Nutzer suchen – deckt Staff + Bürger ab (jeder mit Coin-Konto oder User-Eintrag)
+app.get('/api/admin/coins/search', requireAdmin, (req, res) => {
+  const q = ('' + (req.query.q || '')).trim().toLowerCase();
+  if (q.length < 1) return res.json([]);
+  const like = '%' + q + '%';
+  const rows = db.prepare(`
+    SELECT cb.discord_id AS discord_id,
+           COALESCE(u.username, cb.username) AS username,
+           cb.balance AS balance, u.role AS role
+    FROM coin_balances cb
+    LEFT JOIN users u ON u.discord_id = cb.discord_id
+    WHERE LOWER(COALESCE(u.username, cb.username)) LIKE ? OR cb.discord_id LIKE ?
+    UNION
+    SELECT u.discord_id AS discord_id, u.username AS username, 0 AS balance, u.role AS role
+    FROM users u
+    WHERE u.is_active = 1 AND LOWER(u.username) LIKE ?
+      AND u.discord_id NOT IN (SELECT discord_id FROM coin_balances)
+    ORDER BY balance DESC
+    LIMIT 20
+  `).all(like, like, like);
+  res.json(rows);
+});
+
+// Coins setzen oder gutschreiben/abziehen
+app.post('/api/admin/coins', requireAdmin, (req, res) => {
+  const discordId = ('' + (req.body.discord_id || '')).trim();
+  const mode      = req.body.mode === 'set' ? 'set' : 'add';
+  const amount    = Math.round(+req.body.amount);
+  if (!discordId)                return res.status(400).json({ error: 'Kein Ziel ausgewählt' });
+  if (!Number.isFinite(amount))  return res.status(400).json({ error: 'Ungültiger Betrag' });
+
+  const u    = db.prepare('SELECT username FROM users WHERE discord_id = ?').get(discordId);
+  const cb   = db.prepare('SELECT username, balance FROM coin_balances WHERE discord_id = ?').get(discordId);
+  const name = u?.username || cb?.username || 'Bürger';
+  const cur  = cb?.balance ?? 0;
+
+  let delta, reason;
+  if (mode === 'set') {
+    if (amount < 0) return res.status(400).json({ error: 'Zielwert darf nicht negativ sein' });
+    delta  = amount - cur;
+    reason = 'admin:set';
+  } else {
+    delta  = amount;
+    reason = 'admin:grant';
+  }
+  if (delta === 0) return res.json({ ok: true, balance: cur, delta: 0 });
+
+  // countEarned=false: Admin-Korrekturen verfälschen "verdiente" Coins / Leaderboards nicht
+  const bal = addCoins(discordId, name, delta, reason, { by: req.adminUser.username, mode }, false);
+  if (bal === null) return res.status(400).json({ error: 'Kontostand würde negativ werden' });
+  auditLog(req, 'coins_admin', `target=${discordId} (${name}) mode=${mode} amount=${amount} delta=${delta} → ${bal}`);
+  res.json({ ok: true, balance: bal, delta });
+});
+
 // Berliner Datum als YYYY-MM-DD (für Daily-Bonus)
 function berlinDateStr() {
   const { y, m, d } = _berlinParts();
@@ -4091,12 +4168,20 @@ app.post('/api/slot/spin', (req, res) => {
 
   // Highscore = größter Netto-Gewinn; Spiel-Badges
   const netWin = win - cost;
-  if (netWin > 0 && ident.user) {
-    db.prepare(`INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, 'slot', ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(user_id, game) DO UPDATE SET
-        score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
-        updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END`).run(ident.user.id, netWin);
-    checkGameBadges(ident.user.id, ident.id);
+  if (netWin > 0) {
+    if (ident.user) {
+      db.prepare(`INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, 'slot', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, game) DO UPDATE SET
+          score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+          updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END`).run(ident.user.id, netWin);
+      checkGameBadges(ident.user.id, ident.id);
+    } else {
+      db.prepare(`INSERT INTO visitor_game_scores (discord_id, username, game, score, updated_at) VALUES (?, ?, 'slot', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(discord_id, game) DO UPDATE SET
+          score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+          updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END,
+          username   = excluded.username`).run(ident.id, ident.name, netWin);
+    }
   }
   try { seasonIncQuest(ident.id, 'games', 1); } catch {}
 
