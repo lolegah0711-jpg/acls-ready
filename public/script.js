@@ -317,6 +317,7 @@ const _voterPageMeta = {
   apply:     { title: 'Bewerben',         sub: 'Bewirb dich beim ACLS Automobil-Club' },
   faq:       { title: 'FAQ',              sub: 'Häufig gestellte Fragen' },
   duel:      { title: 'Quiz-Duell',       sub: '1-gegen-1 live · Sieger bekommt 150 Coins' },
+  friends:   { title: 'Freunde',          sub: 'Deine Freunde, Rang & Vergleich' },
 };
 
 async function renderVoterScreen() {
@@ -352,6 +353,7 @@ async function renderVoterScreen() {
         <a class="nav-item"        id="vnApply"     onclick="voterTab('apply')"    style="cursor:pointer"><i class="fas fa-file-alt" style="color:#a78bfa"></i><span style="color:#a78bfa">Bewerben</span></a>
         <a class="nav-item"        id="vnFaq"       onclick="voterTab('faq')"      style="cursor:pointer"><i class="fas fa-question-circle" style="color:#38bdf8"></i><span style="color:#38bdf8">FAQ</span></a>
         <a class="nav-item"        id="vnDuel"      onclick="voterTab('duel')"     style="cursor:pointer"><i class="fas fa-bolt" style="color:#f472b6"></i><span style="color:#f472b6">Quiz-Duell</span></a>
+        ${currentUser.id ? `<a class="nav-item" id="vnFriends" onclick="voterTab('friends')" style="cursor:pointer"><i class="fas fa-user-friends" style="color:#fbbf24"></i><span style="color:#fbbf24">Freunde</span></a>` : ''}
 
         <!-- Minispiele -->
         <div id="vGamesToggle" onclick="(function(){var l=document.getElementById('vGamesList'),o=l.style.maxHeight!=='0px';l.style.maxHeight=o?'0px':'900px';document.getElementById('vGamesChev').style.transform=o?'rotate(-90deg)':'';})()" style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
@@ -513,6 +515,9 @@ async function renderVoterScreen() {
 
         <!-- Quiz-Duell -->
         <div id="duelSection" style="display:none"></div>
+
+        <!-- Freunde -->
+        <div id="friendsSection" style="display:none"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
 
       </main>
     </div><!-- /main-wrapper -->
@@ -851,7 +856,7 @@ async function loadChallengesWidget(containerId) {
 }
 
 window.voterTab = tab => {
-  ['price','vote','complaint','market','team','apply','faq','duel'].forEach(t => {
+  ['price','vote','complaint','market','team','apply','faq','duel','friends'].forEach(t => {
     const sec = document.getElementById(t + 'Section');
     if (sec) sec.style.display = t === tab ? '' : 'none';
     const nav = document.getElementById('vn' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -872,6 +877,7 @@ window.voterTab = tab => {
   if (tab === 'price')     { loadVoterPrices(); loadPollWidget('vPollWidget'); }
   if (tab === 'complaint') loadMyComplaints();
   if (tab === 'faq')       loadVoterFaq();
+  if (tab === 'friends')   loadVoterFriends();
 };
 
 async function loadVoterFaq() {
@@ -4500,7 +4506,7 @@ window.openAddUser = () => openModal(`
     <div class="form-group"><label>Benutzername</label><input class="form-control" id="uName" required></div>
     <div class="form-group"><label>Discord-ID (18-stellig)</label><input class="form-control" id="uDid" placeholder="102938475610293847" required></div>
     <div class="form-group"><label>Rolle</label>
-      <select class="form-control" id="uRole"><option value="member">Mitarbeiter</option><option value="ausbilder">Ausbilder</option><option value="admin">Admin</option></select>
+      <select class="form-control" id="uRole"><option value="member">Mitarbeiter</option><option value="ausbilder">Ausbilder</option><option value="admin">Admin</option><option value="citizen">Bürger (kein ACLS-Mitarbeiter)</option></select>
     </div>
     <div class="modal-footer">
       <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
@@ -5702,6 +5708,82 @@ window.addFriend = async () => {
 window.removeFriend = async id => {
   const r = await api(`/api/friends/${id}`, { method: 'DELETE' });
   if (r) { toast('Entfernt', ''); freunde(); }
+};
+
+// ── Freunde in der Bürger-/Voter-Ansicht (eigene Section, kein Staff-pageContent) ──
+async function loadVoterFriends() {
+  const box = document.getElementById('friendsSection');
+  if (!box) return;
+  const [data, allUsers] = await Promise.all([api('/api/friends'), api('/api/users/public')]);
+  if (!data) { box.innerHTML = '<div class="empty"><i class="fas fa-lock"></i><p>Freunde sind für dich nicht verfügbar.</p></div>'; return; }
+  const friendIds = new Set(data.friends.map(f => f.id));
+  const addable = (allUsers || []).filter(u => u.id !== currentUser.id && !friendIds.has(u.id));
+
+  const statChip = (icon, val, label, color) => `
+    <div style="display:flex;align-items:center;gap:.35rem;font-size:.72rem;color:var(--muted)" title="${label}">
+      <i class="fas ${icon}" style="color:${color};font-size:.7rem"></i><b style="color:var(--text)">${val}</b>
+    </div>`;
+  const rankLine = (f) => {
+    const main = f.is_staff
+      ? `<span>${esc(f.rank || 'Mitarbeiter')}</span>`
+      : `<span style="color:${f.tier?.color || 'var(--muted)'};font-weight:600">${f.tier?.icon || ''} ${esc(f.tier?.name || 'Bürger')}</span>`;
+    const season = f.season_level > 0 ? ` · <span title="Season-Pass-Level" style="color:#c084fc">🎫 Lvl ${f.season_level}</span>` : '';
+    const streak = f.streak > 0 ? ` · 🔥 ${f.streak}` : '';
+    return main + season + streak;
+  };
+
+  box.innerHTML = `
+    <div class="card" style="padding:1rem 1.2rem;margin-bottom:1.25rem">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div style="font-size:1.6rem">🤝</div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:700;font-size:.9rem">Freund hinzufügen</div>
+          <div style="font-size:.72rem;color:var(--muted)">Füge bis zu 30 Personen hinzu und vergleiche eure Statistiken</div>
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <select class="form-control" id="vFriendSelect" style="width:200px;font-size:.82rem">
+            <option value="">Person wählen…</option>
+            ${addable.map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('')}
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="voterAddFriend()"><i class="fas fa-user-plus"></i> Hinzufügen</button>
+        </div>
+      </div>
+    </div>
+    ${data.friends.length ? `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:.8rem">
+      ${data.friends.map(f => `
+      <div class="card" style="padding:1rem 1.1rem">
+        <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.7rem">
+          ${avatarEl(f, 40)}
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.username)}</div>
+            <div style="font-size:.68rem;color:var(--muted)">${rankLine(f)}</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="voterRemoveFriend(${f.id})" title="Entfernen" style="color:var(--muted)"><i class="fas fa-user-minus"></i></button>
+        </div>
+        <div style="display:flex;gap:.9rem;flex-wrap:wrap;margin-bottom:.8rem">
+          ${statChip('fa-coins', (+f.coins_earned).toLocaleString('de-DE'), 'Coins verdient', '#fbbf24')}
+          ${statChip('fa-medal', f.badges, 'Abzeichen', '#facc15')}
+          ${statChip('fa-gamepad', f.games_played, 'Spiele gespielt', '#f472b6')}
+        </div>
+        <div style="display:flex;gap:.4rem">
+          <button class="btn btn-primary btn-sm" style="flex:1" onclick="compareFriend(${f.id})"><i class="fas fa-balance-scale"></i> Vergleichen</button>
+          <a href="/profil/${f.id}" target="_blank" class="btn btn-ghost btn-sm" style="text-decoration:none"><i class="fas fa-user"></i> Profil</a>
+        </div>
+      </div>`).join('')}
+    </div>` : `
+    <div class="empty"><i class="fas fa-user-friends"></i><p>Noch keine Freunde hinzugefügt.<br>Wähle oben jemanden aus und starte den Vergleich!</p></div>`}`;
+}
+
+window.voterAddFriend = async () => {
+  const id = document.getElementById('vFriendSelect')?.value;
+  if (!id) { toast('Bitte jemanden wählen', 'err'); return; }
+  const r = await api(`/api/friends/${id}`, { method: 'POST' });
+  if (r) { toast('Freund hinzugefügt! 🤝', 'ok'); loadVoterFriends(); }
+};
+window.voterRemoveFriend = async id => {
+  const r = await api(`/api/friends/${id}`, { method: 'DELETE' });
+  if (r) { toast('Entfernt', ''); loadVoterFriends(); }
 };
 
 window.compareFriend = async id => {

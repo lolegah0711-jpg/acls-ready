@@ -431,7 +431,7 @@ app.post('/auth/logout', (req, res) => {
 app.get('/auth/me', (req, res) => {
   const u = getUser(req);
   if (u) {
-    if (u.role === 'citizen') return res.json({ voter: true, discord_id: u.discord_id, username: u.username, avatar: u.avatar });
+    if (u.role === 'citizen') return res.json({ voter: true, id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar });
     return res.json({ id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, role: u.role, rank: u.rank });
   }
   if (req.session.voterDiscordId) return res.json({
@@ -1378,7 +1378,7 @@ function friendStats(userId) {
   };
 }
 
-app.get('/api/friends', requireAuth, (req, res) => {
+app.get('/api/friends', requireLogin, (req, res) => {
   const u = getUser(req);
   const rows = db.prepare('SELECT friend_id, created_at FROM friends WHERE user_id = ? ORDER BY created_at ASC').all(u.id);
   const friends = rows.map(r => {
@@ -1388,7 +1388,7 @@ app.get('/api/friends', requireAuth, (req, res) => {
   res.json({ me: friendStats(u.id), friends });
 });
 
-app.post('/api/friends/:id', requireAuth, (req, res) => {
+app.post('/api/friends/:id', requireLogin, (req, res) => {
   const u = getUser(req);
   const fid = +req.params.id;
   if (fid === u.id) return res.status(400).json({ error: 'Du kannst dich nicht selbst hinzufügen' });
@@ -1401,7 +1401,7 @@ app.post('/api/friends/:id', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete('/api/friends/:id', requireAuth, (req, res) => {
+app.delete('/api/friends/:id', requireLogin, (req, res) => {
   const u = getUser(req);
   db.prepare('DELETE FROM friends WHERE user_id = ? AND friend_id = ?').run(u.id, +req.params.id);
   res.json({ ok: true });
@@ -1473,7 +1473,7 @@ app.delete('/api/guestbook/:id', (req, res) => {
 });
 
 // Detail-Vergleich: ich vs. Freund (Spiel-Bestscores beider Seiten)
-app.get('/api/friends/compare/:id', requireAuth, (req, res) => {
+app.get('/api/friends/compare/:id', requireLogin, (req, res) => {
   const u = getUser(req);
   const mine   = friendStats(u.id);
   const theirs = friendStats(+req.params.id);
