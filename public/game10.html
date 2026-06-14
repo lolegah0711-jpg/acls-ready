@@ -254,6 +254,7 @@ hr { border: none; border-bottom: 1px solid #d8d4d0; margin-top: 20px; margin-bo
 <script src='https://cdnjs.cloudflare.com/ajax/libs/hammer.js/1.0.6/hammer.min.js'></script>
 <script src="/game-auth.js"></script>
 <script>
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 // ── LEADERBOARD & USER ────────────────────────────────────────────
 var currentUser = null;
 var localBest = +localStorage.getItem('2048_best') || 0;
@@ -288,7 +289,7 @@ function openLb() {
       return '<div class="lb-row" style="'+(me?'background:#f0ebe5;border-radius:6px;':'')+'">' +
         '<div class="lb-rank">'+medal+'</div>' +
         '<div class="lb-av">'+av+'</div>' +
-        '<div class="lb-name">'+(row.username||'Unbekannt')+'</div>' +
+        '<div class="lb-name">'+esc(row.username||'Unbekannt')+'</div>' +
         '<div class="lb-score">'+row.score.toLocaleString('de-DE')+'</div>' +
         '</div>';
     }).join('');

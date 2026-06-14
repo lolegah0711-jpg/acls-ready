@@ -119,6 +119,7 @@ h1{font-size:clamp(20px,5vw,30px);font-weight:800;letter-spacing:.1em;text-trans
 
 <script src="/game-auth.js"></script>
 <script>
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const QUESTIONS = [
   // Verkehrsregeln
   {q:'Was bedeutet ein rotes Stoppschild?',opts:['Langsamer werden','Anhalten und Vorfahrt gewähren','Nur bei Gegenverkehr halten','Kurz bremsen reicht'],a:1,cat:'🚦 Verkehr',diff:1},
@@ -352,7 +353,7 @@ async function loadLb() {
         ? `<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.style.display='none'">`
         : (row.username||'?').slice(0,2).toUpperCase();
       return `<div class="lb-row"><div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
-        <div class="lb-name">${row.username||'?'}</div><div class="lb-score">${row.score.toLocaleString('de-DE')}</div></div>`;
+        <div class="lb-name">${esc(row.username||'?')}</div><div class="lb-score">${row.score.toLocaleString('de-DE')}</div></div>`;
     }).join('');
   } catch { el.innerHTML = '<div style="color:#ef4444;font-size:13px">Fehler</div>'; }
 }

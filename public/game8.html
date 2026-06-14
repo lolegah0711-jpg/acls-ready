@@ -60,6 +60,7 @@
 
 <script src="/game-auth.js"></script>
 <script>
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 
@@ -488,7 +489,7 @@ async function gameOver() {
       <div id="lb-rows">${rows.slice(0,10).map((r,i)=>`
         <div class="lb-row">
           <div class="lb-rank ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
-          <div class="lb-name">${r.username || 'Unbekannt'}</div>
+          <div class="lb-name">${esc(r.username || 'Unbekannt')}</div>
           <div class="lb-score">${r.score}</div>
         </div>`).join('')}
       </div>
@@ -509,7 +510,7 @@ async function gameOver() {
     document.getElementById('lb-rows').innerHTML = rows.slice(0,5).map((r,i)=>`
       <div class="lb-row">
         <div class="lb-rank ${i===0?'gold':i===1?'silver':i===2?'bronze':''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
-        <div class="lb-name">${r.username || 'Unbekannt'}</div>
+        <div class="lb-name">${esc(r.username || 'Unbekannt')}</div>
         <div class="lb-score">${r.score}</div>
       </div>`).join('');
   } catch {}

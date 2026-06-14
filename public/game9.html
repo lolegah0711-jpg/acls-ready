@@ -179,6 +179,7 @@
 </div>
 
 <script>
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 // ── MAPS ──────────────────────────────────────────────────────────
 const MAPS = [
   {
@@ -813,7 +814,7 @@ async function openLb() {
       return `<div class="lb-row" style="${me?'background:#1a0e00;border-radius:6px;':''}">
         <div class="lb-rank">${medal}</div>
         <div class="lb-av">${av}</div>
-        <div class="lb-name">${row.username||'Unbekannt'}</div>
+        <div class="lb-name">${esc(row.username||'Unbekannt')}</div>
         <div class="lb-score">${row.score.toLocaleString('de-DE')} Pkt.</div>
       </div>`;
     }).join('');

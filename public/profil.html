@@ -97,9 +97,9 @@ async function load() {
         <div class="avatar">${av}</div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.4rem">
-            <h1 style="font-size:1.4rem;font-weight:800">${u.username}</h1>
+            <h1 style="font-size:1.4rem;font-weight:800">${esc(u.username)}</h1>
             <span class="role-badge ${roleClass}">${roleLabel}</span>
-            ${u.rank ? `<span style="background:#2a2a2a;color:#f0f0f0;padding:.2rem .6rem;border-radius:6px;font-size:.72rem;font-weight:600">${u.rank}</span>` : ''}
+            ${u.rank ? `<span style="background:#2a2a2a;color:#f0f0f0;padding:.2rem .6rem;border-radius:6px;font-size:.72rem;font-weight:600">${esc(u.rank)}</span>` : ''}
           </div>
           <div style="font-size:.8rem;color:#888">Dabei seit ${memberSince}</div>
         </div>
@@ -125,7 +125,7 @@ async function load() {
       <div class="bar-wrap"><div class="bar-fill" style="width:${passRate}%;background:${passRate>=70?'#22c55e':'#f97316'}"></div></div>
       ${d.byCategory?.length ? `
       <div style="margin-top:1rem">
-        ${d.byCategory.map(c => `<div class="cat-row"><span>${c.category}</span><span style="color:#f97316;font-weight:700">${c.count}×</span></div>`).join('')}
+        ${d.byCategory.map(c => `<div class="cat-row"><span>${esc(c.category)}</span><span style="color:#f97316;font-weight:700">${c.count}×</span></div>`).join('')}
       </div>` : ''}
     </div>` : ''}
 
@@ -136,7 +136,7 @@ async function load() {
       ${d.recentExams.map(e => `
       <div class="exam-row">
         <i class="fas ${e.passed ? 'fa-check-circle pass' : 'fa-times-circle fail'}"></i>
-        <div style="flex:1"><div style="font-weight:600">${e.category_name}</div></div>
+        <div style="flex:1"><div style="font-weight:600">${esc(e.category_name)}</div></div>
         <div style="font-size:.75rem;color:#888">${e.score}/${e.total} · ${Math.round(e.score/e.total*100)}%</div>
       </div>`).join('')}
     </div>` : ''}

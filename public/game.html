@@ -71,6 +71,7 @@
   </div>
 
   <script>
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     const canvas = document.getElementById('c');
     const ctx    = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
@@ -422,7 +423,7 @@
         return `<div class="lb-row${isMe ? ' me' : ''}">
           <span class="lb-rank ${cls}">${medal}</span>
           ${av ? `<img class="lb-avatar" src="${av}" onerror="this.style.display='none'">` : '<div class="lb-avatar"></div>'}
-          <span class="lb-name" style="${isMe ? 'color:#f97316;font-weight:700' : ''}">${r.username}</span>
+          <span class="lb-name" style="${isMe ? 'color:#f97316;font-weight:700' : ''}">${esc(r.username)}</span>
           <span class="lb-score">${r.score.toLocaleString()}</span>
         </div>`;
       }).join('');

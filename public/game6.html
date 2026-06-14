@@ -260,6 +260,7 @@
 </div>
 
 <script>
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 // ── SYMBOLS ───────────────────────────────────────────────────────────────────
 // v[n] = true multiplier × line-bet for n consecutive symbols from left
 const SYMS = [
@@ -722,7 +723,7 @@ async function openLb() {
       return `<div class="lb-row" style="${me ? 'background:#1a1000;border-radius:5px;' : ''}">
         <div class="lb-rank">${medal}</div>
         <div class="lb-av">${av}</div>
-        <div class="lb-name">${row.username || 'Unbekannt'}</div>
+        <div class="lb-name">${esc(row.username || 'Unbekannt')}</div>
         <div class="lb-score">${row.score.toLocaleString('de-DE')} 🪙</div>
       </div>`;
     }).join('');

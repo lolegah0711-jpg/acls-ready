@@ -119,6 +119,7 @@
 </div>
 
 <script>
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 let balance=0,bet=0,inHand=false,busy=false,currentUser=null;
 const $=id=>document.getElementById(id);
 
@@ -239,7 +240,7 @@ async function openLb(){
       const av=row.avatar?`<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`:(row.username||'?').slice(0,2).toUpperCase();
       return`<div class="lb-row" style="${me?'background:#1a1408;border-radius:5px;':''}">
         <div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
-        <div class="lb-name">${row.username||'Unbekannt'}</div>
+        <div class="lb-name">${esc(row.username||'Unbekannt')}</div>
         <div class="lb-score">+${row.score.toLocaleString()}</div>
       </div>`;
     }).join('');

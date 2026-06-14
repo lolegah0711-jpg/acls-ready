@@ -51,6 +51,7 @@
 <div class="footer">Alle Preise in GTA$ · Stand: täglich aktuell</div>
 
 <script>
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const CAT_META = {
   'Fahrschule':   { icon:'🎓', bg:'rgba(249,115,22,.15)', col:'#f97316', sub:'Rechnungspreis – automatischer Kontoabzug' },
   'Kundenpreise': { icon:'🤝', bg:'rgba(34,197,94,.12)',  col:'#22c55e', sub:'Bar auf Hand' },
@@ -80,10 +81,10 @@ async function load() {
           ${items.map(item => `
           <div class="item">
             <div style="flex:1;min-width:0">
-              <div class="item-name">${item.name}</div>
-              ${item.notes ? `<div class="item-note">${item.notes}</div>` : ''}
+              <div class="item-name">${esc(item.name)}</div>
+              ${item.notes ? `<div class="item-note">${esc(item.notes)}</div>` : ''}
             </div>
-            <div class="item-price" style="color:${m.col}">${item.price}</div>
+            <div class="item-price" style="color:${m.col}">${esc(item.price)}</div>
           </div>`).join('')}
         </div>
       </div>`;

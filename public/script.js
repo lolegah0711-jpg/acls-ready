@@ -200,7 +200,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 // ── Helpers ──────────────────────────────────────────────────────
 const isAdmin      = () => currentUser?.role === 'admin';
 const isAusbilder  = () => currentUser?.role === 'ausbilder' || currentUser?.role === 'admin';
-const initials = n => (n || '?').split(/[_\s]/).map(p => p[0]).join('').toUpperCase().slice(0, 2);
+const initials = n => ((n || '?').split(/[_\s]/).map(p => p[0]).join('').replace(/[^\p{L}\p{N}]/gu, '').toUpperCase().slice(0, 2) || '?');
 // XSS-Schutz: alle DB-Werte vor innerHTML-Einbettung escapen
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const fmt = dt => new Date(dt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -472,7 +472,7 @@ async function renderVoterScreen() {
           <div style="max-width:600px">
             <div class="card" style="margin-bottom:1.25rem">
               <form onsubmit="submitComplaintForm(event)">
-                <div class="form-group"><label>Dein Name (IC)</label><input class="form-control" id="cName" value="${currentUser.username||''}" required></div>
+                <div class="form-group"><label>Dein Name (IC)</label><input class="form-control" id="cName" value="${esc(currentUser.username||'')}" required></div>
                 <div class="form-group"><label>Betreff</label><input class="form-control" id="cSubject" placeholder="Kurze Zusammenfassung" required></div>
                 <div class="form-group"><label>Nachricht</label><textarea class="form-control" id="cMessage" rows="4" placeholder="Beschreibe dein Anliegen ausführlich…" required style="resize:vertical"></textarea></div>
                 <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-paper-plane"></i> Absenden</button>
@@ -660,7 +660,7 @@ window.saveVoterName = async () => {
     const nameEl = document.getElementById('vUserName');
     if (nameEl) nameEl.childNodes[0].textContent = r.username + ' ';
     closeModal();
-    toast(`Name geändert: ${r.username} ✓`, 'ok');
+    toast(`Name geändert: ${esc(r.username)} ✓`, 'ok');
   }
 };
 
@@ -957,7 +957,7 @@ async function loadVoterMarket() {
       <div style="padding:.85rem;display:flex;flex-direction:column;gap:.4rem;flex:1">
         <div>
           <div style="font-weight:800;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(l.car)}">${esc(l.car)}</div>
-          <div style="font-size:1.05rem;font-weight:800;color:#f97316">${l.price}$${isRent && dur ? `<span style="font-size:.72rem;font-weight:600;color:var(--muted);margin-left:.35rem">/ ${dur}</span>` : ''}</div>
+          <div style="font-size:1.05rem;font-weight:800;color:#f97316">${esc(l.price)}$${isRent && dur ? `<span style="font-size:.72rem;font-weight:600;color:var(--muted);margin-left:.35rem">/ ${dur}</span>` : ''}</div>
         </div>
         <div>${listingTypeBadge(l)}</div>
         <div style="font-size:.8rem;color:var(--muted);display:flex;flex-direction:column;gap:.2rem">
@@ -1267,7 +1267,7 @@ async function dashboard() {
          <div class="eow-av">${avatarUrl(eow) ? `<img src="${avatarUrl(eow)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(eow.username)}</div>
          <div class="eow-info">
            <div class="eow-label"><i class="fas fa-trophy" style="margin-right:.3rem"></i>Mitarbeiter der Woche · KW ${isoWeek(eow.week)}</div>
-           <div class="eow-name">${eow.username}</div>
+           <div class="eow-name">${esc(eow.username)}</div>
            <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">${eow.vote_count} Stimmen${isCurWk ? ' · Diese Woche' : ' · Letzte Woche'}</div>
          </div>
          <div class="eow-ml"><button class="btn btn-ghost btn-sm" onclick="navigate('eow')"><i class="fas fa-list"></i> Details</button></div>
@@ -1287,7 +1287,7 @@ async function dashboard() {
          <div class="eow-av" style="border-color:rgba(249,115,22,.4)">${avatarUrl(top) ? `<img src="${avatarUrl(top)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(top.username)}</div>
          <div class="eow-info">
            <div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>${voteLabel} · ${curWk}</div>
-           <div class="eow-name">${top.username} führt</div>
+           <div class="eow-name">${esc(top.username)} führt</div>
            <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">${top.votes} Stimmen · Auszählung Sonntag 18:00</div>
          </div>
          <div class="eow-ml"><button class="btn btn-primary btn-sm" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Abstimmen</button></div>
@@ -1313,7 +1313,7 @@ async function dashboard() {
         <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem">
           <span style="font-weight:700;font-size:.95rem">${esc(a.title)}</span>
           ${a.is_pinned ? '<span style="font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:20px;background:rgba(249,115,22,.2);color:var(--orange);text-transform:uppercase;letter-spacing:.05em">Angeheftet</span>' : ''}
-          <span style="font-size:.72rem;color:var(--muted);margin-left:auto">${a.author} · ${new Date(a.created_at).toLocaleDateString('de-DE')}</span>
+          <span style="font-size:.72rem;color:var(--muted);margin-left:auto">${esc(a.author)} · ${new Date(a.created_at).toLocaleDateString('de-DE')}</span>
         </div>
         <div style="font-size:.85rem;color:var(--fg);opacity:.85;white-space:pre-wrap;line-height:1.5">${esc(a.content)}</div>
       </div>
@@ -1416,7 +1416,7 @@ async function dashboard() {
             ${rankBadge(i + 1)}
             <div style="display:flex;align-items:center;gap:.6rem;flex:1">
               <div style="width:30px;height:30px;flex-shrink:0">${avatarEl(e, 30)}</div>
-              <div><div class="lb-name">${e.username}</div><div class="lb-sub">${e.count} Prüfungen</div></div>
+              <div><div class="lb-name">${esc(e.username)}</div><div class="lb-sub">${e.count} Prüfungen</div></div>
             </div>
             <div class="lb-score"><i class="fas fa-fire"></i>${e.count}</div>
           </div>`).join('') : '<div class="empty"><i class="fas fa-trophy"></i><p>Keine Einträge</p></div>'}
@@ -1752,7 +1752,7 @@ async function activity() {
   _actAllEvents = [
     ...(reg || []).map(r => ({ date: r.registered_at, dot: r.passed ? 'g' : 'r', text: `<b>${esc(r.citizen_name)}</b> – ${esc(r.category_name)} ${esc(r.exam_type)} (${r.passed ? 'Bestanden' : 'Nicht bestanden'}) | Prüfer: ${esc(r.examiner_name)}` })),
     ...(bansData || []).map(b => ({ date: b.issued_at, dot: 'r', text: `Hausverbot: <b>${esc(b.person_name)}</b> – ${esc(b.reason)}` })),
-    ...(ic || []).filter(e => e.auto).map(e => ({ date: e.created_at, dot: 'o', text: `IC-Zeit: <b>${e.user_name}</b> – ${(+e.hours).toFixed(1)}h ${e.notes ? '(' + esc(e.notes) + ')' : ''}` })),
+    ...(ic || []).filter(e => e.auto).map(e => ({ date: e.created_at, dot: 'o', text: `IC-Zeit: <b>${esc(e.user_name)}</b> – ${(+e.hours).toFixed(1)}h ${e.notes ? '(' + esc(e.notes) + ')' : ''}` })),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   renderActivity();
@@ -1793,6 +1793,7 @@ async function eow() {
   if (!data) return;
 
   const candidates   = (users || []).filter(u => u.is_active);
+  window._eowNames   = Object.fromEntries(candidates.map(u => [u.id, u.username]));
   const myVote       = data.myVoteFor;
   const myHasChanged = data.myHasChanged;
   const canChange    = myVote && !myHasChanged;
@@ -1829,7 +1830,7 @@ async function eow() {
             <div style="display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:.9rem .75rem;background:var(--input);border-radius:var(--r);text-align:center;position:relative">
               <i class="fas ${medalIcons[i]}" style="position:absolute;top:.6rem;right:.6rem;font-size:.75rem;color:${medals[i]};opacity:.7"></i>
               ${avatarEl(w, 44)}
-              <div style="font-weight:700;font-size:.88rem">${w.username}</div>
+              <div style="font-weight:700;font-size:.88rem">${esc(w.username)}</div>
               <div style="font-size:.72rem;color:var(--muted)">KW ${isoWeek(w.week)} · ${w.vote_count} Stimmen</div>
             </div>`;
           }).join('')}
@@ -1857,7 +1858,7 @@ async function eow() {
             const canVote = (!myVote || canChange) && !isSelf;
             const total   = (tally[u.id] || 0) + (citTally[u.id] || 0);
             return `
-            <div onclick="${canVote ? `confirmVote(${u.id},'${u.username.replace(/'/g,"\\'")}')` : ''}"
+            <div onclick="${canVote ? `confirmVote(${u.id})` : ''}"
                  style="display:flex;flex-direction:column;align-items:center;gap:.6rem;padding:1.1rem .75rem;
                         background:${isVoted ? 'var(--orange-dim)' : 'var(--input)'};
                         border:1px solid ${isVoted ? 'rgba(249,115,22,.4)' : 'var(--border)'};
@@ -1908,7 +1909,8 @@ async function eow() {
   update();
 })();
 
-window.confirmVote = (nominee_id, username) => {
+window.confirmVote = (nominee_id) => {
+  const username = esc(window._eowNames?.[nominee_id] || '');
   const isChange = !!window._eowMyVote;
   openModal(`
     <div class="modal-head">
@@ -2317,10 +2319,10 @@ async function registry() {
       <div class="card" style="margin-bottom:.75rem">
         <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;cursor:pointer" onclick="toggleCitizenDetail(this,${idx})">
           <div style="width:42px;height:42px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;color:var(--orange);flex-shrink:0">
-            ${c.name.trim()[0].toUpperCase()}
+            ${esc(c.name.trim()[0].toUpperCase())}
           </div>
           <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:.98rem">${c.name}${c.citizenId ? ` <span style="font-size:.75rem;color:var(--muted);font-weight:400">${c.citizenId}</span>` : ''}</div>
+            <div style="font-weight:700;font-size:.98rem">${esc(c.name)}${c.citizenId ? ` <span style="font-size:.75rem;color:var(--muted);font-weight:400">${esc(c.citizenId)}</span>` : ''}</div>
             <div style="font-size:.75rem;color:var(--muted);margin-top:.15rem">Letzter Eintrag: ${fmt(latest.registered_at)}${c.entries.length > 1 ? ` · ${c.entries.length} Einträge` : ''}</div>
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">
@@ -2341,16 +2343,16 @@ async function registry() {
                 try { wrongQs = JSON.parse(e.notes || '{}').wrong || []; } catch {}
                 const cols = isAdmin() ? 6 : 5;
                 return `<tr>
-                  <td><i class="fas ${e.icon}" style="color:${CAT_COLORS[e.category_name]||'var(--orange)'};margin-right:.35rem"></i>${e.category_name}</td>
-                  <td><span class="badge ${e.exam_type === 'Praxis' ? 'badge-b' : 'badge-m'}">${e.exam_type}</span></td>
-                  <td>${e.examiner_name}</td>
+                  <td><i class="fas ${e.icon}" style="color:${CAT_COLORS[e.category_name]||'var(--orange)'};margin-right:.35rem"></i>${esc(e.category_name)}</td>
+                  <td><span class="badge ${e.exam_type === 'Praxis' ? 'badge-b' : 'badge-m'}">${esc(e.exam_type)}</span></td>
+                  <td>${esc(e.examiner_name)}</td>
                   <td>${fmt(e.registered_at)}</td>
                   <td><span class="badge ${e.passed ? 'badge-g' : 'badge-r'}">${e.passed ? 'Bestanden' : 'Nicht bestanden'}</span></td>
                   ${isAdmin() ? `<td><button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteRegistry(${e.id})"><i class="fas fa-trash"></i></button></td>` : ''}
                 </tr>${wrongQs.length ? `<tr style="background:rgba(239,68,68,.04)">
                   <td colspan="${cols}" style="padding:.45rem .9rem .6rem">
                     <div style="font-size:.72rem;font-weight:700;color:#ef4444;margin-bottom:.3rem"><i class="fas fa-times-circle" style="margin-right:.3rem"></i>Falsch beantwortet (${wrongQs.length})</div>
-                    <ul style="margin:0;padding-left:1.1rem;font-size:.78rem;color:#fca5a5;line-height:1.6">${wrongQs.map(q => `<li>${q}</li>`).join('')}</ul>
+                    <ul style="margin:0;padding-left:1.1rem;font-size:.78rem;color:#fca5a5;line-height:1.6">${wrongQs.map(q => `<li>${esc(q)}</li>`).join('')}</ul>
                   </td>
                 </tr>` : ''}`;
               }).join('')}
@@ -2388,7 +2390,7 @@ window.openAddRegistry = () => {
       </div>
       <div class="form-row">
         <div class="form-group"><label>Prüfung</label>
-          <select class="form-control" id="rCat">${cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}</select>
+          <select class="form-control" id="rCat">${cats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
         </div>
         <div class="form-group"><label>Typ</label>
           <select class="form-control" id="rType"><option>Praxis</option><option>Theorie</option></select>
@@ -2546,7 +2548,7 @@ window.openEditFaq = (id, q, a, cat, sort) => openModal(`
   <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
   <form onsubmit="submitFaq(event)">
     <div class="form-group"><label>Frage</label><input class="form-control" id="faqQ" required value="${q}"></div>
-    <div class="form-group"><label>Antwort</label><textarea class="form-control" id="faqA" rows="4" required>${a}</textarea></div>
+    <div class="form-group"><label>Antwort</label><textarea class="form-control" id="faqA" rows="4" required>${esc(a)}</textarea></div>
     <div class="form-row">
       <div class="form-group"><label>Kategorie</label><input class="form-control" id="faqCat" value="${cat}"></div>
       <div class="form-group"><label>Reihenfolge</label><input class="form-control" id="faqSort" type="number" value="${sort}" min="0"></div>
@@ -2591,11 +2593,11 @@ async function factions() {
         <thead><tr><th>Fraktion</th><th>Primär</th><th>Sekundär</th><th>Pearl</th><th>Notizen</th><th></th></tr></thead>
         <tbody>
           ${rows.map(f => `<tr>
-            <td style="font-weight:600;color:var(--text)">${f.name}</td>
-            <td><div style="display:flex;align-items:center;gap:.4rem"><span class="swatch" style="background:${f.primary_color || '#333'}"></span>${f.primary_color || '—'}</div></td>
-            <td><div style="display:flex;align-items:center;gap:.4rem"><span class="swatch" style="background:${f.secondary_color || '#333'}"></span>${f.secondary_color || '—'}</div></td>
-            <td><div style="display:flex;align-items:center;gap:.4rem"><span class="swatch" style="background:${f.pearl_color || '#333'}"></span>${f.pearl_color || '—'}</div></td>
-            <td style="color:var(--muted)">${f.notes || '—'}</td>
+            <td style="font-weight:600;color:var(--text)">${esc(f.name)}</td>
+            <td><div style="display:flex;align-items:center;gap:.4rem"><span class="swatch" style="background:${esc(f.primary_color || '#333')}"></span>${esc(f.primary_color || '—')}</div></td>
+            <td><div style="display:flex;align-items:center;gap:.4rem"><span class="swatch" style="background:${esc(f.secondary_color || '#333')}"></span>${esc(f.secondary_color || '—')}</div></td>
+            <td><div style="display:flex;align-items:center;gap:.4rem"><span class="swatch" style="background:${esc(f.pearl_color || '#333')}"></span>${esc(f.pearl_color || '—')}</div></td>
+            <td style="color:var(--muted)">${esc(f.notes || '—')}</td>
             <td><div style="display:flex;gap:.4rem">
               <button class="btn btn-ghost btn-sm" onclick="openEditFaction(${f.id})"><i class="fas fa-pen"></i></button>
               ${isAdmin() ? `<button class="btn btn-danger btn-sm" onclick="deleteFaction(${f.id})"><i class="fas fa-trash"></i></button>` : ''}
@@ -2613,28 +2615,28 @@ window.openEditFaction = async (id = null) => {
     <div class="modal-head"><div class="modal-title">${f ? 'Fraktion bearbeiten' : 'Fraktion erstellen'}</div>
     <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
     <form onsubmit="submitFaction(event,${id || 0})">
-      <div class="form-group"><label>Name</label><input class="form-control" id="fName" value="${f?.name || ''}" required></div>
+      <div class="form-group"><label>Name</label><input class="form-control" id="fName" value="${esc(f?.name || '')}" required></div>
       <div class="form-row">
         <div class="form-group"><label>Primärfarbe</label>
           <div style="display:flex;gap:.5rem;align-items:center">
-            <input type="color" id="fPC" value="${f?.primary_color || '#f97316'}" style="width:42px;height:38px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--input)">
-            <input class="form-control" id="fPrim" value="${f?.primary_color || '#f97316'}">
+            <input type="color" id="fPC" value="${esc(f?.primary_color || '#f97316')}" style="width:42px;height:38px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--input)">
+            <input class="form-control" id="fPrim" value="${esc(f?.primary_color || '#f97316')}">
           </div>
         </div>
         <div class="form-group"><label>Sekundärfarbe</label>
           <div style="display:flex;gap:.5rem;align-items:center">
-            <input type="color" id="fSC" value="${f?.secondary_color || '#1c1c1c'}" style="width:42px;height:38px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--input)">
-            <input class="form-control" id="fSec" value="${f?.secondary_color || '#1c1c1c'}">
+            <input type="color" id="fSC" value="${esc(f?.secondary_color || '#1c1c1c')}" style="width:42px;height:38px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--input)">
+            <input class="form-control" id="fSec" value="${esc(f?.secondary_color || '#1c1c1c')}">
           </div>
         </div>
       </div>
       <div class="form-group"><label>Pearl-Farbe</label>
         <div style="display:flex;gap:.5rem;align-items:center">
-          <input type="color" id="fLC" value="${f?.pearl_color || '#ffffff'}" style="width:42px;height:38px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--input)">
-          <input class="form-control" id="fPrl" value="${f?.pearl_color || '#ffffff'}">
+          <input type="color" id="fLC" value="${esc(f?.pearl_color || '#ffffff')}" style="width:42px;height:38px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:var(--input)">
+          <input class="form-control" id="fPrl" value="${esc(f?.pearl_color || '#ffffff')}">
         </div>
       </div>
-      <div class="form-group"><label>Notizen</label><input class="form-control" id="fNotes" value="${f?.notes || ''}"></div>
+      <div class="form-group"><label>Notizen</label><input class="form-control" id="fNotes" value="${esc(f?.notes || '')}"></div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
         <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
@@ -2697,9 +2699,9 @@ async function map() {
           <thead><tr><th>Name</th><th>Beschreibung</th><th>Typ</th><th>Eingetragen von</th><th></th></tr></thead>
           <tbody>
             ${spots.map(s => `<tr>
-              <td style="font-weight:600;color:var(--text)">${s.name}</td>
-              <td>${s.description || '—'}</td>
-              <td><span style="font-size:.75rem;padding:.15rem .55rem;border-radius:6px;font-weight:600;background:${({'tow':'#f9731622','exam':'#22c55e22','Felder':'#3b82f622','Hotspot':'#ec4b9922','Gangs/Familien':'#eab30822'}[s.spot_type]||'#6b728022')};color:${({'tow':'#f97316','exam':'#22c55e','Felder':'#3b82f6','Hotspot':'#ec4899','Gangs/Familien':'#eab308'}[s.spot_type]||'#6b7280')}">${s.spot_type}</span></td>
+              <td style="font-weight:600;color:var(--text)">${esc(s.name)}</td>
+              <td>${esc(s.description || '—')}</td>
+              <td><span style="font-size:.75rem;padding:.15rem .55rem;border-radius:6px;font-weight:600;background:${({'tow':'#f9731622','exam':'#22c55e22','Felder':'#3b82f622','Hotspot':'#ec4b9922','Gangs/Familien':'#eab30822'}[s.spot_type]||'#6b728022')};color:${({'tow':'#f97316','exam':'#22c55e','Felder':'#3b82f6','Hotspot':'#ec4899','Gangs/Familien':'#eab308'}[s.spot_type]||'#6b7280')}">${esc(s.spot_type)}</span></td>
               <td>${s.created_by_name || '—'}</td>
               <td>${isAdmin() ? `<button class="btn btn-danger btn-sm" onclick="deleteSpot(${s.id})"><i class="fas fa-trash"></i></button>` : ''}</td>
             </tr>`).join('')}
@@ -2767,9 +2769,9 @@ function initLeafletMap(spots) {
     L.marker([lat, lng], { icon: makePin(color) })
       .addTo(leafletMap)
       .bindPopup(`<div style="font-family:Inter,sans-serif;min-width:140px">
-        <div style="font-weight:700;margin-bottom:.25rem">${s.name}</div>
-        ${s.description ? `<div style="font-size:.8rem;color:#888;margin-bottom:.35rem">${s.description}</div>` : ''}
-        <span style="font-size:.75rem;background:${color}22;color:${color};border-radius:4px;padding:.1rem .4rem;border:1px solid ${color}44">${s.spot_type}</span>
+        <div style="font-weight:700;margin-bottom:.25rem">${esc(s.name)}</div>
+        ${s.description ? `<div style="font-size:.8rem;color:#888;margin-bottom:.35rem">${esc(s.description)}</div>` : ''}
+        <span style="font-size:.75rem;background:${color}22;color:${color};border-radius:4px;padding:.1rem .4rem;border:1px solid ${color}44">${esc(s.spot_type)}</span>
       </div>`, { closeButton: false });
   });
 
@@ -2942,8 +2944,8 @@ async function iczeit() {
         ${active.map(s => `
           <div style="display:flex;align-items:center;gap:.5rem;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:8px;padding:.35rem .75rem;font-size:.85rem">
             <i class="fas fa-microphone" style="color:#22c55e;font-size:.75rem"></i>
-            <span style="font-weight:600">${s.username}</span>
-            <span style="color:var(--muted)">${s.channelName}</span>
+            <span style="font-weight:600">${esc(s.username)}</span>
+            <span style="color:var(--muted)">${esc(s.channelName)}</span>
             <span style="color:#22c55e;font-weight:700">${s.minutesSince} Min</span>
           </div>`).join('')}
       </div>
@@ -3010,10 +3012,10 @@ async function iczeit() {
           <tbody>
             ${(log || []).length ? log.map(e => `<tr>
               <td>${fmt(e.date)}</td>
-              <td style="font-weight:600;color:var(--text)">${e.user_name}</td>
+              <td style="font-weight:600;color:var(--text)">${esc(e.user_name)}</td>
               <td style="color:var(--orange);font-weight:700">${(+e.hours).toFixed(1)}h</td>
-              <td style="color:var(--muted)">${e.notes || '—'}</td>
-              <td>${e.auto ? '<span class="badge badge-b"><i class="fab fa-discord"></i> Bot</span>' : `<span class="badge badge-m">${e.logged_by_name || 'Manuell'}</span>`}</td>
+              <td style="color:var(--muted)">${esc(e.notes || '—')}</td>
+              <td>${e.auto ? '<span class="badge badge-b"><i class="fab fa-discord"></i> Bot</span>' : `<span class="badge badge-m">${esc(e.logged_by_name || 'Manuell')}</span>`}</td>
               ${isAdmin() ? `<td><button class="btn btn-danger btn-sm" onclick="deleteIcEntry(${e.id})"><i class="fas fa-trash"></i></button></td>` : ''}
             </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem">Keine Einträge – Bot läuft noch nicht?</td></tr>'}
           </tbody>
@@ -3222,7 +3224,7 @@ async function prices() {
                 <div style="font-weight:600;font-size:.88rem">${esc(item.name)}</div>
                 ${item.notes ? `<div style="font-size:.72rem;color:var(--muted);margin-top:.1rem">${esc(item.notes)}</div>` : ''}
               </div>
-              <div style="font-size:.95rem;font-weight:800;color:${m.col};white-space:nowrap">${item.price}</div>
+              <div style="font-size:.95rem;font-weight:800;color:${m.col};white-space:nowrap">${esc(item.price)}</div>
               ${canEdit ? `
               <div style="display:flex;gap:.3rem;flex-shrink:0">
                 <button class="btn btn-ghost btn-sm" title="Bearbeiten" onclick="openEditPrice(${item.id},'${encodeURIComponent(JSON.stringify(item))}')"><i class="fas fa-pen" style="font-size:.7rem"></i></button>
@@ -3243,7 +3245,7 @@ window.openRechnungModal = () => {
   const catHtml = Object.entries(cats).map(([cat, items]) => `
     <div style="margin-bottom:1rem">
       <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
-        ${cat}<div style="flex:1;height:1px;background:var(--border)"></div>
+        ${esc(cat)}<div style="flex:1;height:1px;background:var(--border)"></div>
       </div>
       ${items.map(item => `
       <label style="display:flex;align-items:center;gap:.65rem;padding:.45rem .6rem;border-radius:8px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
@@ -3252,7 +3254,7 @@ window.openRechnungModal = () => {
           <div style="font-size:.85rem;font-weight:600">${esc(item.name)}</div>
           ${item.notes ? `<div style="font-size:.7rem;color:var(--muted)">${esc(item.notes)}</div>` : ''}
         </div>
-        <span style="font-size:.85rem;font-weight:700;color:#22c55e;white-space:nowrap">${item.price}</span>
+        <span style="font-size:.85rem;font-weight:700;color:#22c55e;white-space:nowrap">${esc(item.price)}</span>
         <input type="number" class="rech-qty form-control" data-id="${item.id}" value="1" min="1" max="99"
           style="width:52px;padding:.2rem .35rem;font-size:.82rem;text-align:center;display:none"
           oninput="rechUpdateTotal()" onclick="event.stopPropagation()">
@@ -3608,11 +3610,11 @@ window.openEditPrice = (id, encoded) => {
     </div>
     <form onsubmit="submitEditPrice(event,${id})">
       <div class="form-row">
-        <div class="form-group"><label>Kategorie</label><input class="form-control" id="epCat" value="${item.category}" required></div>
+        <div class="form-group"><label>Kategorie</label><input class="form-control" id="epCat" value="${esc(item.category)}" required></div>
         <div class="form-group"><label>Bezeichnung</label><input class="form-control" id="epName" value="${esc(item.name)}" required></div>
       </div>
-      <div class="form-group"><label>Preis</label><input class="form-control" id="epPrice" value="${item.price}" required></div>
-      <div class="form-group"><label>Hinweis (optional)</label><input class="form-control" id="epNotes" value="${item.notes||''}"></div>
+      <div class="form-group"><label>Preis</label><input class="form-control" id="epPrice" value="${esc(item.price)}" required></div>
+      <div class="form-group"><label>Hinweis (optional)</label><input class="form-control" id="epNotes" value="${esc(item.notes||'')}"></div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
         <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
@@ -3728,7 +3730,7 @@ async function applications() {
     return `<div class="card" style="display:flex;flex-direction:column;gap:.75rem">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;flex-wrap:wrap">
         <div>
-          <div style="font-weight:700;font-size:1rem">${a.discord_username} <span style="font-size:.8rem;font-weight:400;color:var(--muted)">· ${a.ic_name}${a.ic_age ? ', ' + a.ic_age + ' J.' : ''}</span></div>
+          <div style="font-weight:700;font-size:1rem">${esc(a.discord_username)} <span style="font-size:.8rem;font-weight:400;color:var(--muted)">· ${esc(a.ic_name)}${a.ic_age ? ', ' + esc(a.ic_age) + ' J.' : ''}</span></div>
           <div style="font-size:.75rem;color:var(--muted);margin-top:.15rem">${new Date(a.created_at).toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
         </div>
         <div style="display:flex;align-items:center;gap:.5rem">${statusBadge(a.status)}</div>
@@ -3736,16 +3738,16 @@ async function applications() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
         <div>
           <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:.3rem">Vorerfahrung</div>
-          <div style="font-size:.85rem;line-height:1.5;color:var(--text)">${a.experience}</div>
+          <div style="font-size:.85rem;line-height:1.5;color:var(--text)">${esc(a.experience)}</div>
         </div>
         <div>
           <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:.3rem">Verfügbarkeit</div>
-          <div style="font-size:.85rem;line-height:1.5;color:var(--text)">${a.availability}</div>
+          <div style="font-size:.85rem;line-height:1.5;color:var(--text)">${esc(a.availability)}</div>
         </div>
       </div>
       <div>
         <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:.3rem">Motivation</div>
-        <div style="font-size:.85rem;line-height:1.5;color:var(--text)">${a.motivation}</div>
+        <div style="font-size:.85rem;line-height:1.5;color:var(--text)">${esc(a.motivation)}</div>
       </div>
       ${a.admin_note ? `<div style="background:var(--surface2);border-left:3px solid var(--orange);border-radius:0 6px 6px 0;padding:.5rem .75rem;font-size:.82rem"><span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase">Admin-Notiz:</span><br>${esc(a.admin_note)}</div>` : ''}
       ${showActions && isAdmin() ? `<div style="display:flex;gap:.5rem;padding-top:.5rem;border-top:1px solid var(--border)">
@@ -3851,7 +3853,7 @@ window.openListingDetail = id => {
     <div style="padding:1.25rem 1.5rem 1.5rem">
       ${l.image_data ? `<h2 style="font-size:1.25rem;font-weight:800;margin:0 0 .2rem;padding-right:1rem">${esc(l.car)}</h2>` : ''}
       <div style="font-size:1.45rem;font-weight:800;color:#f97316;margin-bottom:.5rem">
-        ${l.price}$${isRent && dur ? `<span style="font-size:.85rem;font-weight:600;color:var(--muted);margin-left:.4rem">/ ${dur}</span>` : ''}
+        ${esc(l.price)}$${isRent && dur ? `<span style="font-size:.85rem;font-weight:600;color:var(--muted);margin-left:.4rem">/ ${dur}</span>` : ''}
       </div>
       <div style="margin-bottom:1rem">${listingTypeBadge(l)}</div>
       <div style="display:flex;flex-direction:column;gap:.7rem;border-top:1px solid var(--border);padding-top:1rem">
@@ -3905,7 +3907,7 @@ function listingCard(l, canEditAny) {
     <div style="padding:.9rem;display:flex;flex-direction:column;gap:.45rem;flex:1">
       <div>
         <div style="font-weight:800;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(l.car)}">${esc(l.car)}</div>
-        <div style="font-size:1.1rem;font-weight:800;color:#f97316">${l.price}$${isRent && dur ? `<span style="font-size:.75rem;font-weight:600;color:var(--muted);margin-left:.3rem">/ ${dur}</span>` : ''}</div>
+        <div style="font-size:1.1rem;font-weight:800;color:#f97316">${esc(l.price)}$${isRent && dur ? `<span style="font-size:.75rem;font-weight:600;color:var(--muted);margin-left:.3rem">/ ${dur}</span>` : ''}</div>
       </div>
       <div>${listingTypeBadge(l)}</div>
       <div style="display:flex;flex-direction:column;gap:.2rem;font-size:.83rem;color:var(--muted)">
@@ -3955,7 +3957,7 @@ window.openAddListing = () => {
         <div class="form-group"><label id="lPriceLabel">Wunschpreis *</label><input class="form-control" id="lPrice" placeholder="z.B. 85.000" oninput="fmtListingPrice(this)" required></div>
         <div class="form-group"><label>Telefonnummer *</label><input class="form-control" id="lPhone" placeholder="z.B. 555-1234" required></div>
       </div>
-      <div class="form-group"><label>Dein Name *</label><input class="form-control" id="lName" placeholder="Vor- und Nachname (IC)" required value="${currentUser?.username || ''}"></div>
+      <div class="form-group"><label>Dein Name *</label><input class="form-control" id="lName" placeholder="Vor- und Nachname (IC)" required value="${esc(currentUser?.username || '')}"></div>
       <div class="form-group"><label>Notizen (optional)</label><textarea class="form-control" id="lNotes" rows="3" placeholder="Zustand, Ausstattung, besondere Merkmale…" style="resize:vertical"></textarea></div>
       <div class="form-group">
         <label>Fahrzeugfoto (optional)</label>
@@ -4044,11 +4046,11 @@ window.openEditListing = (id, encoded) => {
       </div>
       <div class="form-group"><label>Fahrzeug *</label><input class="form-control" id="elCar" value="${esc(l.car)}" required></div>
       <div class="form-row">
-        <div class="form-group"><label id="elPriceLabel">${isRent ? 'Mietpreis *' : 'Wunschpreis *'}</label><input class="form-control" id="elPrice" value="${l.price}" oninput="fmtListingPrice(this)" required></div>
+        <div class="form-group"><label id="elPriceLabel">${isRent ? 'Mietpreis *' : 'Wunschpreis *'}</label><input class="form-control" id="elPrice" value="${esc(l.price)}" oninput="fmtListingPrice(this)" required></div>
         <div class="form-group"><label>Telefonnummer *</label><input class="form-control" id="elPhone" value="${esc(l.phone)}" required></div>
       </div>
       <div class="form-group"><label>Name *</label><input class="form-control" id="elName" value="${esc(l.name)}" required></div>
-      <div class="form-group"><label>Notizen</label><textarea class="form-control" id="elNotes" rows="3" style="resize:vertical">${l.notes || ''}</textarea></div>
+      <div class="form-group"><label>Notizen</label><textarea class="form-control" id="elNotes" rows="3" style="resize:vertical">${esc(l.notes || '')}</textarea></div>
       <div class="form-group">
         <label>Fahrzeugfoto</label>
         <div id="elImgPreview" style="${cached?.image_data ? '' : 'display:none'};margin-bottom:.5rem">
@@ -4115,6 +4117,7 @@ async function admin() {
   window._adminComplaints = complaints || [];
   if (!users) return;
   window._adminCats = cats;
+  window._userNames = Object.fromEntries(users.map(u => [u.id, u.username]));
 
   $('pageContent').innerHTML = `
     <div style="display:flex;justify-content:flex-end;margin-bottom:1rem">
@@ -4156,7 +4159,7 @@ async function admin() {
                   <button class="btn btn-ghost btn-sm" onclick="openProfileModal(${u.id})" title="Statistiken">
                     <i class="fas fa-chart-bar"></i>
                   </button>
-                  <button class="btn btn-ghost btn-sm" onclick="openRenameUser(${u.id},'${u.username.replace(/'/g,"\\'")}')" title="Namen ändern">
+                  <button class="btn btn-ghost btn-sm" onclick="openRenameUser(${u.id})" title="Namen ändern">
                     <i class="fas fa-pen"></i>
                   </button>
                 </td>
@@ -4178,7 +4181,7 @@ async function admin() {
           <tbody>${complaints.map(c => `<tr style="cursor:pointer" onclick="openComplaint(${c.id})">
             <td style="font-weight:600">${esc(c.citizen_name)}</td>
             <td>${esc(c.subject)}</td>
-            <td style="font-size:.8rem;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.message}</td>
+            <td style="font-size:.8rem;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.message)}</td>
             <td style="font-size:.78rem;color:var(--muted)">${new Date(c.created_at).toLocaleDateString('de-DE')}</td>
             <td><span style="font-size:.75rem;padding:.15rem .5rem;border-radius:6px;font-weight:600;background:${c.status==='offen'?'rgba(239,68,68,.15)':'rgba(34,197,94,.15)'};color:${c.status==='offen'?'#ef4444':'#22c55e'}">${c.status}</span></td>
             <td onclick="event.stopPropagation()" style="display:flex;gap:.3rem">
@@ -4219,7 +4222,7 @@ async function admin() {
               <button class="btn btn-ghost btn-sm" onclick="pinAnnouncement(${a.id})" title="${a.is_pinned ? 'Loslösen' : 'Anheften'}"><i class="fas fa-thumbtack"></i></button>
               <button class="btn btn-danger btn-sm" onclick="deleteAnnouncement(${a.id})"><i class="fas fa-trash"></i></button>
             </div>
-            <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">${a.content.slice(0,80)}${a.content.length>80?'…':''}</div>
+            <div style="font-size:.78rem;color:var(--muted);margin-top:.2rem">${esc(a.content.slice(0,80))}${a.content.length>80?'…':''}</div>
           </div>`).join('') : '<div class="empty" style="padding:1rem"><p>Keine Ankündigungen</p></div>'}
       </div>
 
@@ -4507,7 +4510,7 @@ window.removeUser = async id => {
   if (r) { toast('Entfernt.', 'ok'); admin(); }
 };
 
-window.openRenameUser = (id, currentName) => openModal(`
+window.openRenameUser = (id) => openModal((currentName => `
   <div class="modal-head">
     <div class="modal-title"><i class="fas fa-pen" style="color:var(--orange);margin-right:.5rem"></i>Namen ändern</div>
     <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
@@ -4521,7 +4524,7 @@ window.openRenameUser = (id, currentName) => openModal(`
       <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
       <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
     </div>
-  </form>`);
+  </form>`)(esc(window._userNames?.[id] || '')));
 
 window.submitRenameUser = async (e, id) => {
   e.preventDefault();
@@ -4620,11 +4623,11 @@ window.openComplaint = (id) => {
         <span style="padding:.15rem .5rem;border-radius:6px;font-weight:600;font-size:.75rem;background:${statusColor(c.status)}22;color:${statusColor(c.status)}">${statusLabel(c.status)}</span>
       </div>
       <div style="font-weight:700;font-size:1rem">${esc(c.subject)}</div>
-      <div style="background:var(--input);border-radius:var(--r);padding:.85rem 1rem;font-size:.87rem;line-height:1.65;white-space:pre-wrap;color:var(--fg)">${c.message}</div>
+      <div style="background:var(--input);border-radius:var(--r);padding:.85rem 1rem;font-size:.87rem;line-height:1.65;white-space:pre-wrap;color:var(--fg)">${esc(c.message)}</div>
       ${c.admin_response ? `<div style="padding:.6rem .8rem;background:rgba(59,130,246,.1);border-left:3px solid #3b82f6;border-radius:6px;font-size:.85rem"><b style="color:#3b82f6">Bisherige Antwort:</b><br>${esc(c.admin_response)}</div>` : ''}
       <div class="form-group" style="margin:0">
         <label style="font-size:.8rem">Antwort an Bürger (optional)</label>
-        <textarea class="form-control" id="complaint-response" rows="3" placeholder="Diese Antwort wird dem Bürger angezeigt…" style="resize:vertical">${c.admin_response||''}</textarea>
+        <textarea class="form-control" id="complaint-response" rows="3" placeholder="Diese Antwort wird dem Bürger angezeigt…" style="resize:vertical">${esc(c.admin_response||'')}</textarea>
       </div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap">
         <button class="btn btn-sm" style="background:rgba(239,68,68,.15);color:#ef4444;border:1px solid #ef444444" onclick="resolveComplaint(${c.id},'offen',document.getElementById('complaint-response').value)">Offen</button>
@@ -5191,7 +5194,7 @@ window.renderRankM3 = function renderRankM3() {
     </div>
     <div style="margin-top:.85rem">
       <label class="form-label">Notizen / Gesamteinschätzung</label>
-      <textarea id="rM3Notes" class="form-input" rows="2" placeholder="Freitext..." style="resize:vertical">${exam.m3Notes||''}</textarea>
+      <textarea id="rM3Notes" class="form-input" rows="2" placeholder="Freitext..." style="resize:vertical">${esc(exam.m3Notes||'')}</textarea>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="rankM2Next_back()"><i class="fas fa-arrow-left"></i> Zurück</button>

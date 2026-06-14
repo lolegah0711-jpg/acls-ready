@@ -90,6 +90,7 @@
   </main>
 
   <script>
+    const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     function avatar(u) {
       if (u.avatar && u.discord_id) {
         return `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" onerror="this.parentNode.innerHTML='${(u.username||'?')[0].toUpperCase()}'" alt="">`;
@@ -103,10 +104,10 @@
     }
     function card(u) {
       const cls = u.role === 'admin' ? 'is-admin' : u.role === 'ausbilder' ? 'is-ausbilder' : '';
-      const rank = (u.rank && u.rank !== 'Mitarbeiter') ? `<div class="member-rank">${u.rank}</div>` : '';
+      const rank = (u.rank && u.rank !== 'Mitarbeiter') ? `<div class="member-rank">${esc(u.rank)}</div>` : '';
       return `<div class="member-card ${cls}">
         <div class="avatar">${avatar(u)}</div>
-        <div class="member-name">${u.username}</div>
+        <div class="member-name">${esc(u.username)}</div>
         ${roleBadge(u.role)}
         ${rank}
       </div>`;

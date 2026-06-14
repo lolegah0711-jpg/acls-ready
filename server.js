@@ -163,11 +163,12 @@ app.use((req, res, next) => {
   if (req.headers['x-bot-secret']) return next();
   // OAuth-Callback erlauben
   if (req.path === '/auth/callback' || req.path === '/auth/discord') return next();
-  const origin  = req.headers['origin']  || '';
-  const referer = req.headers['referer'] || '';
-  const host    = req.headers['host']    || '';
-  const allowed = origin ? origin.includes(host) : referer.includes(host);
-  if (!allowed) return res.status(403).json({ error: 'CSRF-Schutz: ungültiger Origin' });
+  // Exakter Host-Vergleich (kein Substring – sonst umgeht z.B. evil.com/?host.de den Schutz)
+  const host   = req.headers['host'] || '';
+  const source = req.headers['origin'] || req.headers['referer'] || '';
+  let srcHost  = '';
+  try { srcHost = new URL(source).host; } catch { srcHost = ''; }
+  if (!srcHost || srcHost !== host) return res.status(403).json({ error: 'CSRF-Schutz: ungültiger Origin' });
   next();
 });
 app.use('/uploads', express.static(UPLOADS_DIR));
@@ -796,19 +797,27 @@ app.get('/api/factions', requireAuth, (req, res) => {
   res.json(db.prepare(`SELECT f.*, u.username as created_by_name FROM factions f JOIN users u ON u.id = f.created_by ORDER BY f.name`).all());
 });
 
+// Farbwert säubern: nur unbedenkliche Zeichen (kein <>"' ) – Defense-in-Depth zum Output-Escaping
+const cleanColor = c => {
+  if (c == null) return null;
+  const s = String(c).trim().slice(0, 40);
+  return s && /^[\w\s#().,%/-]*$/.test(s) ? s : null;
+};
+
 app.post('/api/factions', requireAuth, (req, res) => {
   const { name, primary_color, secondary_color, pearl_color, notes } = req.body;
   const user = getUser(req);
-  if (!name) return res.status(400).json({ error: 'Name erforderlich' });
+  if (!name?.trim()) return res.status(400).json({ error: 'Name erforderlich' });
   const r = db.prepare('INSERT INTO factions (name, primary_color, secondary_color, pearl_color, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(name, primary_color || null, secondary_color || null, pearl_color || null, notes || null, user.id);
+    .run(name.trim().slice(0, 80), cleanColor(primary_color), cleanColor(secondary_color), cleanColor(pearl_color), notes?.trim().slice(0, 500) || null, user.id);
   res.json({ id: r.lastInsertRowid });
 });
 
 app.put('/api/factions/:id', requireAdmin, (req, res) => {
   const { name, primary_color, secondary_color, pearl_color, notes } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: 'Name erforderlich' });
   db.prepare('UPDATE factions SET name=?, primary_color=?, secondary_color=?, pearl_color=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
-    .run(name, primary_color || null, secondary_color || null, pearl_color || null, notes || null, req.params.id);
+    .run(name.trim().slice(0, 80), cleanColor(primary_color), cleanColor(secondary_color), cleanColor(pearl_color), notes?.trim().slice(0, 500) || null, req.params.id);
   res.json({ ok: true });
 });
 
