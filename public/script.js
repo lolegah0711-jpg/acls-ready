@@ -374,6 +374,8 @@ async function renderVoterScreen() {
           <a class="nav-item" href="/game13" target="_blank" style="color:#60a5fa"><i class="fas fa-dungeon" style="color:#60a5fa"></i><span>Dungeon RPG</span></a>
           <a class="nav-item" href="/game14" target="_blank" style="color:#fb923c"><i class="fas fa-truck-pickup" style="color:#fb923c"></i><span>Abschlepp-Simulator</span></a>
           <a class="nav-item" href="/game15" target="_blank" style="color:#4ade80"><i class="fas fa-heart" style="color:#ef4444"></i><span>Blackjack</span></a>
+          <a class="nav-item" href="/game17" target="_blank" style="color:#fde047"><i class="fas fa-coins" style="color:#fde047"></i><span>Mega Spin Slot</span></a>
+          <a class="nav-item" href="/spielbank" target="_blank" style="color:#f472b6"><i class="fas fa-dice" style="color:#f472b6"></i><span>🎰 Spielbank</span></a>
         </div>
       </nav>
       <div class="sidebar-bottom">
@@ -5306,6 +5308,7 @@ const GAME_NAMES_DE = {
   tetris: 'Tetris', bookofra: 'Book of Ra', skycop: 'Sky Cop', doodlejump: 'Doodle Jump',
   towerdefense: 'Tower Defense', '2048': '2048', quiz: 'Quiz Survival', idle: 'Werkstatt',
   rpg: 'Dungeon RPG', tow: 'Abschlepp-Simulator', blackjack: 'Blackjack', memory: 'Memory',
+  slot: 'ACLS Mega Spin',
   wordle: 'Wort-Raten', // entfernt – Label bleibt für alte Transaktionen
 };
 function txLabel(reason) {
@@ -5315,6 +5318,7 @@ function txLabel(reason) {
     'blackjack:bet': '🃏 Blackjack-Einsatz', 'blackjack:win': '🃏 Blackjack-Gewinn',
     'blackjack:push': '🃏 Blackjack-Push', 'blackjack:double': '🃏 Blackjack verdoppelt',
     'blackjack:refund': '🃏 Blackjack erstattet (Neustart)',
+    'slot:bet': '🎰 Mega Spin Einsatz', 'slot:win': '🎰 Mega Spin Gewinn',
     'exam:blitz': '📋 Blitz-Prüfung abgehalten', 'exam:standard': '📋 Prüfung abgehalten',
     'exam:praxis': '📋 Praxisprüfung abgehalten',
     'lottery:ticket': '🎟️ Lotterie-Lose gekauft', 'lottery:win': '🎟️ Lotterie-Jackpot!',

@@ -7,6 +7,7 @@ const cron     = require('node-cron');
 const fetch    = require('node-fetch');
 const crypto   = require('crypto');
 const { initDb } = require('./database');
+const slotEngine = require('./slot-engine');
 
 // Uploads-Ordner anlegen
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
@@ -2511,6 +2512,8 @@ app.get('/game13', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ga
 app.get('/game14', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game14.html')));
 app.get('/game15', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game15.html')));
 app.get('/game16', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game16.html')));
+app.get('/game17', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game17.html')));
+app.get('/spielbank', (req, res) => res.sendFile(path.join(__dirname, 'public', 'spielbank.html')));
 app.get('/quiz', (req, res) => {
   const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
   const fs = require('fs');
@@ -4025,6 +4028,97 @@ app.post('/api/blackjack/stand', (req, res) => {
   const { result, payout } = bjResolve(g, ident);
   const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
   res.json({ hand: bjPublic(g, true), result, payout, balance: bal });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  ACLS Mega Spin — Tumble-Slot (server-autoritativ, Coin-Einsatz)
+//  Spielmathematik in slot-engine.js (RTP ~95 %, per Monte-Carlo getunt).
+//  Schutz: Max-Einsatz, Tages-Verlustlimit, harter Win-Cap, Rate-Limit, Krypto-RNG.
+// ════════════════════════════════════════════════════════════════
+const SLOT_MIN_BET          = 5;
+const SLOT_MAX_BET          = 250;
+const SLOT_FEATURE_MAX_BET  = 50;       // Feature-Kauf = 100× Einsatz → max 5000 Coins
+const SLOT_DAILY_LOSS_LIMIT = 5000;     // Spielerschutz: max Netto-Verlust pro Tag
+const SLOT_ABS_MAX_WIN      = 250000;   // harte Obergrenze pro Spin (Coin-Wirtschaft)
+
+function slotDailyNet(did) {
+  return db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM coin_transactions
+    WHERE discord_id = ? AND reason LIKE 'slot:%' AND date(created_at) = date('now')`).get(did).s;
+}
+
+app.get('/api/slot/state', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+  const net = slotDailyNet(ident.id);
+  res.json({
+    balance: bal, username: ident.name,
+    minBet: SLOT_MIN_BET, maxBet: SLOT_MAX_BET,
+    featureCostMult: slotEngine.FEATURE_BUY_COST, featureMaxBet: SLOT_FEATURE_MAX_BET,
+    dailyNet: net, dailyLossLimit: SLOT_DAILY_LOSS_LIMIT,
+    lossLeft: Math.max(0, SLOT_DAILY_LOSS_LIMIT + Math.min(0, net)),
+  });
+});
+
+app.post('/api/slot/spin', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`slot:${ident.id}`, 90, 60_000)) return res.status(429).json({ error: 'Zu schnell – kurz durchatmen' });
+
+  const buyFeature = !!req.body.buyFeature;
+  const bet    = Math.floor(+req.body.bet || 0);
+  const maxBet = buyFeature ? SLOT_FEATURE_MAX_BET : SLOT_MAX_BET;
+  if (!Number.isInteger(bet) || bet < SLOT_MIN_BET || bet > maxBet)
+    return res.status(400).json({ error: `Einsatz: ${SLOT_MIN_BET}–${maxBet} Coins${buyFeature ? ' (Feature-Kauf)' : ''}` });
+
+  // Spielerschutz: Tages-Verlustlimit (Netto-Verlust heute)
+  const netBefore = slotDailyNet(ident.id);
+  if (netBefore <= -SLOT_DAILY_LOSS_LIMIT)
+    return res.status(400).json({ error: `Tages-Verlustlimit erreicht (${SLOT_DAILY_LOSS_LIMIT} Coins). Spielerschutz – morgen geht's weiter.` });
+
+  const cost = buyFeature ? bet * slotEngine.FEATURE_BUY_COST : bet;
+  const balAfterBet = addCoins(ident.id, ident.name, -cost, 'slot:bet', { bet, feature: buyFeature });
+  if (balAfterBet === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+
+  const result = slotEngine.spin({ bet, freeBuy: buyFeature, rng: (n) => crypto.randomInt(n) });
+  const win = Math.min(result.totalWin, SLOT_ABS_MAX_WIN);
+  let balance = balAfterBet;
+  if (win > 0)
+    balance = addCoins(ident.id, ident.name, win, 'slot:win', { bet, x: +(win / bet).toFixed(2), feature: buyFeature });
+
+  // Highscore = größter Netto-Gewinn; Spiel-Badges
+  const netWin = win - cost;
+  if (netWin > 0 && ident.user) {
+    db.prepare(`INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, 'slot', ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, game) DO UPDATE SET
+        score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+        updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END`).run(ident.user.id, netWin);
+    checkGameBadges(ident.user.id, ident.id);
+  }
+  try { seasonIncQuest(ident.id, 'games', 1); } catch {}
+
+  res.json({
+    ok: true, bet, cost, buyFeature,
+    rounds: result.rounds, totalWin: win,
+    capped: result.capped || win < result.totalWin,
+    freeSpinsAwarded: result.freeSpinsAwarded, baseScatters: result.baseScatters,
+    balance, dailyNet: slotDailyNet(ident.id),
+  });
+});
+
+// Big Wins für die Spielbank-Lobby (Slot + Blackjack)
+app.get('/api/casino/recent-wins', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const rows = db.prepare(`
+    SELECT cb.username AS username, t.amount AS amount, t.reason AS reason, t.meta AS meta, t.created_at AS created_at
+    FROM coin_transactions t LEFT JOIN coin_balances cb ON cb.discord_id = t.discord_id
+    WHERE t.reason IN ('slot:win', 'blackjack:win') AND t.amount >= 250
+    ORDER BY t.id DESC LIMIT 12`).all();
+  res.json(rows.map(r => {
+    let meta = {}; try { meta = JSON.parse(r.meta || '{}'); } catch {}
+    return { username: r.username || 'Spieler', amount: r.amount, game: r.reason.split(':')[0], x: meta.x || null, at: r.created_at };
+  }));
 });
 
 app.get('/profil/:id', (req, res) => {

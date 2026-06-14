@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACLS Spielbank</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:radial-gradient(ellipse at 50% 0%,#2a1149 0%,#160a2e 55%,#080414 100%);font-family:'Inter',sans-serif;color:#fff;min-height:100vh;}
+    .wrap{max-width:860px;margin:0 auto;padding:14px 16px 40px;}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
+    .nav{background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:7px 14px;border-radius:9px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;}
+    .chip-bal{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.45);border:1px solid rgba(251,191,36,.4);border-radius:999px;padding:8px 16px;font-weight:800;font-size:16px;color:#fbbf24;white-space:nowrap;}
+    .hero{text-align:center;padding:18px 0 8px;}
+    .hero h1{font-size:clamp(28px,7vw,44px);font-weight:900;letter-spacing:.02em;background:linear-gradient(90deg,#fbbf24,#f472b6,#a855f7);-webkit-background-clip:text;background-clip:text;color:transparent;}
+    .hero p{color:#9b8bbf;font-size:14px;margin-top:4px;}
+    .ticker{margin:14px 0 8px;background:rgba(0,0,0,.35);border:1px solid rgba(168,85,247,.25);border-radius:12px;padding:8px 12px;overflow:hidden;white-space:nowrap;position:relative;}
+    .ticker .scroll{display:inline-block;animation:scroll 28s linear infinite;}
+    .ticker .scroll:hover{animation-play-state:paused;}
+    @keyframes scroll{from{transform:translateX(40%)}to{transform:translateX(-100%)}}
+    .ti{display:inline-flex;align-items:center;gap:6px;margin-right:26px;font-size:13px;}
+    .ti b{color:#fde047;}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:14px;}
+    .card{background:linear-gradient(160deg,#1d1138,#120a26);border:1px solid rgba(168,85,247,.25);border-radius:16px;padding:18px;text-decoration:none;color:#fff;display:flex;flex-direction:column;gap:8px;transition:transform .14s,border-color .14s,box-shadow .14s;position:relative;overflow:hidden;}
+    .card.live:hover{transform:translateY(-4px);border-color:rgba(251,191,36,.5);box-shadow:0 14px 36px rgba(0,0,0,.45);}
+    .card.soon{opacity:.55;cursor:default;}
+    .card .emoji{font-size:38px;}
+    .card .name{font-weight:800;font-size:18px;}
+    .card .desc{font-size:12.5px;color:#9b8bbf;line-height:1.5;flex:1;}
+    .card .cta{font-weight:800;font-size:13px;color:#fde047;}
+    .badge{position:absolute;top:10px;right:10px;font-size:10px;font-weight:800;padding:3px 9px;border-radius:999px;letter-spacing:.05em;}
+    .badge.new{background:#fde047;color:#1a0e00;}
+    .badge.soon{background:rgba(255,255,255,.1);color:#cbd5e1;}
+    .note{margin-top:22px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;font-size:12px;color:#9b8bbf;line-height:1.6;}
+    .note b{color:#cbd5e1;}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:100;padding:16px;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#0f0a1c;border:1px solid #2a1a44;border-radius:18px;padding:32px;max-width:420px;width:100%;text-align:center;}
+    .sub{color:#9b8bbf;font-size:14px;margin:8px 0 18px;line-height:1.5;}
+    .btn-spin{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1a0e00;font-weight:900;padding:13px 28px;border-radius:12px;text-decoration:none;display:inline-block;border:none;font-family:inherit;font-size:15px;}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a href="/" class="nav">← Portal</a>
+    <div class="chip-bal">🪙 <span id="balance">–</span></div>
+  </div>
+
+  <div class="hero">
+    <h1>🎰 ACLS Spielbank</h1>
+    <p>Setze deine ACLS-Coins ein – fair, mit ~95 % Auszahlungsquote.</p>
+  </div>
+
+  <div class="ticker"><div class="scroll" id="ticker"><span class="ti" style="color:#6b7280">Lade aktuelle Gewinne…</span></div></div>
+
+  <div class="grid" id="games"></div>
+
+  <div class="note">
+    <b>🛡️ Verantwortungsvoll spielen.</b> ACLS-Coins haben keinen realen Geldwert. Alle Spiele laufen server-seitig mit fairer Zufallsziehung und festem Hausvorteil (~5 %). Zum Schutz gilt ein <b>Tages-Verlustlimit</b> – ist es erreicht, pausiert das Spiel bis zum nächsten Tag. Spiel zum Spaß, nicht um Verluste aufzuholen.
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-login">
+  <div class="ov-card">
+    <div style="font-size:44px;margin-bottom:6px">🔒</div>
+    <h2>Anmeldung nötig</h2>
+    <p class="sub">Die Spielbank läuft mit deinen ACLS-Coins.<br>Melde dich zuerst im Portal an.</p>
+    <a href="/" class="btn-spin">Zum Portal</a>
+  </div>
+</div>
+
+<script>
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const $=id=>document.getElementById(id);
+
+const GAMES=[
+  { live:true, href:'/game17', emoji:'🎰', name:'ACLS Mega Spin', badge:'NEU', desc:'Tumble-Slot mit Freispielen & Multiplikator-Bomben bis ×100. Feature-Kauf verfügbar.' },
+  { live:true, href:'/game15', emoji:'🃏', name:'Blackjack', desc:'Klassisch gegen den Dealer. Blackjack zahlt 3:2, verdoppeln möglich.' },
+  { live:true, href:'/game6',  emoji:'📜', name:'Book of Ra', desc:'Abenteuer-Slot – verdiene Coins beim Spielen.' },
+  { live:false, emoji:'🚀', name:'ACLS Rocket', badge:'BALD', desc:'Crash-Game: Cash out, bevor die Rakete abstürzt.' },
+  { live:false, emoji:'💣', name:'Mines', badge:'BALD', desc:'Felder aufdecken, Bomben meiden, jederzeit auszahlen.' },
+  { live:false, emoji:'🔻', name:'Plinko', badge:'BALD', desc:'Kugel fallen lassen – lande im hohen Multiplikator.' },
+];
+
+function renderGames(){
+  $('games').innerHTML=GAMES.map(g=>{
+    const inner=`
+      ${g.badge?`<span class="badge ${g.live?'new':'soon'}">${esc(g.badge)}</span>`:''}
+      <div class="emoji">${g.emoji}</div>
+      <div class="name">${esc(g.name)}</div>
+      <div class="desc">${esc(g.desc)}</div>
+      <div class="cta">${g.live?'Jetzt spielen →':'Demnächst'}</div>`;
+    return g.live
+      ? `<a class="card live" href="${g.href}">${inner}</a>`
+      : `<div class="card soon">${inner}</div>`;
+  }).join('');
+}
+
+function renderTicker(wins){
+  if(!wins.length){ $('ticker').innerHTML='<span class="ti" style="color:#6b7280">Noch keine großen Gewinne – sei der Erste! 🎉</span>'; return; }
+  const ge={slot:'🎰',blackjack:'🃏'};
+  const items=wins.map(w=>`<span class="ti">${ge[w.game]||'🎲'} <b>${esc(w.username)}</b> +${(w.amount||0).toLocaleString('de-DE')} 🪙${w.x?` (${w.x}×)`:''}</span>`).join('');
+  $('ticker').innerHTML=items+items; // doppelt für nahtlosen Scroll
+}
+
+async function init(){
+  renderGames();
+  try{
+    const r=await fetch('/api/coins/me');
+    if(r.status===401){$('ov-login').classList.remove('hidden');return;}
+    const d=await r.json();
+    $('balance').textContent=(d.balance||0).toLocaleString('de-DE');
+  }catch{$('ov-login').classList.remove('hidden');return;}
+  try{
+    const wins=await (await fetch('/api/casino/recent-wins')).json();
+    renderTicker(Array.isArray(wins)?wins:[]);
+  }catch{ renderTicker([]); }
+}
+init();
+</script>
+</body>
+</html>
