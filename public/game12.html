@@ -375,7 +375,8 @@ function updatePrestigeUI() {
     const need = PRESTIGE_THRESHOLD - state.totalEarned;
     document.getElementById('prest-need').textContent = `Noch ${fmt(need)} GS bis Prestige`;
   }
-  renderPrestShop();
+  // renderPrestShop() NICHT hier aufrufen — updatePrestigeUI läuft pro Tick (50ms);
+  // ein ständiger innerHTML-Neuaufbau würde Klicks auf die Kauf-Buttons schlucken.
 }
 
 function renderPrestShop() {
@@ -487,6 +488,7 @@ function updateAll() {
   renderBuildings();
   renderUpgrades();
   renderMilestones();
+  renderPrestShop();   // nur bei Zustandsänderung (Kauf/Prestige/Laden), nicht pro Tick
   updateHud();
 }
 
