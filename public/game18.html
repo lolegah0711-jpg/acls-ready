@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACLS Plinko – Spielbank</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:radial-gradient(ellipse at 50% 0%,#2a1149 0%,#160a2e 55%,#080414 100%);font-family:'Inter',sans-serif;color:#fff;min-height:100vh;}
+    .wrap{max-width:900px;margin:0 auto;padding:14px 16px 48px;}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+    .nav{background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:7px 14px;border-radius:9px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;}
+    .chip-bal{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.45);border:1px solid rgba(251,191,36,.4);border-radius:999px;padding:8px 16px;font-weight:800;font-size:16px;color:#fbbf24;white-space:nowrap;}
+    .hero{text-align:center;padding:6px 0 4px;}
+    .hero h1{font-size:clamp(24px,6vw,38px);font-weight:900;letter-spacing:.02em;background:linear-gradient(90deg,#fbbf24,#f472b6,#a855f7);-webkit-background-clip:text;background-clip:text;color:transparent;}
+    .hero p{color:#9b8bbf;font-size:13px;margin-top:2px;}
+    .layout{display:grid;grid-template-columns:1fr;gap:16px;margin-top:12px;}
+    @media(min-width:780px){.layout{grid-template-columns:1fr 250px;align-items:start;}}
+    .panel{background:linear-gradient(160deg,#1d1138,#120a26);border:1px solid rgba(168,85,247,.25);border-radius:16px;padding:16px;}
+    .board-wrap{display:flex;flex-direction:column;align-items:center;}
+    canvas{width:100%;max-width:540px;height:auto;display:block;touch-action:none;}
+    .result{min-height:26px;text-align:center;font-weight:800;font-size:15px;margin:8px 0 2px;transition:color .15s;}
+    .controls{margin-top:14px;display:flex;flex-direction:column;gap:12px;}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+    label.lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9b8bbf;width:100%;}
+    .betbox{display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.14);border-radius:11px;padding:4px 6px;flex:1;min-width:150px;}
+    .betbox input{flex:1;background:none;border:none;color:#fff;font-size:18px;font-weight:800;font-family:inherit;outline:none;width:60px;}
+    .qbtn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#cbd5e1;font-weight:800;font-size:12px;padding:7px 10px;border-radius:9px;cursor:pointer;font-family:inherit;}
+    .qbtn:hover{background:rgba(255,255,255,.16);}
+    .risk{display:flex;gap:6px;flex:1;}
+    .risk button{flex:1;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.14);color:#cbd5e1;font-weight:800;font-size:13px;padding:9px 6px;border-radius:10px;cursor:pointer;font-family:inherit;transition:.12s;}
+    .risk button.active{border-color:#fbbf24;color:#1a0e00;background:linear-gradient(135deg,#fbbf24,#f59e0b);}
+    .drop-btn{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1a0e00;font-weight:900;font-size:17px;padding:14px;border-radius:13px;border:none;cursor:pointer;font-family:inherit;width:100%;transition:filter .12s,transform .08s;}
+    .drop-btn:hover{filter:brightness(1.07);}
+    .drop-btn:active{transform:translateY(1px);}
+    .drop-btn:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(.3);}
+    .protect{font-size:11px;color:#9b8bbf;text-align:center;line-height:1.5;margin-top:6px;}
+    .protect b{color:#fde047;}
+    .side h3{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#c4b5fd;margin-bottom:8px;}
+    .lb{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:13px;}
+    .lb .rk{width:22px;font-weight:800;color:#9b8bbf;text-align:center;flex-shrink:0;}
+    .lb .nm{flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .lb .sc{font-weight:800;color:#fbbf24;}
+    .lb-empty{color:#6b7280;font-size:12px;padding:10px 0;text-align:center;}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:100;padding:16px;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#0f0a1c;border:1px solid #2a1a44;border-radius:18px;padding:32px;max-width:420px;width:100%;text-align:center;}
+    .ov-card h2{margin-bottom:8px;}
+    .sub{color:#9b8bbf;font-size:14px;margin:8px 0 18px;line-height:1.5;}
+    .btn-spin{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1a0e00;font-weight:900;padding:13px 28px;border-radius:12px;text-decoration:none;display:inline-block;}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a href="/spielbank" class="nav">← Spielbank</a>
+    <div class="chip-bal">🪙 <span id="balance">–</span></div>
+  </div>
+
+  <div class="hero">
+    <h1>🔻 ACLS Plinko</h1>
+    <p>Kugel fallen lassen – je weiter außen, desto höher der Multiplikator.</p>
+  </div>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="board-wrap">
+        <canvas id="board"></canvas>
+        <div class="result" id="result">&nbsp;</div>
+      </div>
+
+      <div class="controls">
+        <div class="row">
+          <label class="lbl">Einsatz</label>
+          <div class="betbox">
+            <span style="color:#fbbf24;font-weight:800">🪙</span>
+            <input id="bet" type="number" inputmode="numeric" value="10">
+          </div>
+          <button class="qbtn" onclick="halveBet()">½</button>
+          <button class="qbtn" onclick="doubleBet()">2×</button>
+          <button class="qbtn" onclick="setMaxBet()">Max</button>
+        </div>
+
+        <div class="row">
+          <label class="lbl">Risiko</label>
+          <div class="risk" id="riskSel">
+            <button data-risk="low">Niedrig</button>
+            <button data-risk="medium" class="active">Mittel</button>
+            <button data-risk="high">Hoch</button>
+          </div>
+        </div>
+
+        <button class="drop-btn" id="dropBtn" onclick="drop()">Kugel fallen lassen</button>
+        <div class="protect">Heute noch verlierbar: <b id="lossLeft">–</b> Coins · danach Spielerschutz-Pause. ACLS-Coins haben keinen realen Geldwert.</div>
+      </div>
+    </div>
+
+    <div class="panel side">
+      <h3>🏆 Top-Gewinne (Netto)</h3>
+      <div id="lb"><div class="lb-empty">Lade…</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-login">
+  <div class="ov-card">
+    <div style="font-size:44px;margin-bottom:6px">🔒</div>
+    <h2>Anmeldung nötig</h2>
+    <p class="sub">Plinko läuft mit deinen ACLS-Coins.<br>Melde dich zuerst im Portal an.</p>
+    <a href="/" class="btn-spin">Zum Portal</a>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const fmt=n=>(+n||0).toLocaleString('de-DE');
+
+let ROWS=12, BUCKETS=13;
+let tables={low:[],medium:[],high:[]};
+let risk='medium', minBet=5, maxBet=250, balance=0, busy=false;
+
+const cv=$('board'), ctx=cv.getContext('2d');
+let W=540, H=470, gapX=40, gapY=34, cx=270, topY=22, bucketY=420, bucketH=30, pegR=3.4, ballR=7;
+
+function colorFor(m){
+  if(m>=50)return'#ef4444'; if(m>=10)return'#f97316'; if(m>=3)return'#f59e0b';
+  if(m>=1.5)return'#eab308'; if(m>=1)return'#a3a635'; if(m>=0.6)return'#7c6fd6'; return'#5b54c9';
+}
+
+function geometry(){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const cssW=Math.min(cv.parentElement.clientWidth,540);
+  W=cssW; H=Math.round(cssW*0.87);
+  cv.width=W*dpr; cv.height=H*dpr; cv.style.height=H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const pad=18;
+  gapX=(W-2*pad)/ROWS;
+  cx=W/2; topY=22;
+  gapY=(H-topY-40)/ (ROWS+0.4);
+  bucketH=Math.min(30,gapY*0.9);
+  bucketY=topY+ROWS*gapY+4;
+  pegR=Math.max(2.4,gapX*0.085);
+  ballR=Math.max(5,gapX*0.2);
+}
+
+function ballPath(path){
+  const pts=[{x:cx,y:topY}];
+  let k=0;
+  for(let d=1; d<=ROWS; d++){ k+=path[d-1]; pts.push({x:cx+(k-d/2)*gapX, y:topY+d*gapY}); }
+  return pts;
+}
+
+function render(ball,landed){
+  ctx.clearRect(0,0,W,H);
+  // Pegs
+  ctx.fillStyle='rgba(255,255,255,.55)';
+  for(let d=1; d<=ROWS; d++){
+    for(let j=0;j<=d;j++){
+      const x=cx+(j-d/2)*gapX, y=topY+d*gapY;
+      ctx.beginPath(); ctx.arc(x,y,pegR,0,7); ctx.fill();
+    }
+  }
+  // Buckets
+  const t=tables[risk]||[];
+  const bw=gapX*0.92;
+  ctx.font='700 '+Math.max(8,Math.min(12,gapX*0.32))+"px Inter, sans-serif";
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(let b=0;b<=ROWS;b++){
+    const x=cx+(b-ROWS/2)*gapX;
+    const m=t[b];
+    const col=colorFor(m);
+    const hit=(landed===b);
+    ctx.fillStyle=col;
+    ctx.globalAlpha=hit?1:0.82;
+    roundRect(x-bw/2,bucketY,bw,bucketH,5); ctx.fill();
+    if(hit){ ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke(); }
+    ctx.globalAlpha=1;
+    ctx.fillStyle=(m>=1.5)?'#1a0e00':'#fff';
+    ctx.fillText((m>=10?m:m.toFixed(m<1?2:1))+'×', x, bucketY+bucketH/2+0.5);
+  }
+  // Ball
+  if(ball){
+    ctx.beginPath(); ctx.arc(ball.x,ball.y,ballR,0,7);
+    const g=ctx.createRadialGradient(ball.x-ballR*0.3,ball.y-ballR*0.3,1,ball.x,ball.y,ballR);
+    g.addColorStop(0,'#fff'); g.addColorStop(1,'#fbbf24');
+    ctx.fillStyle=g; ctx.fill();
+  }
+}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+function animate(path, bucket, mult, win){
+  const pts=ballPath(path);
+  const SEG=66;
+  let start=null;
+  function frame(ts){
+    if(start===null)start=ts;
+    const prog=(ts-start)/SEG;
+    const seg=Math.floor(prog);
+    if(seg>=ROWS){ render(pts[ROWS],bucket); finishDrop(bucket,mult,win); return; }
+    const t=prog-seg, a=pts[seg], b=pts[seg+1];
+    const x=a.x+(b.x-a.x)*t;
+    const y=a.y+(b.y-a.y)*t - Math.sin(Math.PI*t)*gapY*0.22;
+    render({x,y});
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+function finishDrop(bucket,mult,win){
+  const r=$('result');
+  const net=win-curBet;
+  if(net>0){ r.style.color='#4ade80'; r.textContent=`×${mult} · +${fmt(net)} 🪙`; }
+  else if(net===0){ r.style.color='#fbbf24'; r.textContent=`×${mult} · ±0`; }
+  else { r.style.color='#f87171'; r.textContent=`×${mult} · ${fmt(net)} 🪙`; }
+  $('balance').textContent=fmt(balance);
+  busy=false; $('dropBtn').disabled=false;
+  loadLeaderboard();
+}
+
+let curBet=10;
+async function drop(){
+  if(busy)return;
+  let bet=Math.floor(+$('bet').value||0);
+  if(bet<minBet)bet=minBet; if(bet>maxBet)bet=maxBet;
+  $('bet').value=bet; curBet=bet;
+  if(bet>balance){ flash('Nicht genug Coins','#f87171'); return; }
+  busy=true; $('dropBtn').disabled=true; $('result').textContent=' ';
+  try{
+    const res=await fetch('/api/plinko/drop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bet,risk})});
+    const d=await res.json();
+    if(!res.ok){ busy=false; $('dropBtn').disabled=false; flash(d.error||'Fehler','#f87171');
+      if(typeof d.lossLeft!=='undefined')$('lossLeft').textContent=fmt(d.lossLeft); return; }
+    balance=d.balance;
+    if(typeof d.dailyNet!=='undefined'){ const left=Math.max(0,DAILY_LIMIT+Math.min(0,d.dailyNet)); $('lossLeft').textContent=fmt(left); }
+    animate(d.path, d.bucket, d.mult, d.win);
+  }catch(e){ busy=false; $('dropBtn').disabled=false; flash('Netzwerkfehler','#f87171'); }
+}
+function flash(msg,col){ const r=$('result'); r.style.color=col; r.textContent=msg; }
+
+function halveBet(){ $('bet').value=Math.max(minBet,Math.floor((+$('bet').value||0)/2)); }
+function doubleBet(){ $('bet').value=Math.min(maxBet,(+$('bet').value||0)*2||minBet); }
+function setMaxBet(){ $('bet').value=Math.min(maxBet,Math.max(minBet,Math.floor(balance))); }
+
+$('riskSel').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  risk=b.dataset.risk;
+  [...$('riskSel').children].forEach(x=>x.classList.toggle('active',x===b));
+  render(null,-1);
+});
+document.addEventListener('keydown',e=>{ if((e.key===' '||e.key==='Enter')&&!busy){ e.preventDefault(); drop(); }});
+window.addEventListener('resize',()=>{ geometry(); render(null,-1); });
+
+async function loadLeaderboard(){
+  let rows=[]; try{ rows=await fetch('/api/game-scores/plinko').then(r=>r.ok?r.json():[]); }catch{}
+  const el=$('lb');
+  if(!rows.length){ el.innerHTML='<div class="lb-empty">Noch keine Einträge</div>'; return; }
+  const MEDAL=['🥇','🥈','🥉'];
+  el.innerHTML=rows.slice(0,10).map((r,i)=>`
+    <div class="lb">
+      <span class="rk">${i<3?MEDAL[i]:(i+1)+'.'}</span>
+      <span class="nm">${esc(r.username||'Spieler')}</span>
+      <span class="sc">+${fmt(r.score)}</span>
+    </div>`).join('');
+}
+
+let DAILY_LIMIT=5000;
+async function init(){
+  geometry();
+  let st;
+  try{ const r=await fetch('/api/plinko/state'); if(r.status===401){ $('ov-login').classList.remove('hidden'); return; } st=await r.json(); }
+  catch{ $('ov-login').classList.remove('hidden'); return; }
+  ROWS=st.rows||12; BUCKETS=ROWS+1; tables=st.tables||tables;
+  minBet=st.minBet; maxBet=st.maxBet; balance=st.balance||0; DAILY_LIMIT=st.dailyLossLimit||5000;
+  $('balance').textContent=fmt(balance);
+  $('lossLeft').textContent=fmt(typeof st.lossLeft!=='undefined'?st.lossLeft:DAILY_LIMIT);
+  $('bet').min=minBet; $('bet').max=maxBet;
+  if((+$('bet').value||0)<minBet)$('bet').value=minBet;
+  geometry(); render(null,-1);
+  loadLeaderboard();
+}
+init();
+</script>
+</body>
+</html>

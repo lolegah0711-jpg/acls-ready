@@ -81,7 +81,7 @@ const GAMES=[
   { live:true, href:'/game6',  emoji:'📜', name:'Book of Ra', desc:'Abenteuer-Slot – verdiene Coins beim Spielen.' },
   { live:false, emoji:'🚀', name:'ACLS Rocket', badge:'BALD', desc:'Crash-Game: Cash out, bevor die Rakete abstürzt.' },
   { live:false, emoji:'💣', name:'Mines', badge:'BALD', desc:'Felder aufdecken, Bomben meiden, jederzeit auszahlen.' },
-  { live:false, emoji:'🔻', name:'Plinko', badge:'BALD', desc:'Kugel fallen lassen – lande im hohen Multiplikator.' },
+  { live:true, href:'/game18', emoji:'🔻', name:'Plinko', badge:'NEU', desc:'Kugel fallen lassen – mit Risiko-Stufe bis ×170 im äußeren Bucket.' },
 ];
 
 function renderGames(){
@@ -100,7 +100,7 @@ function renderGames(){
 
 function renderTicker(wins){
   if(!wins.length){ $('ticker').innerHTML='<span class="ti" style="color:#6b7280">Noch keine großen Gewinne – sei der Erste! 🎉</span>'; return; }
-  const ge={slot:'🎰',blackjack:'🃏'};
+  const ge={slot:'🎰',blackjack:'🃏',plinko:'🔻'};
   const items=wins.map(w=>`<span class="ti">${ge[w.game]||'🎲'} <b>${esc(w.username)}</b> +${(w.amount||0).toLocaleString('de-DE')} 🪙${w.x?` (${w.x}×)`:''}</span>`).join('');
   $('ticker').innerHTML=items+items; // doppelt für nahtlosen Scroll
 }

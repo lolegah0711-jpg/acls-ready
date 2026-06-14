@@ -2538,6 +2538,7 @@ app.get('/game14', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ga
 app.get('/game15', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game15.html')));
 app.get('/game16', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game16.html')));
 app.get('/game17', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game17.html')));
+app.get('/game18', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game18.html')));
 app.get('/spielbank', (req, res) => res.sendFile(path.join(__dirname, 'public', 'spielbank.html')));
 app.get('/quiz', (req, res) => {
   const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
@@ -4194,6 +4195,90 @@ app.post('/api/slot/spin', (req, res) => {
   });
 });
 
+// ════════════════════════════════════════════════════════════════
+//  PLINKO  (Kugel fällt durch Pegs, landet im Multiplikator-Bucket)
+//  12 Reihen → 13 Buckets · Bucket = Anzahl Rechts-Bounces (binomial)
+//  RTP ~95 % pro Risiko · server-seitige Krypto-RNG, Tages-Verlustlimit
+// ════════════════════════════════════════════════════════════════
+const PLINKO_MIN_BET          = 5;
+const PLINKO_MAX_BET          = 250;
+const PLINKO_DAILY_LOSS_LIMIT = 5000;
+const PLINKO_ABS_MAX_WIN      = 250000;
+const PLINKO_ROWS             = 12;
+const PLINKO_TABLES = {
+  low:    [8, 2.4, 1.4, 1.2, 1.08, 0.95, 0.6, 0.95, 1.08, 1.2, 1.4, 2.4, 8],
+  medium: [29, 8, 3, 1.6, 1.0, 0.7, 0.5, 0.7, 1.0, 1.6, 3, 8, 29],
+  high:   [170, 22, 5.5, 1.8, 0.5, 0.4, 0.4, 0.4, 0.5, 1.8, 5.5, 22, 170],
+};
+
+function plinkoDailyNet(did) {
+  return db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM coin_transactions
+    WHERE discord_id = ? AND reason LIKE 'plinko:%' AND date(created_at) = date('now')`).get(did).s;
+}
+
+app.get('/api/plinko/state', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+  const net = plinkoDailyNet(ident.id);
+  res.json({
+    balance: bal, username: ident.name,
+    minBet: PLINKO_MIN_BET, maxBet: PLINKO_MAX_BET, rows: PLINKO_ROWS, tables: PLINKO_TABLES,
+    dailyNet: net, dailyLossLimit: PLINKO_DAILY_LOSS_LIMIT,
+    lossLeft: Math.max(0, PLINKO_DAILY_LOSS_LIMIT + Math.min(0, net)),
+  });
+});
+
+app.post('/api/plinko/drop', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`plinko:${ident.id}`, 90, 60_000)) return res.status(429).json({ error: 'Zu schnell – kurz durchatmen' });
+
+  const risk = ['low', 'medium', 'high'].includes(req.body.risk) ? req.body.risk : 'medium';
+  const bet  = Math.floor(+req.body.bet || 0);
+  if (!Number.isInteger(bet) || bet < PLINKO_MIN_BET || bet > PLINKO_MAX_BET)
+    return res.status(400).json({ error: `Einsatz: ${PLINKO_MIN_BET}–${PLINKO_MAX_BET} Coins` });
+
+  // Spielerschutz: Tages-Verlustlimit
+  if (plinkoDailyNet(ident.id) <= -PLINKO_DAILY_LOSS_LIMIT)
+    return res.status(400).json({ error: `Tages-Verlustlimit erreicht (${PLINKO_DAILY_LOSS_LIMIT} Coins). Spielerschutz – morgen geht's weiter.` });
+
+  const balAfterBet = addCoins(ident.id, ident.name, -bet, 'plinko:bet', { bet, risk });
+  if (balAfterBet === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+
+  // Kugel fallen lassen: pro Reihe 50/50 links(0)/rechts(1) – Bucket = Summe der Rechts
+  const path = [];
+  let rights = 0;
+  for (let i = 0; i < PLINKO_ROWS; i++) { const r = crypto.randomInt(2); path.push(r); rights += r; }
+  const bucket = rights;
+  const mult   = PLINKO_TABLES[risk][bucket];
+  const win    = Math.min(Math.floor(bet * mult), PLINKO_ABS_MAX_WIN);
+
+  let balance = balAfterBet;
+  if (win > 0) balance = addCoins(ident.id, ident.name, win, 'plinko:win', { bet, x: mult, bucket });
+
+  // Highscore = größter Netto-Gewinn (Staff in game_scores, Bürger in visitor_game_scores)
+  const netWin = win - bet;
+  if (netWin > 0) {
+    if (ident.user) {
+      db.prepare(`INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, 'plinko', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, game) DO UPDATE SET
+          score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+          updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END`).run(ident.user.id, netWin);
+      checkGameBadges(ident.user.id, ident.id);
+    } else {
+      db.prepare(`INSERT INTO visitor_game_scores (discord_id, username, game, score, updated_at) VALUES (?, ?, 'plinko', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(discord_id, game) DO UPDATE SET
+          score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+          updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END,
+          username   = excluded.username`).run(ident.id, ident.name, netWin);
+    }
+  }
+  try { seasonIncQuest(ident.id, 'games', 1); } catch {}
+
+  res.json({ ok: true, bet, risk, path, bucket, mult, win, balance, dailyNet: plinkoDailyNet(ident.id) });
+});
+
 // Big Wins für die Spielbank-Lobby (Slot + Blackjack)
 app.get('/api/casino/recent-wins', (req, res) => {
   const ident = coinIdent(req);
@@ -4201,7 +4286,7 @@ app.get('/api/casino/recent-wins', (req, res) => {
   const rows = db.prepare(`
     SELECT cb.username AS username, t.amount AS amount, t.reason AS reason, t.meta AS meta, t.created_at AS created_at
     FROM coin_transactions t LEFT JOIN coin_balances cb ON cb.discord_id = t.discord_id
-    WHERE t.reason IN ('slot:win', 'blackjack:win') AND t.amount >= 250
+    WHERE t.reason IN ('slot:win', 'blackjack:win', 'plinko:win') AND t.amount >= 250
     ORDER BY t.id DESC LIMIT 12`).all();
   res.json(rows.map(r => {
     let meta = {}; try { meta = JSON.parse(r.meta || '{}'); } catch {}
