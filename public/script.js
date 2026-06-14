@@ -364,7 +364,6 @@ async function renderVoterScreen() {
           <a class="nav-item" href="/game3"  target="_blank" style="color:#ef4444"><i class="fas fa-biohazard" style="color:#ef4444"></i><span>Dead Zone</span></a>
           <a class="nav-item" href="/game4"  target="_blank"><i class="fas fa-snake"></i><span>Snake</span></a>
           <a class="nav-item" href="/game5"  target="_blank"><i class="fas fa-th-large"></i><span>Tetris</span></a>
-          <a class="nav-item" href="/game6"  target="_blank" style="color:#fbbf24"><i class="fas fa-dice" style="color:#fbbf24"></i><span>Book of Ra</span></a>
           <a class="nav-item" href="/game7"  target="_blank" style="color:#60a5fa"><i class="fas fa-helicopter" style="color:#60a5fa"></i><span>Sky Cop</span></a>
           <a class="nav-item" href="/game8"  target="_blank" style="color:#4ade80"><i class="fas fa-frog" style="color:#4ade80"></i><span>Doodle Jump</span></a>
           <a class="nav-item" href="/game9"  target="_blank" style="color:#f97316"><i class="fas fa-shield-alt" style="color:#f97316"></i><span>Tower Defense</span></a>
@@ -373,9 +372,7 @@ async function renderVoterScreen() {
           <a class="nav-item" href="/game12" target="_blank" style="color:#f97316"><i class="fas fa-wrench" style="color:#f97316"></i><span>ACLS Werkstatt</span></a>
           <a class="nav-item" href="/game13" target="_blank" style="color:#60a5fa"><i class="fas fa-dungeon" style="color:#60a5fa"></i><span>Dungeon RPG</span></a>
           <a class="nav-item" href="/game14" target="_blank" style="color:#fb923c"><i class="fas fa-truck-pickup" style="color:#fb923c"></i><span>Abschlepp-Simulator</span></a>
-          <a class="nav-item" href="/game15" target="_blank" style="color:#4ade80"><i class="fas fa-heart" style="color:#ef4444"></i><span>Blackjack</span></a>
-          <a class="nav-item" href="/game17" target="_blank" style="color:#fde047"><i class="fas fa-coins" style="color:#fde047"></i><span>Mega Spin Slot</span></a>
-          <a class="nav-item" href="/spielbank" target="_blank" style="color:#f472b6"><i class="fas fa-dice" style="color:#f472b6"></i><span>🎰 Spielbank</span></a>
+          <a class="nav-item" href="/spielbank" target="_blank" style="color:#fbbf24"><i class="fas fa-dice" style="color:#fbbf24"></i><span>🎰 Spielbank</span></a>
         </div>
       </nav>
       <div class="sidebar-bottom">
