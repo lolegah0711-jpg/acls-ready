@@ -5837,7 +5837,7 @@ async function saison() {
           <div style="font-size:.78rem;color:var(--muted)">Verdiene XP durch Minispiele, Tagesbonus, Duelle & Quests. Jede Stufe schaltet Belohnungen frei.</div>
         </div>
         ${d.isVip ? '<span style="font-size:.7rem;font-weight:800;color:#fbbf24;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.08);padding:.3rem .7rem;border-radius:99px">⭐ VIP aktiv</span>'
-                  : '<span style="font-size:.68rem;color:var(--muted)">VIP-Belohnungen im Shop freischaltbar</span>'}
+                  : '<button onclick="navigate(\'shop\')" title="VIP-Rolle (30 Tage) im Shop für 2000 Coins" style="font-size:.68rem;font-weight:700;color:#fbbf24;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.08);padding:.3rem .7rem;border-radius:99px;cursor:pointer;font-family:inherit;white-space:nowrap">⭐ VIP-Bahn freischalten → Shop</button>'}
       </div>
       <div style="display:flex;align-items:center;gap:.6rem">
         <div style="flex:1;height:14px;background:var(--surface2);border-radius:99px;overflow:hidden;position:relative">

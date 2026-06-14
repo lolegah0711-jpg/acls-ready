@@ -2416,11 +2416,14 @@ app.post('/api/idle-save', (req, res) => {
       return res.status(400).json({ error: 'Ungültige Daten' });
   }
 
-  // Prestige-Quest + Saison-XP: ein neuer Prestige-Durchlauf seit dem letzten Save
+  // Prestige-Quest + Saison-XP: ein Prestige-Vorgang seit dem letzten Save.
+  // WICHTIG: prestigeDelta sind gewonnene Prestige-PUNKTE (skalieren mit dem
+  // Fortschritt, oft 50–100 pro Prestige) – NICHT als XP-Multiplikator nutzen,
+  // sonst springt man mit einem einzigen Prestige sofort auf Max-Level.
   const prestigeDelta = Math.max(0, (prestige || 0) - (row?.prestige || 0));
   if (prestigeDelta > 0) {
-    seasonIncQuest(user.discord_id, 'prestige', prestigeDelta);
-    addSeasonXp(user.discord_id, user.username, 40 * prestigeDelta, 'prestige');
+    seasonIncQuest(user.discord_id, 'prestige', 1);
+    addSeasonXp(user.discord_id, user.username, 60);
   }
 
   db.prepare(`
