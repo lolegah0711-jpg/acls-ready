@@ -201,7 +201,7 @@ async function animate(res){
       setFsbar(`<span class="pill">🎣 FREISPIEL ${freeDone}/${freeRounds}</span><span class="pill mult">Multiplikator ×${round.mult}</span>`);
     }
     drawGrid(round.grid, round.money, true);
-    await sleep(round.free?230:300);
+    await sleep(round.free?600:300);
 
     // Reguläre Gewinne
     if(round.reg&&round.reg.length){
@@ -231,6 +231,7 @@ async function animate(res){
       setBanner(`🔥 MULTIPLIKATOR ×${round.mult}!`,'#93c5fd');
       await sleep(750);
     }
+    if(round.free) await sleep(300); // ruhiger Beat zwischen den Freispielen
     lastMult=round.free?round.mult:1;
   }
 
