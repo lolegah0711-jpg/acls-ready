@@ -322,6 +322,7 @@ const _voterPageMeta = {
   faq:       { title: 'FAQ',              sub: 'Häufig gestellte Fragen' },
   duel:      { title: 'Quiz-Duell',       sub: '1-gegen-1 live · Sieger bekommt 150 Coins' },
   friends:   { title: 'Freunde',          sub: 'Deine Freunde, Rang & Vergleich' },
+  saison:    { title: 'Saison-Pass',      sub: 'Wochen-Quests, XP & Belohnungen' },
 };
 
 async function renderVoterScreen() {
@@ -357,6 +358,7 @@ async function renderVoterScreen() {
         <a class="nav-item"        id="vnApply"     onclick="voterTab('apply')"    style="cursor:pointer"><i class="fas fa-file-alt" style="color:#a78bfa"></i><span style="color:#a78bfa">Bewerben</span></a>
         <a class="nav-item"        id="vnFaq"       onclick="voterTab('faq')"      style="cursor:pointer"><i class="fas fa-question-circle" style="color:#38bdf8"></i><span style="color:#38bdf8">FAQ</span></a>
         <a class="nav-item"        id="vnDuel"      onclick="voterTab('duel')"     style="cursor:pointer"><i class="fas fa-bolt" style="color:#f472b6"></i><span style="color:#f472b6">Quiz-Duell</span></a>
+        <a class="nav-item"        id="vnSaison"    onclick="voterTab('saison')"   style="cursor:pointer"><i class="fas fa-star" style="color:#a855f7"></i><span style="color:#a855f7">Saison-Pass</span></a>
         ${currentUser.id ? `<a class="nav-item" id="vnFriends" onclick="voterTab('friends')" style="cursor:pointer"><i class="fas fa-user-friends" style="color:#fbbf24"></i><span style="color:#fbbf24">Freunde</span></a>` : ''}
 
         <!-- Minispiele -->
@@ -522,6 +524,9 @@ async function renderVoterScreen() {
 
         <!-- Freunde -->
         <div id="friendsSection" style="display:none"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
+
+        <!-- Saison-Pass -->
+        <div id="saisonSection" style="display:none"></div>
 
       </main>
     </div><!-- /main-wrapper -->
@@ -860,7 +865,7 @@ async function loadChallengesWidget(containerId) {
 }
 
 window.voterTab = tab => {
-  ['price','vote','complaint','market','team','apply','faq','duel','friends'].forEach(t => {
+  ['price','vote','complaint','market','team','apply','faq','duel','friends','saison'].forEach(t => {
     const sec = document.getElementById(t + 'Section');
     if (sec) sec.style.display = t === tab ? '' : 'none';
     const nav = document.getElementById('vn' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -882,6 +887,7 @@ window.voterTab = tab => {
   if (tab === 'complaint') loadMyComplaints();
   if (tab === 'faq')       loadVoterFaq();
   if (tab === 'friends')   loadVoterFriends();
+  if (tab === 'saison')    saison();
 };
 
 async function loadVoterFaq() {
@@ -6178,7 +6184,8 @@ async function saison() {
     </div>`;
   }).join('');
 
-  $('pageContent').innerHTML = `
+  const _saisonContainer = (currentUser?.voter && document.getElementById('saisonSection')) || $('pageContent');
+  _saisonContainer.innerHTML = `
     <div class="card" style="padding:1.4rem;margin-bottom:1.25rem;background:linear-gradient(135deg,rgba(168,85,247,.12),rgba(168,85,247,.02));border-color:rgba(168,85,247,.35)">
       <div style="display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap;margin-bottom:1rem">
         <div style="font-size:2.6rem">🎖️</div>
@@ -6188,6 +6195,7 @@ async function saison() {
           <div style="font-size:.78rem;color:var(--muted)">Verdiene XP durch Minispiele, Tagesbonus, Duelle & Quests. Jede Stufe schaltet Belohnungen frei.</div>
         </div>
         ${d.isVip ? '<span style="font-size:.7rem;font-weight:800;color:#fbbf24;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.08);padding:.3rem .7rem;border-radius:99px">⭐ VIP aktiv</span>'
+                  : currentUser?.voter ? ''
                   : '<button onclick="navigate(\'shop\')" title="VIP-Rolle (30 Tage) im Shop für 2000 Coins" style="font-size:.68rem;font-weight:700;color:#fbbf24;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.08);padding:.3rem .7rem;border-radius:99px;cursor:pointer;font-family:inherit;white-space:nowrap">⭐ VIP-Bahn freischalten → Shop</button>'}
       </div>
       <div style="display:flex;align-items:center;gap:.6rem">
