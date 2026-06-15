@@ -432,7 +432,7 @@ async function renderVoterScreen() {
       <div id="twitch-widget" style="padding:.6rem 1.5rem;border-bottom:1px solid var(--border);background:var(--surface);display:none">
       </div>
 
-      <main id="pageContent">
+      <main id="voterPageContent">
 
         <!-- Preisliste -->
         <div id="priceSection">
