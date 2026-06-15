@@ -196,8 +196,9 @@ function openModal(html) {
   $('modalBox').style.padding = '';
   $('modalBox').innerHTML = html;
   $('modalOverlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden'; // BATCH 3.1: Scroll-Lock
 }
-function closeModal() { $('modalOverlay').classList.add('hidden'); window._listingImg = null; }
+function closeModal() { $('modalOverlay').classList.add('hidden'); window._listingImg = null; document.body.style.overflow = ''; } // BATCH 3.1
 $('modalOverlay').addEventListener('click', e => { if (e.target === $('modalOverlay')) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
@@ -360,6 +361,7 @@ async function renderVoterScreen() {
         <a class="nav-item"        id="vnDuel"      onclick="voterTab('duel')"     style="cursor:pointer"><i class="fas fa-bolt" style="color:#f472b6"></i><span style="color:#f472b6">Quiz-Duell</span></a>
         <a class="nav-item"        id="vnSaison"    onclick="voterTab('saison')"   style="cursor:pointer"><i class="fas fa-star" style="color:#a855f7"></i><span style="color:#a855f7">Saison-Pass</span></a>
         ${currentUser.id ? `<a class="nav-item" id="vnFriends" onclick="voterTab('friends')" style="cursor:pointer"><i class="fas fa-user-friends" style="color:#fbbf24"></i><span style="color:#fbbf24">Freunde</span></a>` : ''}
+        <a class="nav-item" onclick="openQuestionSuggestModal()" style="cursor:pointer"><i class="fas fa-lightbulb" style="color:#fbbf24"></i><span style="color:#fbbf24">Frage vorschlagen</span></a>
 
         <!-- Minispiele -->
         <div id="vGamesToggle" onclick="(function(){var l=document.getElementById('vGamesList'),o=l.style.maxHeight!=='0px';l.style.maxHeight=o?'0px':'900px';document.getElementById('vGamesChev').style.transform=o?'rotate(-90deg)':'';})()" style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
@@ -765,62 +767,73 @@ window.submitVoterApplication = async e => {
 };
 
 // ── UMFRAGE-WIDGET ────────────────────────────────────────────────
+// BATCH 8: Poll-Widget — verarbeitet jetzt Array von bis zu 5 aktiven Polls
 async function loadPollWidget(containerId) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  const poll = await fetch('/api/poll/active').then(r => r.json()).catch(() => null);
-  if (!poll) { el.style.display = 'none'; return; }
+  const polls = await fetch('/api/poll/active').then(r => r.json()).catch(() => null);
+  if (!polls || !polls.length) { el.style.display = 'none'; return; }
   el.style.display = '';
 
-  const voted = poll.myVote !== null;
-  const hdr = `<div style="display:flex;align-items:center;gap:.65rem;margin-bottom:.9rem">
-    <div style="width:28px;height:28px;border-radius:7px;background:rgba(99,102,241,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-      <i class="fas fa-poll" style="color:#818cf8;font-size:.82rem"></i>
-    </div>
-    <div>
-      <div style="font-weight:700;font-size:.9rem">Frage der Woche</div>
-      <div style="font-size:.7rem;color:var(--muted)">${poll.totalVotes} Stimme${poll.totalVotes !== 1 ? 'n' : ''} abgegeben</div>
-    </div>
-  </div>
-  <div style="font-size:.88rem;font-weight:600;margin-bottom:.85rem;line-height:1.4">${poll.question}</div>`;
+  function renderPoll(poll) {
+    const options = Array.isArray(poll.options) ? poll.options : [];
+    const votes = Array.isArray(poll.votes) ? poll.votes : [];
+    const totalVotes = votes.reduce((s, v) => s + v.count, 0);
+    const voted = poll.myVote !== null && poll.myVote !== undefined;
 
-  if (voted) {
-    el.innerHTML = `<div class="card" style="height:100%;box-sizing:border-box">${hdr}
-      ${poll.options.map(opt => {
-        const pct = poll.totalVotes ? Math.round(opt.count / poll.totalVotes * 100) : 0;
-        const mine = poll.myVote === opt.idx;
-        return `<div style="margin-bottom:.6rem">
-          <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:.25rem">
-            <span style="font-weight:${mine?'700':'500'};color:${mine?'#818cf8':'var(--text)'}">
-              ${mine?'<i class="fas fa-check" style="margin-right:.3rem;color:#818cf8"></i>':''}${opt.label}
-            </span>
-            <span style="color:var(--muted);font-weight:600">${pct}%</span>
-          </div>
-          <div style="height:6px;background:var(--input);border-radius:3px;overflow:hidden">
-            <div style="height:100%;width:${pct}%;background:${mine?'#818cf8':'var(--border)'};border-radius:3px;transition:width .5s ease"></div>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>`;
-  } else {
-    el.innerHTML = `<div class="card" style="height:100%;box-sizing:border-box">${hdr}
-      <div style="display:flex;flex-direction:column;gap:.4rem">
-        ${poll.options.map(opt => `
-        <button onclick="castPollVote(${poll.id},${opt.idx})"
-          style="width:100%;text-align:left;padding:.55rem .75rem;border:1px solid var(--border);border-radius:8px;background:var(--input);color:var(--text);cursor:pointer;font-size:.82rem;font-family:inherit;font-weight:500;transition:border-color .15s,background .15s"
-          onmouseover="this.style.borderColor='#818cf8';this.style.background='rgba(99,102,241,.06)'"
-          onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--input)'">${opt.label}</button>`).join('')}
+    const hdr = `<div style="display:flex;align-items:center;gap:.65rem;margin-bottom:.9rem">
+      <div style="width:28px;height:28px;border-radius:7px;background:rgba(99,102,241,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <i class="fas fa-poll" style="color:#818cf8;font-size:.82rem"></i>
       </div>
-    </div>`;
+      <div>
+        <div style="font-weight:700;font-size:.9rem">Frage der Woche</div>
+        <div style="font-size:.7rem;color:var(--muted)">${totalVotes} Stimme${totalVotes !== 1 ? 'n' : ''} abgegeben</div>
+      </div>
+    </div>
+    <div style="font-size:.88rem;font-weight:600;margin-bottom:.85rem;line-height:1.4">${esc(poll.question)}</div>`;
+
+    if (voted) {
+      return `<div class="card" style="box-sizing:border-box;margin-bottom:.75rem">${hdr}
+        ${options.map((label, i) => {
+          const voteRow = votes.find(v => v.option_idx === i);
+          const cnt = voteRow?.count || 0;
+          const pct = totalVotes ? Math.round(cnt / totalVotes * 100) : 0;
+          const mine = poll.myVote === i;
+          return `<div style="margin-bottom:.6rem">
+            <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:.25rem">
+              <span style="font-weight:${mine?'700':'500'};color:${mine?'#818cf8':'var(--text)'}">
+                ${mine?'<i class="fas fa-check" style="margin-right:.3rem;color:#818cf8"></i>':''}${esc(label)}
+              </span>
+              <span style="color:var(--muted);font-weight:600">${pct}%</span>
+            </div>
+            <div style="height:6px;background:var(--input);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${mine?'#818cf8':'var(--border)'};border-radius:3px;transition:width .5s ease"></div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    } else {
+      return `<div class="card" style="box-sizing:border-box;margin-bottom:.75rem">${hdr}
+        <div style="display:flex;flex-direction:column;gap:.4rem">
+          ${options.map((label, i) => `
+          <button onclick="castPollVote(${poll.id},${i},'${containerId}')"
+            style="width:100%;text-align:left;padding:.55rem .75rem;border:1px solid var(--border);border-radius:8px;background:var(--input);color:var(--text);cursor:pointer;font-size:.82rem;font-family:inherit;font-weight:500;transition:border-color .15s,background .15s"
+            onmouseover="this.style.borderColor='#818cf8';this.style.background='rgba(99,102,241,.06)'"
+            onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--input)'">${esc(label)}</button>`).join('')}
+        </div>
+      </div>`;
+    }
   }
+
+  el.innerHTML = polls.map(p => renderPoll(p)).join('');
 }
 
-window.castPollVote = async (pollId, optionIdx) => {
+window.castPollVote = async (pollId, optionIdx, containerId) => {
   const r = await fetch('/api/poll/vote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ poll_id: pollId, option_idx: optionIdx }) });
   const data = await r.json().catch(() => ({}));
   if (r.ok) {
     toast('Stimme abgegeben!', 'ok');
-    const cid = document.getElementById('vPollWidget') ? 'vPollWidget' : 'staffPollWidget';
+    const cid = containerId || (document.getElementById('vPollWidget') ? 'vPollWidget' : 'staffPollWidget');
     loadPollWidget(cid);
   } else toast(data.error || 'Fehler', 'err');
 };
@@ -1143,7 +1156,9 @@ function frameGlow(frameId) {
   const c = SHOP_FRAME_COLORS[frameId];
   if (!c) return '';
   if (c === 'rainbow') { ensureRainbowStyle(); return 'box-shadow:0 0 10px 2px #f97316;animation:rainbowGlow 3s linear infinite;'; }
-  return `box-shadow:0 0 10px 2px ${c};`;
+  // BATCH 2.1: Sanitize CSS value — nur sichere Zeichen erlaubt
+  const safe = String(c).replace(/[^a-zA-Z0-9#., ()%\-]/g, '');
+  return safe ? `box-shadow:0 0 10px 2px ${safe};` : '';
 }
 
 // Gekaufter Titel als kleine goldene Zeile unter dem Namen (inkl. Wunsch-Titel)
@@ -1531,7 +1546,13 @@ async function dashboard() {
     <div id="staffChallengesWidget" style="margin-top:1.1rem"></div>
 
     <!-- Einheitliche Spiele-Rangliste -->
-    <div id="gameLeaderboardWidget" style="margin-top:1.1rem"></div>`;
+    <div id="gameLeaderboardWidget" style="margin-top:1.1rem"></div>
+
+    <!-- BATCH 4: Achievement-Feed -->
+    <div id="achievementFeedWidget" style="margin-top:1.1rem"></div>
+
+    <!-- BATCH 6: Geburtstage heute -->
+    <div id="birthdayTodayWidget" style="margin-top:1.1rem"></div>`;
   animateCountUps();
   requestAnimationFrame(() => requestAnimationFrame(animateBadgeRings));
   loadTwitchWidget();
@@ -1540,7 +1561,63 @@ async function dashboard() {
   loadPollWidget('staffPollWidget');
   loadChallengesWidget('staffChallengesWidget');
   loadGameLeaderboard('gameLeaderboardWidget');
+  loadAchievementFeed('achievementFeedWidget');
+  loadBirthdayTodayWidget('birthdayTodayWidget');
   connectSSE();
+}
+
+// BATCH 4: Achievement-Feed laden
+async function loadAchievementFeed(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const feed = await fetch('/api/achievement-feed').then(r => r.json()).catch(() => null);
+  if (!feed?.length) { el.style.display = 'none'; return; }
+  const BADGE_ICONS = { cat_pkw: 'fa-car', cat_motorrad: 'fa-motorcycle', cat_boot: 'fa-ship', cat_lkw: 'fa-truck', cat_flugschein: 'fa-plane', eow_1: 'fa-trophy', eow_3: 'fa-trophy', eow_5: 'fa-trophy', ic_10: 'fa-clock', ic_50: 'fa-clock', ic_100: 'fa-clock', game_3: 'fa-gamepad', game_10: 'fa-gamepad', duel_5: 'fa-swords', duel_25: 'fa-swords', coins_1k: 'fa-coins', coins_10k: 'fa-coins' };
+  el.innerHTML = `<div class="card" style="margin-top:0">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(250,204,21,.15)"><i class="fas fa-medal" style="color:#facc15"></i></div>
+      <div><div class="card-title">Letzte Abzeichen</div><div class="card-sub">Freigeschaltete Abzeichen im Team</div></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.4rem">
+      ${feed.slice(0,10).map(f => {
+        const icon = BADGE_ICONS[f.badge_type] || 'fa-medal';
+        const av = f.avatar ? `<img src="https://cdn.discordapp.com/avatars/${esc(f.discord_id)}/${esc(f.avatar)}.png" style="width:28px;height:28px;border-radius:50%;object-fit:cover">` : `<div style="width:28px;height:28px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700">${esc((f.username||'?')[0].toUpperCase())}</div>`;
+        const badgeName = (typeof BADGE_DEFS !== 'undefined' && BADGE_DEFS[f.badge_type]) ? BADGE_DEFS[f.badge_type].name : esc(f.badge_type);
+        return `<div style="display:flex;align-items:center;gap:.6rem;padding:.4rem 0;border-bottom:1px solid var(--border)">
+          ${av}
+          <div style="flex:1;min-width:0">
+            <span style="font-weight:600;font-size:.85rem">${esc(f.username)}</span>
+            <span style="font-size:.8rem;color:var(--muted)"> hat </span>
+            <span style="font-size:.82rem;color:#facc15;font-weight:600"><i class="fas ${icon}" style="margin-right:.2rem"></i>${typeof badgeName === 'string' ? badgeName : esc(f.badge_type)}</span>
+            <span style="font-size:.8rem;color:var(--muted)"> freigeschaltet</span>
+          </div>
+          <span style="font-size:.7rem;color:var(--muted);white-space:nowrap">${ago(f.earned_at)}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+// BATCH 6: Heutige Geburtstage Widget
+async function loadBirthdayTodayWidget(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const bdays = await fetch('/api/birthdays/today').then(r => r.json()).catch(() => []);
+  if (!bdays?.length) { el.style.display = 'none'; return; }
+  el.innerHTML = `<div class="card">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(249,115,22,.15)"><i class="fas fa-birthday-cake" style="color:var(--orange)"></i></div>
+      <div><div class="card-title">Heute Geburtstag 🎂</div><div class="card-sub">${bdays.length} Mitarbeiter feiern heute</div></div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:.6rem">
+      ${bdays.map(u => {
+        const av = u.avatar ? `<img src="https://cdn.discordapp.com/avatars/${esc(u.discord_id)}/${esc(u.avatar)}.png" style="width:32px;height:32px;border-radius:50%;object-fit:cover">` : `<div style="width:32px;height:32px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:700">${esc((u.username||'?')[0].toUpperCase())}</div>`;
+        return `<div style="display:flex;align-items:center;gap:.5rem;padding:.4rem .65rem;background:var(--surface2);border-radius:8px;border:1px solid rgba(249,115,22,.2)">
+          ${av}<span style="font-size:.85rem;font-weight:600">${esc(u.username)}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2382,7 +2459,12 @@ async function registry() {
             ${esc(c.name.trim()[0].toUpperCase())}
           </div>
           <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:.98rem">${esc(c.name)}${c.citizenId ? ` <span style="font-size:.75rem;color:var(--muted);font-weight:400">${esc(c.citizenId)}</span>` : ''}</div>
+            <div style="font-weight:700;font-size:.98rem">
+              <span style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px" onclick="event.stopPropagation();showCitizenHistory('${esc(c.name).replace(/'/g,"\\'")}','${esc(c.citizenId||'').replace(/'/g,"\\'")}')">
+                ${esc(c.name)}
+              </span>
+              ${c.citizenId ? ` <span style="font-size:.75rem;color:var(--muted);font-weight:400">${esc(c.citizenId)}</span>` : ''}
+            </div>
             <div style="font-size:.75rem;color:var(--muted);margin-top:.15rem">Letzter Eintrag: ${fmt(latest.registered_at)}${c.entries.length > 1 ? ` · ${c.entries.length} Einträge` : ''}</div>
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">
@@ -2437,6 +2519,56 @@ async function registry() {
   const si = $('regSearch');
   if (si && document.activeElement !== si) { si.focus(); si.setSelectionRange(si.value.length, si.value.length); }
 }
+
+// BATCH 5: Bürger Prüfungs-History Modal
+window.showCitizenHistory = async (name, id) => {
+  openModal(`<div style="padding:1.5rem"><div class="loader"></div></div>`);
+  const params = new URLSearchParams({ name });
+  if (id) params.set('id', id);
+  const d = await api('/api/citizen-history?' + params);
+  if (!d) return;
+  const CAT_ICONS = { PKW: 'fa-car', Motorrad: 'fa-motorcycle', Boot: 'fa-ship', LKW: 'fa-truck', Flugschein: 'fa-plane' };
+  const rate = d.stats.total ? Math.round(d.stats.passed / d.stats.total * 100) : 0;
+  $('modalBox').innerHTML = `
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-id-card" style="color:var(--orange);margin-right:.5rem"></i>Prüfungshistorie: ${esc(name)}</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:1rem">
+      <div style="text-align:center;padding:.6rem;background:var(--surface2);border-radius:8px">
+        <div style="font-size:1.4rem;font-weight:800">${d.stats.total}</div>
+        <div style="font-size:.7rem;color:var(--muted)">Gesamt</div>
+      </div>
+      <div style="text-align:center;padding:.6rem;background:var(--surface2);border-radius:8px">
+        <div style="font-size:1.4rem;font-weight:800;color:#22c55e">${d.stats.passed}</div>
+        <div style="font-size:.7rem;color:var(--muted)">Bestanden</div>
+      </div>
+      <div style="text-align:center;padding:.6rem;background:var(--surface2);border-radius:8px">
+        <div style="font-size:1.4rem;font-weight:800;color:${rate >= 70 ? '#22c55e' : '#ef4444'}">${rate}%</div>
+        <div style="font-size:.7rem;color:var(--muted)">Erfolgsrate</div>
+      </div>
+    </div>
+    ${Object.keys(d.stats.byCategory).length ? `
+    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.85rem">
+      ${Object.entries(d.stats.byCategory).map(([cat, s]) => `
+        <span style="font-size:.75rem;padding:.2rem .55rem;border-radius:20px;background:var(--surface2);border:1px solid var(--border)">
+          <i class="fas ${CAT_ICONS[cat]||'fa-certificate'}" style="margin-right:.3rem"></i>${esc(cat)}: ${s.passed}/${s.total}
+        </span>`).join('')}
+    </div>` : ''}
+    <div style="max-height:320px;overflow-y:auto">
+      <table class="data-tbl" style="font-size:.82rem">
+        <thead><tr><th>Prüfung</th><th>Typ</th><th>Prüfer</th><th>Datum</th><th>Status</th></tr></thead>
+        <tbody>${d.rows.map(r => `<tr>
+          <td><i class="fas ${CAT_ICONS[r.category_name]||'fa-certificate'}" style="margin-right:.35rem"></i>${esc(r.category_name||'–')}</td>
+          <td>${esc(r.exam_type||'–')}</td>
+          <td>${esc(r.examiner_name||'–')}</td>
+          <td>${new Date(r.registered_at).toLocaleDateString('de-DE')}</td>
+          <td><span class="badge ${r.passed ? 'badge-g' : 'badge-r'}">${r.passed ? 'Bestanden' : 'Nicht bestanden'}</span></td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Schließen</button></div>`;
+};
 
 window.openAddRegistry = () => {
   const cats = window._regCats || [];
@@ -2987,6 +3119,20 @@ async function iczeit() {
       <i class="fas fa-info-circle" style="color:#facc15;font-size:1rem;flex-shrink:0"></i>
       <span>Damit die IC-Zeit automatisch getrackt wird, müssen Mitarbeiter einem <strong>„Im Dienst"</strong>-Voice-Kanal auf dem Discord-Server beitreten. Die Zeit wird beim Verlassen des Kanals automatisch eingetragen.</span>
     </div>
+
+    <!-- BATCH 6: Geburtstag eintragen -->
+    <div class="card" style="margin-bottom:1.1rem">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(249,115,22,.15)"><i class="fas fa-birthday-cake" style="color:var(--orange)"></i></div>
+        <div><div class="card-title">Mein Geburtstag</div><div class="card-sub">Wird im Team-Dashboard angezeigt</div></div>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        <input class="form-control" id="birthdayInput" type="text" placeholder="MM-TT (z.B. 06-15)" maxlength="5" style="width:160px"
+          oninput="this.value=this.value.replace(/[^0-9\-]/g,'')">
+        <button class="btn btn-primary btn-sm" onclick="saveBirthday()"><i class="fas fa-save"></i> Speichern</button>
+        <span style="font-size:.75rem;color:var(--muted)">Format: Monat-Tag (z.B. 06-15 für 15. Juni)</span>
+      </div>
+    </div>
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1.25rem">
       ${isAdmin() ? `<div style="display:flex;gap:.5rem">
         <button class="btn btn-primary" onclick="openLogTime()"><i class="fas fa-plus"></i> Manuell eintragen</button>
@@ -3103,6 +3249,14 @@ window.openLogTime = async () => {
         <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
       </div>
     </form>`);
+};
+
+// BATCH 6: Geburtstag speichern
+window.saveBirthday = async () => {
+  const val = ($('birthdayInput')?.value || '').trim();
+  if (!/^\d{2}-\d{2}$/.test(val)) { toast('Format: MM-TT (z.B. 06-15)', 'err'); return; }
+  const r = await api('/api/birthday', { method: 'POST', body: { birthday: val } });
+  if (r) toast('Geburtstag gespeichert!', 'ok');
 };
 
 window.openGoalModal = (current) => openModal(`
@@ -4470,6 +4624,15 @@ async function admin() {
         <div style="font-size:.72rem;color:var(--muted);margin-top:.5rem">Admin-Korrekturen zählen nicht zu „verdienten" Coins und werden im Audit-Log protokolliert.</div>
       </div>
     </div>
+    <!-- BATCH 9: Analytics Tab -->
+    <div class="card" style="margin-top:1rem">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(34,197,94,.15)"><i class="fas fa-chart-bar" style="color:#22c55e"></i></div>
+        <div><div class="card-title">Live Analytics (7 Tage)</div><div class="card-sub">Aktuelle Performance-Übersicht</div></div>
+      </div>
+      <div id="adminAnalyticsSection"><div style="color:var(--muted);font-size:.82rem">Wird geladen…</div></div>
+    </div>
+
     <!-- Statistiken -->
     <div class="card" style="margin-top:1rem">
       <div class="card-head">
@@ -4507,6 +4670,69 @@ async function admin() {
   loadPollAdmin();
   loadAdminStats();
   loadCustomTitles();
+  loadAdminAnalytics();
+}
+
+// BATCH 9: Admin Analytics
+async function loadAdminAnalytics() {
+  const el = document.getElementById('adminAnalyticsSection');
+  if (!el) return;
+  const d = await api('/api/admin/analytics?days=7');
+  if (!d || _activePage !== 'admin') return;
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem;margin-bottom:1.25rem">
+      ${[
+        { val: d.dau.reduce((a,b) => a + b.users, 0), lbl: 'Aktive Nutzer (7T)', color: '#22c55e' },
+        { val: d.newUsers, lbl: 'Neue Mitarbeiter', color: '#60a5fa' },
+        { val: d.coinFlow.reduce((a,b) => a + b.earned, 0).toLocaleString('de-DE'), lbl: 'Coins verdient', color: '#fbbf24' },
+        { val: d.examStats.reduce((a,b) => a + b.total, 0), lbl: 'Prüfungen (7T)', color: '#a855f7' },
+      ].map(s => `<div class="card" style="padding:.85rem;text-align:center">
+        <div style="font-size:1.5rem;font-weight:800;color:${s.color}">${s.val}</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:.2rem">${s.lbl}</div>
+      </div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem">
+      <div class="card" style="padding:1rem">
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:.75rem">SPIELNUTZUNG (7T)</div>
+        <div style="display:flex;flex-direction:column;gap:.3rem">
+          ${d.gameUsage.length ? d.gameUsage.slice(0,8).map(g => `<div style="display:flex;align-items:center;gap:.5rem">
+            <span style="font-size:.78rem;min-width:100px">${esc(g.game)}</span>
+            <div style="flex:1;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${d.gameUsage[0].sessions ? Math.round(g.sessions/d.gameUsage[0].sessions*100) : 0}%;background:#a855f7;border-radius:3px"></div>
+            </div>
+            <span style="font-size:.7rem;color:var(--muted)">${g.sessions}×</span>
+          </div>`).join('') : '<div style="color:var(--muted);font-size:.8rem">Keine Daten</div>'}
+        </div>
+      </div>
+      <div class="card" style="padding:1rem">
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:.75rem">TOP COIN-VERDIENER (7T)</div>
+        ${d.topEarners.length ? d.topEarners.map((u,i) => `<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
+          <span style="font-size:.75rem;color:var(--muted);width:16px">${i+1}</span>
+          <span style="font-size:.82rem;font-weight:600;flex:1">${esc(u.username)}</span>
+          <span style="font-size:.78rem;color:#fbbf24">+${(+u.net).toLocaleString('de-DE')}</span>
+        </div>`).join('') : '<div style="color:var(--muted);font-size:.8rem">Keine Daten</div>'}
+      </div>
+    </div>
+    <div class="card" style="padding:1rem">
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:.75rem">COIN-FLOW (letzte 7 Tage)</div>
+      <canvas id="coinFlowChart" height="120"></canvas>
+    </div>`;
+
+  const ctx = document.getElementById('coinFlowChart');
+  if (ctx && window.Chart && d.coinFlow.length) {
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: d.coinFlow.map(r => r.day.slice(5)),
+        datasets: [
+          { label: 'Verdient', data: d.coinFlow.map(r => r.earned), backgroundColor: 'rgba(34,197,94,.6)' },
+          { label: 'Ausgegeben', data: d.coinFlow.map(r => r.spent), backgroundColor: 'rgba(239,68,68,.5)' }
+        ]
+      },
+      options: { responsive: true, plugins: { legend: { labels: { color: '#9ca3af', font: { size: 11 } } } }, scales: { x: { ticks: { color: '#6b7280' } }, y: { ticks: { color: '#6b7280' } } } }
+    });
+  }
 }
 
 async function loadCustomTitles() {
@@ -4632,27 +4858,30 @@ async function loadAdminStats() {
 async function loadPollAdmin() {
   const el = document.getElementById('pollAdminContent');
   if (!el) return;
-  const poll = await fetch('/api/poll/active').then(r => r.json()).catch(() => null);
-  if (!poll) {
+  const polls = await fetch('/api/poll/active').then(r => r.json()).catch(() => null);
+  if (!polls || !Array.isArray(polls) || polls.length === 0) {
     el.innerHTML = '<div style="font-size:.82rem;color:var(--muted)">Keine aktive Umfrage.</div>';
     return;
   }
-  const totalVotes = poll.totalVotes;
-  el.innerHTML = `
-    <div style="font-size:.82rem;font-weight:600;margin-bottom:.4rem">${poll.question}</div>
-    ${poll.options.map(opt => {
-      const pct = totalVotes ? Math.round(opt.count / totalVotes * 100) : 0;
-      return `<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;font-size:.78rem">
-        <span style="flex:1;color:var(--muted)">${opt.label}</span>
-        <span style="font-weight:700">${opt.count}</span>
-        <span style="color:var(--muted)">(${pct}%)</span>
-      </div>`;
-    }).join('')}
-    <div style="font-size:.75rem;color:var(--muted);margin-top:.3rem">${totalVotes} Stimmen gesamt</div>
-    <div style="display:flex;gap:.4rem;margin-top:.65rem">
-      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="deactivatePollAdmin(${poll.id})"><i class="fas fa-stop"></i> Beenden</button>
-      <button class="btn btn-danger btn-sm" onclick="deletePollAdmin(${poll.id})"><i class="fas fa-trash"></i></button>
+  el.innerHTML = polls.map(poll => {
+    const totalVotes = poll.totalVotes;
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:.6rem .8rem;margin-bottom:.6rem">
+      <div style="font-size:.82rem;font-weight:600;margin-bottom:.4rem">${esc(poll.question)}</div>
+      ${poll.options.map(opt => {
+        const pct = totalVotes ? Math.round(opt.count / totalVotes * 100) : 0;
+        return `<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;font-size:.78rem">
+          <span style="flex:1;color:var(--muted)">${esc(opt.label)}</span>
+          <span style="font-weight:700">${opt.count}</span>
+          <span style="color:var(--muted)">(${pct}%)</span>
+        </div>`;
+      }).join('')}
+      <div style="font-size:.75rem;color:var(--muted);margin-top:.3rem">${totalVotes} Stimmen gesamt</div>
+      <div style="display:flex;gap:.4rem;margin-top:.65rem">
+        <button class="btn btn-ghost btn-sm" style="flex:1" onclick="deactivatePollAdmin(${poll.id})"><i class="fas fa-stop"></i> Beenden</button>
+        <button class="btn btn-danger btn-sm" onclick="deletePollAdmin(${poll.id})"><i class="fas fa-trash"></i></button>
+      </div>
     </div>`;
+  }).join('');
 }
 
 window.submitPollAdmin = async () => {
@@ -6210,7 +6439,13 @@ async function saison() {
     <div style="display:grid;gap:.6rem;margin-bottom:1.5rem">${questHtml}</div>
 
     <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">🎁 Belohnungsstufen</div>
-    <div>${rewardHtml}</div>`;
+    <div>${rewardHtml}</div>
+
+    <!-- BATCH 7: Referral-Card -->
+    <div id="referralCard" style="margin-top:1.25rem"></div>`;
+
+  // Referral-Widget laden
+  loadReferralWidget();
 }
 
 window.seasonClaimQuest = async (id) => {
@@ -6221,6 +6456,30 @@ window.seasonClaimLevel = async (level, track) => {
   const r = await api('/api/season/claim-level', { method: 'POST', body: { level, track } });
   if (r) { toast('Belohnung abgeholt! 🎁', 'ok'); loadCoins(); saison(); }
 };
+
+// BATCH 7: Referral-Widget
+async function loadReferralWidget() {
+  const el = document.getElementById('referralCard');
+  if (!el) return;
+  const d = await fetch('/api/referral/link').then(r => r.json()).catch(() => null);
+  if (!d) return;
+  el.innerHTML = `<div class="card" style="background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(34,197,94,.02));border-color:rgba(34,197,94,.3)">
+    <div class="card-head">
+      <div class="card-head-icon" style="background:rgba(34,197,94,.15)"><i class="fas fa-user-plus" style="color:#22c55e"></i></div>
+      <div><div class="card-title">Freunde einladen</div><div class="card-sub">+100 Coins pro erfolgreich eingeladenem Bürger</div></div>
+    </div>
+    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.65rem">
+      <input class="form-control" value="${esc(d.link)}" readonly style="flex:1;font-size:.78rem;cursor:pointer" onclick="this.select()" id="refLinkInput">
+      <button class="btn btn-primary btn-sm" onclick="navigator.clipboard.writeText('${esc(d.link).replace(/'/g, "\\'")}').then(()=>toast('Link kopiert!','ok'))">
+        <i class="fas fa-copy"></i> Kopieren
+      </button>
+    </div>
+    <div style="font-size:.8rem;color:var(--muted)">
+      <i class="fas fa-check-circle" style="color:#22c55e;margin-right:.3rem"></i>
+      <strong>${d.count}</strong> Bürger erfolgreich eingeladen · <strong>${d.count * 100}</strong> Coins verdient
+    </div>
+  </div>`;
+}
 
 // ════════════════════════════════════════════════════════════════
 //  WOCHENTURNIER
@@ -6879,7 +7138,10 @@ async function frageneditor() {
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem;flex-wrap:wrap;gap:.5rem">
         <div style="font-weight:700;font-size:.9rem">${questions.length} Fragen in dieser Kategorie</div>
-        <button class="btn btn-primary btn-sm" onclick="feOpenModal(null,${catId})"><i class="fas fa-plus"></i> Neue Frage</button>
+        <div style="display:flex;gap:.4rem">
+          <button class="btn btn-ghost btn-sm" onclick="loadQuestionSuggestions()"><i class="fas fa-inbox"></i> Vorschläge</button>
+          <button class="btn btn-primary btn-sm" onclick="feOpenModal(null,${catId})"><i class="fas fa-plus"></i> Neue Frage</button>
+        </div>
       </div>
 
       ${questions.length === 0
@@ -6985,6 +7247,108 @@ window.feDelete = async id => {
   if (!confirm('Frage wirklich löschen?')) return;
   const r = await api(`/api/admin/questions/${id}`, { method: 'DELETE' });
   if (r) { toast('Gelöscht', 'ok'); frageneditor(); }
+};
+
+// BATCH 10: Fragen-Vorschläge (Admin-View)
+window.loadQuestionSuggestions = async () => {
+  const rows = await api('/api/question-suggestions');
+  if (!rows) return;
+  const pending = rows.filter(r => r.status === 'pending');
+  const done = rows.filter(r => r.status !== 'pending');
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-inbox" style="color:#818cf8;margin-right:.5rem"></i>Fragen-Vorschläge (${pending.length} offen)</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="max-height:500px;overflow-y:auto">
+      ${pending.length === 0 ? '<div class="empty"><i class="fas fa-check"></i><p>Keine offenen Vorschläge</p></div>' :
+        pending.map(q => `
+        <div class="card" style="margin-bottom:.65rem;border-left:3px solid #818cf8">
+          <div style="font-size:.72rem;color:var(--muted);margin-bottom:.3rem">
+            von <b>${esc(q.username)}</b> · ${esc(q.cat_name)} · ${ago(q.created_at)}
+          </div>
+          <div style="font-size:.85rem;font-weight:600;margin-bottom:.4rem">${esc(q.question)}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.2rem;font-size:.75rem;color:var(--muted);margin-bottom:.5rem">
+            <span style="${q.correct==='A'?'color:#22c55e;font-weight:700':''}">A: ${esc(q.option_a)}</span>
+            <span style="${q.correct==='B'?'color:#22c55e;font-weight:700':''}">B: ${esc(q.option_b)}</span>
+            <span style="${q.correct==='C'?'color:#22c55e;font-weight:700':''}">C: ${esc(q.option_c)}</span>
+            <span style="${q.correct==='D'?'color:#22c55e;font-weight:700':''}">D: ${esc(q.option_d)}</span>
+          </div>
+          <div style="display:flex;gap:.4rem">
+            <button class="btn btn-primary btn-sm" onclick="decideSuggestion(${q.id},'approve')"><i class="fas fa-check"></i> Annehmen (+50 Coins)</button>
+            <button class="btn btn-danger btn-sm" onclick="decideSuggestion(${q.id},'reject')"><i class="fas fa-times"></i> Ablehnen</button>
+          </div>
+        </div>`).join('')}
+      ${done.length > 0 ? `<div style="font-size:.72rem;font-weight:700;color:var(--muted);margin:.75rem 0 .4rem;text-transform:uppercase;letter-spacing:.05em">Bereits bewertet (${done.length})</div>
+        ${done.slice(0,5).map(q => `<div style="padding:.5rem .75rem;background:var(--surface2);border-radius:8px;margin-bottom:.3rem;font-size:.78rem">
+          <span style="color:${q.status==='approved'?'#22c55e':'#ef4444'};font-weight:700">${q.status==='approved'?'✓':'✗'}</span>
+          ${esc(q.question.slice(0,60))}… · <span style="color:var(--muted)">${esc(q.username)}</span>
+        </div>`).join('')}` : ''}
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Schließen</button></div>`);
+};
+
+window.decideSuggestion = async (id, action) => {
+  const endpoint = action === 'approve' ? `/api/question-suggestions/${id}/approve` : `/api/question-suggestions/${id}/reject`;
+  const r = await api(endpoint, { method: 'POST', body: {} });
+  if (r) {
+    toast(action === 'approve' ? 'Angenommen & 50 Coins vergeben!' : 'Abgelehnt', 'ok');
+    loadQuestionSuggestions();
+  }
+};
+
+// BATCH 10: Frage vorschlagen Modal (für Bürger + Staff)
+window.openQuestionSuggestModal = async () => {
+  const cats = await api('/api/exam-categories');
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title"><i class="fas fa-lightbulb" style="color:#fbbf24;margin-right:.5rem"></i>Prüfungsfrage vorschlagen</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.6rem;padding:.4rem 0">
+      <div class="form-group">
+        <label style="font-size:.78rem;font-weight:600">Kategorie</label>
+        <select class="form-control" id="qs-cat">
+          ${(cats||[]).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label style="font-size:.78rem;font-weight:600">Frage</label>
+        <textarea class="form-control" id="qs-question" placeholder="Fragetext eingeben…" rows="3" style="resize:vertical"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+        <div class="form-group"><label style="font-size:.75rem">Option A</label><input class="form-control" id="qs-a" placeholder="Antwort A"></div>
+        <div class="form-group"><label style="font-size:.75rem">Option B</label><input class="form-control" id="qs-b" placeholder="Antwort B"></div>
+        <div class="form-group"><label style="font-size:.75rem">Option C</label><input class="form-control" id="qs-c" placeholder="Antwort C"></div>
+        <div class="form-group"><label style="font-size:.75rem">Option D</label><input class="form-control" id="qs-d" placeholder="Antwort D"></div>
+      </div>
+      <div class="form-group">
+        <label style="font-size:.78rem;font-weight:600">Korrekte Antwort</label>
+        <select class="form-control" id="qs-correct">
+          <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+        </select>
+      </div>
+      <div style="font-size:.75rem;color:var(--muted)"><i class="fas fa-coins" style="color:#fbbf24;margin-right:.3rem"></i>Bei Annahme: +50 ACLS-Coins</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="submitQuestionSuggestion()"><i class="fas fa-paper-plane"></i> Einreichen</button>
+    </div>`);
+};
+
+window.submitQuestionSuggestion = async () => {
+  const body = {
+    category_id: $('qs-cat')?.value,
+    question: $('qs-question')?.value.trim(),
+    option_a: $('qs-a')?.value.trim(),
+    option_b: $('qs-b')?.value.trim(),
+    option_c: $('qs-c')?.value.trim(),
+    option_d: $('qs-d')?.value.trim(),
+    correct: $('qs-correct')?.value,
+  };
+  if (!body.question || !body.option_a || !body.option_b || !body.option_c || !body.option_d) { toast('Alle Felder ausfüllen', 'err'); return; }
+  const r = await api('/api/question-suggestions', { method: 'POST', body });
+  if (r) { toast('Vorschlag eingereicht! Danke!', 'ok'); closeModal(); }
 };
 
 // ════════════════════════════════════════════════════════════════

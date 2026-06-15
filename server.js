@@ -1,6 +1,7 @@
 require('dotenv').config();
-const express  = require('express');
-const session  = require('express-session');
+const express      = require('express');
+const compression  = require('compression');
+const session      = require('express-session');
 const path     = require('path');
 const fs       = require('fs');
 const cron     = require('node-cron');
@@ -108,6 +109,7 @@ class SQLiteStore extends session.Store {
 
 // ── Middleware ──────────────────────────────────────────────────
 app.set('trust proxy', 1);
+app.use(compression());
 app.use(express.json({ limit: '8mb' }));
 app.use(express.urlencoded({ extended: true, limit: '8mb' }));
 app.use(session({
@@ -405,6 +407,19 @@ app.get('/auth/callback', async (req, res) => {
     db.prepare('UPDATE users SET username = ?, avatar = ? WHERE id = ?').run(displayName, avatarHash, dbUser.id);
 
     req.session.userId = dbUser.id;
+
+    // BATCH 7: Referral-Reward
+    if (req.session.referralBy && req.session.referralBy !== dUser.id) {
+      try {
+        db.prepare('INSERT OR IGNORE INTO referrals (referrer_did, referred_did) VALUES (?,?)').run(req.session.referralBy, dUser.id);
+        if (db.prepare('SELECT changes() as c').get().c > 0) {
+          const referrer = db.prepare('SELECT username FROM users WHERE discord_id = ?').get(req.session.referralBy);
+          if (referrer) addCoins(req.session.referralBy, referrer.username, 100, 'referral:bonus', { referred: dUser.username });
+        }
+      } catch {}
+      delete req.session.referralBy;
+    }
+
     res.redirect('/');
   } catch (err) {
     console.error('[OAuth]', err.message);
@@ -500,13 +515,12 @@ app.get('/api/eow', requireAuth, (req, res) => {
     WHERE v.week = ? GROUP BY v.nominee_id ORDER BY votes DESC
   `).all(wk);
 
-  const voterNamesQuery = db.prepare(`
-    SELECT u.username FROM eow_votes v JOIN users u ON u.id = v.voter_id
-    WHERE v.week = ? AND v.nominee_id = ? ORDER BY v.id ASC
-  `);
-  standings.forEach(s => {
-    s.voters = voterNamesQuery.all(wk, s.id).map(r => r.username);
+  // BATCH 1.2: N+1 Fix — ein Query mit GROUP_CONCAT statt N Queries
+  const voterMap = {};
+  db.prepare('SELECT nominee_id, GROUP_CONCAT(voter_username) as names FROM citizen_votes WHERE week = ? GROUP BY nominee_id').all(wk).forEach(r => {
+    voterMap[r.nominee_id] = r.names ? r.names.split(',') : [];
   });
+  standings.forEach(s => { s.voters = voterMap[s.id] || []; });
 
   const history = db.prepare(`
     SELECT w.week, w.vote_count, u.username, u.avatar, u.discord_id FROM eow_winners w
@@ -751,6 +765,7 @@ app.post('/api/exams/practical', requireAuth, (req, res) => {
 //  REGISTRY
 // ════════════════════════════════════════════════════════════════
 app.get('/api/registry', requireAuth, (req, res) => {
+  if (rateLimit('registry:' + req.ip, 30, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
   const { search, category } = req.query;
   let sql = `
     SELECT r.*, ec.name as category_name, ec.icon, u.username as examiner_name,
@@ -893,6 +908,7 @@ app.get('/api/ic-log', requireAuth, (req, res) => {
 });
 
 app.get('/api/ic-stats', requireAuthOrBot, (req, res) => {
+  if (rateLimit('icstats:' + req.ip, 10, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
   // ISO-Wochenstart = Montag: (wochentag + 6) % 7 Tage zurück
   res.json(db.prepare(`
     SELECT u.id, u.username, u.avatar, u.discord_id,
@@ -906,6 +922,7 @@ app.get('/api/ic-stats', requireAuthOrBot, (req, res) => {
 });
 
 app.get('/api/monatsbericht', requireAuthOrBot, (req, res) => {
+  if (rateLimit('bericht:' + req.ip, 5, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
   const weekStart = `date('now', '-' || CAST((CAST(strftime('%w','now') AS INTEGER) + 6) % 7 AS TEXT) || ' days')`;
   const total = db.prepare(`SELECT COUNT(*) as c, SUM(passed) as p FROM registry`).get();
   const week  = db.prepare(`SELECT COUNT(*) as c, SUM(passed) as p FROM registry WHERE date >= ${weekStart}`).get();
@@ -1368,6 +1385,7 @@ function friendStats(userId) {
 
 app.get('/api/friends', requireLogin, (req, res) => {
   const u = getUser(req);
+  // BATCH 1.3: N+1 Fix — alle friend_ids auf einmal laden, dann friendStats nur für gefundene
   const rows = db.prepare('SELECT friend_id, created_at FROM friends WHERE user_id = ? ORDER BY created_at ASC').all(u.id);
   const friends = rows.map(r => {
     const s = friendStats(r.friend_id);
@@ -1540,6 +1558,7 @@ app.get('/api/profile/:id', requireAnySession, (req, res) => {
 
 // ── Globale Suche ────────────────────────────────────────────────
 app.get('/api/search', requireAuth, (req, res) => {
+  if (rateLimit('search:' + req.ip, 20, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
   const q = (req.query.q || '').trim();
   if (q.length < 2) return res.json({ bans: [], users: [], registry: [] });
   const like = `%${q}%`;
@@ -1742,6 +1761,8 @@ app.post('/api/rank-exam/join', requireAusbilder, (req, res) => {
     return res.status(403).json({ error: 'Du bist nicht als Prüfer für diese Prüfung eingetragen' });
   req.session.rankExamCode = exam.join_code;
   const ids = JSON.parse(exam.question_ids || '[]');
+  // BATCH 2.2: Array-Länge begrenzen
+  if (!Array.isArray(ids) || ids.length > 100) return res.status(400).json({ error: 'Ungültige Fragen-IDs' });
   const questions = ids.length
     ? db.prepare(`SELECT id,question,option_a FROM rank_questions WHERE id IN (${ids.map(()=>'?').join(',')}) AND is_active=1`).all(...ids)
     : [];
@@ -2606,21 +2627,213 @@ app.delete('/api/applications/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-// ── UMFRAGEN (Poll-Widget) ─────────────────────────────────────────
+// ── BATCH 10: Community-Fragen-Einreichung ───────────────────────
+app.post('/api/question-suggestions', requireAnySession, (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit('qsugg:' + ident.id, 5, 3600_000)) return res.status(429).json({ error: 'Max 5 Vorschläge pro Stunde' });
+  const { category_id, question, option_a, option_b, option_c, option_d, correct } = req.body;
+  if (!question?.trim() || !option_a?.trim() || !option_b?.trim() || !option_c?.trim() || !option_d?.trim()) return res.status(400).json({ error: 'Alle Felder ausfüllen' });
+  if (!['A','B','C','D'].includes(correct)) return res.status(400).json({ error: 'Korrekte Antwort: A/B/C/D' });
+  const cat = db.prepare('SELECT id FROM exam_categories WHERE id = ?').get(+category_id);
+  if (!cat) return res.status(400).json({ error: 'Kategorie nicht gefunden' });
+  const u = getUser(req);
+  db.prepare(`INSERT INTO question_suggestions (user_id, discord_id, username, category_id, question, option_a, option_b, option_c, option_d, correct) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(u?.id || null, ident.id, ident.name, +category_id, question.trim(), option_a.trim(), option_b.trim(), option_c.trim(), option_d.trim(), correct);
+  res.json({ ok: true });
+});
+
+app.get('/api/question-suggestions', requireAdmin, (req, res) => {
+  const rows = db.prepare(`
+    SELECT qs.*, ec.name as cat_name
+    FROM question_suggestions qs
+    LEFT JOIN exam_categories ec ON ec.id = qs.category_id
+    ORDER BY CASE qs.status WHEN 'pending' THEN 0 ELSE 1 END, qs.created_at DESC
+    LIMIT 100
+  `).all();
+  res.json(rows);
+});
+
+app.post('/api/question-suggestions/:id/approve', requireAdmin, (req, res) => {
+  const qs = db.prepare('SELECT * FROM question_suggestions WHERE id = ?').get(+req.params.id);
+  if (!qs || qs.status !== 'pending') return res.status(400).json({ error: 'Nicht gefunden oder bereits reviewed' });
+  // correct ist A/B/C/D (wie questions-admin erwartet)
+  db.prepare(`INSERT INTO exam_questions (category_id, question, option_a, option_b, option_c, option_d, correct_answer, is_active, is_seeded, created_by) VALUES (?,?,?,?,?,?,?,1,0,?)`)
+    .run(qs.category_id, qs.question, qs.option_a, qs.option_b, qs.option_c, qs.option_d, qs.correct, req.adminUser.id);
+  db.prepare('UPDATE question_suggestions SET status="approved", reviewed_by=?, review_note=?, reward_paid=1 WHERE id=?').run(req.adminUser.id, req.body.note||'', qs.id);
+  if (!qs.reward_paid) {
+    addCoins(qs.discord_id, qs.username, 50, 'question:approved', { question_id: qs.id });
+    createNotif(qs.discord_id, 'question_approved', { reward: 50 });
+  }
+  auditLog(req, 'question_approved', `suggestion ${qs.id} by ${qs.username}`);
+  res.json({ ok: true });
+});
+
+app.post('/api/question-suggestions/:id/reject', requireAdmin, (req, res) => {
+  const qs = db.prepare('SELECT id, status FROM question_suggestions WHERE id = ?').get(+req.params.id);
+  if (!qs || qs.status !== 'pending') return res.status(400).json({ error: 'Nicht gefunden' });
+  db.prepare('UPDATE question_suggestions SET status="rejected", reviewed_by=?, review_note=? WHERE id=?').run(req.adminUser.id, req.body.note||'', qs.id);
+  res.json({ ok: true });
+});
+
+// ── BATCH 9: Admin Analytics ──────────────────────────────────────
+app.get('/api/admin/analytics', requireAdmin, (req, res) => {
+  const days = Math.min(30, Math.max(1, parseInt(req.query.days) || 7));
+
+  const dau = db.prepare(`
+    SELECT date(created_at) as day, COUNT(DISTINCT discord_id) as users
+    FROM coin_transactions
+    WHERE created_at >= datetime('now', '-' || ? || ' days')
+    GROUP BY date(created_at)
+    ORDER BY day ASC
+  `).all(days);
+
+  const gameUsage = db.prepare(`
+    SELECT game, COUNT(*) as sessions, SUM(score) as total_score
+    FROM game_scores
+    WHERE updated_at >= datetime('now', '-7 days')
+    GROUP BY game
+    ORDER BY sessions DESC
+    LIMIT 15
+  `).all();
+
+  const coinFlow = db.prepare(`
+    SELECT
+      date(created_at) as day,
+      SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as earned,
+      SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END) as spent
+    FROM coin_transactions
+    WHERE created_at >= datetime('now', '-' || ? || ' days')
+    GROUP BY date(created_at)
+    ORDER BY day ASC
+  `).all(days);
+
+  const newUsers = db.prepare(`
+    SELECT COUNT(*) as c FROM users WHERE created_at >= datetime('now', '-' || ? || ' days')
+  `).get(days).c;
+
+  const examStats = db.prepare(`
+    SELECT date(registered_at) as day, COUNT(*) as total, SUM(passed) as passed
+    FROM registry
+    WHERE registered_at >= datetime('now', '-' || ? || ' days')
+    GROUP BY date(registered_at)
+    ORDER BY day ASC
+  `).all(days);
+
+  const topEarners = db.prepare(`
+    SELECT discord_id, MAX(username) as username, SUM(amount) as net
+    FROM coin_transactions
+    WHERE created_at >= datetime('now', '-7 days') AND amount > 0
+    GROUP BY discord_id
+    ORDER BY net DESC
+    LIMIT 10
+  `).all();
+
+  res.json({ dau, gameUsage, coinFlow, newUsers, examStats, topEarners, days });
+});
+
+// ── BATCH 7: Referral-System ─────────────────────────────────────
+app.get('/join', (req, res) => {
+  const ref = req.query.ref;
+  if (ref && /^\d+$/.test(ref)) req.session.referralBy = ref;
+  res.redirect('/');
+});
+
+app.get('/api/referral/link', requireAnySession, (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const link = `${req.protocol}://${req.get('host')}/join?ref=${ident.id}`;
+  const count = db.prepare('SELECT COUNT(*) as c FROM referrals WHERE referrer_did = ?').get(ident.id).c;
+  res.json({ link, count });
+});
+
+// ── BATCH 6: Geburtstags-System ──────────────────────────────────
+app.post('/api/birthday', requireAuth, (req, res) => {
+  const u = getUser(req);
+  const { birthday } = req.body;
+  if (!/^\d{2}-\d{2}$/.test(birthday)) return res.status(400).json({ error: 'Format: MM-DD' });
+  const [mm, dd] = birthday.split('-').map(Number);
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return res.status(400).json({ error: 'Ungültiges Datum' });
+  db.prepare('INSERT INTO user_birthdays (user_id, birthday) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET birthday=excluded.birthday, updated_at=datetime("now")').run(u.id, birthday);
+  res.json({ ok: true });
+});
+
+app.get('/api/birthdays/today', (req, res) => {
+  const today = new Date();
+  const mmdd = String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  const bdays = db.prepare(`
+    SELECT u.username, u.discord_id, u.avatar
+    FROM user_birthdays ub JOIN users u ON u.id = ub.user_id
+    WHERE ub.birthday = ? AND u.is_active = 1
+  `).all(mmdd);
+  res.json(bdays);
+});
+
+app.get('/api/birthdays', requireAuth, (req, res) => {
+  const bdays = db.prepare(`
+    SELECT u.username, u.discord_id, u.avatar, ub.birthday
+    FROM user_birthdays ub JOIN users u ON u.id = ub.user_id
+    WHERE u.is_active = 1
+    ORDER BY substr(ub.birthday,1,2)*100+substr(ub.birthday,4,2)
+  `).all();
+  res.json(bdays);
+});
+
+// ── BATCH 5: Bürger Prüfungs-History ─────────────────────────────
+app.get('/api/citizen-history', requireAuth, (req, res) => {
+  const { name, id } = req.query;
+  if (!name?.trim()) return res.status(400).json({ error: 'Name erforderlich' });
+  const rows = db.prepare(`
+    SELECT r.*, ec.name as category_name, u.username as examiner_name
+    FROM registry r
+    LEFT JOIN exam_categories ec ON ec.id = r.category_id
+    LEFT JOIN users u ON u.id = r.examiner_id
+    WHERE LOWER(r.citizen_name) = LOWER(?)
+    ${id ? 'AND r.citizen_id = ?' : ''}
+    ORDER BY r.registered_at DESC
+    LIMIT 100
+  `).all(...[name.trim(), ...(id ? [id.trim()] : [])]);
+
+  const stats = {
+    total: rows.length,
+    passed: rows.filter(r => r.passed).length,
+    byCategory: {}
+  };
+  rows.forEach(r => {
+    const cn = r.category_name || 'Unbekannt';
+    if (!stats.byCategory[cn]) stats.byCategory[cn] = { total: 0, passed: 0 };
+    stats.byCategory[cn].total++;
+    if (r.passed) stats.byCategory[cn].passed++;
+  });
+
+  res.json({ rows, stats });
+});
+
+// ── BATCH 4: Achievement-Feed ─────────────────────────────────────
+app.get('/api/achievement-feed', (req, res) => {
+  const feed = db.prepare(`
+    SELECT ub.badge_type, ub.earned_at, u.username, u.discord_id, u.avatar
+    FROM user_badges ub
+    JOIN users u ON u.id = ub.user_id
+    ORDER BY ub.earned_at DESC
+    LIMIT 50
+  `).all();
+  res.json(feed);
+});
+
+// ── UMFRAGEN (Poll-Widget) — BATCH 8: bis zu 5 aktive Polls ──────
 app.get('/api/poll/active', (req, res) => {
   const discordId = req.session.voterDiscordId ||
     (req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null);
-  const poll = db.prepare('SELECT * FROM polls WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1').get();
-  if (!poll) return res.json(null);
-  const options = JSON.parse(poll.options);
-  const votes = db.prepare('SELECT option_idx, COUNT(*) as count FROM poll_votes WHERE poll_id = ? GROUP BY option_idx').all(poll.id);
-  const totalVotes = votes.reduce((s, v) => s + v.count, 0);
-  const myVoteRow = discordId ? db.prepare('SELECT option_idx FROM poll_votes WHERE poll_id = ? AND discord_id = ?').get(poll.id, discordId) : null;
-  res.json({
-    id: poll.id, question: poll.question,
-    options: options.map((label, i) => ({ idx: i, label, count: votes.find(v => v.option_idx === i)?.count || 0 })),
-    totalVotes, myVote: myVoteRow?.option_idx ?? null,
+  const polls = db.prepare('SELECT * FROM polls WHERE is_active = 1 ORDER BY created_at DESC LIMIT 5').all();
+  if (!polls.length) return res.json([]);
+  const result = polls.map(poll => {
+    const options = JSON.parse(poll.options);
+    const votes = db.prepare('SELECT option_idx, COUNT(*) as count FROM poll_votes WHERE poll_id = ? GROUP BY option_idx').all(poll.id);
+    const myVoteRow = discordId ? db.prepare('SELECT option_idx FROM poll_votes WHERE poll_id = ? AND discord_id = ?').get(poll.id, discordId) : null;
+    return { id: poll.id, question: poll.question, options, votes, myVote: myVoteRow?.option_idx ?? null };
   });
+  res.json(result);
 });
 
 app.post('/api/poll/vote', (req, res) => {
@@ -2642,7 +2855,11 @@ app.post('/api/polls', requireAdmin, (req, res) => {
   const { question, options } = req.body;
   const opts = (Array.isArray(options) ? options : []).map(o => String(o).trim()).filter(Boolean);
   if (!question?.trim() || opts.length < 2) return res.status(400).json({ error: 'Frage und mindestens 2 Optionen erforderlich' });
-  db.prepare('UPDATE polls SET is_active = 0').run();
+  // BATCH 8: max 5 aktive Polls — älteste deaktivieren falls 5 schon aktiv
+  const activeCount = db.prepare('SELECT COUNT(*) as c FROM polls WHERE is_active = 1').get().c;
+  if (activeCount >= 5) {
+    db.prepare('UPDATE polls SET is_active = 0 WHERE id = (SELECT id FROM polls WHERE is_active = 1 ORDER BY created_at ASC LIMIT 1)').run();
+  }
   const r = db.prepare('INSERT INTO polls (question, options, created_by) VALUES (?,?,?)').run(question.trim(), JSON.stringify(opts), req.adminUser.id);
   auditLog(req, 'poll_created', `q=${question.trim().slice(0, 50)}`);
   res.json({ ok: true, id: r.lastInsertRowid });

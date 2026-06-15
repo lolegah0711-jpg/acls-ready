@@ -945,6 +945,56 @@ function initDb() {
   try { db.exec('ALTER TABLE complaints ADD COLUMN assigned_to INTEGER REFERENCES users(id)'); } catch {}
   try { db.exec("ALTER TABLE complaints ADD COLUMN phase TEXT DEFAULT 'offen'"); } catch {}
 
+  // ── BATCH 1.1: Performance-Indizes ──────────────────────────
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_coin_tx_discord_date ON coin_transactions(discord_id, created_at DESC)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_game_scores_user_game ON game_scores(user_id, game)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_ic_log_user_date ON ic_log(user_id, date)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_registry_examiner ON registry(examiner_id)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_registry_citizen ON registry(citizen_name, citizen_id)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_votes_week ON eow_votes(week)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_season_pass_did ON season_pass(discord_id)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_season_quest_did ON season_quest_progress(discord_id, week)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_game_scores_game ON game_scores(game, score DESC)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_friends_user ON friends(user_id)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_guestbook_user ON guestbook(profile_user_id, created_at DESC)'); } catch {}
+
+  // ── BATCH 6: Geburtstags-Tabelle ────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS user_birthdays (
+    user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    birthday   TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`);
+
+  // ── BATCH 7: Referral-Tabelle ────────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS referrals (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    referrer_did TEXT NOT NULL,
+    referred_did TEXT NOT NULL,
+    created_at   TEXT DEFAULT (datetime('now')),
+    reward_paid  INTEGER DEFAULT 0,
+    UNIQUE(referred_did)
+  )`);
+
+  // ── BATCH 10: Fragen-Vorschläge ──────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS question_suggestions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER REFERENCES users(id),
+    discord_id   TEXT NOT NULL,
+    username     TEXT NOT NULL,
+    category_id  INTEGER REFERENCES exam_categories(id),
+    question     TEXT NOT NULL,
+    option_a     TEXT NOT NULL,
+    option_b     TEXT NOT NULL,
+    option_c     TEXT NOT NULL,
+    option_d     TEXT NOT NULL,
+    correct      TEXT NOT NULL CHECK(correct IN ('A','B','C','D')),
+    status       TEXT DEFAULT 'pending',
+    reward_paid  INTEGER DEFAULT 0,
+    created_at   TEXT DEFAULT (datetime('now')),
+    reviewed_by  INTEGER REFERENCES users(id),
+    review_note  TEXT
+  )`);
+
   return db;
 }
 
