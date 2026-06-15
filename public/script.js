@@ -143,7 +143,7 @@ const PAGES = {
   iczeit:       { title: 'IC-Zeit Tracking',       sub: 'Discord Voice-Kanal Anwesenheit' },
   prices:       { title: 'Preisliste',             sub: 'Fahrschule & Servicepreise' },
   carmarket:    { title: 'Fahrzeugmarkt',          sub: 'Private Fahrzeuginserate' },
-  organigramm:  { title: 'Unser Team',             sub: 'ACLS Mitarbeiter & Organigramm' },
+  organigramm:  { title: 'Unser Team',             sub: 'Klicke auf einen Mitarbeiter für den Steckbrief' },
   applications: { title: 'Bewerbungen',            sub: 'Eingehende Bewerbungen verwalten' },
   admin:        { title: 'Admin-Panel',            sub: 'Verwaltung & Kontrolle' },
   ausbildung:   { title: 'Ausbildung',             sub: 'Gesellen- & Meisterprüfungen' },
@@ -160,7 +160,6 @@ const PAGES = {
   feedback:     { title: 'Feedback & Ideen',      sub: 'Vorschläge einreichen & abstimmen' },
   frageneditor: { title: 'Fragen-Editor',         sub: 'Prüfungsfragen verwalten (Admin)' },
   beschwerden:  { title: 'Beschwerde-Kanban',     sub: 'Beschwerden verwalten (Admin)' },
-  steckbrief:   { title: 'Mitarbeiter-Steckbriefe', sub: 'Profile, Statistiken & Abzeichen' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -1214,7 +1213,7 @@ function navigate(page) {
   $('pageContent').innerHTML    = loading();
 
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, steckbrief };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden };
   (renders[page] || dashboard)();
 }
 
@@ -3732,7 +3731,7 @@ async function organigramm() {
     const roleBg    = isLeitung ? 'rgba(201,162,39,.18)' : u.role === 'admin' ? 'rgba(249,115,22,.15)' : u.role === 'ausbilder' ? 'rgba(96,165,250,.12)' : 'rgba(255,255,255,.06)';
     const borderCol = isLeitung ? 'rgba(201,162,39,.5)' : u.role === 'admin' ? 'rgba(249,115,22,.35)' : u.role === 'ausbilder' ? 'rgba(96,165,250,.25)' : 'var(--border)';
     const crownIcon = isLeitung ? '<i class="fas fa-crown" style="color:#c9a227;font-size:.85rem"></i>' : '';
-    return `<div onclick="window.open('/profil/${u.id}','_blank')" title="Profil & Gästebuch öffnen" style="cursor:pointer;background:var(--surface);border:1px solid ${borderCol};border-radius:var(--r);padding:1.25rem 1rem;display:flex;flex-direction:column;align-items:center;gap:.55rem;text-align:center;transition:transform .12s,box-shadow .12s${isLeitung?';box-shadow:0 0 18px rgba(201,162,39,.18)':''}" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px ${isLeitung?'rgba(201,162,39,.25)':'rgba(0,0,0,.25)'}'" onmouseout="this.style.transform='';this.style.boxShadow='${isLeitung?'0 0 18px rgba(201,162,39,.18)':''}'">
+    return `<div onclick="openSteckbrief(${u.id})" title="Steckbrief öffnen" style="cursor:pointer;background:var(--surface);border:1px solid ${borderCol};border-radius:var(--r);padding:1.25rem 1rem;display:flex;flex-direction:column;align-items:center;gap:.55rem;text-align:center;transition:transform .12s,box-shadow .12s${isLeitung?';box-shadow:0 0 18px rgba(201,162,39,.18)':''}" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px ${isLeitung?'rgba(201,162,39,.25)':'rgba(0,0,0,.25)'}'" onmouseout="this.style.transform='';this.style.boxShadow='${isLeitung?'0 0 18px rgba(201,162,39,.18)':''}'">
       ${crownIcon}
       ${av}
       <div style="font-weight:700;font-size:${isLeitung?'1rem':'.95rem'};${nameColorCss(u.equipped_namecolor)}">${decoEmoji(u.equipped_deco)}${esc(u.username)}</div>
@@ -3765,6 +3764,138 @@ async function organigramm() {
     ${tier('Mitarbeiter', 'fa-users', 'var(--muted)', mitarbeiter)}
     ${!staff.length ? '<div class="empty"><i class="fas fa-users"></i><p>Keine aktiven Mitarbeiter</p></div>' : ''}`;
 }
+
+// ── Steckbrief-Modal (in-page) ─────────────────────────────────
+window.openSteckbrief = async function(userId) {
+  $('modalBox').style.maxWidth = '700px';
+  $('modalBox').style.padding  = '0';
+  $('modalBox').innerHTML = `<div style="padding:2rem;text-align:center"><div class="loader"></div></div>`;
+  $('modalOverlay').classList.remove('hidden');
+
+  const [profileRes, gbRes] = await Promise.all([
+    fetch('/api/profile/' + userId),
+    fetch('/api/guestbook/' + userId),
+  ]);
+
+  if (!profileRes.ok) {
+    $('modalBox').innerHTML = `<div style="padding:2rem;text-align:center;color:var(--muted)"><i class="fas fa-user-slash" style="font-size:2rem;margin-bottom:.75rem;display:block"></i>Profil nicht gefunden.</div>`;
+    return;
+  }
+  const d  = await profileRes.json();
+  const gb = gbRes.ok ? await gbRes.json() : [];
+  const u  = d.user, s = d.stats;
+
+  const ROLE_LABEL = { admin:'Administration', ausbilder:'Ausbilder', member:'Mitarbeiter' };
+  const ROLE_COLOR = { admin:'#f97316', ausbilder:'#60a5fa', member:'var(--muted)' };
+  const ROLE_BG    = { admin:'rgba(249,115,22,.15)', ausbilder:'rgba(96,165,250,.12)', member:'rgba(255,255,255,.06)' };
+
+  const av = u.avatar && u.discord_id
+    ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:72px;height:72px;border-radius:50%;object-fit:cover;flex-shrink:0">`
+    : `<div style="width:72px;height:72px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:800;flex-shrink:0">${esc((u.username||'?').slice(0,2).toUpperCase())}</div>`;
+
+  const passRate = s.conducted > 0 ? Math.round((s.passed_exams / s.total_exams) * 100) : 0;
+  const memberSince = new Date(u.created_at).toLocaleDateString('de-DE', { day:'2-digit', month:'long', year:'numeric' });
+
+  const BICONS = { ic_10:'fa-clock',ic_50:'fa-hourglass-half',ic_100:'fa-hourglass-end',ic_250:'fa-star',ic_500:'fa-crown',exams_10:'fa-clipboard-check',exams_50:'fa-clipboard-check',exams_100:'fa-clipboard-check',eow_1:'fa-trophy',eow_3:'fa-trophy',eow_5:'fa-trophy',cat_pkw:'fa-car',cat_motorrad:'fa-motorcycle',cat_boot:'fa-ship',cat_lkw:'fa-truck',cat_flugschein:'fa-plane',game_3:'fa-gamepad',game_10:'fa-gamepad',duel_5:'fa-bolt',duel_25:'fa-bolt',tow_pro:'fa-truck-pickup',bj_500:'fa-heart',coins_1k:'fa-coins',coins_10k:'fa-coins',streak_7:'fa-fire',streak_30:'fa-fire' };
+  const BNAMES = { ic_10:'10h IC',ic_50:'50h IC',ic_100:'100h IC',ic_250:'250h IC',ic_500:'500h IC',exams_10:'10 Prüfungen',exams_50:'50 Prüfungen',exams_100:'100 Prüfungen',eow_1:'1× MdW',eow_3:'3× MdW',eow_5:'5× MdW',cat_pkw:'PKW',cat_motorrad:'Motorrad',cat_boot:'Boot',cat_lkw:'LKW',cat_flugschein:'Flugschein',game_3:'Spieler',game_10:'Zocker',duel_5:'Duellant',duel_25:'Duell-Meister',tow_pro:'Abschlepp-Profi',bj_500:'High Roller',coins_1k:'Sparer',coins_10k:'Krösus',streak_7:'7-Tage-Serie',streak_30:'30-Tage-Serie' };
+
+  function gbEntry(e) {
+    const eAv = e.author_avatar && e.author_discord_id
+      ? `<img src="https://cdn.discordapp.com/avatars/${e.author_discord_id}/${e.author_avatar}.png" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0">`
+      : `<div style="width:28px;height:28px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;flex-shrink:0">${esc((e.author_name||'?').slice(0,2).toUpperCase())}</div>`;
+    const canDel = currentUser && (currentUser.id === e.author_id || currentUser.id === +userId || isAdmin());
+    return `<div style="display:flex;gap:.6rem;padding:.6rem 0;border-bottom:1px solid var(--border)">
+      ${eAv}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap">
+          <span style="font-weight:700;font-size:.8rem">${esc(e.author_name)}</span>
+          <span style="font-size:.67rem;color:var(--muted)">${ago(e.created_at)}</span>
+          ${canDel ? `<button onclick="sbDeleteGb(${e.id},${userId})" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:.7rem"><i class="fas fa-trash"></i></button>` : ''}
+        </div>
+        <div style="font-size:.82rem;margin-top:.1rem;white-space:pre-wrap;word-break:break-word">${esc(e.message)}</div>
+      </div>
+    </div>`;
+  }
+
+  $('modalBox').innerHTML = `
+    <div style="padding:1.25rem 1.5rem;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+        <span style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Steckbrief</span>
+        <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+      </div>
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        ${av}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem">
+            <span style="font-size:1.15rem;font-weight:800">${esc(u.username)}</span>
+            <span style="font-size:.68rem;font-weight:700;padding:.18rem .55rem;border-radius:20px;background:${ROLE_BG[u.role]||'rgba(255,255,255,.06)'};color:${ROLE_COLOR[u.role]||'var(--muted)'}">${ROLE_LABEL[u.role]||u.role}</span>
+            ${u.rank ? `<span style="font-size:.68rem;color:var(--muted)">${esc(u.rank)}</span>` : ''}
+          </div>
+          <div style="font-size:.73rem;color:var(--muted)">Dabei seit ${memberSince}</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem;padding:.9rem 1.5rem;border-bottom:1px solid var(--border)">
+      ${[
+        { val: s.conducted,              lbl: 'Prüfungen',    color: '#f97316' },
+        { val: s.eow_wins,               lbl: 'MdW-Titel',    color: '#22c55e' },
+        { val: (+s.ic_total).toFixed(1)+'h', lbl: 'IC gesamt', color: '#60a5fa' },
+        { val: (+s.ic_week).toFixed(1)+'h',  lbl: 'IC Woche',  color: '#fbbf24' },
+      ].map(st => `<div style="text-align:center;background:var(--surface2);border-radius:9px;padding:.6rem .4rem">
+        <div style="font-size:1.1rem;font-weight:800;color:${st.color}">${st.val}</div>
+        <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:.1rem">${st.lbl}</div>
+      </div>`).join('')}
+    </div>
+
+    <div style="padding:1rem 1.5rem;max-height:52vh;overflow-y:auto;display:flex;flex-direction:column;gap:1rem">
+      ${s.conducted > 0 ? `<div>
+        <div style="font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:.45rem">Prüfungsquote</div>
+        <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:.3rem">
+          <span>${passRate}% Bestehensquote</span><span style="color:var(--muted)">${s.total_exams} Prüfungen</span>
+        </div>
+        <div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${passRate}%;background:${passRate>=70?'#22c55e':'#f97316'};border-radius:3px"></div>
+        </div>
+        ${d.byCategory?.length ? `<div style="margin-top:.5rem;display:flex;flex-wrap:wrap;gap:.3rem">${d.byCategory.map(c=>`<span style="font-size:.65rem;background:var(--surface2);border-radius:999px;padding:.12rem .5rem;border:1px solid var(--border)">${esc(c.category)}: ${c.count}×</span>`).join('')}</div>` : ''}
+      </div>` : ''}
+
+      ${d.badges?.length ? `<div>
+        <div style="font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:.45rem">Abzeichen (${d.badges.length})</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.3rem">
+          ${d.badges.map(b=>`<span style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:.22rem .6rem;font-size:.7rem;font-weight:600" title="${new Date(b.earned_at).toLocaleDateString('de-DE')}"><i class="fas ${BICONS[b.badge_type]||'fa-award'}" style="color:#f97316;font-size:.72rem"></i>${BNAMES[b.badge_type]||b.badge_type}</span>`).join('')}
+        </div>
+      </div>` : ''}
+
+      <div>
+        <div style="font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:.5rem">📖 Gästebuch</div>
+        ${currentUser ? `<div style="display:flex;gap:.5rem;margin-bottom:.65rem">
+          <textarea id="sb-gb-${userId}" maxlength="300" rows="2" placeholder="Hinterlasse ${esc(u.username)} eine Nachricht…" class="input" style="flex:1;resize:vertical;font-size:.8rem"></textarea>
+          <button class="btn btn-primary btn-sm" style="align-self:flex-end;white-space:nowrap" onclick="sbPostGb(${userId})"><i class="fas fa-paper-plane"></i></button>
+        </div>` : `<div style="font-size:.73rem;color:var(--muted);margin-bottom:.5rem">Als Mitarbeiter anmelden um Einträge zu hinterlassen.</div>`}
+        <div>${gb.length ? gb.map(gbEntry).join('') : `<div style="font-size:.75rem;color:var(--muted)">Noch keine Einträge – sei der Erste! ✍️</div>`}</div>
+      </div>
+    </div>`;
+};
+
+window.sbPostGb = async function(userId) {
+  const input = document.getElementById('sb-gb-' + userId);
+  const message = input?.value.trim();
+  if (!message || message.length < 2) return;
+  const r = await fetch('/api/guestbook/' + userId, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  });
+  if (r.ok) { input.value = ''; openSteckbrief(userId); }
+  else { const d = await r.json().catch(() => null); toast(d?.error || 'Fehler', 'err'); }
+};
+
+window.sbDeleteGb = async function(entryId, userId) {
+  const r = await fetch('/api/guestbook/' + entryId, { method: 'DELETE' });
+  if (r.ok) openSteckbrief(userId);
+};
+
+function steckbrief() { navigate('organigramm'); }
 
 // ════════════════════════════════════════════════════════════════
 //  BEWERBUNGEN (Staff)
@@ -6596,7 +6727,7 @@ async function schwarzmarkt() {
             <div style="font-size:.72rem;color:var(--muted);margin-bottom:.75rem">${esc(slot.type || '')}</div>
             <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.8rem">
               <span style="font-size:.78rem;color:var(--muted);text-decoration:line-through">${slot.original_price?.toLocaleString('de-DE')} 🪙</span>
-              <span style="font-size:1rem;font-weight:800;color:#fbbf24">${slot.price?.toLocaleString('de-DE')} 🪙</span>
+              <span style="font-size:1rem;font-weight:800;color:#fbbf24">${slot.discounted_price?.toLocaleString('de-DE')} 🪙</span>
             </div>
             ${slot.sold
               ? '<div style="font-size:.75rem;color:var(--muted);text-align:center;padding:.4rem">Nicht mehr verfügbar</div>'
@@ -6933,75 +7064,6 @@ window.bkSavePhase = async id => {
   if (r) { toast('Status aktualisiert', 'ok'); closeModal(); beschwerden(); }
 };
 
-// ════════════════════════════════════════════════════════════════
-//  STECKBRIEF
-// ════════════════════════════════════════════════════════════════
-async function steckbrief() {
-  const users = await api('/api/users');
-  if (!users) return;
-
-  const ROLE_LABEL = { admin: 'Admin', ausbilder: 'Ausbilder', member: 'Mitarbeiter' };
-  const ROLE_COLOR = { admin: '#ef4444', ausbilder: '#a855f7', member: '#22c55e' };
-
-  let filter = window._sbFilter || '';
-  let sortBy = window._sbSort  || 'name';
-
-  function renderList() {
-    let list = users.filter(u =>
-      !filter || u.username.toLowerCase().includes(filter.toLowerCase())
-    );
-    if (sortBy === 'name') list.sort((a, b) => a.username.localeCompare(b.username));
-    if (sortBy === 'role') list.sort((a, b) => {
-      const order = { admin: 0, ausbilder: 1, member: 2 };
-      return (order[a.role] ?? 3) - (order[b.role] ?? 3);
-    });
-
-    const listEl = document.getElementById('sb-list');
-    if (!listEl) return;
-    listEl.innerHTML = list.length === 0
-      ? '<div class="empty"><i class="fas fa-users"></i><p>Keine Mitarbeiter gefunden</p></div>'
-      : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.85rem">
-          ${list.map(u => {
-            const av = u.avatar && u.discord_id
-              ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid ${ROLE_COLOR[u.role]||'#333'}" onerror="this.style.display='none'">`
-              : `<div style="width:52px;height:52px;border-radius:50%;background:#252525;border:2px solid ${ROLE_COLOR[u.role]||'#333'};display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;flex-shrink:0">${esc(u.username.slice(0,2).toUpperCase())}</div>`;
-            return `
-              <div class="card" style="cursor:pointer;border-color:rgba(255,255,255,.06)" onclick="window.open('/profil/${u.id}','_blank')">
-                <div style="display:flex;align-items:center;gap:.75rem">
-                  ${av}
-                  <div style="min-width:0">
-                    <div style="font-weight:800;font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(u.username)}</div>
-                    <div style="font-size:.65rem;font-weight:700;color:${ROLE_COLOR[u.role]||'var(--muted)'};text-transform:uppercase;letter-spacing:.06em;margin-top:.15rem">${ROLE_LABEL[u.role]||u.role}</div>
-                    ${u.rank ? `<div style="font-size:.68rem;color:var(--muted);margin-top:.1rem">${esc(u.rank)}</div>` : ''}
-                  </div>
-                </div>
-                <div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap">
-                  <span style="font-size:.6rem;background:var(--surface2);border-radius:999px;padding:.15rem .5rem;border:1px solid var(--border)">
-                    <i class="fas fa-external-link-alt" style="font-size:.55rem"></i> Profil
-                  </span>
-                </div>
-              </div>`;
-          }).join('')}
-        </div>`;
-  }
-
-  $('pageContent').innerHTML = `
-    <div style="max-width:900px">
-      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.2rem;flex-wrap:wrap">
-        <input id="sb-search" class="input" placeholder="Suche…" value="${esc(filter)}"
-          style="flex:1;min-width:160px" oninput="window._sbFilter=this.value;sbRerender()">
-        <select id="sb-sort" class="input" style="width:auto" onchange="window._sbSort=this.value;sbRerender()">
-          <option value="name" ${sortBy==='name'?'selected':''}>A–Z</option>
-          <option value="role" ${sortBy==='role'?'selected':''}>Rolle</option>
-        </select>
-        <span style="font-size:.75rem;color:var(--muted)">${users.length} Mitarbeiter</span>
-      </div>
-      <div id="sb-list"></div>
-    </div>`;
-
-  window.sbRerender = renderList;
-  renderList();
-}
 
 // ── Start ─────────────────────────────────────────────────────────
 init();
