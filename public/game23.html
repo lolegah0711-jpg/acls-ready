@@ -104,7 +104,13 @@
   <div class="bet-row">
     <span style="font-size:.75rem;color:#4b9168;font-weight:700">EINSATZ:</span>
     <span class="bet-display" id="betDisplay">10 🪙</span>
-    ${[10,25,50,100,250,500,1000].map(v => `<button class="chip${v===10?' active':''}" onclick="setBet(${v})">${v}</button>`).join('')}
+    <button class="chip active" onclick="setBet(10)">10</button>
+    <button class="chip" onclick="setBet(25)">25</button>
+    <button class="chip" onclick="setBet(50)">50</button>
+    <button class="chip" onclick="setBet(100)">100</button>
+    <button class="chip" onclick="setBet(250)">250</button>
+    <button class="chip" onclick="setBet(500)">500</button>
+    <button class="chip" onclick="setBet(1000)">1.000</button>
   </div>
 
   <!-- Guess buttons -->
