@@ -1450,7 +1450,7 @@ async function dashboard() {
     </div>
 
     <!-- Meine Abzeichen -->
-    <div class="card" style="margin-top:1.1rem">
+    <div class="card" id="badgesCard" style="margin-top:1.1rem">
       <div class="card-head">
         <div class="card-head-icon" style="background:rgba(250,204,21,.15)"><i class="fas fa-medal" style="color:#facc15"></i></div>
         <div><div class="card-title">Meine Abzeichen</div><div class="card-sub">${earnedSet.size} von ${Object.keys(BADGE_DEFS).length} freigeschaltet</div></div>
@@ -1620,26 +1620,29 @@ window.toggleNotifPanel = async function() {
     panel.innerHTML = `<div style="padding:2.5rem 1rem;text-align:center;color:var(--muted);font-size:.85rem">
       <i class="fas fa-bell-slash" style="font-size:1.8rem;margin-bottom:.6rem;display:block;opacity:.4"></i>Keine Benachrichtigungen</div>`;
   } else {
-    const items = notifs.map(n => {
+    window._notifData = notifs;
+    const items = notifs.map((n, i) => {
       const d = n.data;
       const time = notifRelTime(n.created_at);
       const icon = ICONS[n.type] || '🔔';
       let text = '';
       if (n.type === 'badge') {
         const bdef = BADGE_DEFS[d.badgeType];
-        text = bdef ? `Badge erhalten: <b>${esc(bdef.label)}</b>` : 'Neues Badge erhalten';
+        text = bdef
+          ? `Badge erhalten: <b>${esc(bdef.label)}</b><div style="color:var(--muted);font-size:.74rem;margin-top:.12rem">Für: ${esc(bdef.desc)}</div>`
+          : 'Neues Badge erhalten';
       } else if (n.type === 'transfer_in') {
         text = `<b>${esc(d.from)}</b> hat dir <b style="color:#fbbf24">${d.amount} Coins</b> überwiesen`;
       } else if (n.type === 'guestbook') {
-        text = `<b>${esc(d.authorName)}</b> hat in dein Gästebuch geschrieben`;
+        text = `<b>${esc(d.authorName)}</b> hat in dein Gästebuch geschrieben${d.preview ? `<div style="color:var(--muted);font-size:.74rem;margin-top:.12rem">„${esc(d.preview)}…"</div>` : ''}`;
       }
       const dot = n.is_read ? '' : `<span style="width:7px;height:7px;min-width:7px;border-radius:50%;background:#ef4444;margin-top:.3rem"></span>`;
-      return `<div style="display:flex;align-items:flex-start;gap:.65rem;padding:.75rem 1rem;border-bottom:1px solid var(--border);font-size:.82rem${n.is_read ? '' : ';background:var(--surface2)'}">
+      return `<div onclick="openNotif(${i})" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='${n.is_read ? 'transparent' : 'var(--surface2)'}'" style="display:flex;align-items:flex-start;gap:.65rem;padding:.75rem 1rem;border-bottom:1px solid var(--border);font-size:.82rem;cursor:pointer${n.is_read ? '' : ';background:var(--surface2)'}">
         <span style="font-size:1.1rem;margin-top:.05rem;flex-shrink:0">${icon}</span>
         <div style="flex:1;min-width:0">
           <div style="line-height:1.45">${text}</div>
           <div style="color:var(--muted);font-size:.72rem;margin-top:.2rem">${time}</div>
-        </div>${dot}</div>`;
+        </div>${dot}<i class="fas fa-chevron-right" style="color:var(--muted);font-size:.7rem;margin-top:.3rem;opacity:.6"></i></div>`;
     }).join('');
     panel.innerHTML = `<div style="padding:.65rem 1rem;border-bottom:1px solid var(--border);font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:flex;align-items:center;justify-content:space-between">
       <span><i class="fas fa-bell" style="margin-right:.4rem"></i>Benachrichtigungen</span>
@@ -1659,6 +1662,29 @@ window.toggleNotifPanel = async function() {
     }
     document.addEventListener('click', outside);
   }, 10);
+};
+
+// Klick auf eine Benachrichtigung → zum passenden Ort springen
+window.openNotif = function(i) {
+  const n = (window._notifData || [])[i];
+  if (_notifPanel) { _notifPanel.remove(); _notifPanel = null; }
+  if (!n) return;
+  if (n.type === 'badge') {
+    navigate('dashboard');
+    setTimeout(() => {
+      const c = $('badgesCard');
+      if (!c) return;
+      c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      c.style.transition = 'box-shadow .3s';
+      c.style.boxShadow = '0 0 0 2px var(--orange)';
+      setTimeout(() => { c.style.boxShadow = ''; }, 1800);
+    }, 400);
+  } else if (n.type === 'transfer_in') {
+    navigate('shop');
+  } else if (n.type === 'guestbook') {
+    if (currentUser && currentUser.id) openProfileModal(currentUser.id);
+    else navigate('dashboard');
+  }
 };
 
 // ════════════════════════════════════════════════════════════════
