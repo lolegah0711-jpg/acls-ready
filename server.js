@@ -1517,7 +1517,7 @@ function requireAuthOrBot(req, res, next) {
   next();
 }
 
-app.get('/api/profile/:id', requireAuthOrBot, (req, res) => {
+app.get('/api/profile/:id', requireAnySession, (req, res) => {
   const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank, ic_weekly_goal, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!u) return res.status(404).json({ error: 'Nicht gefunden' });
   const cosm = db.prepare('SELECT equipped_title, equipped_frame, equipped_banner, equipped_namecolor, equipped_deco FROM coin_balances WHERE discord_id = ?').get(u.discord_id);
