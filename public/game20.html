@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACLS Mines – Spielbank</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:radial-gradient(ellipse at 50% 18%,#2a1149 0%,#160a2e 55%,#080414 100%);font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;}
+    .topbar{width:100%;max-width:520px;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;gap:8px;}
+    .nav{background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;}
+    .title{font-weight:900;font-size:18px;letter-spacing:.04em;background:linear-gradient(90deg,#fbbf24,#f472b6,#a855f7);-webkit-background-clip:text;background-clip:text;color:transparent;}
+    .chip-bal{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.45);border:1px solid rgba(251,191,36,.4);border-radius:999px;padding:7px 14px;font-weight:800;font-size:15px;color:#fbbf24;white-space:nowrap;}
+    .stage{width:100%;max-width:520px;padding:4px 14px 30px;display:flex;flex-direction:column;align-items:center;gap:12px;}
+    .banner{min-height:26px;font-weight:800;font-size:15px;text-align:center;}
+    .multrow{display:flex;gap:10px;align-items:stretch;width:100%;}
+    .multbox{flex:1;background:rgba(0,0,0,.35);border:1px solid rgba(168,85,247,.25);border-radius:12px;padding:10px;text-align:center;}
+    .multbox .l{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.4);}
+    .multbox .v{font-weight:900;font-size:20px;color:#fde047;}
+    .multbox .v.next{color:#34d399;font-size:16px;}
+    .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;width:100%;}
+    .tile{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;font-size:clamp(20px,7vw,30px);border-radius:12px;background:linear-gradient(160deg,#241144,#160a2e);border:1px solid rgba(255,255,255,.08);cursor:pointer;transition:transform .08s,background .15s,border-color .15s;user-select:none;}
+    .tile.dis{cursor:default;}
+    .tile:not(.dis):hover{background:linear-gradient(160deg,#2e1656,#1c0d38);border-color:rgba(168,85,247,.5);}
+    .tile:not(.dis):active{transform:scale(.94);}
+    .tile.gem{background:radial-gradient(circle,#0c4a2e,#04221a);border-color:#34d399;animation:pop .25s ease;}
+    .tile.bomb{background:radial-gradient(circle,#5b1a1a,#2a0d0d);border-color:#ef4444;animation:pop .25s ease;}
+    .tile.dim{opacity:.4;}
+    @keyframes pop{from{transform:scale(.5)}to{transform:scale(1)}}
+    .controls{width:100%;display:flex;flex-direction:column;gap:12px;}
+    .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+    .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9b8bbf;width:100%;}
+    .betbox{display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.14);border-radius:11px;padding:4px 8px;flex:1;min-width:130px;}
+    .betbox input{flex:1;background:none;border:none;color:#fff;font-size:18px;font-weight:800;font-family:inherit;outline:none;width:50px;}
+    .qbtn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#cbd5e1;font-weight:800;font-size:12px;padding:8px 11px;border-radius:9px;cursor:pointer;font-family:inherit;}
+    .qbtn.active{border-color:#fbbf24;color:#1a0e00;background:linear-gradient(135deg,#fbbf24,#f59e0b);}
+    .btn{padding:14px;border-radius:13px;border:none;font-weight:900;font-size:16px;cursor:pointer;font-family:inherit;width:100%;transition:filter .12s,transform .08s;}
+    .btn:active{transform:translateY(1px);}.btn:disabled{opacity:.45;cursor:default;}
+    .btn-start{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff;}
+    .btn-cash{background:linear-gradient(135deg,#34d399,#059669);color:#04221a;}
+    .protect{font-size:11px;color:#9b8bbf;text-align:center;line-height:1.5;}
+    .protect b{color:#fde047;}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:100;padding:16px;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#0f0a1c;border:1px solid #2a1a44;border-radius:18px;padding:30px;max-width:420px;width:100%;text-align:center;max-height:90vh;overflow-y:auto;}
+    .sub{color:#9b8bbf;font-size:14px;margin:8px 0 18px;line-height:1.5;}
+    .btn-spin{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1a0e00;font-weight:900;padding:13px 28px;border-radius:12px;text-decoration:none;display:inline-block;border:none;font-family:inherit;font-size:15px;cursor:pointer;}
+    .lb-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #1c1430;font-size:13px;}
+    .lb-rank{width:24px;text-align:center;font-weight:700;}.lb-name{flex:1;font-weight:600;}.lb-score{font-weight:700;color:#fde047;}
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <a href="/spielbank" class="nav">← Spielbank</a>
+  <div class="title">💣 ACLS MINES</div>
+  <div style="display:flex;gap:6px;align-items:center">
+    <button class="nav" style="cursor:pointer" onclick="openLb()">🏆</button>
+    <div class="chip-bal">🪙 <span id="balance">–</span></div>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="banner" id="banner">&nbsp;</div>
+
+  <div class="multrow" id="multrow" style="display:none">
+    <div class="multbox"><div class="l">Aktuell</div><div class="v" id="curMult">×1.00</div></div>
+    <div class="multbox"><div class="l">Nächstes Feld</div><div class="v next" id="nextMult">–</div></div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="controls" id="setup">
+    <div class="row">
+      <label class="lbl">Einsatz</label>
+      <div class="betbox"><span style="color:#fbbf24;font-weight:800">🪙</span><input id="bet" type="number" value="10"></div>
+      <button class="qbtn" onclick="halve()">½</button>
+      <button class="qbtn" onclick="dbl()">2×</button>
+    </div>
+    <div class="row" id="mineSel">
+      <label class="lbl">Bomben</label>
+      <button class="qbtn" data-m="1">1</button>
+      <button class="qbtn active" data-m="3">3</button>
+      <button class="qbtn" data-m="5">5</button>
+      <button class="qbtn" data-m="10">10</button>
+      <button class="qbtn" data-m="24">24</button>
+    </div>
+    <button class="btn btn-start" id="startBtn" onclick="startGame()">Spiel starten</button>
+    <div class="protect">Heute noch verlierbar: <b id="lossLeft">–</b> Coins. ACLS-Coins haben keinen realen Geldwert.</div>
+  </div>
+
+  <div class="controls" id="playing" style="display:none">
+    <button class="btn btn-cash" id="cashBtn" onclick="cashout()">Auszahlen</button>
+    <div class="protect">Decke sichere Felder auf – jeder Treffer erhöht den Multiplikator. Zahl rechtzeitig aus!</div>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-login">
+  <div class="ov-card"><div style="font-size:44px;margin-bottom:6px">🔒</div><h2>Anmeldung nötig</h2>
+  <p class="sub">Mines läuft mit deinen ACLS-Coins.<br>Melde dich zuerst im Portal an.</p>
+  <a href="/" class="btn-spin">Zum Portal</a></div>
+</div>
+<div class="ov hidden" id="ov-lb">
+  <div class="ov-card"><h2 style="margin-bottom:4px">🏆 Rangliste</h2><p class="sub">ACLS Mines – Größter Netto-Gewinn</p>
+  <div id="lb-list" style="text-align:left;max-height:300px;overflow-y:auto"></div>
+  <button class="btn-spin" style="margin-top:16px;background:rgba(255,255,255,.1);color:#fff" onclick="closeOv('ov-lb')">Schließen</button></div>
+</div>
+
+<script>
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const $=id=>document.getElementById(id);
+const fmt=n=>(+n||0).toLocaleString('de-DE');
+const TILES=25;
+let balance=0, busy=false, mines=3, active=false, revealedSet=new Set(), curMultVal=1, currentUser=null, DAILY=5000, minBet=5, maxBet=250;
+
+function minesMult(m,k){ if(k<=0)return 1; let f=1; for(let i=0;i<k;i++)f*=(TILES-i)/(TILES-m-i); return Math.floor(0.97*f*100)/100; }
+
+function buildGrid(){
+  $('grid').innerHTML=Array.from({length:TILES},(_,i)=>`<div class="tile dis" id="t${i}" onclick="reveal(${i})">${active?'':'❓'}</div>`).join('');
+}
+function setTileClickable(on){
+  for(let i=0;i<TILES;i++){ const t=$('t'+i); if(!t)continue; if(on&&!revealedSet.has(i)){t.classList.remove('dis');t.textContent='';}else t.classList.add('dis'); }
+}
+function setBalance(b){balance=b;$('balance').textContent=fmt(b);}
+function setBanner(t,c){$('banner').innerHTML=t?`<span style="color:${c||'#fff'}">${t}</span>`:'&nbsp;';}
+function halve(){$('bet').value=Math.max(minBet,Math.floor((+$('bet').value||0)/2));}
+function dbl(){$('bet').value=Math.min(maxBet,(+$('bet').value||0)*2||minBet);}
+
+$('mineSel').addEventListener('click',e=>{const b=e.target.closest('button[data-m]');if(!b||active)return;mines=+b.dataset.m;[...document.querySelectorAll('#mineSel .qbtn')].forEach(x=>x.classList.toggle('active',x===b));});
+
+function showPlaying(on){
+  $('setup').style.display=on?'none':'';
+  $('playing').style.display=on?'':'none';
+  $('multrow').style.display=on?'':'none';
+}
+function updateMult(){
+  const k=revealedSet.size;
+  curMultVal=minesMult(mines,k);
+  $('curMult').textContent='×'+curMultVal.toFixed(2);
+  const next=k<TILES-mines?minesMult(mines,k+1):null;
+  $('nextMult').textContent=next?'×'+next.toFixed(2):'–';
+  $('cashBtn').textContent=k>0?`Auszahlen ×${curMultVal.toFixed(2)} (+${fmt(Math.floor((+$('bet').value||0)*0))})`:'Auszahlen';
+  $('cashBtn').disabled=k<1;
+}
+
+async function post(url,body){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const d=await r.json(); if(!r.ok)throw new Error(d.error||'Fehler'); return d;
+}
+
+async function startGame(){
+  if(busy)return;
+  let bet=Math.floor(+$('bet').value||0);
+  if(bet<minBet)bet=minBet; if(bet>maxBet)bet=maxBet; $('bet').value=bet;
+  if(bet>balance){setBanner('Nicht genug Coins','#f87171');return;}
+  busy=true;$('startBtn').disabled=true;setBanner('');
+  try{
+    const d=await post('/api/mines/start',{bet,mines});
+    setBalance(d.balance); active=true; revealedSet=new Set(d.revealed||[]);
+    buildGrid(); setTileClickable(true); showPlaying(true); updateMult();
+    setBanner(`💣 ${mines} Bomben versteckt – viel Glück!`,'#a855f7');
+  }catch(e){setBanner(esc(e.message),'#f87171');}
+  busy=false;$('startBtn').disabled=false;
+}
+
+async function reveal(i){
+  if(busy||!active||revealedSet.has(i))return;
+  busy=true;
+  try{
+    const d=await post('/api/mines/reveal',{tile:i});
+    if(d.mine){
+      // Bombe getroffen → alle zeigen
+      active=false;
+      (d.minePositions||[]).forEach(p=>{const t=$('t'+p);if(t){t.className='tile dis bomb';t.textContent='💣';}});
+      const t=$('t'+i); if(t){t.style.boxShadow='0 0 18px 3px #ef4444';}
+      for(let k=0;k<TILES;k++){const tt=$('t'+k); if(tt&&!tt.classList.contains('bomb')&&!revealedSet.has(k))tt.classList.add('dim');}
+      setTileClickable(false);
+      setBanner('💥 BOOM! Bombe getroffen – Einsatz verloren.','#f87171');
+      endGame();
+    } else {
+      revealedSet.add(i);
+      const t=$('t'+i); if(t){t.className='tile dis gem';t.textContent='💎';}
+      if(d.cashedOut){
+        active=false; setBalance(d.balance);
+        (d.minePositions||[]).forEach(p=>{const tt=$('t'+p);if(tt){tt.className='tile dis bomb';tt.textContent='💣';}});
+        setBanner(`🏆 Alle Felder sicher! ×${d.multiplier.toFixed(2)} → +${fmt(d.win)} 🪙`,'#34d399');
+        endGame();
+      } else {
+        curMultVal=d.multiplier;
+        $('curMult').textContent='×'+d.multiplier.toFixed(2);
+        $('nextMult').textContent=d.nextMultiplier?'×'+d.nextMultiplier.toFixed(2):'–';
+        const win=Math.round((+$('bet').value||0)*d.multiplier);
+        $('cashBtn').disabled=false;
+        $('cashBtn').textContent=`Auszahlen ×${d.multiplier.toFixed(2)} (+${fmt(win)} 🪙)`;
+      }
+    }
+  }catch(e){setBanner(esc(e.message),'#f87171');}
+  busy=false;
+}
+
+async function cashout(){
+  if(busy||!active||revealedSet.size<1)return;
+  busy=true;$('cashBtn').disabled=true;
+  try{
+    const d=await post('/api/mines/cashout',{});
+    active=false; setBalance(d.balance);
+    (d.minePositions||[]).forEach(p=>{const tt=$('t'+p);if(tt){tt.className='tile dis bomb';tt.textContent='💣';}});
+    setTileClickable(false);
+    setBanner(`✅ Ausgezahlt: ×${d.multiplier.toFixed(2)} → +${fmt(d.win)} 🪙`,'#34d399');
+    endGame();
+  }catch(e){setBanner(esc(e.message),'#f87171');$('cashBtn').disabled=false;}
+  busy=false;
+}
+
+function endGame(){
+  setTimeout(()=>{ showPlaying(false); buildGrid(); revealedSet=new Set(); $('startBtn').disabled=false; loadState(true); loadLb(); }, 2200);
+}
+
+function openOv(id){$(id).classList.remove('hidden');}
+function closeOv(id){$(id).classList.add('hidden');}
+async function openLb(){ openOv('ov-lb'); loadLb(); }
+async function loadLb(){
+  const el=$('lb-list'); if(!el)return; el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Laden…</div>';
+  try{
+    const data=await (await fetch('/api/game-scores/mines')).json();
+    if(!data.length){el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Noch keine Einträge</div>';return;}
+    const M=['🥇','🥈','🥉'];
+    el.innerHTML=data.slice(0,10).map((r,i)=>`<div class="lb-row"><div class="lb-rank">${i<3?M[i]:(i+1)+'.'}</div><div class="lb-name">${esc(r.username||'Spieler')}</div><div class="lb-score">+${fmt(r.score)}</div></div>`).join('');
+  }catch{el.innerHTML='<div style="text-align:center;color:#ef4444">Fehler</div>';}
+}
+
+async function loadState(silent){
+  let d;
+  try{ const r=await fetch('/api/mines/state'); if(r.status===401){$('ov-login').classList.remove('hidden');return;} d=await r.json(); }
+  catch{ if(!silent)$('ov-login').classList.remove('hidden'); return; }
+  minBet=d.minBet;maxBet=d.maxBet;DAILY=d.dailyLossLimit;
+  setBalance(d.balance);
+  $('lossLeft').textContent=fmt(typeof d.lossLeft!=='undefined'?d.lossLeft:DAILY);
+  if(d.game){ // laufendes Spiel fortsetzen
+    active=true; mines=d.game.mines; revealedSet=new Set(d.game.revealed||[]);
+    [...document.querySelectorAll('#mineSel .qbtn')].forEach(x=>x.classList.toggle('active',+x.dataset.m===mines));
+    buildGrid();
+    revealedSet.forEach(i=>{const t=$('t'+i);if(t){t.className='tile dis gem';t.textContent='💎';}});
+    setTileClickable(true); showPlaying(true);
+    $('curMult').textContent='×'+(d.game.multiplier||1).toFixed(2);
+    $('nextMult').textContent=d.game.nextMultiplier?'×'+d.game.nextMultiplier.toFixed(2):'–';
+    $('cashBtn').disabled=revealedSet.size<1;
+    if(revealedSet.size>0)$('cashBtn').textContent=`Auszahlen ×${(d.game.multiplier||1).toFixed(2)}`;
+    setBanner('Spiel fortgesetzt – decke weiter auf oder zahle aus.','#a855f7');
+  } else if(!silent){ buildGrid(); }
+}
+
+async function init(){
+  buildGrid();
+  try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  loadState(false);
+}
+init();
+</script>
+</body>
+</html>

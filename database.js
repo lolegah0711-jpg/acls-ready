@@ -617,6 +617,17 @@ function initDb() {
     PRIMARY KEY (week, discord_id, quest_id)
   )`);
 
+  // ── Mines: laufendes Spiel pro Spieler (persistiert über Neustarts) ──
+  db.exec(`CREATE TABLE IF NOT EXISTS mines_games (
+    discord_id  TEXT PRIMARY KEY,
+    username    TEXT,
+    bet         INTEGER NOT NULL,
+    mines       INTEGER NOT NULL,
+    mine_pos    TEXT NOT NULL,
+    revealed    TEXT NOT NULL DEFAULT '[]',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
   // ── Idle-Werkstatt: Prestige-Punkte (spendbar) + permanente Prestige-Upgrades ──
   try { db.exec('ALTER TABLE idle_saves ADD COLUMN prestige_points INTEGER NOT NULL DEFAULT 0'); } catch {}
   try { db.exec("ALTER TABLE idle_saves ADD COLUMN prestige_upgrades TEXT NOT NULL DEFAULT '{}'"); } catch {}

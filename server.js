@@ -2541,6 +2541,8 @@ app.get('/game16', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ga
 app.get('/game17', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game17.html')));
 app.get('/game18', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game18.html')));
 app.get('/game19', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game19.html')));
+app.get('/game20', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game20.html')));
+app.get('/game21', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game21.html')));
 app.get('/spielbank', (req, res) => res.sendFile(path.join(__dirname, 'public', 'spielbank.html')));
 app.get('/quiz', (req, res) => {
   const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
@@ -4365,6 +4367,212 @@ app.post('/api/bigbass/spin', (req, res) => {
   });
 });
 
+// ════════════════════════════════════════════════════════════════
+//  MINES  (5×5 – Bomben meiden, Multiplikator steigt, jederzeit Cashout)
+//  RTP fest = MINES_RTP (jeder Cashout = RTP × faire Quote, strategieunabhängig).
+//  Spielzustand in DB (übersteht Neustarts).
+// ════════════════════════════════════════════════════════════════
+const MINES_MIN_BET = 5, MINES_MAX_BET = 250, MINES_TILES = 25;
+const MINES_DAILY_LOSS_LIMIT = 5000, MINES_ABS_MAX_WIN = 250000, MINES_RTP = 0.97;
+
+function minesDailyNet(did) {
+  return db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM coin_transactions
+    WHERE discord_id = ? AND reason LIKE 'mines:%' AND date(created_at) = date('now')`).get(did).s;
+}
+// Multiplikator nach k sicheren Aufdeckungen bei m Bomben (RTP × faire Quote)
+function minesMultiplier(mines, k) {
+  if (k <= 0) return 1;
+  let f = 1;
+  for (let i = 0; i < k; i++) f *= (MINES_TILES - i) / (MINES_TILES - mines - i);
+  return Math.floor(MINES_RTP * f * 100) / 100;
+}
+function minesStatePayload(g) {
+  const revealed = JSON.parse(g.revealed);
+  const safeTotal = MINES_TILES - g.mines;
+  return {
+    active: true, bet: g.bet, mines: g.mines, revealed, picks: revealed.length, safeTotal,
+    multiplier: minesMultiplier(g.mines, revealed.length),
+    nextMultiplier: revealed.length < safeTotal ? minesMultiplier(g.mines, revealed.length + 1) : null,
+  };
+}
+function finishMinesScore(ident, netWin) {
+  if (netWin <= 0) return;
+  if (ident.user) {
+    db.prepare(`INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, 'mines', ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, game) DO UPDATE SET
+        score = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+        updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END`).run(ident.user.id, netWin);
+    checkGameBadges(ident.user.id, ident.id);
+  } else {
+    db.prepare(`INSERT INTO visitor_game_scores (discord_id, username, game, score, updated_at) VALUES (?, ?, 'mines', ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(discord_id, game) DO UPDATE SET
+        score = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+        updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END,
+        username = excluded.username`).run(ident.id, ident.name, netWin);
+  }
+}
+
+app.get('/api/mines/state', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+  const net = minesDailyNet(ident.id);
+  const g = db.prepare('SELECT * FROM mines_games WHERE discord_id = ?').get(ident.id);
+  res.json({
+    balance: bal, username: ident.name,
+    minBet: MINES_MIN_BET, maxBet: MINES_MAX_BET, tiles: MINES_TILES,
+    dailyNet: net, dailyLossLimit: MINES_DAILY_LOSS_LIMIT,
+    lossLeft: Math.max(0, MINES_DAILY_LOSS_LIMIT + Math.min(0, net)),
+    game: g ? minesStatePayload(g) : null,
+  });
+});
+
+app.post('/api/mines/start', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`mines:${ident.id}`, 60, 60_000)) return res.status(429).json({ error: 'Zu schnell' });
+  if (db.prepare('SELECT 1 FROM mines_games WHERE discord_id = ?').get(ident.id))
+    return res.status(400).json({ error: 'Es läuft bereits ein Spiel' });
+  const bet = Math.floor(+req.body.bet || 0);
+  const mines = Math.floor(+req.body.mines || 0);
+  if (!Number.isInteger(bet) || bet < MINES_MIN_BET || bet > MINES_MAX_BET)
+    return res.status(400).json({ error: `Einsatz: ${MINES_MIN_BET}–${MINES_MAX_BET} Coins` });
+  if (!Number.isInteger(mines) || mines < 1 || mines > 24)
+    return res.status(400).json({ error: 'Bomben: 1–24' });
+  if (minesDailyNet(ident.id) <= -MINES_DAILY_LOSS_LIMIT)
+    return res.status(400).json({ error: `Tages-Verlustlimit erreicht (${MINES_DAILY_LOSS_LIMIT} Coins). Spielerschutz – morgen geht's weiter.` });
+
+  const bal = addCoins(ident.id, ident.name, -bet, 'mines:bet', { bet, mines });
+  if (bal === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+
+  const idx = [...Array(MINES_TILES).keys()];
+  for (let i = idx.length - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [idx[i], idx[j]] = [idx[j], idx[i]]; }
+  const minePos = idx.slice(0, mines).sort((a, b) => a - b);
+  db.prepare('INSERT INTO mines_games (discord_id, username, bet, mines, mine_pos, revealed) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(ident.id, ident.name, bet, mines, JSON.stringify(minePos), '[]');
+  try { seasonIncQuest(ident.id, 'games', 1); } catch {}
+
+  const g = db.prepare('SELECT * FROM mines_games WHERE discord_id = ?').get(ident.id);
+  res.json({ ok: true, balance: bal, ...minesStatePayload(g) });
+});
+
+app.post('/api/mines/reveal', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const g = db.prepare('SELECT * FROM mines_games WHERE discord_id = ?').get(ident.id);
+  if (!g) return res.status(400).json({ error: 'Kein laufendes Spiel' });
+  const tile = Math.floor(+req.body.tile);
+  if (!Number.isInteger(tile) || tile < 0 || tile >= MINES_TILES) return res.status(400).json({ error: 'Ungültiges Feld' });
+  const revealed = JSON.parse(g.revealed);
+  if (revealed.includes(tile)) return res.status(400).json({ error: 'Feld schon aufgedeckt' });
+  const minePos = JSON.parse(g.mine_pos);
+
+  if (minePos.includes(tile)) {
+    db.prepare('DELETE FROM mines_games WHERE discord_id = ?').run(ident.id);
+    const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+    return res.json({ ok: true, mine: true, tile, minePositions: minePos, balance: bal, dailyNet: minesDailyNet(ident.id) });
+  }
+
+  revealed.push(tile);
+  const safeTotal = MINES_TILES - g.mines;
+  if (revealed.length >= safeTotal) {
+    const mult = minesMultiplier(g.mines, safeTotal);
+    const win = Math.min(Math.round(g.bet * mult), MINES_ABS_MAX_WIN);
+    const bal = addCoins(ident.id, ident.name, win, 'mines:win', { bet: g.bet, mines: g.mines, x: mult });
+    db.prepare('DELETE FROM mines_games WHERE discord_id = ?').run(ident.id);
+    finishMinesScore(ident, win - g.bet);
+    return res.json({ ok: true, mine: false, tile, revealed, cashedOut: true, multiplier: mult, win, balance: bal, minePositions: minePos });
+  }
+  db.prepare('UPDATE mines_games SET revealed = ? WHERE discord_id = ?').run(JSON.stringify(revealed), ident.id);
+  res.json({ ok: true, mine: false, tile, revealed, picks: revealed.length, safeTotal,
+    multiplier: minesMultiplier(g.mines, revealed.length),
+    nextMultiplier: minesMultiplier(g.mines, revealed.length + 1) });
+});
+
+app.post('/api/mines/cashout', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const g = db.prepare('SELECT * FROM mines_games WHERE discord_id = ?').get(ident.id);
+  if (!g) return res.status(400).json({ error: 'Kein laufendes Spiel' });
+  const revealed = JSON.parse(g.revealed);
+  if (revealed.length < 1) return res.status(400).json({ error: 'Erst mindestens ein Feld aufdecken' });
+  const mult = minesMultiplier(g.mines, revealed.length);
+  const win = Math.min(Math.round(g.bet * mult), MINES_ABS_MAX_WIN);
+  const bal = addCoins(ident.id, ident.name, win, 'mines:win', { bet: g.bet, mines: g.mines, x: mult });
+  db.prepare('DELETE FROM mines_games WHERE discord_id = ?').run(ident.id);
+  finishMinesScore(ident, win - g.bet);
+  res.json({ ok: true, win, multiplier: mult, balance: bal, minePositions: JSON.parse(g.mine_pos) });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  ACLS ROCKET (Crash) — Ziel-Multiplikator setzen, vor dem Absturz kassieren.
+//  Crash-Punkt server-seitig: crash = RTP/(1-r). P(Crash ≥ m) = RTP/m
+//  → EV = RTP × Einsatz für JEDES Ziel (fair, exploit-/disconnect-sicher).
+// ════════════════════════════════════════════════════════════════
+const ROCKET_MIN_BET = 5, ROCKET_MAX_BET = 250;
+const ROCKET_DAILY_LOSS_LIMIT = 5000, ROCKET_ABS_MAX_WIN = 250000;
+const ROCKET_RTP = 0.97, ROCKET_MAX_TARGET = 100;
+
+function rocketDailyNet(did) {
+  return db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM coin_transactions
+    WHERE discord_id = ? AND reason LIKE 'rocket:%' AND date(created_at) = date('now')`).get(did).s;
+}
+function finishRocketScore(ident, netWin) {
+  if (netWin <= 0) return;
+  if (ident.user) {
+    db.prepare(`INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, 'rocket', ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, game) DO UPDATE SET
+        score = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+        updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END`).run(ident.user.id, netWin);
+    checkGameBadges(ident.user.id, ident.id);
+  } else {
+    db.prepare(`INSERT INTO visitor_game_scores (discord_id, username, game, score, updated_at) VALUES (?, ?, 'rocket', ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(discord_id, game) DO UPDATE SET
+        score = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+        updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END,
+        username = excluded.username`).run(ident.id, ident.name, netWin);
+  }
+}
+
+app.get('/api/rocket/state', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+  const net = rocketDailyNet(ident.id);
+  res.json({
+    balance: bal, username: ident.name,
+    minBet: ROCKET_MIN_BET, maxBet: ROCKET_MAX_BET, maxTarget: ROCKET_MAX_TARGET,
+    dailyNet: net, dailyLossLimit: ROCKET_DAILY_LOSS_LIMIT,
+    lossLeft: Math.max(0, ROCKET_DAILY_LOSS_LIMIT + Math.min(0, net)),
+  });
+});
+
+app.post('/api/rocket/play', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`rocket:${ident.id}`, 90, 60_000)) return res.status(429).json({ error: 'Zu schnell – kurz durchatmen' });
+  const bet = Math.floor(+req.body.bet || 0);
+  const target = Math.floor((+req.body.target || 0) * 100) / 100;
+  if (!Number.isInteger(bet) || bet < ROCKET_MIN_BET || bet > ROCKET_MAX_BET)
+    return res.status(400).json({ error: `Einsatz: ${ROCKET_MIN_BET}–${ROCKET_MAX_BET} Coins` });
+  if (!isFinite(target) || target < 1.01 || target > ROCKET_MAX_TARGET)
+    return res.status(400).json({ error: `Ziel-Multiplikator: 1.01×–${ROCKET_MAX_TARGET}×` });
+  if (rocketDailyNet(ident.id) <= -ROCKET_DAILY_LOSS_LIMIT)
+    return res.status(400).json({ error: `Tages-Verlustlimit erreicht (${ROCKET_DAILY_LOSS_LIMIT} Coins). Spielerschutz – morgen geht's weiter.` });
+
+  const bal0 = addCoins(ident.id, ident.name, -bet, 'rocket:bet', { bet, target });
+  if (bal0 === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+
+  const r = crypto.randomInt(1, 1_000_000_000) / 1_000_000_000; // (0,1)
+  const crashPoint = Math.floor((ROCKET_RTP / (1 - r)) * 100) / 100; // kann < 1.00 sein → Sofort-Crash
+  const won = crashPoint >= target;
+  let win = 0, balance = bal0;
+  if (won) { win = Math.min(Math.round(bet * target), ROCKET_ABS_MAX_WIN); balance = addCoins(ident.id, ident.name, win, 'rocket:win', { bet, x: target }); finishRocketScore(ident, win - bet); }
+  try { seasonIncQuest(ident.id, 'games', 1); } catch {}
+
+  res.json({ ok: true, crashPoint, target, won, win, balance, dailyNet: rocketDailyNet(ident.id) });
+});
+
 // Big Wins für die Spielbank-Lobby (Slot + Blackjack)
 app.get('/api/casino/recent-wins', (req, res) => {
   const ident = coinIdent(req);
@@ -4372,7 +4580,7 @@ app.get('/api/casino/recent-wins', (req, res) => {
   const rows = db.prepare(`
     SELECT cb.username AS username, t.amount AS amount, t.reason AS reason, t.meta AS meta, t.created_at AS created_at
     FROM coin_transactions t LEFT JOIN coin_balances cb ON cb.discord_id = t.discord_id
-    WHERE t.reason IN ('slot:win', 'blackjack:win', 'plinko:win', 'bigbass:win') AND t.amount >= 250
+    WHERE t.reason IN ('slot:win', 'blackjack:win', 'plinko:win', 'bigbass:win', 'mines:win', 'rocket:win') AND t.amount >= 250
     ORDER BY t.id DESC LIMIT 12`).all();
   res.json(rows.map(r => {
     let meta = {}; try { meta = JSON.parse(r.meta || '{}'); } catch {}

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACLS Rocket – Crash</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:radial-gradient(ellipse at 50% 10%,#0a1a3a 0%,#0a0f24 55%,#05060f 100%);font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;}
+    .topbar{width:100%;max-width:520px;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;gap:8px;}
+    .nav{background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;cursor:pointer;}
+    .title{font-weight:900;font-size:18px;letter-spacing:.04em;background:linear-gradient(90deg,#60a5fa,#fbbf24,#f472b6);-webkit-background-clip:text;background-clip:text;color:transparent;}
+    .chip-bal{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.45);border:1px solid rgba(251,191,36,.4);border-radius:999px;padding:7px 14px;font-weight:800;font-size:15px;color:#fbbf24;white-space:nowrap;}
+    .stage{width:100%;max-width:520px;padding:4px 14px 30px;display:flex;flex-direction:column;align-items:center;gap:12px;}
+    .sky{position:relative;width:100%;height:300px;border-radius:18px;overflow:hidden;background:linear-gradient(180deg,#0b1840 0%,#0a0f24 70%,#070a18 100%);border:1px solid rgba(96,165,250,.2);box-shadow:inset 0 0 50px rgba(96,165,250,.08);}
+    .stars{position:absolute;inset:0;background-image:radial-gradient(1px 1px at 20% 30%,#fff,transparent),radial-gradient(1px 1px at 70% 60%,#fff,transparent),radial-gradient(1px 1px at 40% 80%,#fff,transparent),radial-gradient(1px 1px at 85% 20%,#fff,transparent),radial-gradient(1px 1px at 55% 45%,#fff,transparent);opacity:.5;}
+    .mult{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-weight:900;font-size:54px;letter-spacing:.02em;color:#fff;text-shadow:0 0 24px rgba(96,165,250,.6);z-index:3;transition:color .15s;}
+    .mult.win{color:#34d399;text-shadow:0 0 28px rgba(52,211,153,.7);}
+    .mult.crash{color:#ef4444;text-shadow:0 0 28px rgba(239,68,68,.7);}
+    .rocket{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);font-size:38px;z-index:2;transition:bottom .05s linear;}
+    .substage{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:13px;font-weight:700;color:#9bb3d8;z-index:3;}
+    .hist{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;min-height:24px;}
+    .hchip{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);}
+    .controls{width:100%;display:flex;flex-direction:column;gap:12px;}
+    .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+    .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9bb3d8;width:100%;}
+    .ibox{display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.14);border-radius:11px;padding:4px 8px;flex:1;min-width:120px;}
+    .ibox input{flex:1;background:none;border:none;color:#fff;font-size:18px;font-weight:800;font-family:inherit;outline:none;width:50px;}
+    .qbtn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#cbd5e1;font-weight:800;font-size:12px;padding:8px 11px;border-radius:9px;cursor:pointer;font-family:inherit;}
+    .qbtn.active{border-color:#60a5fa;color:#04122e;background:linear-gradient(135deg,#60a5fa,#3b82f6);}
+    .btn{padding:15px;border-radius:13px;border:none;font-weight:900;font-size:16px;cursor:pointer;font-family:inherit;width:100%;transition:filter .12s,transform .08s;}
+    .btn:active{transform:translateY(1px);}.btn:disabled{opacity:.45;cursor:default;}
+    .btn-launch{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1a0e00;}
+    .protect{font-size:11px;color:#9bb3d8;text-align:center;line-height:1.5;}.protect b{color:#fde047;}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:100;padding:16px;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#0a0f24;border:1px solid #16224a;border-radius:18px;padding:30px;max-width:420px;width:100%;text-align:center;max-height:90vh;overflow-y:auto;}
+    .sub{color:#9bb3d8;font-size:14px;margin:8px 0 18px;line-height:1.5;}
+    .btn-spin{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1a0e00;font-weight:900;padding:13px 28px;border-radius:12px;text-decoration:none;display:inline-block;border:none;font-family:inherit;font-size:15px;cursor:pointer;}
+    .lb-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #16224a;font-size:13px;}
+    .lb-rank{width:24px;text-align:center;font-weight:700;}.lb-name{flex:1;font-weight:600;}.lb-score{font-weight:700;color:#fde047;}
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <a href="/spielbank" class="nav">← Spielbank</a>
+  <div class="title">🚀 ACLS ROCKET</div>
+  <div style="display:flex;gap:6px;align-items:center">
+    <button class="nav" onclick="openLb()">🏆</button>
+    <div class="chip-bal">🪙 <span id="balance">–</span></div>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="sky">
+    <div class="stars"></div>
+    <div class="mult" id="mult">1.00×</div>
+    <div class="rocket" id="rocket">🚀</div>
+    <div class="substage" id="substage">Ziel setzen &amp; starten</div>
+  </div>
+
+  <div class="hist" id="hist"></div>
+
+  <div class="controls">
+    <div class="row">
+      <label class="lbl">Einsatz</label>
+      <div class="ibox"><span style="color:#fbbf24;font-weight:800">🪙</span><input id="bet" type="number" value="10"></div>
+      <button class="qbtn" onclick="halve()">½</button>
+      <button class="qbtn" onclick="dbl()">2×</button>
+    </div>
+    <div class="row">
+      <label class="lbl">Ziel-Multiplikator (Auto-Cashout)</label>
+      <div class="ibox"><input id="target" type="number" step="0.1" value="2.00"><span style="color:#60a5fa;font-weight:800">×</span></div>
+      <button class="qbtn" data-t="1.5">1.5×</button>
+      <button class="qbtn active" data-t="2">2×</button>
+      <button class="qbtn" data-t="3">3×</button>
+      <button class="qbtn" data-t="5">5×</button>
+      <button class="qbtn" data-t="10">10×</button>
+    </div>
+    <button class="btn btn-launch" id="launchBtn" onclick="launch()">🚀 Start – Gewinn bei Ziel: +<span id="potWin">20</span> 🪙</button>
+    <div class="protect">Heute noch verlierbar: <b id="lossLeft">–</b> Coins. Die Rakete stürzt zufällig ab – erreicht sie dein Ziel, kassierst du automatisch.</div>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-login">
+  <div class="ov-card"><div style="font-size:44px;margin-bottom:6px">🔒</div><h2>Anmeldung nötig</h2>
+  <p class="sub">ACLS Rocket läuft mit deinen ACLS-Coins.<br>Melde dich zuerst im Portal an.</p>
+  <a href="/" class="btn-spin">Zum Portal</a></div>
+</div>
+<div class="ov hidden" id="ov-lb">
+  <div class="ov-card"><h2 style="margin-bottom:4px">🏆 Rangliste</h2><p class="sub">ACLS Rocket – Größter Netto-Gewinn</p>
+  <div id="lb-list" style="text-align:left;max-height:300px;overflow-y:auto"></div>
+  <button class="btn-spin" style="margin-top:16px;background:rgba(255,255,255,.1);color:#fff" onclick="closeOv('ov-lb')">Schließen</button></div>
+</div>
+
+<script>
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const $=id=>document.getElementById(id);
+const fmt=n=>(+n||0).toLocaleString('de-DE');
+let balance=0, busy=false, target=2, currentUser=null, DAILY=5000, minBet=5, maxBet=250, maxTarget=100;
+const K=0.5; // Animationstempo (rein kosmetisch – Fairness ist zeitunabhängig)
+const history=[];
+
+function setBalance(b){balance=b;$('balance').textContent=fmt(b);}
+function halve(){$('bet').value=Math.max(minBet,Math.floor((+$('bet').value||0)/2));updatePot();}
+function dbl(){$('bet').value=Math.min(maxBet,(+$('bet').value||0)*2||minBet);updatePot();}
+function updatePot(){const bet=Math.floor(+$('bet').value||0);$('potWin').textContent=fmt(Math.round(bet*target));}
+$('bet').addEventListener('input',updatePot);
+$('target').addEventListener('input',()=>{const v=+$('target').value;if(isFinite(v)&&v>=1.01){target=Math.floor(v*100)/100;[...document.querySelectorAll('[data-t]')].forEach(x=>x.classList.toggle('active',+x.dataset.t===target));updatePot();}});
+document.querySelectorAll('[data-t]').forEach(b=>b.addEventListener('click',()=>{if(busy)return;target=+b.dataset.t;$('target').value=target.toFixed(2);[...document.querySelectorAll('[data-t]')].forEach(x=>x.classList.toggle('active',x===b));updatePot();}));
+
+// Multiplikator → Höhe im Himmel (log-Skala, Deckel bei ~20×)
+function heightPct(m){ return Math.min(90, Math.log(Math.max(1,m))/Math.log(20)*90); }
+function placeRocket(m){ $('rocket').style.bottom=(8+heightPct(m)*2.7)+'px'; }
+
+async function post(url,body){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const d=await r.json(); if(!r.ok)throw new Error(d.error||'Fehler'); return d;
+}
+
+function pushHist(m,won){
+  history.unshift({m,won}); if(history.length>8)history.pop();
+  $('hist').innerHTML=history.map(h=>`<span class="hchip" style="color:${h.won?'#34d399':'#f87171'};border-color:${h.won?'rgba(52,211,153,.4)':'rgba(248,113,113,.35)'}">${h.m.toFixed(2)}×</span>`).join('');
+}
+
+function animate(stopM, won, crashPoint, winAmt, finalBalance){
+  return new Promise(resolve=>{
+    const mEl=$('mult'); mEl.className='mult';
+    let start=null;
+    function frame(ts){
+      if(start===null)start=ts;
+      const t=(ts-start)/1000;
+      let m=Math.exp(K*t);
+      if(m>=stopM){ m=stopM; }
+      mEl.textContent=m.toFixed(2)+'×';
+      placeRocket(m);
+      if(m>=stopM){
+        if(won){
+          mEl.classList.add('win'); mEl.textContent=stopM.toFixed(2)+'×';
+          $('substage').innerHTML=`<span style="color:#34d399">✅ Kassiert bei ×${target.toFixed(2)} · +${fmt(winAmt)} 🪙</span>`;
+          $('rocket').style.transition='bottom .6s ease-in'; $('rocket').style.bottom='320px';
+        } else {
+          mEl.classList.add('crash'); $('rocket').textContent='💥';
+          $('substage').innerHTML=`<span style="color:#f87171">💥 Abgestürzt bei ×${crashPoint.toFixed(2)}</span>`;
+        }
+        setBalance(finalBalance);
+        pushHist(won?target:crashPoint, won);
+        setTimeout(resolve,1400);
+        return;
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+async function launch(){
+  if(busy)return;
+  let bet=Math.floor(+$('bet').value||0);
+  if(bet<minBet)bet=minBet; if(bet>maxBet)bet=maxBet; $('bet').value=bet; updatePot();
+  let tg=Math.floor((+$('target').value||0)*100)/100;
+  if(!(tg>=1.01)){setSub('Ziel ≥ 1.01× setzen','#f87171');return;}
+  if(tg>maxTarget)tg=maxTarget; target=tg; $('target').value=tg.toFixed(2);
+  if(bet>balance){setSub('Nicht genug Coins','#f87171');return;}
+  busy=true;$('launchBtn').disabled=true;
+  // reset visuals
+  $('rocket').style.transition='bottom .05s linear';$('rocket').textContent='🚀';$('rocket').style.bottom='8px';
+  $('mult').className='mult';$('mult').textContent='1.00×';$('substage').textContent='🚀 Start…';
+  try{
+    const d=await post('/api/rocket/play',{bet,target:tg});
+    const stopM = d.won ? d.target : d.crashPoint;
+    await animate(Math.max(1.0,stopM), d.won, d.crashPoint, d.win, d.balance);
+    $('lossLeft').textContent=fmt(Math.max(0,DAILY+Math.min(0,d.dailyNet)));
+  }catch(e){ setSub(esc(e.message),'#f87171'); }
+  busy=false;$('launchBtn').disabled=false;
+}
+function setSub(t,c){$('substage').innerHTML=`<span style="color:${c||'#9bb3d8'}">${t}</span>`;}
+
+function openOv(id){$(id).classList.remove('hidden');}
+function closeOv(id){$(id).classList.add('hidden');}
+async function openLb(){ openOv('ov-lb'); const el=$('lb-list'); el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Laden…</div>';
+  try{ const data=await (await fetch('/api/game-scores/rocket')).json();
+    if(!data.length){el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Noch keine Einträge</div>';return;}
+    const M=['🥇','🥈','🥉'];
+    el.innerHTML=data.slice(0,10).map((r,i)=>`<div class="lb-row"><div class="lb-rank">${i<3?M[i]:(i+1)+'.'}</div><div class="lb-name">${esc(r.username||'Spieler')}</div><div class="lb-score">+${fmt(r.score)}</div></div>`).join('');
+  }catch{el.innerHTML='<div style="text-align:center;color:#ef4444">Fehler</div>';}
+}
+
+async function init(){
+  placeRocket(1);
+  try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  try{
+    const r=await fetch('/api/rocket/state'); if(r.status===401){$('ov-login').classList.remove('hidden');return;}
+    const d=await r.json();
+    minBet=d.minBet;maxBet=d.maxBet;maxTarget=d.maxTarget;DAILY=d.dailyLossLimit;
+    setBalance(d.balance);
+    $('lossLeft').textContent=fmt(typeof d.lossLeft!=='undefined'?d.lossLeft:DAILY);
+    updatePot();
+  }catch{$('ov-login').classList.remove('hidden');}
+}
+init();
+</script>
+</body>
+</html>
