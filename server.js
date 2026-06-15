@@ -4152,7 +4152,7 @@ app.post('/api/blackjack/stand', (req, res) => {
 const SLOT_MIN_BET          = 5;
 const SLOT_MAX_BET          = 250;
 const SLOT_FEATURE_MAX_BET  = 50;       // Feature-Kauf = 100× Einsatz → max 5000 Coins
-const SLOT_DAILY_LOSS_LIMIT = 5000;     // Spielerschutz: max Netto-Verlust pro Tag
+const SLOT_DAILY_LOSS_LIMIT = 15000;     // Spielerschutz: max Netto-Verlust pro Tag
 const SLOT_ABS_MAX_WIN      = 250000;   // harte Obergrenze pro Spin (Coin-Wirtschaft)
 
 function slotDailyNet(did) {
@@ -4235,7 +4235,7 @@ app.post('/api/slot/spin', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 const PLINKO_MIN_BET          = 5;
 const PLINKO_MAX_BET          = 250;
-const PLINKO_DAILY_LOSS_LIMIT = 5000;
+const PLINKO_DAILY_LOSS_LIMIT = 15000;
 const PLINKO_ABS_MAX_WIN      = 250000;
 const PLINKO_ROWS             = 12;
 const PLINKO_TABLES = {
@@ -4320,7 +4320,7 @@ app.post('/api/plinko/drop', (req, res) => {
 const BIGBASS_MIN_BET          = 5;
 const BIGBASS_MAX_BET          = 250;
 const BIGBASS_FEATURE_MAX_BET  = 50;       // Feature-Kauf = 60× Einsatz → max 3000 Coins
-const BIGBASS_DAILY_LOSS_LIMIT = 5000;
+const BIGBASS_DAILY_LOSS_LIMIT = 15000;
 const BIGBASS_ABS_MAX_WIN      = 250000;
 
 function bigbassDailyNet(did) {
@@ -4402,7 +4402,7 @@ app.post('/api/bigbass/spin', (req, res) => {
 //  Spielzustand in DB (übersteht Neustarts).
 // ════════════════════════════════════════════════════════════════
 const MINES_MIN_BET = 5, MINES_MAX_BET = 250, MINES_TILES = 25;
-const MINES_DAILY_LOSS_LIMIT = 5000, MINES_ABS_MAX_WIN = 250000, MINES_RTP = 0.97;
+const MINES_DAILY_LOSS_LIMIT = 15000, MINES_ABS_MAX_WIN = 250000, MINES_RTP = 0.97;
 
 function minesDailyNet(did) {
   return db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM coin_transactions
@@ -4539,7 +4539,7 @@ app.post('/api/mines/cashout', (req, res) => {
 //  → EV = RTP × Einsatz für JEDES Ziel (fair, exploit-/disconnect-sicher).
 // ════════════════════════════════════════════════════════════════
 const ROCKET_MIN_BET = 5, ROCKET_MAX_BET = 250;
-const ROCKET_DAILY_LOSS_LIMIT = 5000, ROCKET_ABS_MAX_WIN = 250000;
+const ROCKET_DAILY_LOSS_LIMIT = 15000, ROCKET_ABS_MAX_WIN = 250000;
 const ROCKET_RTP = 0.97, ROCKET_MAX_TARGET = 100;
 
 function rocketDailyNet(did) {

@@ -3,7 +3,7 @@ const crypto  = require('crypto');
 
 const HILO_MIN_BET     = 10;
 const HILO_MAX_BET     = 1000;
-const DAILY_LOSS_LIMIT = 2500;
+const DAILY_LOSS_LIMIT = 15000;
 
 const VAL_LABELS = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const SUITS      = ['♠', '♥', '♦', '♣'];
