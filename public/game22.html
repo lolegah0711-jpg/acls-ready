@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACLS Roulette</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:radial-gradient(ellipse at 50% 0%,#0a2a0a 0%,#081408 60%,#030803 100%);font-family:'Inter',sans-serif;color:#fff;min-height:100vh;}
+    .wrap{max-width:900px;margin:0 auto;padding:14px 16px 60px;}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
+    .nav{background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:7px 14px;border-radius:9px;font-size:12px;font-weight:600;text-decoration:none;}
+    .chip-bal{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.45);border:1px solid rgba(34,197,94,.4);border-radius:999px;padding:8px 16px;font-weight:800;font-size:16px;color:#4ade80;}
+    .hero{text-align:center;padding:12px 0 6px;}
+    .hero h1{font-size:clamp(24px,6vw,38px);font-weight:900;background:linear-gradient(90deg,#4ade80,#22d3ee,#4ade80);-webkit-background-clip:text;background-clip:text;color:transparent;}
+    .hero p{color:#4b7a5b;font-size:13px;margin-top:3px;}
+
+    /* Roulette Wheel */
+    .wheel-area{display:flex;justify-content:center;margin:16px 0 10px;}
+    .wheel-container{position:relative;width:240px;height:240px;}
+    .wheel-svg{width:100%;height:100%;filter:drop-shadow(0 0 20px rgba(34,197,94,.35));}
+    .pointer{position:absolute;top:-8px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;border-top:22px solid #fbbf24;filter:drop-shadow(0 0 4px #fbbf24);}
+    .result-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:38px;font-weight:900;text-shadow:0 0 12px currentColor;}
+    .result-num.rot{color:#ef4444;}
+    .result-num.schwarz{color:#e5e7eb;}
+    .result-num.null{color:#4ade80;}
+
+    /* Tableau */
+    .tableau-wrap{background:rgba(0,80,0,.25);border:2px solid #16a34a;border-radius:14px;padding:12px;margin-bottom:12px;}
+    .tableau-title{font-size:11px;font-weight:700;color:#4ade80;letter-spacing:.08em;margin-bottom:8px;text-transform:uppercase;}
+    .numbers-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;margin-bottom:6px;}
+    .num-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border-radius:4px;cursor:pointer;transition:transform .1s,box-shadow .1s;border:1.5px solid transparent;user-select:none;}
+    .num-cell:hover{transform:scale(1.12);}
+    .num-cell.r{background:#991b1b;color:#fff;}
+    .num-cell.b{background:#1f2937;color:#fff;}
+    .num-cell.z{background:#166534;color:#4ade80;font-size:10px;}
+    .num-cell.sel{box-shadow:0 0 0 2px #fbbf24;border-color:#fbbf24;}
+    .outside-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-top:4px;}
+    .outside-grid .o-col2{grid-column:span 2;}
+    .out-btn{display:flex;align-items:center;justify-content:center;padding:7px 4px;border-radius:7px;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.15);font-size:11px;font-weight:700;cursor:pointer;transition:background .12s,border-color .12s;color:#d1fae5;text-align:center;line-height:1.3;}
+    .out-btn:hover,.out-btn.sel{background:rgba(251,191,36,.15);border-color:#fbbf24;color:#fbbf24;}
+
+    /* Chip selector */
+    .chip-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:10px 0;}
+    .chip{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;cursor:pointer;border:3px solid transparent;transition:transform .1s,border-color .1s;position:relative;}
+    .chip:hover{transform:scale(1.1);}
+    .chip.active{border-color:#fbbf24;box-shadow:0 0 8px #fbbf24;}
+    .chip-10{background:#3b82f6;}
+    .chip-25{background:#8b5cf6;}
+    .chip-50{background:#ef4444;}
+    .chip-100{background:#f97316;}
+    .chip-250{background:#fbbf24;color:#1a0e00;}
+    .chip-500{background:#22c55e;color:#052e16;}
+
+    /* Bet list */
+    .bets-area{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px;margin-bottom:10px;min-height:52px;}
+    .bets-empty{color:#4b7a5b;font-size:13px;text-align:center;padding:10px 0;}
+    .bet-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:600;margin:2px;cursor:pointer;}
+    .bet-tag:hover{background:rgba(239,68,68,.2);border-color:#ef4444;}
+    .total-bet{font-size:12px;color:#9ca3af;text-align:right;margin-top:4px;}
+
+    /* Controls */
+    .controls{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:12px;}
+    .btn{padding:10px 22px;border-radius:9px;border:none;font-family:inherit;font-weight:800;font-size:14px;cursor:pointer;transition:opacity .1s,transform .1s;}
+    .btn:hover{opacity:.88;transform:translateY(-1px);}
+    .btn:disabled{opacity:.4;cursor:default;transform:none;}
+    .btn-spin{background:linear-gradient(135deg,#16a34a,#4ade80);color:#052e16;}
+    .btn-clear{background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.4);color:#fca5a5;}
+
+    /* Result overlay */
+    .result-toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#0f1f0f;border:2px solid #16a34a;border-radius:14px;padding:16px 28px;font-weight:800;font-size:18px;text-align:center;z-index:200;display:none;min-width:240px;box-shadow:0 0 30px rgba(34,197,94,.4);}
+    .result-toast.show{display:block;animation:fadeInOut 3s ease forwards;}
+    @keyframes fadeInOut{0%{opacity:0;transform:translateX(-50%) translateY(-10px)}10%{opacity:1;transform:translateX(-50%) translateY(0)}80%{opacity:1}100%{opacity:0;transform:translateX(-50%) translateY(-10px)}}
+    .rt-num{font-size:40px;font-weight:900;margin:4px 0;}
+    .rt-num.rot{color:#ef4444;}
+    .rt-num.schwarz{color:#d1d5db;}
+    .rt-num.null{color:#4ade80;}
+
+    /* Limit bar */
+    .limit-bar{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:8px 12px;font-size:11px;color:#9ca3af;display:flex;justify-content:space-between;margin-bottom:10px;}
+    .limit-bar span{font-weight:700;color:#4ade80;}
+
+    .ov{position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#081408;border:1px solid #16a34a;border-radius:18px;padding:32px;max-width:380px;width:100%;text-align:center;}
+    .ov-card .btn-spin{display:inline-block;text-decoration:none;padding:12px 28px;border-radius:10px;margin-top:12px;}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a href="/spielbank" class="nav">← Spielbank</a>
+    <div class="chip-bal">🪙 <span id="balance">–</span></div>
+  </div>
+  <div class="hero">
+    <h1>🎡 ACLS Roulette</h1>
+    <p>Europäisches Roulette · Einsatz: 10 – 500 Coins · ~97 % Auszahlungsquote</p>
+  </div>
+
+  <div class="wheel-area">
+    <div class="wheel-container">
+      <svg class="wheel-svg" id="wheelSvg" viewBox="0 0 240 240"></svg>
+      <div class="pointer"></div>
+      <div class="result-num hidden" id="resultNum"></div>
+    </div>
+  </div>
+
+  <div class="limit-bar">
+    <div>Tages-Verlustlimit: <span id="lossLeft">–</span> / 8.000 🪙 übrig</div>
+    <div>Heutige Net: <span id="dailyNet">–</span></div>
+  </div>
+
+  <!-- Chip selector -->
+  <div class="chip-row">
+    <div class="chip chip-10  active" data-val="10"  onclick="selectChip(10)">10</div>
+    <div class="chip chip-25"         data-val="25"  onclick="selectChip(25)">25</div>
+    <div class="chip chip-50"         data-val="50"  onclick="selectChip(50)">50</div>
+    <div class="chip chip-100"        data-val="100" onclick="selectChip(100)">100</div>
+    <div class="chip chip-250"        data-val="250" onclick="selectChip(250)">250</div>
+    <div class="chip chip-500"        data-val="500" onclick="selectChip(500)">500</div>
+  </div>
+
+  <!-- Tableau -->
+  <div class="tableau-wrap">
+    <div class="tableau-title">Tableau — Klicken um Einsatz zu platzieren</div>
+    <div class="numbers-grid" id="numbersGrid"></div>
+    <div class="outside-grid">
+      <div class="out-btn o-col2" onclick="placeBet('dozen','1')">1–12</div>
+      <div class="out-btn o-col2" onclick="placeBet('dozen','2')">13–24</div>
+      <div class="out-btn o-col2" onclick="placeBet('dozen','3')">25–36</div>
+      <div class="out-btn o-col2" onclick="placeBet('half','1-18')">1–18</div>
+      <div class="out-btn o-col2" onclick="placeBet('even_odd','gerade')">Gerade</div>
+      <div class="out-btn o-col2" id="btnRot"    onclick="placeBet('color','rot')">🔴 Rot</div>
+      <div class="out-btn o-col2" id="btnSchwarz" onclick="placeBet('color','schwarz')">⚫ Schwarz</div>
+      <div class="out-btn o-col2" onclick="placeBet('even_odd','ungerade')">Ungerade</div>
+      <div class="out-btn o-col2" onclick="placeBet('half','19-36')">19–36</div>
+      <div class="out-btn" onclick="placeBet('column','1')">Kol. 1</div>
+      <div class="out-btn" onclick="placeBet('column','2')">Kol. 2</div>
+      <div class="out-btn" onclick="placeBet('column','3')">Kol. 3</div>
+    </div>
+  </div>
+
+  <!-- Aktive Einsätze -->
+  <div class="bets-area" id="betsArea">
+    <div class="bets-empty" id="betsEmpty">Noch kein Einsatz — Chip wählen und auf Tableau klicken</div>
+  </div>
+
+  <!-- Spin -->
+  <div class="controls">
+    <button class="btn btn-clear" id="btnClear" onclick="clearBets()" disabled>Einsätze löschen</button>
+    <button class="btn btn-spin"  id="btnSpin"  onclick="doSpin()"   disabled>Drehen 🎡</button>
+  </div>
+
+  <div style="font-size:11px;color:#374151;text-align:center;line-height:1.6">
+    Einzel-Nummer 35:1 · Rot/Schwarz 1:1 · Gerade/Ungerade 1:1 · 1-18/19-36 1:1 · Dutzend 2:1 · Kolonne 2:1
+  </div>
+</div>
+
+<div class="result-toast" id="resultToast"></div>
+
+<div class="ov hidden" id="ovLogin">
+  <div class="ov-card">
+    <div style="font-size:44px">🔒</div>
+    <h2 style="margin:8px 0">Anmeldung nötig</h2>
+    <p style="color:#4b7a5b;margin:8px 0 0">Die Spielbank läuft mit deinen ACLS-Coins.</p>
+    <a href="/" class="btn btn-spin" style="text-decoration:none;display:inline-block;margin-top:14px">Zum Portal</a>
+  </div>
+</div>
+
+<script>
+const RED  = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+const BLK  = new Set([2,4,6,8,10,11,13,15,17,20,22,24,26,28,29,31,33,35]);
+
+let chipVal = 10;
+let bets    = []; // [{type,value,amount,label}]
+let spinning = false;
+let redNums  = RED, blackNums = BLK;
+
+// ── Wheel SVG ────────────────────────────────────────────────────
+const WHEEL_ORDER = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
+function buildWheel() {
+  const svg = document.getElementById('wheelSvg');
+  const cx = 120, cy = 120, r = 108, ri = 60;
+  const n = WHEEL_ORDER.length;
+  const segAngle = (2 * Math.PI) / n;
+  let html = '';
+  WHEEL_ORDER.forEach((num, i) => {
+    const a0 = i * segAngle - Math.PI / 2;
+    const a1 = a0 + segAngle;
+    const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+    const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    const xi0 = cx + ri * Math.cos(a0), yi0 = cy + ri * Math.sin(a0);
+    const xi1 = cx + ri * Math.cos(a1), yi1 = cy + ri * Math.sin(a1);
+    const fill = num === 0 ? '#166534' : RED.has(num) ? '#7f1d1d' : '#111827';
+    const tc = num === 0 ? '#4ade80' : '#fff';
+    const mid = a0 + segAngle / 2;
+    const tx = cx + (r * 0.76) * Math.cos(mid);
+    const ty = cy + (r * 0.76) * Math.sin(mid);
+    html += `<path d="M${xi0},${yi0} L${x0},${y0} A${r},${r} 0 0,1 ${x1},${y1} L${xi1},${yi1} A${ri},${ri} 0 0,0 ${xi0},${yi0} Z" fill="${fill}" stroke="#0a1a0a" stroke-width="0.8"/>`;
+    html += `<text x="${tx}" y="${ty}" text-anchor="middle" dominant-baseline="middle" font-size="7" font-weight="700" fill="${tc}" transform="rotate(${(mid * 180 / Math.PI + 90) % 360 - 90},${tx},${ty})">${num}</text>`;
+  });
+  // Centre
+  html += `<circle cx="${cx}" cy="${cy}" r="${ri}" fill="#0a1a0a" stroke="#16a34a" stroke-width="2"/>`;
+  html += `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-size="18" fill="#4ade80">🎡</text>`;
+  svg.innerHTML = html;
+}
+
+// ── Numbers grid ─────────────────────────────────────────────────
+function buildGrid() {
+  const g = document.getElementById('numbersGrid');
+  // Row: 3,6,9... / 2,5,8... / 1,4,7...  plus 0
+  let html = `<div class="num-cell z" id="cell-0" onclick="placeBet('color','null')" style="grid-column:span 1;font-size:9px">0</div>`;
+  // 3 rows, 12 columns = 36 numbers
+  for (let row = 3; row >= 1; row--) {
+    for (let col = 0; col < 12; col++) {
+      const n = col * 3 + row;
+      const cls = RED.has(n) ? 'r' : 'b';
+      html += `<div class="num-cell ${cls}" id="cell-${n}" onclick="placeBet('single',${n})">${n}</div>`;
+    }
+  }
+  g.innerHTML = html;
+}
+
+// ── Chip selection ───────────────────────────────────────────────
+function selectChip(val) {
+  chipVal = val;
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', +c.dataset.val === val));
+}
+
+// ── Bet placement ────────────────────────────────────────────────
+function betLabel(type, value) {
+  if (type === 'single') return `Zahl ${value}`;
+  if (type === 'color')  return value === 'rot' ? '🔴 Rot' : value === 'schwarz' ? '⚫ Schwarz' : '🟢 Null';
+  if (type === 'even_odd') return value === 'gerade' ? 'Gerade' : 'Ungerade';
+  if (type === 'half')   return value;
+  if (type === 'dozen')  return `${value}. Dutzend`;
+  if (type === 'column') return `Kolonne ${value}`;
+  return '';
+}
+
+function placeBet(type, value) {
+  const existing = bets.find(b => b.type === type && String(b.value) === String(value));
+  if (existing) { existing.amount += chipVal; }
+  else { bets.push({ type, value: String(value), amount: chipVal, label: betLabel(type, value) }); }
+  renderBets();
+}
+
+function removeBet(i) {
+  bets.splice(i, 1);
+  renderBets();
+}
+
+function clearBets() {
+  bets = [];
+  renderBets();
+}
+
+function renderBets() {
+  const area  = document.getElementById('betsArea');
+  const empty = document.getElementById('betsEmpty');
+  const total = bets.reduce((s, b) => s + b.amount, 0);
+  if (!bets.length) {
+    area.innerHTML = '<div class="bets-empty">Noch kein Einsatz — Chip wählen und auf Tableau klicken</div>';
+  } else {
+    area.innerHTML = bets.map((b, i) =>
+      `<span class="bet-tag" onclick="removeBet(${i})" title="Klicken zum Entfernen">
+        ${b.label} · <b>${b.amount.toLocaleString('de-DE')} 🪙</b> ✕
+      </span>`
+    ).join('') + `<div class="total-bet">Gesamt: <b>${total.toLocaleString('de-DE')} 🪙</b></div>`;
+  }
+  document.getElementById('btnSpin').disabled  = !bets.length || spinning;
+  document.getElementById('btnClear').disabled = !bets.length || spinning;
+}
+
+// ── Spin ─────────────────────────────────────────────────────────
+async function doSpin() {
+  if (spinning || !bets.length) return;
+  spinning = true;
+  document.getElementById('btnSpin').disabled  = true;
+  document.getElementById('btnClear').disabled = true;
+
+  try {
+    const res  = await fetch('/api/roulette/play', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ bets }) });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Fehler'); spinning = false; renderBets(); return; }
+
+    // Animate wheel
+    await animateWheel(data.number);
+
+    // Show result
+    const color = data.color;
+    const el = document.getElementById('resultNum');
+    el.textContent = data.number;
+    el.className = `result-num ${color}`;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 3500);
+
+    // Toast
+    const net = data.net;
+    const toast = document.getElementById('resultToast');
+    const colorName = color === 'rot' ? '🔴' : color === 'schwarz' ? '⚫' : '🟢';
+    toast.innerHTML = `<div style="color:#9ca3af;font-size:13px">Ergebnis</div>
+      <div class="rt-num ${color}">${colorName} ${data.number}</div>
+      <div style="color:${net >= 0 ? '#4ade80' : '#f87171'};font-size:17px">${net >= 0 ? '+' : ''}${net.toLocaleString('de-DE')} 🪙</div>`;
+    toast.className = 'result-toast show';
+    setTimeout(() => { toast.className = 'result-toast'; }, 3200);
+
+    document.getElementById('balance').textContent = (+data.balance).toLocaleString('de-DE');
+    loadState();
+    bets = [];
+    renderBets();
+  } catch (e) {
+    alert('Netzwerkfehler: ' + e.message);
+  }
+  spinning = false;
+  document.getElementById('btnSpin').disabled  = false;
+  document.getElementById('btnClear').disabled = false;
+}
+
+// ── Wheel animation ──────────────────────────────────────────────
+async function animateWheel(targetNumber) {
+  return new Promise(resolve => {
+    const svg    = document.getElementById('wheelSvg');
+    const n      = WHEEL_ORDER.length;
+    const segDeg = 360 / n;
+    const idx    = WHEEL_ORDER.indexOf(targetNumber);
+    const targetDeg = idx * segDeg + segDeg / 2; // Mitte des Segments
+    const totalSpin = 1440 + (360 - targetDeg); // ~4 Umdrehungen + Position
+    let start = null;
+    const duration = 3500;
+    function easeOut(t) { return 1 - Math.pow(1 - t, 4); }
+    function frame(ts) {
+      if (!start) start = ts;
+      const elapsed = ts - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const angle = easeOut(progress) * totalSpin;
+      svg.style.transform = `rotate(${angle}deg)`;
+      if (progress < 1) requestAnimationFrame(frame);
+      else resolve();
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+// ── State ────────────────────────────────────────────────────────
+async function loadState() {
+  try {
+    const r = await fetch('/api/roulette/state');
+    if (r.status === 401) { document.getElementById('ovLogin').classList.remove('hidden'); return; }
+    const d = await r.json();
+    document.getElementById('balance').textContent  = (+d.balance).toLocaleString('de-DE');
+    document.getElementById('lossLeft').textContent = (+d.lossLeft).toLocaleString('de-DE');
+    document.getElementById('dailyNet').textContent = (d.dailyNet >= 0 ? '+' : '') + (+d.dailyNet).toLocaleString('de-DE');
+  } catch {}
+}
+
+// ── Init ─────────────────────────────────────────────────────────
+buildWheel();
+buildGrid();
+loadState();
+</script>
+</body>
+</html>

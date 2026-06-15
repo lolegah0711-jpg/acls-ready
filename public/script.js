@@ -156,6 +156,10 @@ const PAGES = {
   shop:         { title: 'Coin-Shop',             sub: 'ACLS-Coins verdienen & ausgeben' },
   saison:       { title: 'Saison-Pass',           sub: 'Wochen-Quests, XP & Belohnungen' },
   freunde:      { title: 'Freunde',               sub: 'Freundesliste & Statistik-Vergleich' },
+  schwarzmarkt: { title: 'Schwarzmarkt',          sub: 'Tägliche Sonderangebote – nur 24h verfügbar' },
+  feedback:     { title: 'Feedback & Ideen',      sub: 'Vorschläge einreichen & abstimmen' },
+  frageneditor: { title: 'Fragen-Editor',         sub: 'Prüfungsfragen verwalten (Admin)' },
+  beschwerden:  { title: 'Beschwerde-Kanban',     sub: 'Beschwerden verwalten (Admin)' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -1045,6 +1049,8 @@ function bootApp() {
   $('auditlogNavItem').style.display     = isAdmin()     ? '' : 'none';
   $('ausbildungNavItem').style.display   = isAusbilder() ? '' : 'none';
   $('applicationsNavItem').style.display = isAdmin()     ? '' : 'none';
+  $('frageneditorNavItem').style.display = isAdmin()     ? '' : 'none';
+  $('beschwerdenNavItem').style.display  = isAdmin()     ? '' : 'none';
   document.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', e => {
       if (el.getAttribute('href') && !el.dataset.page) return; // external links open normally
@@ -1207,7 +1213,7 @@ function navigate(page) {
   $('pageContent').innerHTML    = loading();
 
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden };
   (renders[page] || dashboard)();
 }
 
@@ -1516,7 +1522,10 @@ async function dashboard() {
     </div>` : ''}
 
     <!-- Wöchentliche Challenges (ganz unten, volle Breite) -->
-    <div id="staffChallengesWidget" style="margin-top:1.1rem"></div>`;
+    <div id="staffChallengesWidget" style="margin-top:1.1rem"></div>
+
+    <!-- Einheitliche Spiele-Rangliste -->
+    <div id="gameLeaderboardWidget" style="margin-top:1.1rem"></div>`;
   animateCountUps();
   requestAnimationFrame(() => requestAnimationFrame(animateBadgeRings));
   loadTwitchWidget();
@@ -1524,6 +1533,7 @@ async function dashboard() {
   dashboard._twitchPoll = setInterval(loadTwitchWidget, 2 * 60 * 1000);
   loadPollWidget('staffPollWidget');
   loadChallengesWidget('staffChallengesWidget');
+  loadGameLeaderboard('gameLeaderboardWidget');
   connectSSE();
 }
 
@@ -6460,6 +6470,466 @@ window.duelAnswer = async answer => {
   }
   if (r.correct) toast(`Richtig! +${r.points} Punkte`, 'ok');
   setTimeout(() => { if (duelVisible() && _duel.code) duelArena(_duel.code); }, 1100);
+};
+
+// ════════════════════════════════════════════════════════════════
+//  GAME-RANGLISTE (Dashboard-Widget)
+// ════════════════════════════════════════════════════════════════
+function _rankBadge(i) {
+  const style = i > 3 ? ' style="background:#2a2a2a;color:var(--muted)"' : '';
+  const cls = i === 1 ? '' : i === 2 ? ' r2' : ' r3';
+  return `<div class="rank-badge${cls}"${style}>${i}</div>`;
+}
+
+async function loadGameLeaderboard(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const data = await api('/api/game-leaderboard');
+  if (!data || !data.length) { el.innerHTML = ''; return; }
+
+  const GAME_LABELS = {
+    race:'Autorennen', brick:'Brick Breaker', deadzone:'Dead Zone', snake:'Snake',
+    tetris:'Tetris', skycop:'Sky Cop', doodle:'Doodle Jump', towerdefense:'Tower Defense',
+    c2048:'2048', survival:'Quiz Survival', flappy:'Flappy Cop', memory:'Memory',
+    wortduell:'Wortduell', pong:'Pong', platformer:'Plattformer', endless:'Endless Runner',
+  };
+
+  let openGame = null;
+
+  function renderWidget() {
+    el.innerHTML = `
+    <div class="card" style="margin-top:0">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-gamepad" style="color:#fbbf24"></i></div>
+        <div><div class="card-title">Spiele-Rangliste</div><div class="card-sub">Bestenlisten aller Minispiele</div></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin:.6rem 0 .9rem">
+        ${data.map(g => `
+          <button onclick="window._glToggle('${g.game}')"
+            style="padding:.3rem .75rem;border-radius:999px;font-size:.73rem;font-weight:700;border:1px solid ${openGame===g.game?'var(--accent)':'var(--border)'};background:${openGame===g.game?'var(--accent)':'var(--surface2)'};color:${openGame===g.game?'#fff':'var(--text)'};cursor:pointer">
+            ${esc(GAME_LABELS[g.game] || g.game)}
+          </button>`).join('')}
+      </div>
+      ${openGame ? (() => {
+        const g = data.find(x => x.game === openGame);
+        if (!g || !g.entries.length) return '<div class="empty"><i class="fas fa-trophy"></i><p>Noch keine Einträge</p></div>';
+        return `<div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+            <thead><tr style="border-bottom:1px solid var(--border)">
+              <th style="padding:.4rem .6rem;text-align:left;color:var(--muted);font-weight:600">#</th>
+              <th style="padding:.4rem .6rem;text-align:left;color:var(--muted);font-weight:600">Spieler</th>
+              <th style="padding:.4rem .6rem;text-align:right;color:var(--muted);font-weight:600">Punkte</th>
+            </tr></thead>
+            <tbody>
+              ${g.entries.map((e, i) => `
+                <tr style="border-bottom:1px solid var(--border);${currentUser && e.discord_id === currentUser.discord_id ? 'background:rgba(168,85,247,.08)' : ''}">
+                  <td style="padding:.4rem .6rem">${_rankBadge(i + 1)}</td>
+                  <td style="padding:.4rem .6rem">
+                    <div style="display:flex;align-items:center;gap:.5rem">
+                      <div style="width:24px;height:24px;flex-shrink:0">${avatarEl(e, 24)}</div>
+                      <span style="font-weight:600">${esc(e.username)}</span>
+                    </div>
+                  </td>
+                  <td style="padding:.4rem .6rem;text-align:right;font-weight:700;color:#fbbf24">${(e.score||0).toLocaleString('de-DE')}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+      })() : '<div style="font-size:.8rem;color:var(--muted);text-align:center;padding:.5rem 0">Spiel auswählen, um die Rangliste zu sehen</div>'}
+    </div>`;
+  }
+
+  window._glToggle = game => {
+    openGame = openGame === game ? null : game;
+    renderWidget();
+  };
+
+  renderWidget();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  SCHWARZMARKT
+// ════════════════════════════════════════════════════════════════
+async function schwarzmarkt() {
+  const data = await api('/api/blackmarket');
+  if (!data) return;
+
+  function msUntilMidnight() {
+    const now = new Date();
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
+    return midnight - now;
+  }
+
+  function fmtCountdown(ms) {
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  $('pageContent').innerHTML = `
+    <div style="max-width:720px">
+      <div class="card" style="margin-bottom:1.2rem;background:linear-gradient(135deg,rgba(239,68,68,.12),rgba(0,0,0,0));border-color:rgba(239,68,68,.35)">
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+          <div style="font-size:2.5rem">🕵️</div>
+          <div style="flex:1">
+            <div style="font-weight:800;font-size:1.1rem">Schwarzmarkt</div>
+            <div style="font-size:.82rem;color:var(--muted);margin-top:.25rem">3 exklusive Angebote täglich – heute um Mitternacht weg. Kein Refund.</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:.7rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em">Rotation in</div>
+            <div id="bm-countdown" style="font-size:1.4rem;font-weight:900;font-variant-numeric:tabular-nums;color:#ef4444;font-family:monospace">${fmtCountdown(msUntilMidnight())}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem">
+        ${data.slots.map(slot => `
+          <div class="card" style="${slot.sold ? 'opacity:.55' : 'border-color:rgba(239,68,68,.4)'}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem">
+              <span style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#ef4444">Angebot ${slot.slot + 1}</span>
+              ${slot.sold ? '<span style="font-size:.65rem;font-weight:700;color:var(--muted)">VERKAUFT</span>' : `<span style="font-size:.65rem;font-weight:800;color:#4ade80">-${slot.discount}%</span>`}
+            </div>
+            <div style="font-weight:800;font-size:.98rem;margin-bottom:.15rem">${esc(slot.name || slot.item_id)}</div>
+            <div style="font-size:.72rem;color:var(--muted);margin-bottom:.75rem">${esc(slot.type || '')}</div>
+            <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.8rem">
+              <span style="font-size:.78rem;color:var(--muted);text-decoration:line-through">${slot.original_price?.toLocaleString('de-DE')} 🪙</span>
+              <span style="font-size:1rem;font-weight:800;color:#fbbf24">${slot.price?.toLocaleString('de-DE')} 🪙</span>
+            </div>
+            ${slot.sold
+              ? '<div style="font-size:.75rem;color:var(--muted);text-align:center;padding:.4rem">Nicht mehr verfügbar</div>'
+              : `<button class="btn btn-primary btn-sm" style="width:100%;background:linear-gradient(135deg,#ef4444,#dc2626)" onclick="bmBuy('${slot.item_id}',${slot.slot})">Kaufen</button>`}
+          </div>`).join('')}
+      </div>
+
+      ${isAdmin() ? `
+        <div style="margin-top:1.5rem">
+          <button class="btn btn-ghost btn-sm" onclick="bmAdminRefresh()"><i class="fas fa-sync"></i> Rotation jetzt zurücksetzen (Admin)</button>
+        </div>` : ''}
+    </div>`;
+
+  clearInterval(schwarzmarkt._cdTimer);
+  schwarzmarkt._cdTimer = setInterval(() => {
+    const el = document.getElementById('bm-countdown');
+    if (!el) { clearInterval(schwarzmarkt._cdTimer); return; }
+    el.textContent = fmtCountdown(msUntilMidnight());
+  }, 1000);
+}
+
+window.bmBuy = async (itemId, slot) => {
+  const r = await api('/api/blackmarket/buy', { method: 'POST', body: { item_id: itemId, slot } });
+  if (r) { toast('Gekauft & ausgerüstet! 🕵️', 'ok'); updateCoinChip(r.balance); schwarzmarkt(); }
+};
+
+window.bmAdminRefresh = async () => {
+  const r = await api('/api/admin/blackmarket/refresh', { method: 'POST' });
+  if (r) { toast('Rotation zurückgesetzt', 'ok'); schwarzmarkt(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  FEEDBACK & IDEEN
+// ════════════════════════════════════════════════════════════════
+async function feedback() {
+  const data = await api('/api/feedback');
+  if (!data) return;
+
+  const STATUS_COLORS = { offen:'#6b7280', in_prüfung:'#fbbf24', umgesetzt:'#22c55e', abgelehnt:'#ef4444' };
+  const STATUS_LABELS = { offen:'Offen', in_prüfung:'In Prüfung', umgesetzt:'Umgesetzt', abgelehnt:'Abgelehnt' };
+
+  $('pageContent').innerHTML = `
+    <div style="max-width:720px">
+      <!-- Einreichen -->
+      <div class="card" style="margin-bottom:1.3rem">
+        <div class="card-head">
+          <div class="card-head-icon" style="background:rgba(34,211,238,.15)"><i class="fas fa-lightbulb" style="color:#22d3ee"></i></div>
+          <div><div class="card-title">Idee einreichen</div><div class="card-sub">Was können wir verbessern?</div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.6rem;margin-top:.5rem">
+          <input id="fb-title" class="input" placeholder="Titel (max. 80 Zeichen)" maxlength="80">
+          <textarea id="fb-desc" class="input" placeholder="Beschreibung (optional)" rows="3" style="resize:vertical"></textarea>
+          <button class="btn btn-primary" onclick="fbSubmit()"><i class="fas fa-paper-plane"></i> Einreichen</button>
+        </div>
+      </div>
+
+      <!-- Ideen-Liste -->
+      <div id="fb-list">
+        ${data.ideas.length === 0
+          ? '<div class="empty"><i class="fas fa-lightbulb"></i><p>Noch keine Ideen – sei der Erste!</p></div>'
+          : data.ideas.map(idea => `
+            <div class="card" style="margin-bottom:.75rem;border-left:3px solid ${STATUS_COLORS[idea.status]||'var(--border)'}">
+              <div style="display:flex;align-items:flex-start;gap:.9rem">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:.25rem;flex-shrink:0;min-width:44px">
+                  <button onclick="fbVote(${idea.id})" style="background:${idea.my_vote?'rgba(168,85,247,.25)':'var(--surface2)'};border:1px solid ${idea.my_vote?'#a855f7':'var(--border)'};border-radius:8px;padding:.3rem .5rem;cursor:pointer;color:${idea.my_vote?'#a855f7':'var(--muted)'}">
+                    <i class="fas fa-chevron-up" style="font-size:.8rem"></i>
+                  </button>
+                  <span style="font-size:.8rem;font-weight:800;color:${idea.my_vote?'#a855f7':'var(--text)'}">${idea.votes}</span>
+                </div>
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.25rem">
+                    <span style="font-weight:700;font-size:.9rem">${esc(idea.title)}</span>
+                    <span style="font-size:.6rem;font-weight:700;padding:.15rem .5rem;border-radius:999px;background:${STATUS_COLORS[idea.status]||'#6b7280'}22;color:${STATUS_COLORS[idea.status]||'var(--muted)'};border:1px solid ${STATUS_COLORS[idea.status]||'var(--border)'}">
+                      ${STATUS_LABELS[idea.status]||idea.status}
+                    </span>
+                    ${isAdmin() ? `<select onchange="fbSetStatus(${idea.id},this.value)" style="font-size:.65rem;padding:.1rem .3rem;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);margin-left:auto">
+                      ${Object.keys(STATUS_LABELS).map(s=>`<option value="${s}" ${idea.status===s?'selected':''}>${STATUS_LABELS[s]}</option>`).join('')}
+                    </select>
+                    <button onclick="fbDelete(${idea.id})" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:.1rem"><i class="fas fa-trash" style="font-size:.7rem"></i></button>` : ''}
+                  </div>
+                  ${idea.description ? `<div style="font-size:.78rem;color:var(--muted);line-height:1.5">${esc(idea.description)}</div>` : ''}
+                  <div style="font-size:.68rem;color:var(--muted);margin-top:.35rem">von <b>${esc(idea.username)}</b> · ${ago(idea.created_at)}</div>
+                </div>
+              </div>
+            </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+window.fbSubmit = async () => {
+  const title = $('fb-title')?.value.trim();
+  const description = $('fb-desc')?.value.trim();
+  if (!title) { toast('Titel ist Pflicht', 'err'); return; }
+  const r = await api('/api/feedback', { method: 'POST', body: { title, description } });
+  if (r) { toast('Idee eingereicht!', 'ok'); feedback(); }
+};
+
+window.fbVote = async id => {
+  const r = await api(`/api/feedback/${id}/vote`, { method: 'POST' });
+  if (r !== null) feedback();
+};
+
+window.fbSetStatus = async (id, status) => {
+  const r = await api(`/api/feedback/${id}/status`, { method: 'PATCH', body: { status } });
+  if (r) feedback();
+};
+
+window.fbDelete = async id => {
+  if (!confirm('Idee wirklich löschen?')) return;
+  const r = await api(`/api/feedback/${id}`, { method: 'DELETE' });
+  if (r) feedback();
+};
+
+// ════════════════════════════════════════════════════════════════
+//  FRAGEN-EDITOR (Admin)
+// ════════════════════════════════════════════════════════════════
+async function frageneditor() {
+  if (!isAdmin()) { toast('Kein Zugriff', 'err'); return; }
+  const stats = await api('/api/admin/questions/stats');
+  if (!stats) return;
+
+  const catId = window._feActiveCat || stats.categories[0]?.id;
+  window._feActiveCat = catId;
+
+  let questions = [];
+  if (catId) {
+    const q = await api(`/api/admin/questions?catId=${catId}`);
+    if (q) questions = q;
+  }
+
+  $('pageContent').innerHTML = `
+    <div style="max-width:900px">
+      <!-- Stats-Chips -->
+      <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1.2rem">
+        ${stats.categories.map(c => `
+          <button onclick="window._feActiveCat=${c.id};frageneditor()"
+            style="padding:.35rem .85rem;border-radius:999px;font-size:.75rem;font-weight:700;border:1px solid ${catId===c.id?'var(--accent)':'var(--border)'};background:${catId===c.id?'var(--accent)':'var(--surface2)'};color:${catId===c.id?'#fff':'var(--text)'};cursor:pointer">
+            ${esc(c.name)} <span style="opacity:.7">(${c.question_count})</span>
+          </button>`).join('')}
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem;flex-wrap:wrap;gap:.5rem">
+        <div style="font-weight:700;font-size:.9rem">${questions.length} Fragen in dieser Kategorie</div>
+        <button class="btn btn-primary btn-sm" onclick="feOpenModal(null,${catId})"><i class="fas fa-plus"></i> Neue Frage</button>
+      </div>
+
+      ${questions.length === 0
+        ? '<div class="empty"><i class="fas fa-edit"></i><p>Noch keine Fragen in dieser Kategorie</p></div>'
+        : questions.map(q => `
+          <div class="card" style="margin-bottom:.65rem;${q.is_seeded?'border-left:3px solid #6b7280':'border-left:3px solid var(--accent)'}">
+            <div style="display:flex;align-items:flex-start;gap:.8rem">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:.78rem;font-weight:600;margin-bottom:.3rem">${esc(q.question)}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.2rem .6rem;font-size:.7rem;color:var(--muted)">
+                  <span ${q.correct_answer==='A'?'style="color:#22c55e;font-weight:700"':''}>A: ${esc(q.option_a)}</span>
+                  <span ${q.correct_answer==='B'?'style="color:#22c55e;font-weight:700"':''}>B: ${esc(q.option_b)}</span>
+                  <span ${q.correct_answer==='C'?'style="color:#22c55e;font-weight:700"':''}>C: ${esc(q.option_c)}</span>
+                  <span ${q.correct_answer==='D'?'style="color:#22c55e;font-weight:700"':''}>D: ${esc(q.option_d)}</span>
+                </div>
+                ${q.is_ko ? '<div style="font-size:.6rem;font-weight:800;color:#ef4444;margin-top:.3rem">KO-FRAGE</div>' : ''}
+                ${q.is_seeded ? '<div style="font-size:.6rem;color:var(--muted);margin-top:.2rem">System-Frage (schreibgeschützt)</div>' : ''}
+              </div>
+              ${!q.is_seeded ? `
+                <div style="display:flex;gap:.4rem;flex-shrink:0">
+                  <button class="btn btn-ghost btn-sm" onclick="feOpenModal(${q.id},${catId})"><i class="fas fa-edit"></i></button>
+                  <button class="btn btn-danger btn-sm" onclick="feDelete(${q.id})"><i class="fas fa-trash"></i></button>
+                </div>` : ''}
+            </div>
+          </div>`).join('')}
+    </div>`;
+}
+
+window.feOpenModal = (questionId, catId) => {
+  const isEdit = questionId !== null;
+  let existing = null;
+  if (isEdit) {
+    const cards = document.querySelectorAll('#pageContent .card');
+    // We'll just open a blank form and let the user fill if we can't read from DOM easily
+    // For edit, fetch existing data:
+    api(`/api/admin/questions?catId=${catId}`).then(qs => {
+      if (!qs) return;
+      const q = qs.find(x => x.id === questionId);
+      if (!q) return;
+      $('fe-question').value = q.question;
+      $('fe-a').value = q.option_a;
+      $('fe-b').value = q.option_b;
+      $('fe-c').value = q.option_c;
+      $('fe-d').value = q.option_d;
+      $('fe-correct').value = q.correct_answer;
+      $('fe-ko').checked = !!q.is_ko;
+    });
+  }
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title">${isEdit ? 'Frage bearbeiten' : 'Neue Frage'}</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.65rem;padding:.4rem 0">
+      <textarea id="fe-question" class="input" placeholder="Fragetext" rows="3" style="resize:vertical"></textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+        <input id="fe-a" class="input" placeholder="Option A">
+        <input id="fe-b" class="input" placeholder="Option B">
+        <input id="fe-c" class="input" placeholder="Option C">
+        <input id="fe-d" class="input" placeholder="Option D">
+      </div>
+      <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <label style="font-size:.78rem;font-weight:600">Richtige Antwort:</label>
+          <select id="fe-correct" class="input" style="width:auto">
+            <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:.4rem">
+          <input type="checkbox" id="fe-ko">
+          <label for="fe-ko" style="font-size:.78rem;font-weight:600;cursor:pointer">KO-Frage</label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="feSave(${questionId},${catId})">${isEdit ? 'Speichern' : 'Erstellen'}</button>
+    </div>`);
+};
+
+window.feSave = async (questionId, catId) => {
+  const body = {
+    category_id: catId,
+    question: $('fe-question')?.value.trim(),
+    option_a: $('fe-a')?.value.trim(),
+    option_b: $('fe-b')?.value.trim(),
+    option_c: $('fe-c')?.value.trim(),
+    option_d: $('fe-d')?.value.trim(),
+    correct_answer: $('fe-correct')?.value,
+    is_ko: $('fe-ko')?.checked ? 1 : 0,
+  };
+  if (!body.question || !body.option_a || !body.option_b || !body.option_c || !body.option_d) {
+    toast('Alle Felder ausfüllen', 'err'); return;
+  }
+  const isEdit = questionId !== null;
+  const r = await api(isEdit ? `/api/admin/questions/${questionId}` : '/api/admin/questions', {
+    method: isEdit ? 'PUT' : 'POST', body,
+  });
+  if (r) { toast(isEdit ? 'Gespeichert!' : 'Frage erstellt!', 'ok'); closeModal(); frageneditor(); }
+};
+
+window.feDelete = async id => {
+  if (!confirm('Frage wirklich löschen?')) return;
+  const r = await api(`/api/admin/questions/${id}`, { method: 'DELETE' });
+  if (r) { toast('Gelöscht', 'ok'); frageneditor(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  BESCHWERDE-KANBAN (Admin)
+// ════════════════════════════════════════════════════════════════
+async function beschwerden() {
+  if (!isAdmin()) { toast('Kein Zugriff', 'err'); return; }
+  const kanban = await api('/api/complaints/kanban');
+  if (!kanban) return;
+
+  const COLS = [
+    { key: 'offen',         label: 'Offen',         color: '#6b7280', icon: 'fa-inbox' },
+    { key: 'in_bearbeitung',label: 'In Bearbeitung', color: '#fbbf24', icon: 'fa-spinner' },
+    { key: 'erledigt',      label: 'Erledigt',       color: '#22c55e', icon: 'fa-check-circle' },
+    { key: 'abgelehnt',     label: 'Abgelehnt',      color: '#ef4444', icon: 'fa-times-circle' },
+  ];
+
+  function card(c) {
+    return `
+      <div class="card" style="margin-bottom:.6rem;padding:.85rem 1rem;cursor:pointer" onclick="bkOpenDetail(${c.id})">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;flex-wrap:wrap">
+          <span style="font-size:.65rem;font-weight:700;color:var(--muted)">#${c.id}</span>
+          ${c.type ? `<span style="font-size:.6rem;background:var(--surface2);border-radius:999px;padding:.1rem .45rem;border:1px solid var(--border)">${esc(c.type)}</span>` : ''}
+          ${c.assigned_name ? `<span style="font-size:.6rem;color:var(--muted);margin-left:auto"><i class="fas fa-user"></i> ${esc(c.assigned_name)}</span>` : ''}
+        </div>
+        <div style="font-weight:700;font-size:.82rem;margin-bottom:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.subject||'(kein Betreff)')}</div>
+        <div style="font-size:.7rem;color:var(--muted)">${esc(c.citizen_name||'Anonym')} · ${ago(c.created_at)}</div>
+      </div>`;
+  }
+
+  $('pageContent').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;align-items:start">
+      ${COLS.map(col => `
+        <div>
+          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem;padding-bottom:.5rem;border-bottom:2px solid ${col.color}">
+            <i class="fas ${col.icon}" style="color:${col.color};font-size:.85rem"></i>
+            <span style="font-weight:800;font-size:.82rem">${col.label}</span>
+            <span style="margin-left:auto;font-size:.7rem;font-weight:700;background:${col.color}22;color:${col.color};border-radius:999px;padding:.1rem .45rem">${(kanban[col.key]||[]).length}</span>
+          </div>
+          ${(kanban[col.key]||[]).map(card).join('') || '<div style="font-size:.75rem;color:var(--muted);text-align:center;padding:.5rem">Leer</div>'}
+        </div>`).join('')}
+    </div>`;
+}
+
+window.bkOpenDetail = async id => {
+  const kanban = await api('/api/complaints/kanban');
+  if (!kanban) return;
+  const all = [...(kanban.offen||[]), ...(kanban.in_bearbeitung||[]), ...(kanban.erledigt||[]), ...(kanban.abgelehnt||[])];
+  const c = all.find(x => x.id === id);
+  if (!c) return;
+
+  openModal(`
+    <div class="modal-head">
+      <div class="modal-title">Beschwerde #${c.id}</div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.8rem;font-size:.85rem">
+      <div><b>Betreff:</b> ${esc(c.subject||'–')}</div>
+      <div><b>Bürger:</b> ${esc(c.citizen_name||'–')}</div>
+      ${c.description ? `<div><b>Beschreibung:</b><p style="margin:.25rem 0 0;color:var(--muted);line-height:1.6;white-space:pre-wrap">${esc(c.description)}</p></div>` : ''}
+      ${c.admin_response ? `<div><b>Admin-Antwort:</b><p style="margin:.25rem 0 0;color:#22c55e;line-height:1.6;white-space:pre-wrap">${esc(c.admin_response)}</p></div>` : ''}
+      <div style="border-top:1px solid var(--border);padding-top:.8rem">
+        <div style="font-weight:700;font-size:.78rem;margin-bottom:.5rem">Phase ändern</div>
+        <div style="display:flex;flex-direction:column;gap:.5rem">
+          <select id="bk-phase" class="input" style="">
+            <option value="offen" ${c.phase==='offen'?'selected':''}>Offen</option>
+            <option value="in_bearbeitung" ${c.phase==='in_bearbeitung'?'selected':''}>In Bearbeitung</option>
+            <option value="erledigt" ${c.phase==='erledigt'?'selected':''}>Erledigt</option>
+            <option value="abgelehnt" ${c.phase==='abgelehnt'?'selected':''}>Abgelehnt</option>
+          </select>
+          <textarea id="bk-response" class="input" placeholder="Admin-Antwort (optional, wird per DM gesendet)" rows="3" style="resize:vertical">${esc(c.admin_response||'')}</textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="bkSavePhase(${c.id})">Speichern</button>
+    </div>`);
+};
+
+window.bkSavePhase = async id => {
+  const phase = $('bk-phase')?.value;
+  const admin_response = $('bk-response')?.value.trim() || null;
+  const r = await api(`/api/complaints/${id}/phase`, { method: 'PATCH', body: { phase, admin_response } });
+  if (r) { toast('Status aktualisiert', 'ok'); closeModal(); beschwerden(); }
 };
 
 // ── Start ─────────────────────────────────────────────────────────

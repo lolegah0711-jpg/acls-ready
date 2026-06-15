@@ -34,20 +34,6 @@ const BOT_API_SECRET = process.env.BOT_API_SECRET || (process.env.NODE_ENV === '
   ? (() => { console.error('[FATAL] BOT_API_SECRET nicht gesetzt'); process.exit(1); })()
   : 'acls-bot-secret-dev');
 
-// Einfacher In-Memory-Rate-Limiter (kein externes Paket nötig)
-const _rateBuckets = new Map();
-function rateLimit(key, maxReqs, windowMs) {
-  const now  = Date.now();
-  let bucket = _rateBuckets.get(key);
-  if (!bucket || now - bucket.start > windowMs) bucket = { start: now, count: 0 };
-  bucket.count++;
-  _rateBuckets.set(key, bucket);
-  return bucket.count > maxReqs;
-}
-setInterval(() => {
-  const cutoff = Date.now() - 60_000;
-  for (const [k, v] of _rateBuckets) if (v.start < cutoff) _rateBuckets.delete(k);
-}, 60_000);
 
 const GAME_LIMITS = {
   race:         { minSec: 25,  maxScore: 999999  },
@@ -149,7 +135,7 @@ app.use((req, res, next) => {
     "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://unpkg.com",
     "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com",
-    "img-src 'self' data: https://cdn.discordapp.com https://i.pravatar.cc https://via.placeholder.com",
+    "img-src 'self' data: https://cdn.discordapp.com https://i.pravatar.cc https://via.placeholder.com https://i.imgur.com https://imgur.com",
     "connect-src 'self'",
     "frame-src 'none'",
     "object-src 'none'",
@@ -161,8 +147,8 @@ app.use((req, res, next) => {
 // ── CSRF-Schutz: alle state-ändernden Routen prüfen auf gleichen Origin ──
 app.use((req, res, next) => {
   if (['GET','HEAD','OPTIONS'].includes(req.method)) return next();
-  // Bot-Secret-Anfragen (von bot.js) erlauben
-  if (req.headers['x-bot-secret']) return next();
+  // Bot-Secret-Anfragen (von bot.js) erlauben — Secret-Wert muss korrekt sein
+  if (secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return next();
   // OAuth-Callback erlauben
   if (req.path === '/auth/callback' || req.path === '/auth/discord') return next();
   // Exakter Host-Vergleich (kein Substring – sonst umgeht z.B. evil.com/?host.de den Schutz)
@@ -2543,6 +2529,7 @@ app.get('/game18', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ga
 app.get('/game19', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game19.html')));
 app.get('/game20', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game20.html')));
 app.get('/game21', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game21.html')));
+app.get('/game22', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game22.html')));
 app.get('/spielbank', (req, res) => res.sendFile(path.join(__dirname, 'public', 'spielbank.html')));
 app.get('/quiz', (req, res) => {
   const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
@@ -4626,6 +4613,64 @@ app.get('/api/casino/recent-wins', (req, res) => {
     return { username: r.username || 'Spieler', amount: r.amount, game: r.reason.split(':')[0], x: meta.x || null, at: r.created_at };
   }));
 });
+
+// ════════════════════════════════════════════════════════════════
+//  UNIFIED GAME LEADERBOARD — alle Spiele, Top 3 je Spiel
+// ════════════════════════════════════════════════════════════════
+const ALL_GAMES = [
+  { key: 'race',        label: 'Autorennen' },
+  { key: 'brick',       label: 'Brick Breaker' },
+  { key: 'deadzone',    label: 'Dead Zone' },
+  { key: 'snake',       label: 'Snake' },
+  { key: 'tetris',      label: 'Tetris' },
+  { key: 'skycop',      label: 'Sky Cop' },
+  { key: 'doodlejump',  label: 'Doodle Jump' },
+  { key: '2048',        label: '2048' },
+  { key: 'bookofra',    label: 'Book of Ra' },
+  { key: 'towerdefense',label: 'Tower Defense' },
+  { key: 'quiz',        label: 'Quiz Survival' },
+  { key: 'tow',         label: 'Abschlepp-Sim' },
+  { key: 'memory',      label: 'Memory' },
+  { key: 'blackjack',   label: 'Blackjack' },
+  { key: 'idle',        label: 'Idle Werkstatt' },
+  { key: 'rpg',         label: 'Dungeon RPG' },
+];
+
+app.get('/api/game-leaderboard', (req, res) => {
+  const result = ALL_GAMES.map(g => {
+    const top = db.prepare(`
+      SELECT u.username, u.avatar, u.discord_id,
+             cb.equipped_namecolor, cb.equipped_title, cb.equipped_deco,
+             gs.score
+      FROM game_scores gs
+      JOIN users u ON u.id = gs.user_id
+      LEFT JOIN coin_balances cb ON cb.discord_id = u.discord_id
+      WHERE gs.game = ? AND gs.score > 0
+      ORDER BY gs.score DESC LIMIT 3
+    `).all(g.key);
+    const topV = db.prepare(`
+      SELECT vgs.username, vgs.discord_id, vgs.score
+      FROM visitor_game_scores vgs
+      WHERE vgs.game = ? AND vgs.score > 0
+        AND vgs.discord_id NOT IN (SELECT discord_id FROM users WHERE is_active = 1)
+      ORDER BY vgs.score DESC LIMIT 3
+    `).all(g.key);
+    const combined = [...top, ...topV].sort((a, b) => b.score - a.score).slice(0, 3);
+    return { game: g.key, label: g.label, top: combined };
+  });
+  res.json(result);
+});
+
+// ════════════════════════════════════════════════════════════════
+//  NEUE FEATURE-ROUTES (modular)
+// ════════════════════════════════════════════════════════════════
+const sharedDeps = { db, requireAdmin, coinIdent, addCoins, rateLimit, queueNotification, auditLog, SHOP_ITEMS };
+app.use(require('./routes/blackmarket')({ ...sharedDeps }));
+app.use(require('./routes/feedback')({ ...sharedDeps }));
+app.use(require('./routes/roulette')({ ...sharedDeps }));
+app.use(require('./routes/questions-admin')({ ...sharedDeps }));
+app.use(require('./routes/dashboard-config')({ ...sharedDeps }));
+app.use(require('./routes/complaints-ext')({ ...sharedDeps }));
 
 app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');

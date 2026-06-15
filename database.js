@@ -706,6 +706,8 @@ function initDb() {
 
   // Migrations
   try { db.exec('ALTER TABLE exam_questions ADD COLUMN is_ko INTEGER DEFAULT 0'); } catch(e) {}
+  // is_seeded: 1 = von Seed generiert (wird bei Neustart neu gesetzt), 0 = Admin-eigene Frage (bleibt erhalten)
+  try { db.exec('ALTER TABLE exam_questions ADD COLUMN is_seeded INTEGER DEFAULT 1'); } catch(e) {}
   try { db.exec("ALTER TABLE users ADD COLUMN rank TEXT DEFAULT 'Mitarbeiter'"); } catch(e) {}
   try { db.exec('ALTER TABLE rank_exams ADD COLUMN examiner2_id INTEGER REFERENCES users(id)'); } catch(e) {}
   try { db.exec("ALTER TABLE active_rank_exams ADD COLUMN current_module TEXT DEFAULT 'm1'"); } catch(e) {}
@@ -747,13 +749,13 @@ function initDb() {
     console.log('[seed] Rank questions re-seeded (17 questions)');
   }
 
-  // Always re-seed questions so law changes take effect on restart
-  db.prepare('DELETE FROM exam_questions').run();
+  // Re-seed questions: nur Seed-Fragen löschen und neu einfügen — Admin-eigene Fragen (is_seeded=0) bleiben erhalten
+  db.prepare('DELETE FROM exam_questions WHERE is_seeded = 1').run();
   {
     const cats = {};
     db.prepare('SELECT id, name FROM exam_categories').all().forEach(c => { cats[c.name] = c.id; });
     const sq = db.prepare(
-      'INSERT INTO exam_questions (category_id,question,option_a,option_b,option_c,option_d,correct_answer,is_ko) VALUES (?,?,?,?,?,?,?,?)'
+      'INSERT INTO exam_questions (category_id,question,option_a,option_b,option_c,option_d,correct_answer,is_ko,is_seeded) VALUES (?,?,?,?,?,?,?,?,1)'
     );
     db.transaction(() => {
       const pkw = cats['PKW'], moto = cats['Motorrad'], boot = cats['Boot'], lkw = cats['LKW'], flug = cats['Flugschein'];
@@ -893,6 +895,55 @@ function initDb() {
     });
     seed();
   }
+
+  // ── Schwarzmarkt: tägliche 3 Angebote (rotieren um Mitternacht) ──
+  db.exec(`CREATE TABLE IF NOT EXISTS blackmarket_slots (
+    date        TEXT NOT NULL,
+    slot        INTEGER NOT NULL,
+    item_id     TEXT NOT NULL,
+    discount    INTEGER NOT NULL DEFAULT 25,
+    sold        INTEGER DEFAULT 0,
+    PRIMARY KEY (date, slot)
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS blackmarket_purchases (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    date        TEXT NOT NULL,
+    slot        INTEGER NOT NULL,
+    discord_id  TEXT NOT NULL,
+    item_id     TEXT NOT NULL,
+    price_paid  INTEGER NOT NULL,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(date, discord_id, slot)
+  )`);
+
+  // ── Feedback / Ideen-Box ──────────────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS feedback_ideas (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    discord_id  TEXT NOT NULL,
+    username    TEXT,
+    title       TEXT NOT NULL,
+    description TEXT,
+    status      TEXT DEFAULT 'offen',
+    votes       INTEGER DEFAULT 0,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS feedback_votes (
+    idea_id    INTEGER NOT NULL REFERENCES feedback_ideas(id) ON DELETE CASCADE,
+    discord_id TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (idea_id, discord_id)
+  )`);
+
+  // ── Personalisiertes Dashboard: Widget-Konfiguration ─────────
+  db.exec(`CREATE TABLE IF NOT EXISTS dashboard_widget_config (
+    discord_id TEXT PRIMARY KEY,
+    widgets    TEXT NOT NULL DEFAULT '["stats","eow","iczeit","turnier","leaderboard","announcements"]',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // ── Beschwerde-Tracking: assigned_to-Spalte ──────────────────
+  try { db.exec('ALTER TABLE complaints ADD COLUMN assigned_to INTEGER REFERENCES users(id)'); } catch {}
+  try { db.exec("ALTER TABLE complaints ADD COLUMN phase TEXT DEFAULT 'offen'"); } catch {}
 
   return db;
 }
