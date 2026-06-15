@@ -160,6 +160,7 @@ const PAGES = {
   feedback:     { title: 'Feedback & Ideen',      sub: 'Vorschläge einreichen & abstimmen' },
   frageneditor: { title: 'Fragen-Editor',         sub: 'Prüfungsfragen verwalten (Admin)' },
   beschwerden:  { title: 'Beschwerde-Kanban',     sub: 'Beschwerden verwalten (Admin)' },
+  steckbrief:   { title: 'Mitarbeiter-Steckbriefe', sub: 'Profile, Statistiken & Abzeichen' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -1213,7 +1214,7 @@ function navigate(page) {
   $('pageContent').innerHTML    = loading();
 
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, steckbrief };
   (renders[page] || dashboard)();
 }
 
@@ -6931,6 +6932,76 @@ window.bkSavePhase = async id => {
   const r = await api(`/api/complaints/${id}/phase`, { method: 'PATCH', body: { phase, admin_response } });
   if (r) { toast('Status aktualisiert', 'ok'); closeModal(); beschwerden(); }
 };
+
+// ════════════════════════════════════════════════════════════════
+//  STECKBRIEF
+// ════════════════════════════════════════════════════════════════
+async function steckbrief() {
+  const users = await api('/api/users');
+  if (!users) return;
+
+  const ROLE_LABEL = { admin: 'Admin', ausbilder: 'Ausbilder', member: 'Mitarbeiter' };
+  const ROLE_COLOR = { admin: '#ef4444', ausbilder: '#a855f7', member: '#22c55e' };
+
+  let filter = window._sbFilter || '';
+  let sortBy = window._sbSort  || 'name';
+
+  function renderList() {
+    let list = users.filter(u =>
+      !filter || u.username.toLowerCase().includes(filter.toLowerCase())
+    );
+    if (sortBy === 'name') list.sort((a, b) => a.username.localeCompare(b.username));
+    if (sortBy === 'role') list.sort((a, b) => {
+      const order = { admin: 0, ausbilder: 1, member: 2 };
+      return (order[a.role] ?? 3) - (order[b.role] ?? 3);
+    });
+
+    const listEl = document.getElementById('sb-list');
+    if (!listEl) return;
+    listEl.innerHTML = list.length === 0
+      ? '<div class="empty"><i class="fas fa-users"></i><p>Keine Mitarbeiter gefunden</p></div>'
+      : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.85rem">
+          ${list.map(u => {
+            const av = u.avatar && u.discord_id
+              ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid ${ROLE_COLOR[u.role]||'#333'}" onerror="this.style.display='none'">`
+              : `<div style="width:52px;height:52px;border-radius:50%;background:#252525;border:2px solid ${ROLE_COLOR[u.role]||'#333'};display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;flex-shrink:0">${esc(u.username.slice(0,2).toUpperCase())}</div>`;
+            return `
+              <div class="card" style="cursor:pointer;border-color:rgba(255,255,255,.06)" onclick="window.open('/profil/${u.id}','_blank')">
+                <div style="display:flex;align-items:center;gap:.75rem">
+                  ${av}
+                  <div style="min-width:0">
+                    <div style="font-weight:800;font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(u.username)}</div>
+                    <div style="font-size:.65rem;font-weight:700;color:${ROLE_COLOR[u.role]||'var(--muted)'};text-transform:uppercase;letter-spacing:.06em;margin-top:.15rem">${ROLE_LABEL[u.role]||u.role}</div>
+                    ${u.rank ? `<div style="font-size:.68rem;color:var(--muted);margin-top:.1rem">${esc(u.rank)}</div>` : ''}
+                  </div>
+                </div>
+                <div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap">
+                  <span style="font-size:.6rem;background:var(--surface2);border-radius:999px;padding:.15rem .5rem;border:1px solid var(--border)">
+                    <i class="fas fa-external-link-alt" style="font-size:.55rem"></i> Profil
+                  </span>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>`;
+  }
+
+  $('pageContent').innerHTML = `
+    <div style="max-width:900px">
+      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.2rem;flex-wrap:wrap">
+        <input id="sb-search" class="input" placeholder="Suche…" value="${esc(filter)}"
+          style="flex:1;min-width:160px" oninput="window._sbFilter=this.value;sbRerender()">
+        <select id="sb-sort" class="input" style="width:auto" onchange="window._sbSort=this.value;sbRerender()">
+          <option value="name" ${sortBy==='name'?'selected':''}>A–Z</option>
+          <option value="role" ${sortBy==='role'?'selected':''}>Rolle</option>
+        </select>
+        <span style="font-size:.75rem;color:var(--muted)">${users.length} Mitarbeiter</span>
+      </div>
+      <div id="sb-list"></div>
+    </div>`;
+
+  window.sbRerender = renderList;
+  renderList();
+}
 
 // ── Start ─────────────────────────────────────────────────────────
 init();

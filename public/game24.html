@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reaktionstest – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:#0a0a0a;font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px 16px 40px;user-select:none;}
+    .topbar{width:100%;max-width:520px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:18px;}
+    .nav-btn{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7);padding:7px 14px;border-radius:9px;font-size:12px;font-weight:700;text-decoration:none;}
+    h1{font-size:clamp(22px,6vw,34px);font-weight:900;color:#fff;margin-bottom:4px;text-align:center;}
+    .sub{font-size:13px;color:#666;margin-bottom:28px;text-align:center;}
+
+    /* Reaktions-Kreis */
+    .stage{width:280px;height:280px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;transition:background .12s,border-color .12s;border:4px solid transparent;margin:0 auto 20px;position:relative;-webkit-tap-highlight-color:transparent;}
+    .stage.idle{background:#1a1a1a;border-color:#333;}
+    .stage.wait{background:#2a1515;border-color:#7f1d1d;animation:pulse 1s ease-in-out infinite;}
+    .stage.go{background:#14532d;border-color:#4ade80;cursor:pointer;}
+    .stage.early{background:#7f1d1d;border-color:#ef4444;}
+    .stage.done{background:#1a2a3a;border-color:#60a5fa;cursor:default;}
+    @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.3)}50%{box-shadow:0 0 0 18px rgba(239,68,68,0)}}
+    .stage-icon{font-size:64px;margin-bottom:6px;transition:none;}
+    .stage-label{font-size:1rem;font-weight:800;color:#fff;text-align:center;padding:0 20px;}
+    .stage-time{font-size:2.2rem;font-weight:900;color:#4ade80;font-variant-numeric:tabular-nums;letter-spacing:.02em;}
+
+    /* Rounds */
+    .rounds{display:flex;gap:.6rem;margin-bottom:22px;}
+    .round-dot{width:36px;height:36px;border-radius:50%;border:2px solid #333;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;flex-shrink:0;}
+    .round-dot.done{border-color:#4ade80;color:#4ade80;background:rgba(74,222,128,.12);}
+    .round-dot.active{border-color:#fbbf24;color:#fbbf24;background:rgba(251,191,36,.12);}
+    .round-dot.pending{border-color:#333;color:#555;}
+    .round-dot.early{border-color:#ef4444;color:#ef4444;background:rgba(239,68,68,.12);}
+
+    /* Stats */
+    .stats{display:flex;gap:1.2rem;margin-bottom:24px;flex-wrap:wrap;justify-content:center;}
+    .stat{text-align:center;}
+    .stat-val{font-size:1.4rem;font-weight:900;color:#4ade80;}
+    .stat-lbl{font-size:.68rem;color:#555;text-transform:uppercase;letter-spacing:.07em;margin-top:.1rem;}
+
+    .btn-start{background:linear-gradient(135deg,#4ade80,#16a34a);color:#000;font-weight:900;font-size:1rem;padding:13px 36px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;}
+    .btn-start:disabled{opacity:.4;cursor:default;}
+
+    .result-card{background:#111;border:1px solid #222;border-radius:14px;padding:1.4rem 1.8rem;max-width:400px;width:100%;text-align:center;margin-top:8px;}
+    .result-card h2{font-size:1.2rem;font-weight:800;margin-bottom:.5rem;}
+    .coins-earned{font-size:1.5rem;font-weight:900;color:#fbbf24;margin:.6rem 0;}
+    .result-list{display:flex;flex-direction:column;gap:.4rem;margin:.8rem 0;font-size:.82rem;}
+    .result-row{display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px solid #1a1a1a;}
+    .result-row:last-child{border:none;}
+
+    /* Toast */
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:.6rem 1.4rem;font-size:.85rem;font-weight:700;transition:.3s;opacity:0;z-index:99;}
+    .toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+    .toast.ok{border-color:#22c55e;color:#22c55e;}
+    .toast.err{border-color:#ef4444;color:#ef4444;}
+
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.92);z-index:100;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#111;border:1px solid #222;border-radius:18px;padding:36px;max-width:400px;width:100%;text-align:center;}
+    .ov-card h2{margin:.5rem 0;}
+    .ov-card p{color:#666;font-size:.88rem;margin:.5rem 0 1.5rem;line-height:1.55;}
+    .btn-portal{background:#fff;color:#000;font-weight:900;padding:12px 28px;border-radius:12px;text-decoration:none;display:inline-block;}
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/" class="nav-btn">← Portal</a>
+  <div style="font-size:.8rem;color:#555;font-weight:600">Reaktionstest · 5 Runden</div>
+</div>
+
+<h1>⚡ Reaktionstest</h1>
+<p class="sub">Warte bis der Kreis grün wird – dann so schnell wie möglich klicken!</p>
+
+<div class="rounds" id="rounds"></div>
+
+<div class="stage idle" id="stage" onclick="handleClick()">
+  <div class="stage-icon" id="stageIcon">👁️</div>
+  <div class="stage-label" id="stageLabel">Klicke um zu starten</div>
+  <div class="stage-time" id="stageTime" style="display:none"></div>
+</div>
+
+<div class="stats" id="stats" style="display:none">
+  <div class="stat"><div class="stat-val" id="statAvg">–</div><div class="stat-lbl">Ø ms</div></div>
+  <div class="stat"><div class="stat-val" id="statBest">–</div><div class="stat-lbl">Bestes ms</div></div>
+  <div class="stat"><div class="stat-val" id="statWorst">–</div><div class="stat-lbl">Schlechtestes ms</div></div>
+</div>
+
+<div id="resultArea"></div>
+
+<div class="ov hidden" id="ovLogin">
+  <div class="ov-card">
+    <div style="font-size:3rem;margin-bottom:6px">🔒</div>
+    <h2>Anmeldung nötig</h2>
+    <p>Melde dich im Portal an, um deinen Score in der Rangliste zu speichern.</p>
+    <a href="/" class="btn-portal">Zum Portal</a>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const ROUNDS = 5;
+const EARLY_PENALTY = 800; // ms Strafe bei Frühklick
+
+let state   = 'idle';  // idle | countdown | wait | go | early | done
+let round   = 0;
+let results = [];      // { ms, early }[]
+let t0      = 0;
+let timer   = null;
+let token   = null;
+let gameTs  = null;
+
+function showToast(msg, type = 'ok') {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.className = 'toast', 2000);
+}
+
+function renderRounds() {
+  $('rounds').innerHTML = Array.from({ length: ROUNDS }, (_, i) => {
+    const r = results[i];
+    let cls = 'pending', label = i + 1;
+    if (r)       { cls = r.early ? 'early' : 'done'; label = r.early ? '✕' : r.ms + 'ms'; }
+    else if (i === round && state !== 'idle' && state !== 'done') cls = 'active';
+    return `<div class="round-dot ${cls}">${label}</div>`;
+  }).join('');
+}
+
+function setStage(s, icon, label, timeText = '') {
+  const el = $('stage');
+  el.className = 'stage ' + s;
+  $('stageIcon').textContent  = icon;
+  $('stageLabel').textContent = label;
+  const te = $('stageTime');
+  if (timeText) { te.textContent = timeText; te.style.display = ''; }
+  else          { te.style.display = 'none'; }
+}
+
+function updateStats() {
+  const valid = results.filter(r => !r.early).map(r => r.ms);
+  if (!valid.length) return;
+  const avg  = Math.round(valid.reduce((a, b) => a + b) / valid.length);
+  const best = Math.min(...valid);
+  const worst = Math.max(...valid);
+  $('stats').style.display = 'flex';
+  $('statAvg').textContent  = avg;
+  $('statBest').textContent = best;
+  $('statWorst').textContent = worst;
+}
+
+async function getToken() {
+  try {
+    const r = await fetch('/api/game-token/reaction');
+    if (r.status === 401) { $('ovLogin').classList.remove('hidden'); return false; }
+    const d = await r.json();
+    token  = d.token;
+    gameTs = d.ts;
+    return true;
+  } catch { return false; }
+}
+
+function handleClick() {
+  if (state === 'idle') {
+    startGame();
+    return;
+  }
+  if (state === 'wait') {
+    // Zu früh
+    clearTimeout(timer);
+    results[round] = { ms: EARLY_PENALTY, early: true };
+    round++;
+    renderRounds();
+    updateStats();
+    setStage('early', '⚠️', 'Zu früh! Warte auf Grün…');
+    state = 'early';
+    timer = setTimeout(() => nextRound(), 1200);
+    return;
+  }
+  if (state === 'go') {
+    const ms = Date.now() - t0;
+    results[round] = { ms, early: false };
+    round++;
+    renderRounds();
+    updateStats();
+    setStage('done', '✅', '', ms + ' ms');
+    state = 'done_round';
+    if (round >= ROUNDS) {
+      timer = setTimeout(() => finishGame(), 900);
+    } else {
+      timer = setTimeout(() => nextRound(), 900);
+    }
+    return;
+  }
+}
+
+async function startGame() {
+  if (!await getToken()) return;
+  round   = 0;
+  results = [];
+  state   = 'wait';
+  renderRounds();
+  nextRound();
+}
+
+function nextRound() {
+  state = 'wait';
+  const delay = 1200 + Math.random() * 3000; // 1.2 – 4.2s
+  setStage('wait', '🔴', 'Warte…');
+  renderRounds();
+  timer = setTimeout(() => {
+    if (state !== 'wait') return;
+    state = 'go';
+    t0 = Date.now();
+    setStage('go', '🟢', 'JETZT! KLICK!');
+    // Auto-fail nach 3s ohne Klick
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (state !== 'go') return;
+      results[round] = { ms: 3000, early: false };
+      round++;
+      renderRounds();
+      updateStats();
+      state = round >= ROUNDS ? 'idle' : 'wait';
+      if (round >= ROUNDS) finishGame();
+      else nextRound();
+    }, 3000);
+  }, delay);
+}
+
+async function finishGame() {
+  clearTimeout(timer);
+  const valid = results.filter(r => !r.early).map(r => r.ms);
+  if (!valid.length) {
+    setStage('idle', '👁️', 'Alle Runden fehlgeschlagen – nochmal versuchen');
+    state = 'idle';
+    return;
+  }
+
+  // Score: Summe der besten 3 Runden (10000 - ms) — höher = besser
+  const sorted = [...valid].sort((a, b) => a - b).slice(0, 3);
+  const score  = sorted.reduce((s, ms) => s + Math.max(0, 10000 - ms), 0);
+
+  setStage('idle', '🏁', 'Fertig! Score wird übermittelt…');
+  state = 'idle';
+
+  let coinsEarned = 0;
+  try {
+    const r = await fetch('/api/game-scores/reaction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ score, token, ts: gameTs }),
+    });
+    const d = await r.json();
+    if (r.ok) coinsEarned = d.coinsEarned || 0;
+  } catch {}
+
+  const avg  = Math.round(valid.reduce((a, b) => a + b) / valid.length);
+  const best = Math.min(...valid);
+
+  $('resultArea').innerHTML = `
+    <div class="result-card">
+      <h2>🏁 Ergebnis</h2>
+      <div class="result-list">
+        ${results.map((r, i) => `
+          <div class="result-row">
+            <span style="color:#666">Runde ${i + 1}</span>
+            <span style="color:${r.early ? '#ef4444' : '#4ade80'};font-weight:700">${r.early ? '✕ Zu früh' : r.ms + ' ms'}</span>
+          </div>`).join('')}
+      </div>
+      <div style="border-top:1px solid #222;padding-top:.8rem;margin-top:.4rem">
+        <div style="font-size:.78rem;color:#555;margin-bottom:.3rem">Ø ${avg} ms · Best ${best} ms</div>
+        <div style="font-size:.78rem;color:#555">Score: ${score.toLocaleString('de-DE')}</div>
+        ${coinsEarned > 0 ? `<div class="coins-earned">+${coinsEarned} 🪙</div>` : ''}
+      </div>
+      <button class="btn-start" style="margin-top:1rem;width:100%" onclick="resetGame()">Nochmal spielen</button>
+    </div>`;
+
+  if (coinsEarned > 0) showToast(`+${coinsEarned} 🪙 Coins verdient!`, 'ok');
+}
+
+function resetGame() {
+  round   = 0;
+  results = [];
+  state   = 'idle';
+  $('stats').style.display = 'none';
+  $('resultArea').innerHTML = '';
+  renderRounds();
+  setStage('idle', '👁️', 'Klicke um zu starten');
+}
+
+renderRounds();
+</script>
+</body>
+</html>

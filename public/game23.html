@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hi-Lo – ACLS Spielbank</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:radial-gradient(ellipse at 50% 0%,#0a2218 0%,#051410 55%,#020a08 100%);font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px 16px 40px;}
+    .topbar{width:100%;max-width:560px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:18px;}
+    .nav-btn{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:7px 14px;border-radius:9px;font-size:12px;font-weight:700;text-decoration:none;}
+    .chip-bal{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.5);border:1px solid rgba(251,191,36,.4);border-radius:999px;padding:7px 16px;font-weight:800;font-size:15px;color:#fbbf24;}
+    h1{font-size:clamp(22px,6vw,34px);font-weight:900;background:linear-gradient(90deg,#4ade80,#22c55e,#16a34a);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:4px;text-align:center;}
+    .sub{font-size:13px;color:#4b9168;margin-bottom:24px;text-align:center;}
+
+    /* Card */
+    .card-stage{perspective:600px;margin:10px 0 28px;}
+    .card-inner{position:relative;width:160px;height:220px;transform-style:preserve-3d;transition:transform .5s cubic-bezier(.4,0,.2,1);}
+    .card-inner.flip{transform:rotateY(180deg);}
+    .card-face{position:absolute;inset:0;backface-visibility:hidden;border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-family:'Inter',sans-serif;font-weight:900;}
+    .card-front{background:linear-gradient(135deg,#f9f9f9,#e8e8e8);box-shadow:0 12px 40px rgba(0,0,0,.5);}
+    .card-back{background:linear-gradient(135deg,#1a4a2e,#0d2d1a);border:2px solid rgba(74,222,128,.3);transform:rotateY(180deg);box-shadow:0 12px 40px rgba(0,0,0,.5);}
+    .card-back .back-pattern{font-size:60px;opacity:.3;}
+    .card-val{font-size:64px;line-height:1;color:#111;}
+    .card-suit{font-size:38px;}
+    .card-val.red,.card-suit.red{color:#dc2626;}
+    .card-val.black,.card-suit.black{color:#111;}
+    .card-corner{position:absolute;font-size:20px;font-weight:900;line-height:1.1;}
+    .card-corner.tl{top:10px;left:14px;text-align:left;}
+    .card-corner.br{bottom:10px;right:14px;text-align:right;transform:rotate(180deg);}
+
+    /* Result overlay on card */
+    .result-pill{padding:.3rem .9rem;border-radius:999px;font-size:.78rem;font-weight:800;letter-spacing:.04em;margin-top:4px;}
+    .result-pill.win{background:rgba(74,222,128,.2);border:1px solid #4ade80;color:#4ade80;}
+    .result-pill.lose{background:rgba(239,68,68,.2);border:1px solid #ef4444;color:#ef4444;}
+    .result-pill.tie{background:rgba(251,191,36,.2);border:1px solid #fbbf24;color:#fbbf24;}
+
+    /* Controls */
+    .controls{width:100%;max-width:560px;display:flex;flex-direction:column;align-items:center;gap:14px;}
+    .bet-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;justify-content:center;}
+    .chip{background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.2);border-radius:999px;padding:.35rem .85rem;font-size:.8rem;font-weight:800;cursor:pointer;transition:.12s;user-select:none;}
+    .chip:hover{border-color:#4ade80;color:#4ade80;}
+    .chip.active{background:#4ade80;border-color:#4ade80;color:#000;}
+    .bet-display{font-size:1.1rem;font-weight:800;color:#fbbf24;min-width:80px;text-align:center;}
+    .guess-row{display:flex;gap:12px;width:100%;}
+    .btn-guess{flex:1;padding:1rem;border-radius:14px;font-size:1rem;font-weight:900;border:2px solid transparent;cursor:pointer;font-family:inherit;transition:.15s;display:flex;flex-direction:column;align-items:center;gap:.3rem;}
+    .btn-higher{background:linear-gradient(135deg,rgba(74,222,128,.15),rgba(74,222,128,.05));border-color:rgba(74,222,128,.4);color:#4ade80;}
+    .btn-higher:hover:not(:disabled){background:rgba(74,222,128,.25);border-color:#4ade80;}
+    .btn-lower{background:linear-gradient(135deg,rgba(239,68,68,.15),rgba(239,68,68,.05));border-color:rgba(239,68,68,.4);color:#ef4444;}
+    .btn-lower:hover:not(:disabled){background:rgba(239,68,68,.25);border-color:#ef4444;}
+    .btn-guess:disabled{opacity:.4;cursor:default;}
+    .btn-guess .arrow{font-size:1.8rem;line-height:1;}
+    .btn-next{background:linear-gradient(135deg,#4ade80,#16a34a);color:#000;font-weight:900;font-size:.9rem;padding:.75rem 2.5rem;border-radius:12px;border:none;cursor:pointer;font-family:inherit;}
+    .info-row{display:flex;gap:1.5rem;font-size:.78rem;color:#4b9168;}
+    .info-row b{color:#4ade80;}
+
+    /* Toast */
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:.6rem 1.4rem;font-size:.85rem;font-weight:700;transition:.3s;opacity:0;pointer-events:none;z-index:999;}
+    .toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+    .toast.ok{border-color:#22c55e;color:#22c55e;}
+    .toast.err{border-color:#ef4444;color:#ef4444;}
+
+    /* Login overlay */
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.92);z-index:100;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#0a1f15;border:1px solid #1a4a2e;border-radius:18px;padding:36px;max-width:400px;width:100%;text-align:center;}
+    .ov-card h2{margin:.5rem 0;font-size:1.4rem;}
+    .ov-card p{color:#4b9168;font-size:.88rem;margin:.5rem 0 1.5rem;line-height:1.55;}
+    .btn-portal{background:linear-gradient(135deg,#4ade80,#16a34a);color:#000;font-weight:900;padding:12px 28px;border-radius:12px;text-decoration:none;display:inline-block;font-size:.9rem;}
+
+    .limit-bar{width:100%;max-width:560px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.6rem 1rem;display:flex;align-items:center;justify-content:space-between;font-size:.75rem;}
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/spielbank" class="nav-btn">← Spielbank</a>
+  <div class="chip-bal">🪙 <span id="balance">–</span></div>
+</div>
+
+<h1>🃏 Hi-Lo</h1>
+<p class="sub">Höher oder Niedriger – Gleich zählt als Verlust</p>
+
+<div class="card-stage">
+  <div class="card-inner" id="cardInner">
+    <div class="card-face card-front" id="cardFront">
+      <span class="card-val" id="cardVal">?</span>
+      <span class="card-suit" id="cardSuit">♠</span>
+      <div class="card-corner tl" id="cardCornerTL">?</div>
+      <div class="card-corner br" id="cardCornerBR">?</div>
+    </div>
+    <div class="card-face card-back">
+      <div class="back-pattern">🃏</div>
+    </div>
+  </div>
+</div>
+
+<div id="resultPill" style="margin-bottom:8px;min-height:28px"></div>
+
+<div class="controls">
+  <!-- Chips -->
+  <div class="bet-row">
+    <span style="font-size:.75rem;color:#4b9168;font-weight:700">EINSATZ:</span>
+    <span class="bet-display" id="betDisplay">10 🪙</span>
+    ${[10,25,50,100,250,500,1000].map(v => `<button class="chip${v===10?' active':''}" onclick="setBet(${v})">${v}</button>`).join('')}
+  </div>
+
+  <!-- Guess buttons -->
+  <div class="guess-row">
+    <button class="btn-guess btn-higher" id="btnHigher" onclick="play('higher')" disabled>
+      <span class="arrow">▲</span>
+      <span>HÖHER</span>
+    </button>
+    <button class="btn-guess btn-lower" id="btnLower" onclick="play('lower')" disabled>
+      <span class="arrow">▼</span>
+      <span>NIEDRIGER</span>
+    </button>
+  </div>
+
+  <!-- Next button (shown after each round) -->
+  <button class="btn-next" id="btnNext" onclick="startRound()" style="display:none">
+    Neue Karte ziehen →
+  </button>
+
+  <div class="info-row">
+    <span>Min: <b>10 🪙</b></span>
+    <span>Max: <b>1.000 🪙</b></span>
+    <span>Gleichstand: <b>Verlust</b></span>
+  </div>
+</div>
+
+<div class="limit-bar" style="margin-top:16px">
+  <span style="color:#4b9168">Tages-Verlustlimit</span>
+  <span><b id="lostToday">0</b> / <b id="limitTotal">2.500</b> 🪙</span>
+</div>
+
+<div class="ov hidden" id="ovLogin">
+  <div class="ov-card">
+    <div style="font-size:3rem;margin-bottom:6px">🔒</div>
+    <h2>Anmeldung nötig</h2>
+    <p>Die Spielbank läuft mit deinen ACLS-Coins.<br>Melde dich zuerst im Portal an.</p>
+    <a href="/" class="btn-portal">Zum Portal</a>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const RED_SUITS = new Set([1, 2]); // ♥, ♦
+
+let bet = 10;
+let playing = false;
+
+function setBet(v) {
+  bet = v;
+  $('betDisplay').textContent = v.toLocaleString('de-DE') + ' 🪙';
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', +c.textContent === v));
+}
+
+function showToast(msg, type = 'ok', duration = 2000) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.className = 'toast', duration);
+}
+
+function setCard(card) {
+  const isRed = card.suit === 1 || card.suit === 2;
+  const cls   = isRed ? 'red' : 'black';
+  $('cardVal').textContent   = card.label;
+  $('cardVal').className     = 'card-val ' + cls;
+  $('cardSuit').textContent  = card.suit_label || card.suit;
+  $('cardSuit').className    = 'card-suit ' + cls;
+  $('cardCornerTL').textContent = card.label;
+  $('cardCornerTL').style.color = isRed ? '#dc2626' : '#111';
+  $('cardCornerBR').textContent = card.label;
+  $('cardCornerBR').style.color = isRed ? '#dc2626' : '#111';
+}
+
+function setButtons(enabled) {
+  $('btnHigher').disabled = !enabled;
+  $('btnLower').disabled  = !enabled;
+  $('btnNext').style.display = enabled ? 'none' : 'block';
+}
+
+async function startRound() {
+  $('resultPill').innerHTML = '';
+  setButtons(false);
+  // Flip-Rückseite zeigen
+  $('cardInner').classList.add('flip');
+  await new Promise(r => setTimeout(r, 300));
+
+  const res = await fetch('/api/hilo/start');
+  if (res.status === 401) { $('ovLogin').classList.remove('hidden'); return; }
+  const d = await res.json();
+
+  setCard(d.card);
+  $('balance').textContent  = (d.balance || 0).toLocaleString('de-DE');
+  $('lostToday').textContent = (d.daily_loss || 0).toLocaleString('de-DE');
+  $('limitTotal').textContent = (d.limit || 2500).toLocaleString('de-DE');
+
+  // Karte aufdecken
+  await new Promise(r => setTimeout(r, 100));
+  $('cardInner').classList.remove('flip');
+  await new Promise(r => setTimeout(r, 550));
+  setButtons(true);
+}
+
+async function play(guess) {
+  if (playing) return;
+  playing = true;
+  setButtons(false);
+
+  const res = await fetch('/api/hilo/play', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bet, guess }),
+  });
+  const d = await res.json();
+
+  if (!res.ok) {
+    showToast(d.error || 'Fehler', 'err');
+    playing = false;
+    setButtons(true);
+    return;
+  }
+
+  // Neue Karte animiert einblenden
+  $('cardInner').classList.add('flip');
+  await new Promise(r => setTimeout(r, 300));
+  setCard(d.next_card);
+  $('cardInner').classList.remove('flip');
+  await new Promise(r => setTimeout(r, 550));
+
+  $('balance').textContent  = d.balance.toLocaleString('de-DE');
+  $('lostToday').textContent = (d.daily_loss || 0).toLocaleString('de-DE');
+
+  const pill = $('resultPill');
+  if (d.won) {
+    pill.innerHTML = `<span class="result-pill win">+${d.payout.toLocaleString('de-DE')} 🪙 GEWONNEN!</span>`;
+    showToast(`+${d.payout.toLocaleString('de-DE')} 🪙 Gewonnen!`, 'ok');
+  } else if (d.tie) {
+    pill.innerHTML = `<span class="result-pill tie">Gleichstand – Einsatz verloren</span>`;
+    showToast('Gleichstand – leider verloren', 'err');
+  } else {
+    pill.innerHTML = `<span class="result-pill lose">${Math.abs(d.payout).toLocaleString('de-DE')} 🪙 Verloren</span>`;
+    showToast(`${Math.abs(d.payout).toLocaleString('de-DE')} 🪙 verloren`, 'err');
+  }
+
+  playing = false;
+  $('btnNext').style.display = 'block';
+}
+
+// Card wird mit label/suit als String vom Server geschickt, aber suit als Index
+// Wir müssen suit_label mappen:
+const SUIT_LABELS = ['♠', '♥', '♦', '♣'];
+const origFetch = window.fetch;
+// Wir patchen den setCard-Aufruf um suit korrekt anzuzeigen
+function fixCard(card) {
+  return { ...card, suit_label: SUIT_LABELS[card.suit] || card.suit };
+}
+
+// Override setCard für korrekte Suit-Darstellung
+const _setCard = setCard;
+window._setCardWrapped = card => _setCard(fixCard(card));
+
+// Init
+(async () => {
+  const res = await fetch('/api/hilo/start');
+  if (res.status === 401) { $('ovLogin').classList.remove('hidden'); return; }
+  const d = await res.json();
+  setCard(fixCard(d.card));
+  $('balance').textContent  = (d.balance || 0).toLocaleString('de-DE');
+  $('lostToday').textContent = (d.daily_loss || 0).toLocaleString('de-DE');
+  $('limitTotal').textContent = (d.limit || 2500).toLocaleString('de-DE');
+  setButtons(true);
+})();
+
+// Override play/startRound to use fixCard
+const _origStartRound = startRound;
+window.startRound = async () => {
+  $('resultPill').innerHTML = '';
+  setButtons(false);
+  $('cardInner').classList.add('flip');
+  await new Promise(r => setTimeout(r, 300));
+  const res = await fetch('/api/hilo/start');
+  if (res.status === 401) { $('ovLogin').classList.remove('hidden'); return; }
+  const d = await res.json();
+  setCard(fixCard(d.card));
+  $('balance').textContent  = (d.balance || 0).toLocaleString('de-DE');
+  $('lostToday').textContent = (d.daily_loss || 0).toLocaleString('de-DE');
+  await new Promise(r => setTimeout(r, 100));
+  $('cardInner').classList.remove('flip');
+  await new Promise(r => setTimeout(r, 550));
+  setButtons(true);
+};
+
+window.play = async guess => {
+  if (playing) return;
+  playing = true;
+  setButtons(false);
+  const res = await fetch('/api/hilo/play', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bet, guess }),
+  });
+  const d = await res.json();
+  if (!res.ok) {
+    showToast(d.error || 'Fehler', 'err');
+    playing = false;
+    setButtons(true);
+    return;
+  }
+  $('cardInner').classList.add('flip');
+  await new Promise(r => setTimeout(r, 300));
+  setCard(fixCard(d.next_card));
+  $('cardInner').classList.remove('flip');
+  await new Promise(r => setTimeout(r, 550));
+  $('balance').textContent  = d.balance.toLocaleString('de-DE');
+  $('lostToday').textContent = (d.daily_loss || 0).toLocaleString('de-DE');
+  const pill = $('resultPill');
+  if (d.won) {
+    pill.innerHTML = `<span class="result-pill win">+${d.payout.toLocaleString('de-DE')} 🪙 GEWONNEN!</span>`;
+    showToast(`+${d.payout.toLocaleString('de-DE')} 🪙 Gewonnen!`, 'ok');
+  } else if (d.tie) {
+    pill.innerHTML = `<span class="result-pill tie">Gleichstand – Einsatz verloren</span>`;
+    showToast('Gleichstand – leider verloren', 'err');
+  } else {
+    pill.innerHTML = `<span class="result-pill lose">${Math.abs(d.payout).toLocaleString('de-DE')} 🪙 Verloren</span>`;
+    showToast(`${Math.abs(d.payout).toLocaleString('de-DE')} 🪙 verloren`, 'err');
+  }
+  playing = false;
+  $('btnNext').style.display = 'block';
+};
+</script>
+</body>
+</html>

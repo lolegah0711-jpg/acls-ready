@@ -51,13 +51,14 @@ const GAME_LIMITS = {
   rpg:          { minSec: 60,  maxScore: 1e9     },
   tow:          { minSec: 20,  maxScore: 200000  },
   memory:       { minSec: 15,  maxScore: 200000  },
+  reaction:     { minSec: 15,  maxScore: 30000   },
 };
 
 // ── ACLS-Coins: Umrechnung pro Spiel (score / divisor = Coins) ──
 const GAME_COIN_DIV = {
   race: 2000, brick: 1200, deadzone: 30000, tetris: 20000, snake: 50,
   skycop: 20000, doodlejump: 15000, '2048': 30000, bookofra: 500000,
-  towerdefense: 800, quiz: 150, idle: 1e12, rpg: 5e6, tow: 60, memory: 150,
+  towerdefense: 800, quiz: 150, idle: 1e12, rpg: 5e6, tow: 60, memory: 150, reaction: 600,
 };
 const COINS_MAX_PER_SUBMIT = 60;   // max Coins pro Spielrunde
 const COINS_DAILY_GAME_CAP = 150;  // max Coins pro Spiel pro Tag
@@ -2530,6 +2531,8 @@ app.get('/game19', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ga
 app.get('/game20', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game20.html')));
 app.get('/game21', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game21.html')));
 app.get('/game22', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game22.html')));
+app.get('/game23', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game23.html')));
+app.get('/game24', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game24.html')));
 app.get('/spielbank', (req, res) => res.sendFile(path.join(__dirname, 'public', 'spielbank.html')));
 app.get('/quiz', (req, res) => {
   const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
@@ -4634,6 +4637,7 @@ const ALL_GAMES = [
   { key: 'blackjack',   label: 'Blackjack' },
   { key: 'idle',        label: 'Idle Werkstatt' },
   { key: 'rpg',         label: 'Dungeon RPG' },
+  { key: 'reaction',    label: 'Reaktionstest' },
 ];
 
 app.get('/api/game-leaderboard', (req, res) => {
@@ -4671,6 +4675,7 @@ app.use(require('./routes/roulette')({ ...sharedDeps }));
 app.use(require('./routes/questions-admin')({ ...sharedDeps }));
 app.use(require('./routes/dashboard-config')({ ...sharedDeps }));
 app.use(require('./routes/complaints-ext')({ ...sharedDeps }));
+app.use(require('./routes/hilo')({ ...sharedDeps }));
 
 app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
