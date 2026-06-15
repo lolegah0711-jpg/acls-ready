@@ -1085,22 +1085,35 @@ const SHOP_TITLE_NAMES = {
   title_schrauber: '🔧 Meisterschrauber', title_casino: '🎰 Casino-Hai',
   title_abschlepp: '🚛 Abschleppkönig', title_champion: '🏆 Turnier-Champion',
   title_legende:   '👑 ACLS-Legende',
+  title_pilot: '✈️ Fluglehrer', title_kapitan: '⚓ Kapitän', title_drift: '🏁 Drift-King',
+  title_nacht: '🌙 Nachtschicht', title_glueck: '🍀 Glückspilz', title_veteran: '🎖️ Veteran',
+  title_millionaer: '💰 Millionär',
 };
 const SHOP_FRAME_COLORS = {
   frame_gold: '#ffd700', frame_neon: '#00f5ff', frame_feuer: '#f97316',
   frame_lila: '#a855f7', frame_regenbogen: 'rainbow',
+  frame_smaragd: '#10b981', frame_rubin: '#e11d48', frame_eis: '#7dd3fc', frame_pink: '#ec4899',
 };
 
 const BANNER_CSS = {
   banner_sunset:  'linear-gradient(135deg,#7c2d12,#f97316 45%,#fbbf24)',
   banner_skyline: 'linear-gradient(180deg,#0c1830,#1e3a8a 60%,#0ea5e9)',
   banner_neon:    'linear-gradient(135deg,#0f0524,#7c3aed 50%,#00f5ff)',
+  banner_carbon:  'linear-gradient(135deg,#0a0a0a,#262626 50%,#404040)',
+  banner_galaxy:  'linear-gradient(160deg,#0b0220,#4c1d95 55%,#7c3aed)',
+  banner_gold:    'linear-gradient(135deg,#3a2c00,#b8860b 50%,#fbbf24)',
+  banner_matrix:  'linear-gradient(180deg,#001a00,#003d1a 55%,#00ff66)',
 };
-const DECO_EMOJI  = { deco_crown: '👑', deco_wrench: '🔧', deco_blitz: '⚡', deco_halo: '😇' };
-const NAME_COLORS = { namecolor_gold: '#ffd700' };
+const DECO_EMOJI  = { deco_crown: '👑', deco_wrench: '🔧', deco_blitz: '⚡', deco_halo: '😇',
+  deco_fire: '🔥', deco_star: '⭐', deco_diamond: '💎', deco_rocket: '🚀', deco_clover: '🍀', deco_skull: '💀' };
+const NAME_COLORS = { namecolor_gold: '#ffd700',
+  namecolor_cyan: '#22d3ee', namecolor_pink: '#f472b6', namecolor_green: '#4ade80', namecolor_red: '#f87171' };
 const DECK_CSS = {
   deck_gold:   'repeating-linear-gradient(45deg,#7a5800,#7a5800 6px,#b8860b 6px,#b8860b 12px)',
   deck_carbon: 'repeating-linear-gradient(135deg,#0d0d0d,#0d0d0d 4px,#2e2e2e 4px,#2e2e2e 8px)',
+  deck_neon:   'repeating-linear-gradient(45deg,#1a0033,#1a0033 5px,#7c3aed 5px,#7c3aed 10px)',
+  deck_ocean:  'repeating-linear-gradient(135deg,#012a4a,#012a4a 5px,#2a6f97 5px,#2a6f97 10px)',
+  deck_rot:    'repeating-linear-gradient(45deg,#4a0404,#4a0404 5px,#b91c1c 5px,#b91c1c 10px)',
 };
 const decoEmoji    = id => DECO_EMOJI[id] ? DECO_EMOJI[id] + ' ' : '';
 const nameColorCss = id => NAME_COLORS[id] ? `color:${NAME_COLORS[id]};` : '';

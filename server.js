@@ -2906,11 +2906,46 @@ const SHOP_ITEMS = [
   { id: 'deco_wrench', type: 'deco', name: '🔧 Schraubenschlüssel', price: 450, desc: 'Deko neben deinem Namen' },
   { id: 'deco_blitz',  type: 'deco', name: '⚡ Blitz',              price: 450, desc: 'Deko neben deinem Namen' },
   { id: 'deco_halo',   type: 'deco', name: '😇 Heiligenschein',     price: 600, desc: 'Deko neben deinem Namen' },
+  // Weitere Titel
+  { id: 'title_pilot',      type: 'title', name: '✈️ Fluglehrer',      price: 400,  desc: 'Titel unter deinem Namen' },
+  { id: 'title_kapitan',    type: 'title', name: '⚓ Kapitän',          price: 400,  desc: 'Titel unter deinem Namen' },
+  { id: 'title_drift',      type: 'title', name: '🏁 Drift-King',       price: 600,  desc: 'Titel unter deinem Namen' },
+  { id: 'title_nacht',      type: 'title', name: '🌙 Nachtschicht',     price: 300,  desc: 'Titel unter deinem Namen' },
+  { id: 'title_glueck',     type: 'title', name: '🍀 Glückspilz',       price: 500,  desc: 'Titel unter deinem Namen' },
+  { id: 'title_veteran',    type: 'title', name: '🎖️ Veteran',          price: 700,  desc: 'Titel unter deinem Namen' },
+  { id: 'title_millionaer', type: 'title', name: '💰 Millionär',        price: 1000, desc: 'Titel unter deinem Namen' },
+  // Weitere Avatar-Rahmen
+  { id: 'frame_smaragd', type: 'frame', name: 'Smaragd-Rahmen', price: 500, desc: 'Grüner Avatar-Glow',  color: '#10b981' },
+  { id: 'frame_rubin',   type: 'frame', name: 'Rubin-Rahmen',   price: 500, desc: 'Roter Avatar-Glow',   color: '#e11d48' },
+  { id: 'frame_eis',     type: 'frame', name: 'Eis-Rahmen',     price: 500, desc: 'Eisblauer Avatar-Glow', color: '#7dd3fc' },
+  { id: 'frame_pink',    type: 'frame', name: 'Pink-Rahmen',    price: 500, desc: 'Pinker Avatar-Glow',  color: '#ec4899' },
+  // Weitere Avatar-Deko
+  { id: 'deco_fire',    type: 'deco', name: '🔥 Flamme',    price: 450, desc: 'Deko neben deinem Namen' },
+  { id: 'deco_star',    type: 'deco', name: '⭐ Stern',     price: 450, desc: 'Deko neben deinem Namen' },
+  { id: 'deco_diamond', type: 'deco', name: '💎 Diamant',   price: 600, desc: 'Deko neben deinem Namen' },
+  { id: 'deco_rocket',  type: 'deco', name: '🚀 Rakete',    price: 500, desc: 'Deko neben deinem Namen' },
+  { id: 'deco_clover',  type: 'deco', name: '🍀 Kleeblatt', price: 500, desc: 'Deko neben deinem Namen' },
+  { id: 'deco_skull',   type: 'deco', name: '💀 Totenkopf', price: 450, desc: 'Deko neben deinem Namen' },
+  // Weitere Namensfarben
+  { id: 'namecolor_cyan',  type: 'namecolor', name: 'Cyan-Name',  price: 750, desc: 'Dein Name in Cyan – Team & Ranglisten' },
+  { id: 'namecolor_pink',  type: 'namecolor', name: 'Pink-Name',  price: 750, desc: 'Dein Name in Pink – Team & Ranglisten' },
+  { id: 'namecolor_green', type: 'namecolor', name: 'Grüner Name', price: 750, desc: 'Dein Name in Grün – Team & Ranglisten' },
+  { id: 'namecolor_red',   type: 'namecolor', name: 'Roter Name', price: 750, desc: 'Dein Name in Rot – Team & Ranglisten' },
+  // Weitere Profil-Banner
+  { id: 'banner_carbon', type: 'banner', name: 'Carbon-Banner', price: 600, desc: 'Hintergrund in deinem Profil' },
+  { id: 'banner_galaxy', type: 'banner', name: 'Galaxy-Banner', price: 800, desc: 'Hintergrund in deinem Profil' },
+  { id: 'banner_gold',   type: 'banner', name: 'Gold-Banner',   price: 800, desc: 'Hintergrund in deinem Profil' },
+  { id: 'banner_matrix', type: 'banner', name: 'Matrix-Banner', price: 600, desc: 'Hintergrund in deinem Profil' },
+  // Weitere Kartendecks (Blackjack)
+  { id: 'deck_neon',  type: 'deck', name: 'Neon-Deck',  price: 500, desc: 'Neon-Kartenrücken beim Blackjack' },
+  { id: 'deck_ocean', type: 'deck', name: 'Ocean-Deck', price: 500, desc: 'Blauer Kartenrücken beim Blackjack' },
+  { id: 'deck_rot',   type: 'deck', name: 'Rubin-Deck', price: 500, desc: 'Roter Kartenrücken beim Blackjack' },
   // Freischaltungen
   { id: 'emotes_pack', type: 'perk', name: '😏 Duell-Emotes', price: 250, desc: 'Sende Emotes im Quiz-Duell' },
   // Verbrauchsartikel
   { id: 'vip_30',      type: 'consumable', name: '⭐ VIP-Rolle (30 Tage)', price: 2000, desc: 'Goldene VIP-Rolle im Discord' },
   { id: 'booster_24',  type: 'consumable', name: '⚡ Coin-Booster (24h)',  price: 300,  desc: 'Doppelte Minispiel-Coins für 24 Stunden' },
+  { id: 'booster_72',  type: 'consumable', name: '⚡ Coin-Booster (72h)',  price: 750,  desc: 'Doppelte Minispiel-Coins für 3 Tage' },
   { id: 'mystery_box', type: 'consumable', name: '🎲 Mystery-Box',        price: 200,  desc: 'Coins, Lotterie-Los oder Rahmen – Überraschung!' },
 ];
 
@@ -3247,6 +3282,10 @@ app.post('/api/shop/buy', (req, res) => {
     }
     if (item.id === 'booster_24') {
       const until = extendPerk(ident.id, 'booster', 24);
+      return res.json({ ok: true, balance: bal, boosterUntil: until });
+    }
+    if (item.id === 'booster_72') {
+      const until = extendPerk(ident.id, 'booster', 72);
       return res.json({ ok: true, balance: bal, boosterUntil: until });
     }
     if (item.id === 'mystery_box') {
