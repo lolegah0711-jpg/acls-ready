@@ -6717,7 +6717,7 @@ async function frageneditor() {
   const stats = await api('/api/admin/questions/stats');
   if (!stats) return;
 
-  const catId = window._feActiveCat || stats.categories[0]?.id;
+  const catId = window._feActiveCat || stats[0]?.id;
   window._feActiveCat = catId;
 
   let questions = [];
@@ -6730,10 +6730,10 @@ async function frageneditor() {
     <div style="max-width:900px">
       <!-- Stats-Chips -->
       <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1.2rem">
-        ${stats.categories.map(c => `
+        ${stats.map(c => `
           <button onclick="window._feActiveCat=${c.id};frageneditor()"
             style="padding:.35rem .85rem;border-radius:999px;font-size:.75rem;font-weight:700;border:1px solid ${catId===c.id?'var(--accent)':'var(--border)'};background:${catId===c.id?'var(--accent)':'var(--surface2)'};color:${catId===c.id?'#fff':'var(--text)'};cursor:pointer">
-            ${esc(c.name)} <span style="opacity:.7">(${c.question_count})</span>
+            ${esc(c.name)} <span style="opacity:.7">(${c.total})</span>
           </button>`).join('')}
       </div>
 

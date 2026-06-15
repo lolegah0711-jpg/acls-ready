@@ -21,6 +21,8 @@ module.exports = function makeQuestionsAdminRouter({ db, requireAdmin }) {
     if (!category_id || !question?.trim() || !option_a?.trim() || correct_answer === undefined) {
       return res.status(400).json({ error: 'category_id, question, option_a und correct_answer sind Pflichtfelder' });
     }
+    const VALID_ANSWERS = ['A', 'B', 'C', 'D'];
+    if (!VALID_ANSWERS.includes(correct_answer)) return res.status(400).json({ error: 'correct_answer muss A, B, C oder D sein' });
     const r = db.prepare(`
       INSERT INTO exam_questions (category_id, question, option_a, option_b, option_c, option_d, correct_answer, is_ko, is_seeded)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
@@ -31,7 +33,7 @@ module.exports = function makeQuestionsAdminRouter({ db, requireAdmin }) {
       (option_b || '').trim(),
       (option_c || '').trim(),
       (option_d || '').trim(),
-      parseInt(correct_answer, 10),
+      correct_answer,
       is_ko ? 1 : 0,
     );
     res.json({ ok: true, id: r.lastInsertRowid });
@@ -55,7 +57,7 @@ module.exports = function makeQuestionsAdminRouter({ db, requireAdmin }) {
       (option_b || '').trim(),
       (option_c || '').trim(),
       (option_d || '').trim(),
-      parseInt(correct_answer, 10),
+      correct_answer || row.correct_answer,
       is_ko ? 1 : 0,
       id,
     );
