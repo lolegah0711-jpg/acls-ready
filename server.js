@@ -8,6 +8,7 @@ const fetch    = require('node-fetch');
 const crypto   = require('crypto');
 const { initDb } = require('./database');
 const slotEngine = require('./slot-engine');
+const bigbassEngine = require('./bigbass-engine');
 
 // Uploads-Ordner anlegen
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
@@ -2539,6 +2540,7 @@ app.get('/game15', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ga
 app.get('/game16', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game16.html')));
 app.get('/game17', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game17.html')));
 app.get('/game18', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game18.html')));
+app.get('/game19', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game19.html')));
 app.get('/spielbank', (req, res) => res.sendFile(path.join(__dirname, 'public', 'spielbank.html')));
 app.get('/quiz', (req, res) => {
   const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
@@ -4279,6 +4281,90 @@ app.post('/api/plinko/drop', (req, res) => {
   res.json({ ok: true, bet, risk, path, bucket, mult, win, balance, dailyNet: plinkoDailyNet(ident.id) });
 });
 
+// ════════════════════════════════════════════════════════════════
+//  BIG BASS  (Money-Collect-Slot, 5×3) — Mathematik in bigbass-engine.js
+//  Freispiele: Geldfische tragen Werte, Angler-Wild kassiert ein,
+//  je 4 Angler Multiplikator-Stufe (×2/×3/×10). RTP ~94 %.
+// ════════════════════════════════════════════════════════════════
+const BIGBASS_MIN_BET          = 5;
+const BIGBASS_MAX_BET          = 250;
+const BIGBASS_FEATURE_MAX_BET  = 50;       // Feature-Kauf = 60× Einsatz → max 3000 Coins
+const BIGBASS_DAILY_LOSS_LIMIT = 5000;
+const BIGBASS_ABS_MAX_WIN      = 250000;
+
+function bigbassDailyNet(did) {
+  return db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM coin_transactions
+    WHERE discord_id = ? AND reason LIKE 'bigbass:%' AND date(created_at) = date('now')`).get(did).s;
+}
+
+app.get('/api/bigbass/state', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+  const net = bigbassDailyNet(ident.id);
+  res.json({
+    balance: bal, username: ident.name,
+    minBet: BIGBASS_MIN_BET, maxBet: BIGBASS_MAX_BET,
+    featureCostMult: bigbassEngine.FEATURE_BUY_COST, featureMaxBet: BIGBASS_FEATURE_MAX_BET,
+    pays: bigbassEngine.PAYS, scatterPays: bigbassEngine.SCATTER_PAYS, moneyValues: bigbassEngine.MONEY_VALUES,
+    cols: bigbassEngine.COLS, rows: bigbassEngine.ROWS,
+    dailyNet: net, dailyLossLimit: BIGBASS_DAILY_LOSS_LIMIT,
+    lossLeft: Math.max(0, BIGBASS_DAILY_LOSS_LIMIT + Math.min(0, net)),
+  });
+});
+
+app.post('/api/bigbass/spin', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`bigbass:${ident.id}`, 90, 60_000)) return res.status(429).json({ error: 'Zu schnell – kurz durchatmen' });
+
+  const buyFeature = !!req.body.buyFeature;
+  const bet    = Math.floor(+req.body.bet || 0);
+  const maxBet = buyFeature ? BIGBASS_FEATURE_MAX_BET : BIGBASS_MAX_BET;
+  if (!Number.isInteger(bet) || bet < BIGBASS_MIN_BET || bet > maxBet)
+    return res.status(400).json({ error: `Einsatz: ${BIGBASS_MIN_BET}–${maxBet} Coins${buyFeature ? ' (Feature-Kauf)' : ''}` });
+
+  if (bigbassDailyNet(ident.id) <= -BIGBASS_DAILY_LOSS_LIMIT)
+    return res.status(400).json({ error: `Tages-Verlustlimit erreicht (${BIGBASS_DAILY_LOSS_LIMIT} Coins). Spielerschutz – morgen geht's weiter.` });
+
+  const cost = buyFeature ? bet * bigbassEngine.FEATURE_BUY_COST : bet;
+  const balAfterBet = addCoins(ident.id, ident.name, -cost, 'bigbass:bet', { bet, feature: buyFeature });
+  if (balAfterBet === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+
+  const result = bigbassEngine.spin({ bet, freeBuy: buyFeature, rng: (n) => crypto.randomInt(n) });
+  const win = Math.min(result.totalWin, BIGBASS_ABS_MAX_WIN);
+  let balance = balAfterBet;
+  if (win > 0)
+    balance = addCoins(ident.id, ident.name, win, 'bigbass:win', { bet, x: +(win / bet).toFixed(2), feature: buyFeature });
+
+  const netWin = win - cost;
+  if (netWin > 0) {
+    if (ident.user) {
+      db.prepare(`INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, 'bigbass', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, game) DO UPDATE SET
+          score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+          updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END`).run(ident.user.id, netWin);
+      checkGameBadges(ident.user.id, ident.id);
+    } else {
+      db.prepare(`INSERT INTO visitor_game_scores (discord_id, username, game, score, updated_at) VALUES (?, ?, 'bigbass', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(discord_id, game) DO UPDATE SET
+          score      = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+          updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END,
+          username   = excluded.username`).run(ident.id, ident.name, netWin);
+    }
+  }
+  try { seasonIncQuest(ident.id, 'games', 1); } catch {}
+
+  res.json({
+    ok: true, bet, cost, buyFeature,
+    rounds: result.rounds, totalWin: win,
+    capped: result.capped || win < result.totalWin,
+    freeSpinsAwarded: result.freeSpinsAwarded, baseScatters: result.baseScatters,
+    fishermen: result.fishermen, finalMult: result.finalMult,
+    balance, dailyNet: bigbassDailyNet(ident.id),
+  });
+});
+
 // Big Wins für die Spielbank-Lobby (Slot + Blackjack)
 app.get('/api/casino/recent-wins', (req, res) => {
   const ident = coinIdent(req);
@@ -4286,7 +4372,7 @@ app.get('/api/casino/recent-wins', (req, res) => {
   const rows = db.prepare(`
     SELECT cb.username AS username, t.amount AS amount, t.reason AS reason, t.meta AS meta, t.created_at AS created_at
     FROM coin_transactions t LEFT JOIN coin_balances cb ON cb.discord_id = t.discord_id
-    WHERE t.reason IN ('slot:win', 'blackjack:win', 'plinko:win') AND t.amount >= 250
+    WHERE t.reason IN ('slot:win', 'blackjack:win', 'plinko:win', 'bigbass:win') AND t.amount >= 250
     ORDER BY t.id DESC LIMIT 12`).all();
   res.json(rows.map(r => {
     let meta = {}; try { meta = JSON.parse(r.meta || '{}'); } catch {}

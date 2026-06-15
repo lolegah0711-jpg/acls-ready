@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACLS Big Bass – Money Collect</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:radial-gradient(ellipse at 50% 18%,#0a2e3a 0%,#06202b 50%,#04111a 100%);font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;overflow-x:hidden;}
+    .topbar{width:100%;max-width:760px;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;gap:8px;}
+    .topbar .nav{background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;}
+    .title{font-weight:900;font-size:18px;letter-spacing:.04em;background:linear-gradient(90deg,#34d399,#fbbf24,#60a5fa);-webkit-background-clip:text;background-clip:text;color:transparent;text-align:center;}
+    .chip-bal{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.45);border:1px solid rgba(251,191,36,.4);border-radius:999px;padding:7px 14px;font-weight:800;font-size:15px;color:#fbbf24;white-space:nowrap;}
+    .stage{width:100%;max-width:520px;padding:4px 14px 28px;flex:1;display:flex;flex-direction:column;align-items:center;}
+    .banner{min-height:30px;font-weight:800;font-size:15px;text-align:center;margin:2px 0 6px;letter-spacing:.03em;}
+    .fsbar{display:flex;align-items:center;justify-content:center;gap:10px;min-height:24px;margin-bottom:4px;}
+    .pill{display:inline-flex;align-items:center;gap:6px;background:rgba(251,191,36,.14);border:1px solid rgba(251,191,36,.4);color:#fbbf24;border-radius:999px;padding:3px 11px;font-weight:800;font-size:12px;}
+    .pill.mult{background:rgba(96,165,250,.16);border-color:rgba(96,165,250,.45);color:#93c5fd;}
+    .winbox{min-height:46px;display:flex;flex-direction:column;align-items:center;justify-content:center;margin-bottom:6px;}
+    .winbox .lbl{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.4);}
+    .winbox .amt{font-weight:900;font-size:30px;color:#fde047;line-height:1.1;text-shadow:0 0 18px rgba(253,224,71,.55);}
+    .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;width:100%;background:rgba(0,0,0,.4);border:2px solid rgba(52,211,153,.3);border-radius:16px;padding:10px;box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 0 40px rgba(52,211,153,.07);}
+    .cell{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;font-size:clamp(22px,8vw,38px);border-radius:11px;background:linear-gradient(160deg,#0d3142,#072331);border:1px solid rgba(255,255,255,.06);position:relative;overflow:hidden;}
+    .cell.drop{animation:drop .26s cubic-bezier(.3,1.4,.5,1);}
+    @keyframes drop{from{transform:translateY(-38px);opacity:0}to{transform:none;opacity:1}}
+    .cell.win{animation:pulse .42s ease infinite alternate;box-shadow:0 0 16px 2px var(--g,#fde047);border-color:var(--g,#fde047);z-index:2;}
+    @keyframes pulse{from{transform:scale(1)}to{transform:scale(1.1)}}
+    .cell.money{background:radial-gradient(circle,#0c4a2e,#04221a);border-color:#34d399;}
+    .cell.wild{background:radial-gradient(circle,#1e3a8a,#0a1f44);border-color:#60a5fa;box-shadow:0 0 14px rgba(96,165,250,.5);}
+    .cell.scatter{background:radial-gradient(circle,#5b3d00,#1a1300);border-color:#fbbf24;box-shadow:0 0 14px rgba(251,191,36,.5);}
+    .cell.collect{animation:collect .5s ease;}
+    @keyframes collect{0%{transform:scale(1)}40%{transform:scale(1.18);box-shadow:0 0 22px 4px #34d399}100%{transform:scale(1)}}
+    .val{position:absolute;bottom:3px;left:50%;transform:translateX(-50%);font-size:11px;font-weight:900;color:#052;background:#34d399;border-radius:6px;padding:0 5px;line-height:15px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.4);}
+    .controls{margin-top:14px;width:100%;display:flex;flex-direction:column;align-items:center;gap:12px;}
+    .betrow{display:flex;align-items:center;gap:10px;}
+    .betbtn{width:40px;height:40px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:#0d3142;color:#fff;font-weight:900;font-size:20px;cursor:pointer;font-family:inherit;}
+    .betbtn:active{transform:scale(.92);}
+    .betval{min-width:128px;text-align:center;}
+    .betval .l{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.4);}
+    .betval .v{font-weight:900;font-size:22px;color:#fde047;}
+    .btn{padding:14px 32px;border-radius:14px;border:none;font-weight:900;font-size:16px;cursor:pointer;font-family:inherit;transition:opacity .15s,transform .1s;letter-spacing:.03em;}
+    .btn:active{transform:scale(.97);}
+    .btn:disabled{opacity:.4;cursor:default;}
+    .btn-spin{background:linear-gradient(135deg,#34d399,#059669);color:#04221a;min-width:200px;box-shadow:0 8px 24px rgba(52,211,153,.35);}
+    .btn-feat{background:linear-gradient(135deg,#2563eb,#0ea5e9);color:#fff;font-size:13px;padding:11px 18px;}
+    .btn-ghost{background:rgba(255,255,255,.06);color:#cbd5e1;border:1px solid rgba(255,255,255,.12);font-size:12px;padding:9px 14px;}
+    .hint{font-size:11px;color:rgba(255,255,255,.4);text-align:center;line-height:1.6;max-width:440px;}
+    .loss-bar{width:100%;max-width:320px;}
+    .loss-bar .track{height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;}
+    .loss-bar .fill{height:100%;background:linear-gradient(90deg,#22c55e,#fbbf24,#ef4444);border-radius:3px;transition:width .4s;}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:100;padding:16px;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#06202b;border:1px solid #0e3a4a;border-radius:18px;padding:30px;max-width:430px;width:100%;text-align:center;max-height:90vh;overflow-y:auto;}
+    .sub{color:#8bb3bf;font-size:14px;margin-bottom:18px;line-height:1.5;}
+    .pt-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 4px;border-bottom:1px solid #0e3142;font-size:13px;}
+    .pt-sym{font-size:22px;}
+    .pt-pay{color:#fde047;font-weight:700;font-size:12px;text-align:right;}
+    .lb-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #0e3142;font-size:13px;}
+    .lb-rank{width:24px;text-align:center;font-weight:700;}
+    .lb-av{width:26px;height:26px;border-radius:50%;background:#0d3142;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;overflow:hidden;flex-shrink:0;}
+    .lb-av img{width:100%;height:100%;object-fit:cover;}
+    .lb-name{flex:1;font-weight:600;}.lb-score{font-weight:700;color:#fde047;}
+    .bigwin{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:90;}
+    .bigwin.hidden{display:none;}
+    .bigwin .inner{font-weight:900;font-size:40px;text-align:center;color:#fde047;text-shadow:0 0 30px rgba(253,224,71,.8);animation:bw .5s ease;}
+    @keyframes bw{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <a href="/spielbank" class="nav">← Spielbank</a>
+  <div class="title">🎣 ACLS BIG BASS</div>
+  <div style="display:flex;gap:6px;align-items:center">
+    <button class="btn btn-ghost" style="padding:7px 10px" onclick="openPay()">ℹ️</button>
+    <button class="btn btn-ghost" style="padding:7px 10px" onclick="openLb()">🏆</button>
+    <div class="chip-bal">🪙 <span id="balance">–</span></div>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="banner" id="banner"></div>
+  <div class="fsbar" id="fsbar"></div>
+  <div class="winbox">
+    <div class="lbl">Gewinn</div>
+    <div class="amt" id="win">0</div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="controls">
+    <div class="betrow">
+      <button class="betbtn" onclick="changeBet(-1)">–</button>
+      <div class="betval"><div class="l">Einsatz</div><div class="v"><span id="bet">10</span> 🪙</div></div>
+      <button class="betbtn" onclick="changeBet(1)">+</button>
+    </div>
+    <button class="btn btn-spin" id="spinBtn" onclick="spin()">DREHEN</button>
+    <button class="btn btn-feat" id="featBtn" onclick="buyFeature()">🎣 Freispiele kaufen (<span id="featCost">600</span> 🪙)</button>
+    <div class="loss-bar" id="lossBarWrap" style="display:none">
+      <div style="font-size:10px;color:rgba(255,255,255,.4);text-align:center;margin-bottom:3px">Tages-Verlustlimit (Spielerschutz)</div>
+      <div class="track"><div class="fill" id="lossFill" style="width:0%"></div></div>
+    </div>
+    <div class="hint">Gewinne ab <b>6 gleichen</b> Symbolen – egal wo (🎣 ist Wild). <b>3× 🪝</b> = 10 Freispiele: 🐟 tragen Coin-Werte, der Angler 🎣 kassiert sie ein. Je 4 Angler steigt der Multiplikator (×2 → ×3 → ×10). RTP ~94 %.</div>
+  </div>
+</div>
+
+<div class="bigwin hidden" id="bigwin"><div class="inner" id="bigwinText"></div></div>
+
+<div class="ov hidden" id="ov-login">
+  <div class="ov-card">
+    <div style="font-size:44px;margin-bottom:10px">🔒</div>
+    <h2 style="margin-bottom:8px">Anmeldung nötig</h2>
+    <p class="sub">ACLS Big Bass spielst du mit deinen ACLS-Coins.<br>Melde dich zuerst im Portal an.</p>
+    <a href="/" class="btn btn-spin" style="text-decoration:none;display:inline-block">Zum Portal</a>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-pay">
+  <div class="ov-card">
+    <h2 style="margin-bottom:4px">Gewinntabelle</h2>
+    <p class="sub">Auszahlung = Vielfaches deines Einsatzes je nach Anzahl (6–7 / 8–9 / 10+).</p>
+    <div id="pt-list" style="text-align:left"></div>
+    <div style="margin-top:14px;font-size:12px;color:#8bb3bf;line-height:1.6;text-align:left">
+      <div>🪝 <b>Scatter</b> – 3+ = 10 Freispiele (zahlt zusätzlich 1× / 3× / 10×).</div>
+      <div>🐟 <b>Geldfisch</b> – trägt einen Coin-Wert, wird in Freispielen vom Angler eingesammelt.</div>
+      <div>🎣 <b>Angler (Wild)</b> – kassiert in Freispielen alle 🐟 ein; je 4 Angler steigt der Multiplikator (×2/×3/×10).</div>
+      <div>🎣 <b>Feature-Kauf</b> – 60× Einsatz für garantierte Freispiele.</div>
+    </div>
+    <button class="btn btn-ghost" onclick="closeOv('ov-pay')" style="margin-top:16px">Schließen</button>
+  </div>
+</div>
+
+<div class="ov hidden" id="ov-lb">
+  <div class="ov-card">
+    <h2 style="margin-bottom:4px">🏆 Rangliste</h2>
+    <p class="sub">ACLS Big Bass – Größter Netto-Gewinn</p>
+    <div id="lb-list" style="text-align:left;max-height:300px;overflow-y:auto"></div>
+    <button class="btn btn-ghost" onclick="closeOv('ov-lb')" style="margin-top:16px">Schließen</button>
+  </div>
+</div>
+
+<script>
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const $=id=>document.getElementById(id);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+// 0..5 Regulär, 6 Geldfisch, 7 Angler(Wild), 8 Scatter
+const SYM={
+  0:{e:'🪱',g:'#a3a3a3'},1:{e:'🦐',g:'#fb7185'},2:{e:'🦀',g:'#f97316'},3:{e:'🐚',g:'#c4b5fd'},
+  4:{e:'🧰',g:'#facc15'},5:{e:'⛵',g:'#e5e7eb'},6:{e:'🐟',g:'#34d399'},7:{e:'🎣',g:'#60a5fa'},8:{e:'🪝',g:'#fbbf24'}
+};
+const MONEY=6, WILD=7, SCATTER=8;
+
+const BETS=[5,10,20,30,50,75,100,150,200,250];
+let betIdx=1, balance=0, busy=false, currentUser=null;
+let limits={featureCostMult:60,featureMaxBet:50,dailyLossLimit:5000};
+let PAYS=[];
+
+function curBet(){return BETS[betIdx];}
+function changeBet(d){ if(busy)return; betIdx=Math.max(0,Math.min(BETS.length-1,betIdx+d)); refreshBet(); }
+function refreshBet(){
+  $('bet').textContent=curBet();
+  $('featCost').textContent=(curBet()*limits.featureCostMult).toLocaleString('de-DE');
+  $('featBtn').disabled=busy||curBet()>limits.featureMaxBet||curBet()*limits.featureCostMult>balance;
+}
+function setBalance(b){balance=b;$('balance').textContent=(b||0).toLocaleString('de-DE');refreshBet();}
+function setWin(w){$('win').textContent=Math.round(w).toLocaleString('de-DE');}
+function setBanner(t,col){$('banner').innerHTML=t?`<span style="color:${col||'#fff'}">${t}</span>`:'';}
+function setFsbar(html){$('fsbar').innerHTML=html||'';}
+
+function cellHtml(v,valueMap,idx,drop){
+  const s=SYM[v]||SYM[0];
+  let cls='cell'+(drop?' drop':'');
+  if(v===MONEY)cls+=' money'; else if(v===WILD)cls+=' wild'; else if(v===SCATTER)cls+=' scatter';
+  const val=(v===MONEY&&valueMap&&valueMap[idx]!=null)?`<div class="val">${valueMap[idx]}×</div>`:'';
+  return `<div class="${cls}" style="--g:${s.g}">${s.e}${val}</div>`;
+}
+function drawGrid(grid,money,drop){
+  const vmap={}; (money||[]).forEach(m=>vmap[m.cell]=m.value);
+  $('grid').innerHTML=grid.map((v,i)=>cellHtml(v,vmap,i,drop)).join('');
+}
+function addClass(cells,cls){ const n=$('grid').children; (cells||[]).forEach(i=>{ if(n[i])n[i].classList.add(cls); }); }
+
+async function bigWin(x){
+  const t=x>=50?'🐋 MEGA CATCH!':x>=20?'🎣 BIG CATCH!':'✨ Schöner Fang!';
+  $('bigwinText').textContent=t;
+  $('bigwin').classList.remove('hidden');
+  await sleep(1500);
+  $('bigwin').classList.add('hidden');
+}
+
+async function animate(res){
+  setWin(0); setBanner(''); setFsbar('');
+  let shown=0;
+  const freeRounds=res.rounds.filter(r=>r.free).length;
+  let freeDone=0, lastMult=1;
+
+  for(const round of res.rounds){
+    if(round.free){
+      freeDone++;
+      setFsbar(`<span class="pill">🎣 FREISPIEL ${freeDone}/${freeRounds}</span><span class="pill mult">Multiplikator ×${round.mult}</span>`);
+    }
+    drawGrid(round.grid, round.money, true);
+    await sleep(round.free?230:300);
+
+    // Reguläre Gewinne
+    if(round.reg&&round.reg.length){
+      const cells=round.reg.flatMap(w=>w.cells);
+      addClass(cells,'win'); addClass(cells,'collect');
+      shown+=round.regWin; setWin(shown);
+      await sleep(500);
+    }
+    // Scatter-Trigger (Basis)
+    if(!round.free&&round.scatters>=3){
+      setBanner(`🪝 ${round.scatters} SCATTER – ${res.freeSpinsAwarded} FREISPIELE!`,'#fbbf24');
+      if(round.scPay>0){ shown+=round.scPay; setWin(shown); }
+      await sleep(1100);
+    }
+    // Money-Collect (nur Freispiel, wenn Angler + Fische)
+    if(round.free&&round.collected>0){
+      const moneyCells=(round.money||[]).map(m=>m.cell);
+      addClass(moneyCells,'collect'); addClass(round.wilds,'collect'); addClass(round.wilds,'win');
+      await sleep(280);
+      shown+=round.collected; setWin(shown);
+      const mtxt=round.mult>1?` ×${round.mult}`:'';
+      setBanner(`🎣 Angler kassiert +${Math.round(round.collected).toLocaleString('de-DE')} 🪙${mtxt}`,'#34d399');
+      await sleep(650);
+    }
+    // Multiplikator-Aufstieg
+    if(round.free&&round.mult>lastMult){
+      setBanner(`🔥 MULTIPLIKATOR ×${round.mult}!`,'#93c5fd');
+      await sleep(750);
+    }
+    lastMult=round.free?round.mult:1;
+  }
+
+  setWin(res.totalWin);
+  setBalance(res.balance);
+  setFsbar('');
+  if(res.totalWin>0){
+    const x=res.totalWin/res.bet;
+    setBanner(`Gewinn: +${res.totalWin.toLocaleString('de-DE')} 🪙 (${x.toFixed(1)}×)`,'#4ade80');
+    if(x>=15) await bigWin(x);
+  } else setBanner('');
+  updateLossBar(res.dailyNet);
+}
+
+function updateLossBar(net){
+  if(net==null)return;
+  const loss=Math.max(0,-net);
+  const pct=Math.min(100, loss/limits.dailyLossLimit*100);
+  $('lossBarWrap').style.display = loss>0?'block':'none';
+  $('lossFill').style.width=pct+'%';
+}
+
+async function post(url,body){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.error||'Fehler');
+  return d;
+}
+
+async function doSpin(buyFeature){
+  if(busy)return;
+  const bet=curBet();
+  const cost=buyFeature?bet*limits.featureCostMult:bet;
+  if(cost>balance){setBanner('Nicht genug Coins','#ef4444');return;}
+  busy=true; $('spinBtn').disabled=true; $('featBtn').disabled=true; setBanner('');
+  try{
+    const res=await post('/api/bigbass/spin',{bet,buyFeature});
+    await animate(res);
+  }catch(e){ setBanner(esc(e.message),'#ef4444'); }
+  busy=false; $('spinBtn').disabled=false; refreshBet();
+}
+const spin=()=>doSpin(false);
+const buyFeature=()=>doSpin(true);
+
+function openOv(id){$(id).classList.remove('hidden');}
+function closeOv(id){$(id).classList.add('hidden');}
+function openPay(){
+  $('pt-list').innerHTML=(PAYS.length?PAYS:[[0,0,0]]).map((p,i)=>i<6?`<div class="pt-row"><span class="pt-sym">${SYM[i].e}</span><span class="pt-pay">${p[0]}× / ${p[1]}× / ${p[2]}×</span></div>`:'').join('');
+  openOv('ov-pay');
+}
+async function openLb(){
+  openOv('ov-lb');
+  const el=$('lb-list');
+  el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Laden…</div>';
+  try{
+    const data=await (await fetch('/api/game-scores/bigbass')).json();
+    if(!data.length){el.innerHTML='<div style="text-align:center;padding:14px;color:#6b7280">Noch keine Einträge</div>';return;}
+    el.innerHTML=data.map((row,i)=>{
+      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+      const me=currentUser&&row.discord_id===currentUser.discord_id;
+      const av=row.avatar?`<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${esc((row.username||'?').slice(0,2).toUpperCase())}'">`:esc((row.username||'?').slice(0,2).toUpperCase());
+      return`<div class="lb-row" style="${me?'background:#0c2a18;border-radius:5px;':''}">
+        <div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
+        <div class="lb-name">${esc(row.username||'Unbekannt')}</div>
+        <div class="lb-score">+${(row.score||0).toLocaleString('de-DE')}</div>
+      </div>`;
+    }).join('');
+  }catch{el.innerHTML='<div style="text-align:center;color:#ef4444">Fehler</div>';}
+}
+
+function idleGrid(){
+  const g=[]; for(let i=0;i<15;i++){ const r=Math.random(); g.push(r<0.78?Math.floor(Math.random()*6):r<0.9?MONEY:r<0.97?WILD:SCATTER); }
+  drawGrid(g, g.map((v,i)=>v===MONEY?{cell:i,value:[1,2,5,10][Math.floor(Math.random()*4)]}:null).filter(Boolean));
+}
+
+async function init(){
+  idleGrid();
+  try{const r=await fetch('/auth/me');if(r.ok)currentUser=await r.json();}catch{}
+  try{
+    const r=await fetch('/api/bigbass/state');
+    if(r.status===401){$('ov-login').classList.remove('hidden');return;}
+    const d=await r.json();
+    limits={featureCostMult:d.featureCostMult,featureMaxBet:d.featureMaxBet,dailyLossLimit:d.dailyLossLimit};
+    PAYS=d.pays||[];
+    setBalance(d.balance);
+    updateLossBar(d.dailyNet);
+  }catch{$('ov-login').classList.remove('hidden');}
+}
+init();
+</script>
+</body>
+</html>

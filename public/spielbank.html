@@ -79,6 +79,7 @@ const GAMES=[
   { live:true, href:'/game17', emoji:'🎰', name:'ACLS Mega Spin', badge:'NEU', desc:'Tumble-Slot mit Freispielen & Multiplikator-Bomben bis ×100. Feature-Kauf verfügbar.' },
   { live:true, href:'/game15', emoji:'🃏', name:'Blackjack', desc:'Klassisch gegen den Dealer. Blackjack zahlt 3:2, verdoppeln möglich.' },
   { live:true, href:'/game6',  emoji:'📜', name:'Book of Ra', desc:'Abenteuer-Slot – verdiene Coins beim Spielen.' },
+  { live:true, href:'/game19', emoji:'🎣', name:'Big Bass', badge:'NEU', desc:'Money-Collect-Slot: Angler kassiert Geldfische in Freispielen ein – Multiplikator bis ×10. Feature-Kauf verfügbar.' },
   { live:false, emoji:'🚀', name:'ACLS Rocket', badge:'BALD', desc:'Crash-Game: Cash out, bevor die Rakete abstürzt.' },
   { live:false, emoji:'💣', name:'Mines', badge:'BALD', desc:'Felder aufdecken, Bomben meiden, jederzeit auszahlen.' },
   { live:true, href:'/game18', emoji:'🔻', name:'Plinko', badge:'NEU', desc:'Kugel fallen lassen – mit Risiko-Stufe bis ×170 im äußeren Bucket.' },
@@ -100,7 +101,7 @@ function renderGames(){
 
 function renderTicker(wins){
   if(!wins.length){ $('ticker').innerHTML='<span class="ti" style="color:#6b7280">Noch keine großen Gewinne – sei der Erste! 🎉</span>'; return; }
-  const ge={slot:'🎰',blackjack:'🃏',plinko:'🔻'};
+  const ge={slot:'🎰',blackjack:'🃏',plinko:'🔻',bigbass:'🎣'};
   const items=wins.map(w=>`<span class="ti">${ge[w.game]||'🎲'} <b>${esc(w.username)}</b> +${(w.amount||0).toLocaleString('de-DE')} 🪙${w.x?` (${w.x}×)`:''}</span>`).join('');
   $('ticker').innerHTML=items+items; // doppelt für nahtlosen Scroll
 }
