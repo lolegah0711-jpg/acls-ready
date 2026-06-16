@@ -133,6 +133,10 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=()');
+  // HSTS nur in Produktion (über HTTPS) — erzwingt verschlüsselte Verbindungen
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com",
@@ -162,6 +166,17 @@ app.use((req, res, next) => {
   if (!srcHost || srcHost !== host) return res.status(403).json({ error: 'CSRF-Schutz: ungültiger Origin' });
   next();
 });
+
+// ── Globales API-Schutznetz (großzügig pro IP) ────────────────────────────
+// Fängt Scripted-Abuse auf allen ~200 Endpunkten ab, die kein eigenes,
+// engeres Limit haben. Bot-Anfragen (gültiges Secret) sind ausgenommen,
+// da der Bot legitim häufig pollt.
+app.use('/api', (req, res, next) => {
+  if (secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return next();
+  if (rateLimit(`api:${req.ip}`, 300, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
+  next();
+});
+
 app.use('/uploads', express.static(UPLOADS_DIR));
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
@@ -1441,115 +1456,8 @@ function friendStats(userId) {
   };
 }
 
-app.get('/api/friends', requireLogin, (req, res) => {
-  const u = getUser(req);
-  // BATCH 1.3: N+1 Fix — alle friend_ids auf einmal laden, dann friendStats nur für gefundene
-  const rows = db.prepare('SELECT friend_id, created_at FROM friends WHERE user_id = ? ORDER BY created_at ASC').all(u.id);
-  const friends = rows.map(r => {
-    const s = friendStats(r.friend_id);
-    return s ? { ...s, since: r.created_at } : null;
-  }).filter(Boolean);
-  res.json({ me: friendStats(u.id), friends });
-});
-
-app.post('/api/friends/:id', requireLogin, (req, res) => {
-  const u = getUser(req);
-  const fid = +req.params.id;
-  if (fid === u.id) return res.status(400).json({ error: 'Du kannst dich nicht selbst hinzufügen' });
-  const target = db.prepare('SELECT id FROM users WHERE id = ? AND is_active = 1').get(fid);
-  if (!target) return res.status(404).json({ error: 'Mitglied nicht gefunden' });
-  const count = db.prepare('SELECT COUNT(*) AS c FROM friends WHERE user_id = ?').get(u.id).c;
-  if (count >= 30) return res.status(400).json({ error: 'Maximal 30 Freunde' });
-  try { db.prepare('INSERT INTO friends (user_id, friend_id) VALUES (?, ?)').run(u.id, fid); }
-  catch { return res.status(400).json({ error: 'Bereits in deiner Liste' }); }
-  res.json({ ok: true });
-});
-
-app.delete('/api/friends/:id', requireLogin, (req, res) => {
-  const u = getUser(req);
-  db.prepare('DELETE FROM friends WHERE user_id = ? AND friend_id = ?').run(u.id, +req.params.id);
-  res.json({ ok: true });
-});
-
-// ════════════════════════════════════════════════════════════════
-//  GÄSTEBUCH — Kommentare auf Mitarbeiter-Profilen
-//  Schreiben dürfen Mitarbeiter UND Bürger (auch ohne users-Eintrag)
-// ════════════════════════════════════════════════════════════════
-const GUESTBOOK_MAX_LEN = 300;
-
-// Identität: Mitarbeiter/Citizen (users-Eintrag) oder reine Voter-Session
-function guestbookIdent(req) {
-  const u = getUser(req);
-  if (u) return { user: u, did: u.discord_id, name: u.username, avatar: u.avatar || null };
-  if (req.session?.voterDiscordId)
-    return { user: null, did: req.session.voterDiscordId, name: req.session.voterUsername || 'Bürger', avatar: req.session.voterAvatar || null };
-  return null;
-}
-
-app.get('/api/guestbook/:userId', (req, res) => {
-  if (!guestbookIdent(req)) return res.status(401).json({ error: 'Nicht angemeldet' });
-  const rows = db.prepare(`
-    SELECT g.id, g.message, g.created_at, g.author_id,
-           COALESCE(u.username, g.author_name, 'Bürger') AS author_name,
-           COALESCE(u.avatar, g.author_avatar)           AS author_avatar,
-           COALESCE(u.discord_id, g.author_discord_id)   AS author_discord_id
-    FROM guestbook g LEFT JOIN users u ON u.id = g.author_id
-    WHERE g.profile_user_id = ?
-    ORDER BY g.created_at DESC LIMIT 50
-  `).all(+req.params.userId);
-  res.json(rows);
-});
-
-app.post('/api/guestbook/:userId', (req, res) => {
-  const ident = guestbookIdent(req);
-  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
-  if (rateLimit(`guestbook:${ident.did}`, 5, 5 * 60_000))
-    return res.status(429).json({ error: 'Bitte warte etwas zwischen den Einträgen' });
-  const target = db.prepare('SELECT id FROM users WHERE id = ? AND is_active = 1').get(+req.params.userId);
-  if (!target) return res.status(404).json({ error: 'Profil nicht gefunden' });
-  const message = String(req.body.message || '').trim();
-  if (message.length < 2) return res.status(400).json({ error: 'Nachricht zu kurz' });
-  if (message.length > GUESTBOOK_MAX_LEN) return res.status(400).json({ error: `Maximal ${GUESTBOOK_MAX_LEN} Zeichen` });
-  db.prepare(`INSERT INTO guestbook (profile_user_id, author_id, author_discord_id, author_name, author_avatar, message)
-    VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(target.id, ident.user?.id || null, ident.did, ident.name, ident.avatar, message);
-  // Profil-Inhaber benachrichtigen (nicht wenn man selbst schreibt)
-  const profileOwner = db.prepare('SELECT discord_id FROM users WHERE id = ?').get(target.id);
-  if (profileOwner && profileOwner.discord_id !== ident.did) {
-    createNotif(profileOwner.discord_id, 'guestbook', { authorName: ident.name, preview: message.slice(0, 80) });
-  }
-  res.json({ ok: true });
-});
-
-// Löschen darf: Autor (Mitarbeiter oder Bürger), Profil-Inhaber oder Admin
-app.delete('/api/guestbook/:id', (req, res) => {
-  const ident = guestbookIdent(req);
-  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
-  const entry = db.prepare('SELECT * FROM guestbook WHERE id = ?').get(+req.params.id);
-  if (!entry) return res.status(404).json({ error: 'Nicht gefunden' });
-  const isAuthor  = (entry.author_id && ident.user && entry.author_id === ident.user.id)
-                 || (entry.author_discord_id && entry.author_discord_id === ident.did);
-  const isOwner   = ident.user && entry.profile_user_id === ident.user.id;
-  const isAdminU  = ident.user?.role === 'admin';
-  if (!isAuthor && !isOwner && !isAdminU) return res.status(403).json({ error: 'Kein Zugriff' });
-  db.prepare('DELETE FROM guestbook WHERE id = ?').run(entry.id);
-  res.json({ ok: true });
-});
-
-// Detail-Vergleich: ich vs. Freund (Spiel-Bestscores beider Seiten)
-app.get('/api/friends/compare/:id', requireLogin, (req, res) => {
-  const u = getUser(req);
-  const mine   = friendStats(u.id);
-  const theirs = friendStats(+req.params.id);
-  if (!theirs) return res.status(404).json({ error: 'Nicht gefunden' });
-  const games = db.prepare(`
-    SELECT game,
-      MAX(CASE WHEN user_id = ? THEN score END) AS my_score,
-      MAX(CASE WHEN user_id = ? THEN score END) AS their_score
-    FROM game_scores WHERE user_id IN (?, ?) GROUP BY game ORDER BY game
-  `).all(u.id, +req.params.id, u.id, +req.params.id);
-  res.json({ me: mine, friend: theirs, games });
-});
+// Freunde-, Gästebuch- und Vergleichs-Endpunkte ausgelagert nach routes/community.js
+// (friendStats bleibt hier definiert und wird per sharedDeps injiziert)
 
 // ════════════════════════════════════════════════════════════════
 //  COMPLAINTS
@@ -2281,6 +2189,7 @@ app.post('/api/game-char/save', requireLogin, (req, res) => {
 
 app.post('/api/game-char/upgrade', requireLogin, (req, res) => {
   const user  = getUser(req);
+  if (rateLimit(`gcup:${user.id}`, 30, 60_000)) return res.status(429).json({ error: 'Zu schnell' });
   const { skill } = req.body;
   const SKILLS = ['skill_damage','skill_firerate','skill_speed','skill_shield'];
   if (!SKILLS.includes(skill)) return res.status(400).json({ error: 'Unbekannter Skill' });
@@ -3460,6 +3369,7 @@ app.get('/api/coins/me', (req, res) => {
 app.post('/api/coins/daily', (req, res) => {
   const ident = coinIdent(req);
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`daily:${ident.id}`, 10, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
   const today = berlinDateStr();
   const row = db.prepare('SELECT last_daily, streak, best_streak FROM coin_balances WHERE discord_id = ?').get(ident.id);
   if (row?.last_daily === today) return res.status(400).json({ error: 'Tagesbonus heute schon abgeholt' });
@@ -4920,6 +4830,7 @@ app.post('/api/mines/start', (req, res) => {
 app.post('/api/mines/reveal', (req, res) => {
   const ident = coinIdent(req);
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`mines-r:${ident.id}`, 60, 60_000)) return res.status(429).json({ error: 'Zu schnell' });
   const g = db.prepare('SELECT * FROM mines_games WHERE discord_id = ?').get(ident.id);
   if (!g) return res.status(400).json({ error: 'Kein laufendes Spiel' });
   const tile = Math.floor(+req.body.tile);
@@ -4953,6 +4864,7 @@ app.post('/api/mines/reveal', (req, res) => {
 app.post('/api/mines/cashout', (req, res) => {
   const ident = coinIdent(req);
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  if (rateLimit(`mines-c:${ident.id}`, 30, 60_000)) return res.status(429).json({ error: 'Zu schnell' });
   const g = db.prepare('SELECT * FROM mines_games WHERE discord_id = ?').get(ident.id);
   if (!g) return res.status(400).json({ error: 'Kein laufendes Spiel' });
   const revealed = JSON.parse(g.revealed);
@@ -5101,7 +5013,7 @@ app.get('/api/game-leaderboard', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  NEUE FEATURE-ROUTES (modular)
 // ════════════════════════════════════════════════════════════════
-const sharedDeps = { db, requireAdmin, coinIdent, addCoins, rateLimit, queueNotification, auditLog, SHOP_ITEMS };
+const sharedDeps = { db, requireAdmin, requireAuth, requireLogin, getUser, coinIdent, addCoins, rateLimit, queueNotification, createNotif, sseEmit, auditLog, friendStats, SHOP_ITEMS };
 app.use(require('./routes/blackmarket')({ ...sharedDeps }));
 app.use(require('./routes/feedback')({ ...sharedDeps }));
 app.use(require('./routes/roulette')({ ...sharedDeps }));
@@ -5111,6 +5023,8 @@ app.use(require('./routes/complaints-ext')({ ...sharedDeps }));
 app.use(require('./routes/hilo')({ ...sharedDeps }));
 app.use(require('./routes/hangman')({ ...sharedDeps }));
 app.use(require('./routes/bets')({ ...sharedDeps }));
+app.use(require('./routes/market')({ ...sharedDeps }));
+app.use(require('./routes/community')({ ...sharedDeps }));
 
 app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
@@ -5200,72 +5114,12 @@ app.post('/api/dm/send', requireAuth, (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  INVENTAR-MARKTPLATZ
 // ════════════════════════════════════════════════════════════════
-app.get('/api/market', requireAuth, (req, res) => {
-  const rows = db.prepare(`SELECT * FROM item_market WHERE sold_at IS NULL ORDER BY created_at DESC LIMIT 100`).all();
-  res.json(rows);
-});
-
-app.get('/api/market/my', requireAuth, (req, res) => {
-  const me = db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id;
-  if (!me) return res.status(401).json({ error: 'Nicht angemeldet' });
-  res.json(db.prepare(`SELECT * FROM item_market WHERE seller_id = ? AND sold_at IS NULL`).all(me));
-});
-
+// Markt-Endpunkte (item_market) ausgelagert nach routes/market.js
 app.get('/api/shop/owned', requireAuth, (req, res) => {
   const me = db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id;
   if (!me) return res.status(401).json({ error: 'Nicht angemeldet' });
   const rows = db.prepare('SELECT item_id FROM shop_purchases WHERE discord_id = ?').all(me);
   res.json(rows.map(r => r.item_id));
-});
-
-app.post('/api/market/list', requireAuth, (req, res) => {
-  const me = db.prepare('SELECT discord_id, username FROM users WHERE id = ?').get(req.session.userId);
-  if (!me) return res.status(401).json({ error: 'Nicht angemeldet' });
-  const { item_key, price } = req.body;
-  const p = Math.floor(+price || 0);
-  if (!item_key || typeof item_key !== 'string') return res.status(400).json({ error: 'Ungültiges Item' });
-  if (p < 1 || p > 100000) return res.status(400).json({ error: 'Preis: 1–100.000 Coins' });
-  const shopItem = SHOP_ITEMS.find(i => i.id === item_key);
-  if (!shopItem) return res.status(400).json({ error: 'Item nicht im Shop' });
-  const owned = db.prepare('SELECT 1 FROM shop_purchases WHERE discord_id = ? AND item_id = ?').get(me.discord_id, item_key);
-  if (!owned) return res.status(400).json({ error: 'Du besitzt dieses Item nicht' });
-  const alreadyListed = db.prepare('SELECT 1 FROM item_market WHERE seller_id = ? AND item_key = ? AND sold_at IS NULL').get(me.discord_id, item_key);
-  if (alreadyListed) return res.status(400).json({ error: 'Item bereits eingestellt' });
-  db.prepare('INSERT INTO item_market (seller_id, seller_name, item_key, item_name, price) VALUES (?,?,?,?,?)').run(me.discord_id, me.username, item_key, shopItem.name, p);
-  res.json({ ok: true });
-});
-
-app.post('/api/market/buy/:id', requireAuth, (req, res) => {
-  const buyer = db.prepare('SELECT discord_id, username FROM users WHERE id = ?').get(req.session.userId);
-  if (!buyer) return res.status(401).json({ error: 'Nicht angemeldet' });
-  const listing = db.prepare('SELECT * FROM item_market WHERE id = ? AND sold_at IS NULL').get(+req.params.id);
-  if (!listing) return res.status(404).json({ error: 'Listing nicht gefunden' });
-  if (listing.seller_id === buyer.discord_id) return res.status(400).json({ error: 'Kannst dein eigenes Item nicht kaufen' });
-  const alreadyOwns = db.prepare('SELECT 1 FROM shop_purchases WHERE discord_id = ? AND item_id = ?').get(buyer.discord_id, listing.item_key);
-  if (alreadyOwns) return res.status(400).json({ error: 'Du besitzt dieses Item bereits' });
-  const newBal = addCoins(buyer.discord_id, buyer.username, -listing.price, 'market:buy', { item: listing.item_key });
-  if (newBal === null) return res.status(400).json({ error: 'Nicht genug Coins' });
-  db.prepare("UPDATE item_market SET sold_at = datetime('now'), buyer_id = ?, buyer_name = ? WHERE id = ?").run(buyer.discord_id, buyer.username, listing.id);
-  db.prepare('DELETE FROM shop_purchases WHERE discord_id = ? AND item_id = ?').run(listing.seller_id, listing.item_key);
-  const shopItem = SHOP_ITEMS.find(i => i.id === listing.item_key);
-  if (shopItem) {
-    const equipCol = { title: 'equipped_title', frame: 'equipped_frame', deck: 'equipped_deck', namecolor: 'equipped_namecolor', deco: 'equipped_deco', banner: 'equipped_banner', truck: 'equipped_truck' }[shopItem.type];
-    if (equipCol) db.prepare(`UPDATE coin_balances SET ${equipCol} = NULL WHERE discord_id = ? AND ${equipCol} = ?`).run(listing.seller_id, listing.item_key);
-  }
-  db.prepare("INSERT OR IGNORE INTO shop_purchases (discord_id, item_id, price) VALUES (?, ?, 0)").run(buyer.discord_id, listing.item_key);
-  addCoins(listing.seller_id, listing.seller_name, listing.price, 'market:sold', { item: listing.item_key, buyer: buyer.username });
-  sseEmit('market_sold', { item: listing.item_name, buyer: buyer.username, price: listing.price }, listing.seller_id);
-  createNotif(listing.seller_id, 'market_sold', { item: listing.item_name, buyer: buyer.username, price: listing.price });
-  res.json({ ok: true, balance: newBal });
-});
-
-app.delete('/api/market/:id', requireAuth, (req, res) => {
-  const me = db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id;
-  if (!me) return res.status(401).json({ error: 'Nicht angemeldet' });
-  const listing = db.prepare('SELECT * FROM item_market WHERE id = ? AND sold_at IS NULL AND seller_id = ?').get(+req.params.id, me);
-  if (!listing) return res.status(404).json({ error: 'Listing nicht gefunden' });
-  db.prepare('DELETE FROM item_market WHERE id = ?').run(listing.id);
-  res.json({ ok: true });
 });
 
 app.get('/team', (req, res) => {

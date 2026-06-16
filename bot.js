@@ -19,6 +19,8 @@ const IC_LOG_CHANNEL_ID   = process.env.IC_LOG_CHANNEL_ID   || '';
 const COMMANDS_CHANNEL_ID = process.env.COMMANDS_CHANNEL_ID || '';
 const MOD_LOG_CHANNEL_ID  = process.env.MOD_LOG_CHANNEL_ID  || '1476285851402113182';
 const TOURNAMENT_CHANNEL_ID = process.env.TOURNAMENT_CHANNEL_ID || process.env.EOW_CHANNEL_ID || '';
+const WELCOME_CHANNEL_ID  = process.env.WELCOME_CHANNEL_ID  || '';
+const BIRTHDAY_CHANNEL_ID = process.env.BIRTHDAY_CHANNEL_ID || process.env.EOW_CHANNEL_ID || '';
 const VIP_ROLE_NAME         = process.env.VIP_ROLE_NAME || 'VIP ⭐';
 const AUTO_ROLE_NAME      = process.env.AUTO_ROLE_NAME       || 'ACLS Member';
 
@@ -573,6 +575,36 @@ async function sendTournamentSprint() {
 }
 cron.schedule('5 18 * * 5', sendTournamentSprint, { timezone: 'Europe/Berlin' });
 
+// ── Geburtstags-Glückwunsch: täglich 09:00 Berliner Zeit ──
+async function sendBirthdayShoutout() {
+  if (!BIRTHDAY_CHANNEL_ID) return;
+  try {
+    const res = await fetch(`${SERVER_URL}/api/birthdays/today`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+    const bdays = res?.ok ? await res.json() : [];
+    if (!Array.isArray(bdays) || bdays.length === 0) return;
+    const mentions = bdays.map(b => b.discord_id ? `<@${b.discord_id}>` : `**${b.username}**`).join(', ');
+    const embed = new EmbedBuilder()
+      .setColor(0xec4899)
+      .setTitle('🎂 Alles Gute zum Geburtstag!')
+      .setDescription(`Heute feiert ${mentions} Geburtstag! 🥳🎉\n\nDie gesamte ACLS-Familie wünscht dir einen wunderschönen Tag!`)
+      .setTimestamp();
+    const ch = await client.channels.fetch(BIRTHDAY_CHANNEL_ID);
+    await ch.send({ content: mentions, embeds: [embed] });
+    // Persönliche DM an jede Person
+    for (const b of bdays) {
+      if (!b.discord_id) continue;
+      try {
+        const u = await client.users.fetch(b.discord_id);
+        await u.send({ embeds: [new EmbedBuilder().setColor(0xec4899)
+          .setTitle('🎂 Herzlichen Glückwunsch zum Geburtstag!')
+          .setDescription('Das gesamte ACLS-Team wünscht dir alles Gute! 🎉🚗')] });
+      } catch { /* DMs deaktiviert */ }
+    }
+    console.log(`[Bot] Geburtstags-Glückwunsch gesendet (${bdays.length})`);
+  } catch (e) { console.error('[Bot] Geburtstags-Glückwunsch Fehler:', e.message); }
+}
+cron.schedule('0 9 * * *', sendBirthdayShoutout, { timezone: 'Europe/Berlin' });
+
 // ── Automatischer Wochenbericht: Montag 18:00 → Bot-Channel ──────
 async function sendWochenbericht() {
   const channelId = COMMANDS_CHANNEL_ID || EOW_CHANNEL_ID;
@@ -904,6 +936,26 @@ client.on(Events.GuildMemberAdd, async (member) => {
       .setThumbnail(member.user.displayAvatarURL())
       .setTimestamp());
   } catch (e) { console.error('[Bot] Auto-Rolle Fehler:', e.message); }
+
+  // ── Sichtbare Begrüßung im Welcome-Channel + freundliche DM ──
+  const memberCount = member.guild.memberCount;
+  const welcomeEmbed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle('👋 Willkommen bei ACLS!')
+    .setDescription(`Hey <@${member.id}>, schön dass du da bist! 🎉\n\nMelde dich auf der **ACLS-Website** mit Discord an, um Prüfungen zu sehen, Coins zu sammeln und an Turnieren teilzunehmen.`)
+    .addFields({ name: '🔗 Website', value: SERVER_URL })
+    .setThumbnail(member.user.displayAvatarURL())
+    .setFooter({ text: `Du bist unser ${memberCount}. Mitglied 🚗` })
+    .setTimestamp();
+  if (WELCOME_CHANNEL_ID) {
+    try {
+      const ch = await client.channels.fetch(WELCOME_CHANNEL_ID);
+      await ch.send({ content: `<@${member.id}>`, embeds: [welcomeEmbed] });
+    } catch (e) { console.error('[Bot] Welcome-Channel Fehler:', e.message); }
+  }
+  try {
+    await member.send({ embeds: [welcomeEmbed] });
+  } catch { /* DMs deaktiviert — ignorieren */ }
 });
 
 // ── Mod-Log: Rollenänderung ───────────────────────────────────────
