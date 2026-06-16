@@ -84,6 +84,7 @@ body{background:#0a0e13;font-family:'Inter',sans-serif;color:#fff;min-height:100
     <div class="stat-pill"><div class="stat-lbl">Pro Sekunde</div><div class="stat-val" id="hud-gps">0/s</div></div>
     <div class="stat-pill"><div class="stat-lbl">Gesamt verdient</div><div class="stat-val" id="hud-total">0</div></div>
     <div class="stat-pill"><div class="stat-lbl">Prestige</div><div class="stat-val" id="hud-prest">×1.0</div></div>
+    <div class="stat-pill"><div class="stat-lbl">Forschung</div><div class="stat-val" id="hud-research">🔬 0</div></div>
   </div>
 
   <div id="main-panel">
@@ -126,8 +127,24 @@ body{background:#0a0e13;font-family:'Inter',sans-serif;color:#fff;min-height:100
       <div id="prest-shop-list"></div>
     </div>
     <div class="side-card">
+      <div class="side-title">🔧 Mechaniker <span id="mech-slots-txt" style="float:right;color:#6b7280;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px"></span></div>
+      <div id="mech-list"></div>
+    </div>
+    <div class="side-card">
+      <div class="side-title">📋 Auftrag</div>
+      <div id="contract-box"></div>
+    </div>
+    <div class="side-card">
+      <div class="side-title">🔬 Forschung</div>
+      <div id="research-list"></div>
+    </div>
+    <div class="side-card">
       <div class="side-title">📰 Nachrichten</div>
       <div id="news-list"></div>
+    </div>
+    <div class="side-card">
+      <div class="side-title">🏆 Werkstatt-Bestenliste</div>
+      <div id="lb-list" style="font-size:12px;color:#6b7280">Lade…</div>
     </div>
     <div class="save-status" id="save-status">Laden…</div>
   </div>
@@ -188,10 +205,25 @@ const PRESTIGE_UPGRADES = [
 const PRESTIGE_THRESHOLD = 1_000_000;
 const SAVE_INTERVAL = 30000;
 
+// Werkstatt-Tycoon: Mechaniker, Forschung, Aufträge
+const MECHANIC_NAMES = ['Klaus','Maria','Dieter','Sophie','Lars','Nina','Tom','Petra','Ben','Carla','Jonas','Lea'];
+const MAX_MECH_LEVEL = 25;
+const RESEARCH_TREE = [
+  {id:'tools',          name:'Effizientere Werkzeuge', icon:'🛠️', cost:5,  desc:'+5% Gesamt-Produktion', req:[]},
+  {id:'mech_slot_2',    name:'Azubi-Programm',         icon:'🎓', cost:8,  desc:'+1 Mechaniker-Slot', req:[]},
+  {id:'mech_slot_3',    name:'Meisterbetrieb',         icon:'🏅', cost:15, desc:'+1 weiterer Mechaniker-Slot', req:['mech_slot_2']},
+  {id:'contract_time',  name:'Bessere Planung',        icon:'🗓️', cost:6,  desc:'Auftrags-Dauer +25%', req:[]},
+  {id:'contract_reward',name:'Verhandlungsgeschick',   icon:'🤝', cost:10, desc:'Auftrags-Belohnung +20%', req:[]},
+  {id:'mech_boost',     name:'Weiterbildung',          icon:'📚', cost:12, desc:'Mechaniker-Bonus +50%', req:['tools']},
+];
+
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
 let state = {
   gold: 0, totalEarned: 0, prestige: 0, clickPower: 1,
   buildings: {}, upgrades: [], lastSave: Date.now(),
-  prestigePoints: 0, prestigeUpgrades: {}
+  prestigePoints: 0, prestigeUpgrades: {},
+  mechanics: { hired: [] }, researchPoints: 0, research: {}, activeContract: null,
 };
 let calcGps = 0;
 let saveTimer, tickRaf;
@@ -237,9 +269,16 @@ function prestProdMult() {
   return 1 + state.prestige * 0.02 + getPrestExtraMult() + getGpsMultPrest();
 }
 
+function mechBonusPerLevel() { return state.research.mech_boost ? 0.12 : 0.08; }
+
 function getGps() {
   let total = 0;
   const prestMult = prestProdMult();
+  const bonusPerLevel = mechBonusPerLevel();
+  const specialtyBonus = {};
+  for (const m of state.mechanics.hired) {
+    specialtyBonus[m.specialty] = (specialtyBonus[m.specialty] || 0) + m.level * bonusPerLevel;
+  }
   for (const b of BUILDINGS) {
     const owned = state.buildings[b.id] || 0;
     if (!owned) continue;
@@ -248,9 +287,210 @@ function getGps() {
       const u = UPGRADES.find(x=>x.id===uid);
       if (u?.mult?.[b.id]) mult *= u.mult[b.id];
     }
+    mult *= 1 + (specialtyBonus[b.id] || 0);
     total += owned * b.gps * mult;
   }
-  return total * prestMult;
+  total *= prestMult;
+  if (state.research.tools) total *= 1.05;
+  return total;
+}
+
+// ── Mechaniker ──
+function mechSlots() {
+  let s = 2;
+  if (state.research.mech_slot_2) s++;
+  if (state.research.mech_slot_3 && state.research.mech_slot_2) s++;
+  return s;
+}
+function hireCost()        { return Math.ceil(5000 * Math.pow(2.2, state.mechanics.hired.length)); }
+function mechLevelCost(m)  { return Math.ceil(300 * Math.pow(1.35, m.level)); }
+
+function hireMechanic(specialty) {
+  if (state.mechanics.hired.length >= mechSlots()) return;
+  const cost = hireCost();
+  if (state.gold < cost) return;
+  state.gold -= cost;
+  const name = MECHANIC_NAMES[Math.floor(Math.random() * MECHANIC_NAMES.length)];
+  state.mechanics.hired.push({ id: 'm' + Date.now() + Math.floor(Math.random() * 1000), name, specialty, level: 1 });
+  calcGps = getGps();
+  updateAll();
+  saveProgress();
+}
+
+function levelMechanic(id) {
+  const m = state.mechanics.hired.find(x => x.id === id);
+  if (!m || m.level >= MAX_MECH_LEVEL) return;
+  const cost = mechLevelCost(m);
+  if (state.gold < cost) return;
+  state.gold -= cost;
+  m.level++;
+  calcGps = getGps();
+  updateAll();
+  saveProgress();
+}
+
+function renderMechanics() {
+  const el = document.getElementById('mech-list');
+  if (!el) return;
+  const slots = mechSlots();
+  const hired = state.mechanics.hired;
+  let html = hired.map(m => {
+    const cost = mechLevelCost(m);
+    const b = BUILDINGS.find(x => x.id === m.specialty);
+    const maxed = m.level >= MAX_MECH_LEVEL;
+    return `<div class="upg" style="margin-bottom:6px">
+      <div class="upg-icon">${b ? b.icon : '🔧'}</div>
+      <div class="upg-info">
+        <div class="upg-name">${esc(m.name)} <span style="color:#a855f7;font-size:11px">Lvl ${m.level}</span></div>
+        <div class="upg-desc">${b ? b.name : m.specialty} +${Math.round(m.level * mechBonusPerLevel() * 100)}%</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+        ${maxed ? '<div style="font-size:11px;font-weight:700;color:#22c55e">MAX</div>'
+                : `<div style="font-size:11px;font-weight:700;color:#f59e0b">${fmt(cost)} GS</div>
+                   <button class="btn-buy" onclick="levelMechanic('${m.id}')" ${state.gold >= cost ? '' : 'disabled'}>Level Up</button>`}
+      </div>
+    </div>`;
+  }).join('');
+
+  if (hired.length < slots) {
+    const cost = hireCost();
+    html += `<div style="margin-top:4px">
+      <select id="hire-specialty" style="width:100%;background:#0a0e13;color:#fff;border:1px solid #1f2937;border-radius:8px;padding:6px;margin-bottom:6px;font-family:inherit;font-size:12px">
+        ${BUILDINGS.map(b => `<option value="${b.id}">${b.icon} ${b.name}</option>`).join('')}
+      </select>
+      <button class="btn-buy" style="width:100%" onclick="hireMechanic(document.getElementById('hire-specialty').value)" ${state.gold >= cost ? '' : 'disabled'}>
+        Mechaniker anstellen (${fmt(cost)} GS)
+      </button>
+    </div>`;
+  }
+  el.innerHTML = html || '<div style="color:#6b7280;font-size:12px">Noch keine Mechaniker.</div>';
+  document.getElementById('mech-slots-txt').textContent = `${hired.length}/${slots} Slots`;
+}
+
+// ── Forschung ──
+function canResearch(r) {
+  if (state.research[r.id]) return false;
+  return r.req.every(id => state.research[id]);
+}
+
+function buyResearch(id) {
+  const r = RESEARCH_TREE.find(x => x.id === id);
+  if (!r || !canResearch(r) || state.researchPoints < r.cost) return;
+  state.researchPoints -= r.cost;
+  state.research[id] = true;
+  calcGps = getGps();
+  updateAll();
+  saveProgress();
+}
+
+function renderResearch() {
+  const el = document.getElementById('research-list');
+  if (!el) return;
+  el.innerHTML = RESEARCH_TREE.map(r => {
+    const done = !!state.research[r.id];
+    const locked = !done && !canResearch(r);
+    const afford = state.researchPoints >= r.cost;
+    return `<div class="upg" style="margin-bottom:6px;${locked ? 'opacity:.45' : ''}">
+      <div class="upg-icon">${r.icon}</div>
+      <div class="upg-info">
+        <div class="upg-name">${r.name}</div>
+        <div class="upg-desc">${r.desc}${locked ? ' (Voraussetzung fehlt)' : ''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+        ${done ? '<div style="font-size:11px;color:#22c55e;font-weight:700">✓</div>'
+               : `<div style="font-size:11px;font-weight:700;color:#a855f7">${r.cost} 🔬</div>
+                  <button class="btn-buy" style="background:#a855f7;color:#fff" onclick="buyResearch('${r.id}')" ${(!locked && afford) ? '' : 'disabled'}>Erforschen</button>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Aufträge ──
+function totalBuildingCount() { return Object.values(state.buildings).reduce((a, b) => a + b, 0); }
+function contractRewardScale() { return Math.max(1000, state.totalEarned * 0.02); }
+
+function genContract() {
+  const type = Math.random() < 0.6 ? 'earn_gold' : 'buy_buildings';
+  const duration = 8 * 60 * 1000 * (state.research.contract_time ? 1.25 : 1);
+  const rewardMult = state.research.contract_reward ? 1.2 : 1;
+  const scale = contractRewardScale();
+  let target, startValue, rewardGold;
+  if (type === 'earn_gold') {
+    startValue = state.totalEarned;
+    target = Math.ceil(scale * (3 + Math.random() * 2));
+    rewardGold = Math.ceil(target * 0.4 * rewardMult);
+  } else {
+    startValue = totalBuildingCount();
+    target = 3 + Math.floor(Math.random() * 5);
+    rewardGold = Math.ceil(scale * 1.5 * rewardMult);
+  }
+  const rewardRp = Math.max(1, Math.round((3 + Math.random() * 3) * rewardMult));
+  state.activeContract = { id: 'c' + Date.now(), type, target, startValue, deadline: Date.now() + duration, rewardGold, rewardRp };
+}
+
+function contractProgress() {
+  const c = state.activeContract;
+  if (!c) return 0;
+  const cur = c.type === 'earn_gold' ? state.totalEarned : totalBuildingCount();
+  return Math.max(0, cur - c.startValue);
+}
+function contractDone()    { const c = state.activeContract; return !!c && contractProgress() >= c.target; }
+function contractExpired() { const c = state.activeContract; return !!c && Date.now() > c.deadline && !contractDone(); }
+
+function checkContract() {
+  if (!state.activeContract || contractExpired()) {
+    genContract();
+    updateContractUI();
+  }
+}
+
+function claimContract() {
+  const c = state.activeContract;
+  if (!c || !contractDone()) return;
+  state.gold += c.rewardGold;
+  state.totalEarned += c.rewardGold;
+  state.researchPoints += c.rewardRp;
+  state.activeContract = null;
+  checkContract();
+  updateAll();
+  saveProgress();
+}
+
+function updateContractUI() {
+  const el = document.getElementById('contract-box');
+  if (!el) return;
+  const c = state.activeContract;
+  if (!c) { el.innerHTML = '<div style="font-size:11px;color:#6b7280">Kein Auftrag verfügbar.</div>'; return; }
+  const cur = Math.min(c.target, contractProgress());
+  const pct = Math.min(100, Math.round(cur / c.target * 100));
+  const done = contractDone();
+  const remain = Math.max(0, c.deadline - Date.now());
+  const mm = Math.floor(remain / 60000), ss = Math.floor((remain % 60000) / 1000);
+  const label = c.type === 'earn_gold' ? `Verdiene ${fmt(c.target)} GS` : `Kaufe ${c.target} Gebäude`;
+  el.innerHTML = `
+    <div style="font-size:12px;font-weight:700;margin-bottom:4px">${label}</div>
+    <div style="background:#0a0e13;border-radius:6px;height:8px;overflow:hidden;margin-bottom:4px">
+      <div style="background:${done ? '#22c55e' : '#f59e0b'};height:100%;width:${pct}%"></div>
+    </div>
+    <div style="font-size:10px;color:#6b7280;margin-bottom:6px">${fmt(cur)}/${fmt(c.target)} · ⏱ ${mm}:${String(ss).padStart(2, '0')}</div>
+    <div style="font-size:11px;color:#a855f7;margin-bottom:6px">Belohnung: +${fmt(c.rewardGold)} GS, +${c.rewardRp} 🔬</div>
+    <button class="btn-buy" style="width:100%" onclick="claimContract()" ${done ? '' : 'disabled'}>${done ? 'Abholen ✅' : 'In Arbeit…'}</button>
+  `;
+}
+
+// ── Werkstatt-Bestenliste ──
+async function loadIdleLeaderboard() {
+  const el = document.getElementById('lb-list');
+  try {
+    const rows = await fetch('/api/idle-save/leaderboard').then(r => r.ok ? r.json() : []);
+    if (!rows.length) { el.innerHTML = '<div style="font-size:11px;color:#6b7280">Noch keine Einträge</div>'; return; }
+    const MEDAL = ['🥇','🥈','🥉'];
+    el.innerHTML = rows.map((r, i) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px">
+      <span style="width:20px;text-align:right;color:#6b7280">${i < 3 ? MEDAL[i] : (i + 1) + '.'}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.username)}</span>
+      <span style="color:#f59e0b;font-weight:700">${fmt(r.total_earned)}</span>
+    </div>`).join('');
+  } catch { el.innerHTML = '<div style="font-size:11px;color:#6b7280">Fehler beim Laden</div>'; }
 }
 
 function getPrestExtraMult() {
@@ -345,6 +585,7 @@ function tick() {
     state.gold += earned;
     state.totalEarned += earned;
   }
+  checkContract();
   updateHud();
   tickRaf = setTimeout(tick, 50);
 }
@@ -355,6 +596,7 @@ function updateHud() {
   document.getElementById('hud-total').textContent = fmt(state.totalEarned)+' GS';
   const pm = prestProdMult();
   document.getElementById('hud-prest').textContent = '×'+pm.toFixed(2);
+  document.getElementById('hud-research').textContent = '🔬 '+state.researchPoints;
   document.getElementById('click-earn-txt').textContent = `+${fmt(getClickPower()*getClickMultPrest()*(1+state.prestige*.01))} GS / Klick`;
   updatePrestigeUI();
   updateBuildingBtns();
@@ -489,6 +731,9 @@ function updateAll() {
   renderUpgrades();
   renderMilestones();
   renderPrestShop();   // nur bei Zustandsänderung (Kauf/Prestige/Laden), nicht pro Tick
+  renderMechanics();
+  renderResearch();
+  updateContractUI();
   updateHud();
 }
 
@@ -505,6 +750,10 @@ async function saveProgress() {
       clickPower: getClickPower(),
       prestigePoints: state.prestigePoints,
       prestigeUpgrades: state.prestigeUpgrades,
+      mechanics: state.mechanics,
+      researchPoints: state.researchPoints,
+      research: state.research,
+      activeContract: state.activeContract,
     };
     const r = await fetch('/api/idle-save', {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -541,6 +790,10 @@ async function loadProgress() {
         state.prestige = d.prestige || 0;
         state.prestigePoints = d.prestigePoints || 0;
         state.prestigeUpgrades = d.prestigeUpgrades || {};
+        state.mechanics = (d.mechanics && Array.isArray(d.mechanics.hired)) ? d.mechanics : { hired: [] };
+        state.researchPoints = d.researchPoints || 0;
+        state.research = d.research || {};
+        state.activeContract = d.activeContract || null;
       }
       document.getElementById('save-status').textContent = `📂 Geladen`;
     } else {
@@ -549,11 +802,15 @@ async function loadProgress() {
   } catch {
     document.getElementById('save-status').textContent = 'Offline – neues Spiel';
   }
+  checkContract();
   calcGps = getGps();
   updateAll();
   tick();
+  loadIdleLeaderboard();
   setInterval(saveProgress, SAVE_INTERVAL);
   setInterval(renderNews, 8000);
+  setInterval(updateContractUI, 1000);
+  setInterval(loadIdleLeaderboard, 60000);
   renderNews();
 }
 

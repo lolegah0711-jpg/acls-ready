@@ -2372,6 +2372,18 @@ app.post('/api/game-scores/:game', (req, res) => {
 });
 
 // ── Idle Clicker Save ────────────────────────────────────────────
+const KNOWN_BUILDINGS = new Set(['parking','wash','shop','garage','tuning','dealer','speedway','logistic','factory','empire']);
+const KNOWN_RESEARCH  = new Set(['tools','mech_slot_2','mech_slot_3','contract_time','contract_reward','mech_boost']);
+const CONTRACT_TYPES  = new Set(['earn_gold','buy_buildings']);
+const MAX_MECH_LEVEL  = 25;
+
+function mechSlotsFor(research) {
+  let slots = 2;
+  if (research.mech_slot_2) slots++;
+  if (research.mech_slot_3 && research.mech_slot_2) slots++;
+  return slots;
+}
+
 app.get('/api/idle-save', (req, res) => {
   const user = getUser(req);
   if (!user) return res.status(401).json({ error: 'Nicht angemeldet' });
@@ -2383,18 +2395,24 @@ app.get('/api/idle-save', (req, res) => {
     prestige: row.prestige, clickPower: row.click_power,
     prestigePoints: row.prestige_points || 0,
     prestigeUpgrades: JSON.parse(row.prestige_upgrades || '{}'),
+    mechanics: JSON.parse(row.mechanics || '{}'),
+    researchPoints: row.research_points || 0,
+    research: JSON.parse(row.research || '{}'),
+    activeContract: row.active_contract ? JSON.parse(row.active_contract) : null,
   });
 });
 
 app.post('/api/idle-save', (req, res) => {
   const user = getUser(req);
   if (!user) return res.status(401).json({ error: 'Nicht angemeldet' });
-  const { gold, totalEarned, buildings, upgrades, prestige, clickPower, prestigePoints, prestigeUpgrades } = req.body;
+  const {
+    gold, totalEarned, buildings, upgrades, prestige, clickPower, prestigePoints, prestigeUpgrades,
+    mechanics, researchPoints, research, activeContract,
+  } = req.body;
   if (typeof gold !== 'number' || gold < 0 || !isFinite(gold))
     return res.status(400).json({ error: 'Ungültig' });
 
   // Gebäude-Validierung: nur bekannte IDs, nicht-negative Integer
-  const KNOWN_BUILDINGS = new Set(['parking','wash','shop','garage','tuning','dealer','speedway','logistic','factory','empire']);
   if (buildings && typeof buildings === 'object') {
     for (const [id, cnt] of Object.entries(buildings)) {
       if (!KNOWN_BUILDINGS.has(id)) return res.status(400).json({ error: `Unbekanntes Gebäude: ${id}` });
@@ -2403,17 +2421,62 @@ app.post('/api/idle-save', (req, res) => {
     }
   }
 
+  // Forschung: nur bekannte IDs, mech_slot_3 setzt mech_slot_2 voraus
+  const researchObj = (research && typeof research === 'object') ? research : {};
+  for (const id of Object.keys(researchObj)) {
+    if (!KNOWN_RESEARCH.has(id)) return res.status(400).json({ error: `Unbekannte Forschung: ${id}` });
+  }
+  if (researchObj.mech_slot_3 && !researchObj.mech_slot_2)
+    return res.status(400).json({ error: 'Forschungs-Voraussetzung fehlt' });
+
+  // Mechaniker: Slots dürfen nur durch erforschte Upgrades wachsen
+  const mechObj = (mechanics && typeof mechanics === 'object') ? mechanics : { hired: [] };
+  const hired = Array.isArray(mechObj.hired) ? mechObj.hired : [];
+  const maxSlots = mechSlotsFor(researchObj);
+  if (hired.length > maxSlots) return res.status(400).json({ error: 'Zu viele Mechaniker' });
+  for (const m of hired) {
+    if (!m || !KNOWN_BUILDINGS.has(m.specialty))
+      return res.status(400).json({ error: 'Ungültige Mechaniker-Spezialisierung' });
+    if (typeof m.name !== 'string' || !m.name.trim() || m.name.length > 30)
+      return res.status(400).json({ error: 'Ungültiger Mechaniker-Name' });
+    if (!Number.isInteger(m.level) || m.level < 1 || m.level > MAX_MECH_LEVEL)
+      return res.status(400).json({ error: 'Ungültiges Mechaniker-Level' });
+  }
+
+  // Auftrag: nur grobe Form-Prüfung, Auszahlung läuft über die Gold/Forschungspunkte-Obergrenzen unten
+  if (activeContract != null) {
+    if (typeof activeContract !== 'object' || !CONTRACT_TYPES.has(activeContract.type)
+      || typeof activeContract.id !== 'string' || activeContract.id.length > 40
+      || !isFinite(activeContract.target) || activeContract.target <= 0
+      || !isFinite(activeContract.deadline))
+      return res.status(400).json({ error: 'Ungültiger Auftrag' });
+  }
+
   const row = db.prepare('SELECT * FROM idle_saves WHERE user_id = ?').get(user.id);
   if (row) {
     const prevBuildings = JSON.parse(row.buildings);
     // GPS-Werte identisch mit game12.html BUILDINGS-Array
     const baseRates = { parking:.1, wash:.5, shop:4, garage:20, tuning:90, dealer:400, speedway:1800, logistic:7500, factory:30000, empire:150000 };
-    const gpsMax = Object.entries(prevBuildings).reduce((s, [id, cnt]) => s + (baseRates[id] || 0) * cnt, 0);
+    // Mechaniker-Boni fließen in die Obergrenze ein (sonst würden gut ausgebaute Werkstätten fälschlich blockiert)
+    const prevResearch  = JSON.parse(row.research || '{}');
+    const bonusPerLevel = prevResearch.mech_boost ? 0.12 : 0.08;
+    const specialtyBonus = {};
+    for (const m of (JSON.parse(row.mechanics || '{}').hired || [])) {
+      if (!m || !m.specialty) continue;
+      specialtyBonus[m.specialty] = (specialtyBonus[m.specialty] || 0) + (m.level || 0) * bonusPerLevel;
+    }
+    const gpsMax = Object.entries(prevBuildings).reduce((s, [id, cnt]) =>
+      s + (baseRates[id] || 0) * cnt * (1 + (specialtyBonus[id] || 0)), 0);
     const elapsed = Math.max(0, (Date.now() - new Date(row.updated_at).getTime()) / 1000);
     // Großzügiger Puffer (×5) damit Upgrades, Prestige-Boni und Offline-Zeit nie fälschlich blockieren
     const maxGold = row.gold + gpsMax * elapsed * 5 + 1e6;
     if (gold > maxGold)
       return res.status(400).json({ error: 'Ungültige Daten' });
+
+    // Forschungspunkte kommen nur aus Aufträgen (~alle 5–10 Min einer) → großzügige Obergrenze
+    const maxRp = (row.research_points || 0) + Math.ceil(elapsed / 300) * 5 + 20;
+    if ((researchPoints || 0) > maxRp)
+      return res.status(400).json({ error: 'Ungültige Forschungspunkte' });
   }
 
   // Prestige-Quest + Saison-XP: ein Prestige-Vorgang seit dem letzten Save.
@@ -2427,17 +2490,30 @@ app.post('/api/idle-save', (req, res) => {
   }
 
   db.prepare(`
-    INSERT INTO idle_saves (user_id, gold, total_earned, buildings, upgrades, prestige, click_power, prestige_points, prestige_upgrades)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO idle_saves (user_id, gold, total_earned, buildings, upgrades, prestige, click_power, prestige_points, prestige_upgrades, mechanics, research_points, research, active_contract)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
       gold=excluded.gold, total_earned=excluded.total_earned, buildings=excluded.buildings,
       upgrades=excluded.upgrades, prestige=excluded.prestige, click_power=excluded.click_power,
       prestige_points=excluded.prestige_points, prestige_upgrades=excluded.prestige_upgrades,
+      mechanics=excluded.mechanics, research_points=excluded.research_points,
+      research=excluded.research, active_contract=excluded.active_contract,
       updated_at=CURRENT_TIMESTAMP
   `).run(user.id, gold, totalEarned || 0, JSON.stringify(buildings || {}),
     JSON.stringify(upgrades || {}), prestige || 0, clickPower || 1,
-    Math.max(0, Math.floor(prestigePoints || 0)), JSON.stringify(prestigeUpgrades || {}));
+    Math.max(0, Math.floor(prestigePoints || 0)), JSON.stringify(prestigeUpgrades || {}),
+    JSON.stringify({ hired }), Math.max(0, Math.floor(researchPoints || 0)),
+    JSON.stringify(researchObj), activeContract ? JSON.stringify(activeContract) : null);
   res.json({ ok: true });
+});
+
+app.get('/api/idle-save/leaderboard', (req, res) => {
+  const rows = db.prepare(`
+    SELECT u.username, u.avatar, u.discord_id, s.total_earned, s.prestige
+    FROM idle_saves s JOIN users u ON u.id = s.user_id
+    ORDER BY s.total_earned DESC LIMIT 15
+  `).all();
+  res.json(rows);
 });
 
 // ── RPG Save ─────────────────────────────────────────────────────
@@ -4271,7 +4347,7 @@ app.get('/api/game-leaderboard', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  NEUE FEATURE-ROUTES (modular)
 // ════════════════════════════════════════════════════════════════
-const sharedDeps = { db, requireAdmin, requireAuth, requireLogin, getUser, coinIdent, addCoins, rateLimit, queueNotification, createNotif, sseEmit, auditLog, friendStats, checkGameBadges, seasonIncQuest, SHOP_ITEMS };
+const sharedDeps = { db, requireAdmin, requireAuth, requireLogin, getUser, coinIdent, addCoins, rateLimit, queueNotification, createNotif, sseEmit, auditLog, friendStats, checkGameBadges, seasonIncQuest, SHOP_ITEMS, makeGameToken };
 app.use(require('./routes/blackmarket')({ ...sharedDeps }));
 app.use(require('./routes/feedback')({ ...sharedDeps }));
 app.use(require('./routes/roulette')({ ...sharedDeps }));
@@ -4284,6 +4360,7 @@ app.use(require('./routes/bets')({ ...sharedDeps }));
 app.use(require('./routes/market')({ ...sharedDeps }));
 app.use(require('./routes/community')({ ...sharedDeps }));
 app.use(require('./routes/casino')({ ...sharedDeps }));
+app.use(require('./routes/tracks')({ ...sharedDeps }));
 
 app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');

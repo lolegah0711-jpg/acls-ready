@@ -1063,6 +1063,38 @@ function initDb() {
   )`);
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_market_item ON item_market(item_key, sold_at)'); } catch {}
 
+  // ── Werkstatt-Tycoon: Mechaniker, Forschung, Aufträge ───────
+  try { db.exec("ALTER TABLE idle_saves ADD COLUMN mechanics TEXT NOT NULL DEFAULT '{}'"); } catch {}
+  try { db.exec('ALTER TABLE idle_saves ADD COLUMN research_points INTEGER NOT NULL DEFAULT 0'); } catch {}
+  try { db.exec("ALTER TABLE idle_saves ADD COLUMN research TEXT NOT NULL DEFAULT '{}'"); } catch {}
+  try { db.exec('ALTER TABLE idle_saves ADD COLUMN active_contract TEXT'); } catch {}
+
+  // ── Strecken-Editor + Ghost-Rennen (Autorennen) ─────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS custom_tracks (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    author_did   TEXT NOT NULL,
+    author_name  TEXT NOT NULL,
+    name         TEXT NOT NULL,
+    pattern      TEXT NOT NULL,
+    duration_ms  INTEGER NOT NULL,
+    plays        INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT DEFAULT (datetime('now'))
+  )`);
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_created ON custom_tracks(created_at DESC)'); } catch {}
+
+  db.exec(`CREATE TABLE IF NOT EXISTS ghost_runs (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id           INTEGER NOT NULL REFERENCES custom_tracks(id),
+    discord_id         TEXT NOT NULL,
+    username           TEXT NOT NULL,
+    finish_ms          INTEGER,
+    crash_progress_ms  INTEGER,
+    recording          TEXT NOT NULL,
+    created_at         TEXT DEFAULT (datetime('now')),
+    UNIQUE(track_id, discord_id)
+  )`);
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_ghost_track ON ghost_runs(track_id, finish_ms)'); } catch {}
+
   return db;
 }
 

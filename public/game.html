@@ -55,6 +55,29 @@
     .lb-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .lb-score { font-weight: 700; color: #f97316; flex-shrink: 0; }
     .lb-empty { font-size: .78rem; color: #4b5563; text-align: center; padding: .5rem 0; }
+
+    .tabs { display: flex; gap: .4rem; width: 360px; }
+    .tab-btn { flex: 1; padding: .4rem; background: #111827; border: 1px solid rgba(249,115,22,.18); border-radius: 8px; color: #94a3b8; font-size: .78rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .tab-btn.active { background: rgba(249,115,22,.15); color: #f97316; border-color: #f97316; }
+    .panel { width: 360px; }
+    .panel[hidden] { display: none; }
+    .subtabs { display: flex; gap: .35rem; margin-bottom: .5rem; }
+    .subtab-btn { flex: 1; padding: .3rem; background: #0f172a; border: 1px solid rgba(255,255,255,.08); border-radius: 6px; color: #64748b; font-size: .72rem; cursor: pointer; font-family: inherit; }
+    .subtab-btn.active { color: #e2e8f0; border-color: rgba(249,115,22,.4); }
+    .track-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .25rem; border-bottom: 1px solid rgba(255,255,255,.05); font-size: .8rem; }
+    .track-row:last-child { border-bottom: none; }
+    .track-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    .track-meta { font-size: .66rem; color: #64748b; }
+    .btn-sm { background: #f97316; color: #000; border: none; border-radius: 6px; padding: .32rem .65rem; font-size: .72rem; font-weight: 700; cursor: pointer; white-space: nowrap; font-family: inherit; }
+    .btn-sm.alt { background: transparent; border: 1px solid rgba(249,115,22,.4); color: #f97316; }
+    .editor-field { display: block; width: 100%; background: #0f172a; color: #e2e8f0; border: 1px solid rgba(255,255,255,.1); border-radius: 6px; padding: .4rem .5rem; font-size: .8rem; font-family: inherit; margin-bottom: .5rem; }
+    .editor-grid { display: flex; flex-direction: column; gap: 2px; overflow-x: auto; background: #0a0e1a; border-radius: 6px; padding: 4px; margin-bottom: .5rem; }
+    .editor-lane { display: flex; gap: 2px; }
+    .editor-cell { width: 13px; height: 24px; background: #1e2030; border-radius: 2px; flex-shrink: 0; cursor: pointer; }
+    .editor-cell.active { background: #f97316; }
+    .editor-actions { display: flex; gap: .4rem; }
+    .editor-actions .btn-sm { flex: 1; }
+    .track-current-box { background: rgba(249,115,22,.08); border: 1px solid rgba(249,115,22,.25); border-radius: 8px; padding: .5rem; margin-bottom: .6rem; }
   </style>
 </head>
 <body>
@@ -65,9 +88,50 @@
   </div>
   <canvas id="c" width="360" height="580"></canvas>
   <div class="hint">← → / A D zum Lenken &nbsp;·&nbsp; Space oder Klick zum Starten</div>
-  <div class="lb">
-    <div class="lb-title">🏆 Rangliste – Autorennen</div>
-    <div id="lb-list"><div class="lb-empty">Lade…</div></div>
+
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-endless" onclick="switchMode('endless')">🏁 Endlos</button>
+    <button class="tab-btn" id="tab-track" onclick="switchMode('track')">🛣️ Strecken</button>
+  </div>
+
+  <div class="panel" id="endless-panel">
+    <div class="lb">
+      <div class="lb-title">🏆 Rangliste – Autorennen</div>
+      <div id="lb-list"><div class="lb-empty">Lade…</div></div>
+    </div>
+  </div>
+
+  <div class="panel" id="track-panel" hidden>
+    <div class="subtabs">
+      <button class="subtab-btn active" id="subtab-browse" onclick="switchTrackSub('browse')">📜 Strecken</button>
+      <button class="subtab-btn" id="subtab-editor" onclick="switchTrackSub('editor')">✏️ Editor</button>
+    </div>
+
+    <div id="track-browse-view">
+      <div id="track-current-box"></div>
+      <div class="lb">
+        <div class="lb-title">📜 Veröffentlichte Strecken</div>
+        <div id="track-list"><div class="lb-empty">Lade…</div></div>
+      </div>
+    </div>
+
+    <div id="track-editor-view" hidden>
+      <div class="lb">
+        <div class="lb-title">✏️ Strecke bauen</div>
+        <input class="editor-field" id="editor-name" maxlength="40" placeholder="Name der Strecke">
+        <select class="editor-field" id="editor-duration" onchange="onEditorDurationChange()">
+          <option value="20000">20 Sekunden</option>
+          <option value="40000" selected>40 Sekunden</option>
+          <option value="60000">60 Sekunden</option>
+        </select>
+        <div style="font-size:.68rem;color:#64748b;margin-bottom:.4rem">Klicke Felder an, um Gegner-Autos zu platzieren (Spur × Zeit).</div>
+        <div class="editor-grid" id="editor-grid"></div>
+        <div class="editor-actions">
+          <button class="btn-sm alt" onclick="testEditorTrack()">🧪 Testen</button>
+          <button class="btn-sm" onclick="publishEditorTrack()">📤 Veröffentlichen</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -97,11 +161,31 @@ const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
     let score, lives, speed, frame, invincible;
     let player, enemies, particles, dashOff, spawnTimer, spawnInterval, speedTimer;
 
+    // Strecken-Modus (Editor + Ghost-Rennen)
+    let mode = 'endless'; // 'endless' | 'track'
+    let currentTrack = null; // { id, durationMs, pattern, ghost, token, ts }
+    let testMode = false;
+    let trackStartTs = 0, trackElapsed = 0, nextPatternIdx = 0, recording = [];
+    let ghostCar = null;
+
     function reset() {
       score = 0; lives = 3; speed = 3.0; frame = 0; invincible = 0;
       player   = { lane: 1, x: LANES[1], targetX: LANES[1], y: H - 95 };
       enemies  = []; particles = [];
       dashOff  = 0; spawnTimer = 0; spawnInterval = 110; speedTimer = 0;
+      ghostCar = null;
+      if (mode === 'track' && currentTrack) {
+        trackStartTs = performance.now();
+        trackElapsed = 0;
+        nextPatternIdx = 0;
+        recording = [{ t: 0, lane: 1 }];
+      }
+    }
+
+    function tryStart() {
+      if (mode === 'track' && !currentTrack) return;
+      reset();
+      state = 'playing';
     }
 
     function spawnEnemy() {
@@ -139,17 +223,17 @@ const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
     document.addEventListener('keydown', e => {
       if (['ArrowLeft','ArrowRight','a','A','d','D',' ','Enter'].includes(e.key)) e.preventDefault();
       keys[e.key] = true;
-      if ((e.key === ' ' || e.key === 'Enter') && state !== 'playing') { reset(); state = 'playing'; }
+      if ((e.key === ' ' || e.key === 'Enter') && state !== 'playing') tryStart();
     });
     document.addEventListener('keyup', e => { delete keys[e.key]; });
 
-    canvas.addEventListener('click', () => { if (state !== 'playing') { reset(); state = 'playing'; } });
+    canvas.addEventListener('click', () => { if (state !== 'playing') tryStart(); });
 
     // Swipe
     let swipeX = null;
     canvas.addEventListener('touchstart', e => {
       swipeX = e.touches[0].clientX;
-      if (state !== 'playing') { reset(); state = 'playing'; }
+      if (state !== 'playing') tryStart();
     }, { passive: true });
     canvas.addEventListener('touchend', e => {
       if (swipeX == null) return;
@@ -160,7 +244,10 @@ const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
 
     function moveLane(dir) {
       const n = Math.max(0, Math.min(2, player.lane + dir));
-      if (n !== player.lane) { player.lane = n; player.targetX = LANES[n]; }
+      if (n !== player.lane) {
+        player.lane = n; player.targetX = LANES[n];
+        if (mode === 'track' && state === 'playing') recording.push({ t: Math.round(trackElapsed), lane: n });
+      }
     }
 
     // Update
@@ -190,9 +277,23 @@ const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
       // Score (1 point every 5 frames)
       if (frame % 5 === 0) score++;
 
-      // Spawn
-      spawnTimer++;
-      if (spawnTimer >= spawnInterval) { spawnTimer = 0; spawnEnemy(); }
+      if (mode === 'track' && currentTrack) {
+        trackElapsed = performance.now() - trackStartTs;
+        while (nextPatternIdx < currentTrack.pattern.length && currentTrack.pattern[nextPatternIdx].t <= trackElapsed) {
+          const p = currentTrack.pattern[nextPatternIdx++];
+          enemies.push({ lane: p.lane, x: LANES[p.lane], y: -EH - 10, color: ENEMY_COLORS[p.lane % ENEMY_COLORS.length], spd: speed });
+        }
+        if (currentTrack.ghost) {
+          const gl = ghostLaneAt(trackElapsed);
+          if (!ghostCar) ghostCar = { x: LANES[gl], targetX: LANES[gl], y: player.y };
+          ghostCar.targetX = LANES[gl];
+          ghostCar.x += (ghostCar.targetX - ghostCar.x) * 0.2;
+        }
+      } else {
+        // Spawn
+        spawnTimer++;
+        if (spawnTimer >= spawnInterval) { spawnTimer = 0; spawnEnemy(); }
+      }
 
       // Move enemies + collision
       enemies = enemies.filter(e => e.y < H + 80);
@@ -206,18 +307,27 @@ const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
           invincible = 100;
           if (lives <= 0) {
             state = 'dead';
-            if (score > hiScore) {
-              hiScore = score;
-              localStorage.setItem(HS_KEY, hiScore);
-              document.getElementById('hs').textContent = hiScore;
+            if (mode === 'track') {
+              finishTrackRun(false);
+            } else {
+              if (score > hiScore) {
+                hiScore = score;
+                localStorage.setItem(HS_KEY, hiScore);
+                document.getElementById('hs').textContent = hiScore;
+              }
+              submitScore(score);
             }
-            submitScore(score);
           }
           break;
         }
       }
 
       if (invincible > 0) invincible--;
+
+      if (mode === 'track' && state === 'playing' && currentTrack && trackElapsed >= currentTrack.durationMs) {
+        state = 'finished';
+        finishTrackRun(true);
+      }
 
       // Particles
       particles = particles.filter(p => p.life > 0.01);
@@ -333,6 +443,15 @@ const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
       ctx.font = '9px Segoe UI';
       ctx.textAlign = 'center';
       ctx.fillText(`${Math.round(speed * 22)} km/h`, W/2, H - 10);
+
+      // Streckenfortschritt (Strecken-Modus)
+      if (mode === 'track' && currentTrack) {
+        const pct = Math.min(1, trackElapsed / currentTrack.durationMs);
+        ctx.fillStyle = 'rgba(0,0,0,.4)';
+        ctx.beginPath(); ctx.roundRect(RL, 40, RW, 8, 4); ctx.fill();
+        ctx.fillStyle = '#f97316';
+        ctx.beginPath(); ctx.roundRect(RL, 40, RW * pct, 8, 4); ctx.fill();
+      }
     }
 
     function drawOverlay(title, line1, line2) {
@@ -377,6 +496,13 @@ const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
 
       for (const e of enemies) drawCar(e.x, e.y, EW, EH, e.color, false);
 
+      // Ghost (beste Aufnahme auf dieser Strecke) — halbtransparent, ohne Kollision
+      if (mode === 'track' && ghostCar && (state === 'playing' || state === 'finished' || state === 'dead')) {
+        ctx.globalAlpha = 0.4;
+        drawCar(ghostCar.x, ghostCar.y, PW, PH, '#94a3b8', true);
+        ctx.globalAlpha = 1;
+      }
+
       // Player blinks when invincible
       if (invincible <= 0 || Math.floor(invincible / 7) % 2 === 0) {
         drawCar(player.x, player.y, PW, PH, '#f97316', true);
@@ -385,14 +511,27 @@ const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
       drawHUD();
 
       if (state === 'idle') {
-        drawOverlay('🏎️ ACLS Autorennen', 'Weiche den Autos aus!', '← → oder A D zum Lenken');
+        if (mode === 'track' && currentTrack) {
+          drawOverlay('🛣️ ' + (currentTrack.name || 'Test-Strecke'), 'Bereit?', '← → oder A D zum Lenken');
+        } else if (mode === 'track') {
+          drawOverlay('🛣️ Strecken-Modus', 'Wähle unten eine Strecke', 'oder baue eine im Editor');
+        } else {
+          drawOverlay('🏎️ ACLS Autorennen', 'Weiche den Autos aus!', '← → oder A D zum Lenken');
+        }
       } else if (state === 'dead') {
-        const isNew = score >= hiScore && score > 0;
-        drawOverlay(
-          '💥 Game Over',
-          `Punkte: ${score}${isNew ? '  🏆 Neuer Rekord!' : ''}`,
-          `Bestleistung: ${hiScore}`
-        );
+        if (mode === 'track') {
+          drawOverlay('💥 Crash!', `Strecke verlassen bei ${(trackElapsed/1000).toFixed(1)}s`, `Ziel: ${(currentTrack.durationMs/1000).toFixed(0)}s`);
+        } else {
+          const isNew = score >= hiScore && score > 0;
+          drawOverlay(
+            '💥 Game Over',
+            `Punkte: ${score}${isNew ? '  🏆 Neuer Rekord!' : ''}`,
+            `Bestleistung: ${hiScore}`
+          );
+        }
+      } else if (state === 'finished') {
+        const ghostTxt = currentTrack.ghost?.finishMs != null ? `Ghost: ${(currentTrack.ghost.finishMs/1000).toFixed(1)}s` : 'Erster Finisher!';
+        drawOverlay('🏁 Ziel erreicht!', `Zeit: ${(currentTrack.durationMs/1000).toFixed(1)}s`, ghostTxt);
       }
     }
 
@@ -436,6 +575,186 @@ const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
         body: JSON.stringify(GameAuth.body(score)),
       }).catch(() => {});
       refreshLeaderboard();
+    }
+
+    // ── Strecken-Modus: Tabs ─────────────────────────────────────
+    function switchMode(m) {
+      if (state === 'playing' || m === mode) return;
+      mode = m;
+      document.getElementById('tab-endless').classList.toggle('active', m === 'endless');
+      document.getElementById('tab-track').classList.toggle('active', m === 'track');
+      document.getElementById('endless-panel').hidden = m !== 'endless';
+      document.getElementById('track-panel').hidden = m !== 'track';
+      state = 'idle';
+      if (m === 'endless') currentTrack = null;
+      else loadTrackList();
+    }
+
+    function switchTrackSub(sub) {
+      document.getElementById('subtab-browse').classList.toggle('active', sub === 'browse');
+      document.getElementById('subtab-editor').classList.toggle('active', sub === 'editor');
+      document.getElementById('track-browse-view').hidden = sub !== 'browse';
+      document.getElementById('track-editor-view').hidden = sub !== 'editor';
+      if (sub === 'editor' && !editorGridBuilt) { buildEditorGrid(); editorGridBuilt = true; }
+    }
+
+    // ── Strecken-Browser ─────────────────────────────────────────
+    async function loadTrackList() {
+      const el = document.getElementById('track-list');
+      try {
+        const rows = await fetch('/api/tracks').then(r => r.ok ? r.json() : []);
+        if (!rows.length) { el.innerHTML = '<div class="lb-empty">Noch keine Strecken — sei der Erste!</div>'; return; }
+        el.innerHTML = rows.map(t => `<div class="track-row">
+          <div style="flex:1;min-width:0">
+            <div class="track-name">${esc(t.name)}</div>
+            <div class="track-meta">von ${esc(t.author_name)} · ${(t.duration_ms/1000).toFixed(0)}s${t.best_time_ms != null ? ' · 🏁 ' + (t.best_time_ms/1000).toFixed(1) + 's' : ''} · ${t.racers} Fahrer</div>
+          </div>
+          <button class="btn-sm" onclick="playTrack(${t.id})">▶ Spielen</button>
+        </div>`).join('');
+      } catch { el.innerHTML = '<div class="lb-empty">Fehler beim Laden</div>'; }
+    }
+
+    async function playTrack(id) {
+      const detail = await fetch('/api/tracks/' + id).then(r => r.ok ? r.json() : null).catch(() => null);
+      if (!detail) return;
+      const tr = await fetch('/api/game-token/track_' + id).then(r => r.ok ? r.json() : null).catch(() => null);
+      currentTrack = { id: detail.id, name: detail.name, durationMs: detail.durationMs, pattern: detail.pattern, ghost: detail.ghost, token: tr?.token, ts: tr?.ts };
+      testMode = false;
+      renderCurrentTrackBox();
+      loadTrackLeaderboard(id);
+      tryStart();
+    }
+
+    function backToBrowse() {
+      currentTrack = null;
+      renderCurrentTrackBox();
+      state = 'idle';
+    }
+
+    function renderCurrentTrackBox() {
+      const el = document.getElementById('track-current-box');
+      if (!currentTrack || currentTrack.id == null) { el.innerHTML = ''; return; }
+      el.innerHTML = `<div class="track-current-box">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
+          <div style="flex:1;font-weight:700;font-size:.85rem">🏁 ${esc(currentTrack.name)}</div>
+          <button class="btn-sm alt" onclick="backToBrowse()">← Liste</button>
+        </div>
+        <div id="track-current-lb"><div class="lb-empty">Lade…</div></div>
+      </div>`;
+    }
+
+    async function loadTrackLeaderboard(id) {
+      const el = document.getElementById('track-current-lb');
+      if (!el) return;
+      try {
+        const rows = await fetch(`/api/tracks/${id}/leaderboard`).then(r => r.ok ? r.json() : []);
+        if (!rows.length) { el.innerHTML = '<div class="lb-empty">Noch keine Läufe</div>'; return; }
+        el.innerHTML = rows.map((r, i) => {
+          const av = avatarUrl(r.discord_id, r.avatar);
+          const medal = i < 3 ? MEDAL[i] : `${i+1}.`;
+          const result = r.finish_ms != null ? (r.finish_ms/1000).toFixed(1) + 's' : `${(r.crash_progress_ms/1000).toFixed(1)}s (Crash)`;
+          return `<div class="lb-row">
+            <span class="lb-rank ${i < 3 ? MEDAL_CLASS[i] : ''}">${medal}</span>
+            ${av ? `<img class="lb-avatar" src="${av}" onerror="this.style.display='none'">` : '<div class="lb-avatar"></div>'}
+            <span class="lb-name">${esc(r.username)}</span>
+            <span class="lb-score">${result}</span>
+          </div>`;
+        }).join('');
+      } catch { el.innerHTML = '<div class="lb-empty">Fehler beim Laden</div>'; }
+    }
+
+    function ghostLaneAt(t) {
+      const rec = currentTrack.ghost.recording;
+      let lane = rec[0]?.lane ?? 1;
+      for (const r of rec) { if (r.t <= t) lane = r.lane; else break; }
+      return lane;
+    }
+
+    async function finishTrackRun(success) {
+      const finishMs = success ? currentTrack.durationMs : null;
+      const crashProgressMs = success ? null : Math.round(trackElapsed);
+      if (!testMode && currentTrack.id != null) {
+        await submitTrackRun(finishMs, crashProgressMs);
+        loadTrackLeaderboard(currentTrack.id);
+        loadTrackList();
+      }
+    }
+
+    async function submitTrackRun(finishMs, crashProgressMs) {
+      if (!currentTrack.token) return;
+      try {
+        await fetch(`/api/tracks/${currentTrack.id}/run`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: currentTrack.token, ts: currentTrack.ts, finishMs, crashProgressMs, recording }),
+        });
+      } catch {}
+    }
+
+    // ── Strecken-Editor ──────────────────────────────────────────
+    let editorPattern = [];
+    let editorDuration = 40000;
+    let editorGridBuilt = false;
+
+    function onEditorDurationChange() {
+      editorDuration = parseInt(document.getElementById('editor-duration').value, 10);
+      editorPattern = editorPattern.filter(p => p.t < editorDuration);
+      buildEditorGrid();
+    }
+
+    function buildEditorGrid() {
+      const slots = Math.round(editorDuration / 500);
+      let html = '';
+      for (let lane = 0; lane < 3; lane++) {
+        html += `<div class="editor-lane">`;
+        for (let s = 0; s < slots; s++) {
+          const active = editorPattern.some(p => p.lane === lane && Math.round(p.t / 500) === s);
+          html += `<div class="editor-cell${active ? ' active' : ''}" data-lane="${lane}" data-slot="${s}"></div>`;
+        }
+        html += `</div>`;
+      }
+      const grid = document.getElementById('editor-grid');
+      grid.innerHTML = html;
+      grid.querySelectorAll('.editor-cell').forEach(cell => {
+        cell.addEventListener('click', () => toggleCell(+cell.dataset.lane, +cell.dataset.slot));
+      });
+    }
+
+    function toggleCell(lane, slot) {
+      const t = slot * 500;
+      const idx = editorPattern.findIndex(p => p.lane === lane && p.t === t);
+      if (idx >= 0) editorPattern.splice(idx, 1);
+      else editorPattern.push({ lane, t });
+      buildEditorGrid();
+    }
+
+    function playTestRun(pattern, durationMs) {
+      currentTrack = { id: null, name: 'Test-Strecke', durationMs, pattern: pattern.slice().sort((a,b)=>a.t-b.t), ghost: null, token: null, ts: null };
+      testMode = true;
+      tryStart();
+    }
+
+    function testEditorTrack() {
+      if (!editorPattern.length) { alert('Platziere zuerst ein paar Gegner-Autos.'); return; }
+      playTestRun(editorPattern, editorDuration);
+    }
+
+    async function publishEditorTrack() {
+      const name = document.getElementById('editor-name').value.trim();
+      if (!name) { alert('Bitte einen Streckennamen eingeben.'); return; }
+      if (!editorPattern.length) { alert('Platziere zuerst ein paar Gegner-Autos.'); return; }
+      try {
+        const r = await fetch('/api/tracks', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, durationMs: editorDuration, pattern: editorPattern }),
+        });
+        const d = await r.json();
+        if (!r.ok) { alert(d.error || 'Fehler beim Veröffentlichen'); return; }
+        editorPattern = [];
+        document.getElementById('editor-name').value = '';
+        buildEditorGrid();
+        switchTrackSub('browse');
+        loadTrackList();
+      } catch { alert('Netzwerkfehler'); }
     }
 
     (async () => {
