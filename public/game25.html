@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hangman – ACLS Spielbank</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:radial-gradient(ellipse at 50% 0%,#1a0a2e 0%,#0d0619 55%,#060212 100%);font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px 16px 40px;}
+    .topbar{width:100%;max-width:640px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:18px;}
+    .nav-btn{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);padding:7px 14px;border-radius:9px;font-size:12px;font-weight:700;text-decoration:none;}
+    .chip-bal{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.5);border:1px solid rgba(251,191,36,.4);border-radius:999px;padding:7px 16px;font-weight:800;font-size:15px;color:#fbbf24;}
+    h1{font-size:clamp(24px,6vw,38px);font-weight:900;background:linear-gradient(90deg,#a855f7,#ec4899,#f97316);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:4px;text-align:center;}
+    .sub{font-size:13px;color:#7c5cbf;margin-bottom:20px;text-align:center;}
+
+    /* Gallows SVG */
+    .gallows-wrap{display:flex;justify-content:center;margin:8px 0 16px;}
+    .gallows-svg{width:160px;height:180px;}
+    .gallows-svg path,.gallows-svg circle,.gallows-svg line{stroke:#a855f7;stroke-width:4;stroke-linecap:round;fill:none;transition:opacity .25s;}
+    .gallows-svg .hidden{opacity:0;}
+
+    /* Word display */
+    .word-area{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:0 0 8px;}
+    .letter-box{width:32px;height:40px;border-bottom:3px solid #a855f7;display:flex;align-items:flex-end;justify-content:center;padding-bottom:4px;font-size:1.3rem;font-weight:900;color:#fff;letter-spacing:.05em;transition:color .2s;}
+    .letter-box.revealed{color:#a855f7;}
+    .hint-text{font-size:.8rem;color:#7c5cbf;margin-bottom:20px;text-align:center;}
+
+    /* Wrong letters */
+    .wrong-area{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:20px;min-height:28px;}
+    .wrong-letter{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);color:#ef4444;border-radius:6px;padding:2px 8px;font-size:.8rem;font-weight:800;}
+
+    /* Keyboard */
+    .keyboard{display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;max-width:540px;}
+    .key-row{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;}
+    .key{width:38px;height:38px;border-radius:8px;border:1px solid rgba(168,85,247,.4);background:rgba(168,85,247,.08);color:#c084fc;font-size:.85rem;font-weight:800;cursor:pointer;transition:.12s;font-family:inherit;}
+    .key:hover:not(:disabled){background:rgba(168,85,247,.25);border-color:#a855f7;color:#fff;}
+    .key:disabled{opacity:.25;cursor:default;}
+    .key.correct{background:rgba(34,197,94,.15);border-color:#22c55e;color:#22c55e;}
+    .key.wrong{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:#ef4444;}
+
+    /* Bet & controls */
+    .bet-section{width:100%;max-width:540px;background:rgba(0,0,0,.3);border:1px solid rgba(168,85,247,.2);border-radius:14px;padding:14px 18px;margin-bottom:20px;}
+    .bet-label{font-size:.72rem;font-weight:700;color:#7c5cbf;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
+    .bet-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+    .chip{background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.18);border-radius:999px;padding:.3rem .8rem;font-size:.8rem;font-weight:800;cursor:pointer;transition:.12s;color:rgba(255,255,255,.7);}
+    .chip:hover{border-color:#a855f7;color:#a855f7;}
+    .chip.active{background:#a855f7;border-color:#a855f7;color:#fff;}
+    .bet-display{font-size:1.05rem;font-weight:800;color:#fbbf24;margin-bottom:12px;}
+    .btn-start{width:100%;padding:.75rem;background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;font-weight:900;font-size:.95rem;border-radius:12px;border:none;cursor:pointer;font-family:inherit;letter-spacing:.03em;}
+    .btn-start:hover{background:linear-gradient(135deg,#c084fc,#9333ea);}
+    .btn-start:disabled{opacity:.4;cursor:default;}
+
+    /* Result overlay */
+    .result-ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.85);z-index:50;padding:20px;}
+    .result-ov.hidden{display:none;}
+    .result-card{background:#120820;border-radius:20px;padding:36px 28px;max-width:400px;width:100%;text-align:center;}
+    .result-icon{font-size:3.5rem;margin-bottom:10px;}
+    .result-title{font-size:1.6rem;font-weight:900;margin-bottom:6px;}
+    .result-title.win{background:linear-gradient(90deg,#a855f7,#ec4899);-webkit-background-clip:text;background-clip:text;color:transparent;}
+    .result-title.lose{color:#ef4444;}
+    .result-word{font-size:.95rem;color:#9ca3af;margin:10px 0 20px;}
+    .result-payout{font-size:1.4rem;font-weight:900;margin-bottom:20px;}
+    .result-payout.win{color:#fbbf24;}
+    .result-payout.lose{color:#ef4444;}
+    .btn-again{background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;font-weight:900;padding:12px 32px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-size:.95rem;}
+
+    /* Login overlay */
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.92);z-index:100;}
+    .ov.hidden{display:none;}
+    .ov-card{background:#120820;border:1px solid #2a1044;border-radius:18px;padding:36px;max-width:400px;width:100%;text-align:center;}
+    .ov-card h2{margin:.5rem 0;font-size:1.4rem;}
+    .ov-card p{color:#7c5cbf;font-size:.88rem;margin:.5rem 0 1.5rem;line-height:1.55;}
+    .btn-portal{background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;font-weight:900;padding:12px 28px;border-radius:12px;text-decoration:none;display:inline-block;font-size:.9rem;}
+
+    /* Toast */
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:.6rem 1.4rem;font-size:.85rem;font-weight:700;transition:.3s;opacity:0;pointer-events:none;z-index:999;white-space:nowrap;}
+    .toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+    .toast.ok{border-color:#22c55e;color:#22c55e;}
+    .toast.err{border-color:#ef4444;color:#ef4444;}
+
+    .lives-row{display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:#7c5cbf;margin-bottom:6px;justify-content:center;}
+    .lives-row b{color:#ef4444;}
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/spielbank" class="nav-btn">← Spielbank</a>
+  <div class="chip-bal">🪙 <span id="balance">–</span></div>
+</div>
+
+<h1>🔤 Hangman</h1>
+<p class="sub">Buchstaben erraten · 2× Einsatz bei Sieg</p>
+
+<!-- Bet section (shown before game starts) -->
+<div class="bet-section" id="betSection">
+  <div class="bet-label">Einsatz wählen</div>
+  <div class="bet-chips">
+    <button class="chip active" onclick="setBet(25)">25</button>
+    <button class="chip" onclick="setBet(50)">50</button>
+    <button class="chip" onclick="setBet(100)">100</button>
+    <button class="chip" onclick="setBet(200)">200</button>
+    <button class="chip" onclick="setBet(500)">500</button>
+  </div>
+  <div class="bet-display">Einsatz: <span id="betDisplay">25</span> 🪙 → Gewinn: <span id="winDisplay">50</span> 🪙</div>
+  <button class="btn-start" id="btnStart" onclick="startGame()">Spiel starten</button>
+</div>
+
+<!-- Game area (shown during game) -->
+<div id="gameArea" style="display:none;width:100%;max-width:640px;display:none;flex-direction:column;align-items:center">
+
+  <!-- Gallows SVG -->
+  <div class="gallows-wrap">
+    <svg class="gallows-svg" viewBox="0 0 160 180">
+      <!-- Structure (always visible) -->
+      <line x1="20" y1="170" x2="140" y2="170"/>
+      <line x1="60" y1="170" x2="60" y2="10"/>
+      <line x1="60" y1="10" x2="110" y2="10"/>
+      <line x1="110" y1="10" x2="110" y2="30"/>
+      <!-- Parts revealed per wrong guess -->
+      <!-- 1: Head -->
+      <circle id="p1" cx="110" cy="45" r="15" class="hidden"/>
+      <!-- 2: Body -->
+      <line id="p2" x1="110" y1="60" x2="110" y2="110" class="hidden"/>
+      <!-- 3: Left arm -->
+      <line id="p3" x1="110" y1="75" x2="85" y2="100" class="hidden"/>
+      <!-- 4: Right arm -->
+      <line id="p4" x1="110" y1="75" x2="135" y2="100" class="hidden"/>
+      <!-- 5: Left leg -->
+      <line id="p5" x1="110" y1="110" x2="85" y2="140" class="hidden"/>
+      <!-- 6: Right leg -->
+      <line id="p6" x1="110" y1="110" x2="135" y2="140" class="hidden"/>
+    </svg>
+  </div>
+
+  <div class="lives-row">Falsche Versuche: <b id="wrongCount">0</b> / 6</div>
+
+  <div id="hintText" class="hint-text"></div>
+  <div class="word-area" id="wordArea"></div>
+  <div class="wrong-area" id="wrongArea"></div>
+
+  <div class="keyboard" id="keyboard"></div>
+</div>
+
+<!-- Result overlay -->
+<div class="result-ov hidden" id="resultOv">
+  <div class="result-card">
+    <div class="result-icon" id="resultIcon"></div>
+    <div class="result-title" id="resultTitle"></div>
+    <div class="result-word" id="resultWord"></div>
+    <div class="result-payout" id="resultPayout"></div>
+    <button class="btn-again" onclick="resetGame()">Nochmal spielen</button>
+  </div>
+</div>
+
+<!-- Login overlay -->
+<div class="ov hidden" id="ovLogin">
+  <div class="ov-card">
+    <div style="font-size:3rem;margin-bottom:6px">🔒</div>
+    <h2>Anmeldung nötig</h2>
+    <p>Die Spielbank läuft mit deinen ACLS-Coins.<br>Melde dich zuerst im Portal an.</p>
+    <a href="/" class="btn-portal">Zum Portal</a>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const ROWS = [
+  ['Q','W','E','R','T','Z','U','I','O','P','Ü'],
+  ['A','S','D','F','G','H','J','K','L','Ö','Ä'],
+  ['Y','X','C','V','B','N','M'],
+];
+
+let bet = 25;
+let guessed = [];
+let playing = false;
+
+function setBet(v) {
+  bet = v;
+  $('betDisplay').textContent = v.toLocaleString('de-DE');
+  $('winDisplay').textContent = (v * 2).toLocaleString('de-DE');
+  document.querySelectorAll('.chip').forEach(c => {
+    const val = +c.textContent.replace('.','');
+    c.classList.toggle('active', val === v);
+  });
+}
+
+function showToast(msg, type = '', ms = 2200) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.className = 'toast', ms);
+}
+
+function buildKeyboard() {
+  const kb = $('keyboard');
+  kb.innerHTML = ROWS.map(row =>
+    `<div class="key-row">${row.map(l =>
+      `<button class="key" id="key-${l}" onclick="guess('${l}')">${l}</button>`
+    ).join('')}</div>`
+  ).join('');
+}
+
+function updateGallows(wrong) {
+  for (let i = 1; i <= 6; i++) {
+    const el = $(`p${i}`);
+    if (el) el.classList.toggle('hidden', i > wrong);
+  }
+}
+
+function renderWord(display) {
+  $('wordArea').innerHTML = display.map((c, i) =>
+    `<div class="letter-box${c !== '_' ? ' revealed' : ''}">${c === '_' ? '' : c}</div>`
+  ).join('');
+}
+
+function renderWrong(wrongLetters) {
+  $('wrongArea').innerHTML = wrongLetters
+    .map(l => `<span class="wrong-letter">${l}</span>`)
+    .join('');
+}
+
+function setAllKeysDisabled(disabled) {
+  document.querySelectorAll('.key').forEach(k => k.disabled = disabled);
+}
+
+async function startGame() {
+  const btn = $('btnStart');
+  btn.disabled = true;
+
+  const res = await fetch(`/api/hangman/start?bet=${bet}`);
+  if (res.status === 401) { $('ovLogin').classList.remove('hidden'); return; }
+  const d = await res.json();
+  if (!res.ok) {
+    showToast(d.error || 'Fehler', 'err');
+    btn.disabled = false;
+    return;
+  }
+
+  guessed = [];
+  playing = true;
+  $('balance').textContent = (d.balance || 0).toLocaleString('de-DE');
+  $('betSection').style.display = 'none';
+  $('gameArea').style.display = 'flex';
+  $('hintText').textContent = '💡 Hinweis: ' + d.hint;
+  $('wrongCount').textContent = '0';
+  $('wrongArea').innerHTML = '';
+  updateGallows(0);
+  renderWord(d.display);
+  buildKeyboard();
+}
+
+async function guess(letter) {
+  if (!playing) return;
+  const keyEl = $(`key-${letter}`);
+  if (keyEl) keyEl.disabled = true;
+
+  const res = await fetch('/api/hangman/guess', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ letter }),
+  });
+  if (res.status === 401) { $('ovLogin').classList.remove('hidden'); return; }
+  const d = await res.json();
+  if (!res.ok) { showToast(d.error || 'Fehler', 'err'); return; }
+
+  if (keyEl) keyEl.classList.add(d.correct ? 'correct' : 'wrong');
+
+  guessed = d.guessed;
+  $('wrongCount').textContent = d.wrong;
+  updateGallows(d.wrong);
+  renderWord(d.display);
+  renderWrong(d.guessed.filter(l => !d.display.includes(l)));
+
+  if (d.won) {
+    playing = false;
+    setAllKeysDisabled(true);
+    if (d.balance !== null) $('balance').textContent = d.balance.toLocaleString('de-DE');
+    showResult(true, d.word, d.payout);
+  } else if (d.lost) {
+    playing = false;
+    setAllKeysDisabled(true);
+    showResult(false, d.word, d.bet);
+  } else if (!d.correct) {
+    showToast(`"${letter}" – nicht im Wort`, 'err', 1200);
+  }
+}
+
+function showResult(won, word, amount) {
+  const ov = $('resultOv');
+  $('resultIcon').textContent  = won ? '🎉' : '💀';
+  const titleEl = $('resultTitle');
+  titleEl.textContent = won ? 'Gewonnen!' : 'Verloren!';
+  titleEl.className = 'result-title ' + (won ? 'win' : 'lose');
+  $('resultWord').textContent = `Das Wort war: ${word}`;
+  const payEl = $('resultPayout');
+  if (won) {
+    payEl.textContent = `+${amount.toLocaleString('de-DE')} 🪙 gewonnen`;
+    payEl.className = 'result-payout win';
+  } else {
+    payEl.textContent = `−${amount.toLocaleString('de-DE')} 🪙 verloren`;
+    payEl.className = 'result-payout lose';
+  }
+  ov.classList.remove('hidden');
+}
+
+function resetGame() {
+  $('resultOv').classList.add('hidden');
+  $('gameArea').style.display = 'none';
+  $('betSection').style.display = '';
+  $('btnStart').disabled = false;
+  playing = false;
+  guessed = [];
+}
+
+// Init: load balance
+(async () => {
+  const res = await fetch('/api/hangman/balance');
+  if (res.status === 401) { $('ovLogin').classList.remove('hidden'); return; }
+  const d = await res.json();
+  $('balance').textContent = (d.balance || 0).toLocaleString('de-DE');
+})();
+</script>
+</body>
+</html>

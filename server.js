@@ -2613,6 +2613,7 @@ app.get('/game21', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ga
 app.get('/game22', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game22.html')));
 app.get('/game23', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game23.html')));
 app.get('/game24', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game24.html')));
+app.get('/game25', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game25.html')));
 app.get('/spielbank', (req, res) => res.sendFile(path.join(__dirname, 'public', 'spielbank.html')));
 app.get('/quiz', (req, res) => {
   const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
@@ -5032,6 +5033,7 @@ const ALL_GAMES = [
   { key: 'idle',        label: 'Idle Werkstatt' },
   { key: 'rpg',         label: 'Dungeon RPG' },
   { key: 'reaction',    label: 'Reaktionstest' },
+  { key: 'hangman',    label: 'Hangman' },
 ];
 
 app.get('/api/game-leaderboard', (req, res) => {
@@ -5070,6 +5072,7 @@ app.use(require('./routes/questions-admin')({ ...sharedDeps }));
 app.use(require('./routes/dashboard-config')({ ...sharedDeps }));
 app.use(require('./routes/complaints-ext')({ ...sharedDeps }));
 app.use(require('./routes/hilo')({ ...sharedDeps }));
+app.use(require('./routes/hangman')({ ...sharedDeps }));
 
 app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
