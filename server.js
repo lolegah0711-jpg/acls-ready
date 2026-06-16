@@ -1612,7 +1612,8 @@ app.get('/api/profile/:id', requireAnySession, (req, res) => {
   const icGoal = u.ic_weekly_goal || 0;
   const byCategory = db.prepare(`SELECT ec.name as category, COUNT(*) as count FROM registry r JOIN exam_categories ec ON ec.id=r.category_id WHERE r.examiner_id=? GROUP BY r.category_id`).all(u.id);
   const birthday   = db.prepare('SELECT birthday FROM user_birthdays WHERE user_id = ?').get(u.id)?.birthday || null;
-  res.json({ user: u, stats: { total_exams: examStats.total, passed_exams: examStats.passed, conducted, eow_wins: eowWins, ic_total: +icTotal.toFixed(2), ic_week: +icWeek.toFixed(2), ic_goal: icGoal }, recentExams, badges, byCategory, birthday });
+  const honoraryTitles = db.prepare('SELECT id, title, color, granted_by, granted_at FROM honorary_titles WHERE user_id = ? ORDER BY granted_at ASC').all(u.id);
+  res.json({ user: u, stats: { total_exams: examStats.total, passed_exams: examStats.passed, conducted, eow_wins: eowWins, ic_total: +icTotal.toFixed(2), ic_week: +icWeek.toFixed(2), ic_goal: icGoal }, recentExams, badges, byCategory, birthday, honoraryTitles });
 });
 
 // ── Globale Suche ────────────────────────────────────────────────
@@ -3637,6 +3638,37 @@ app.post('/api/admin/custom-titles/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Ehrentitel ──────────────────────────────────────────────────────
+app.get('/api/admin/honorary-titles', requireAdmin, (req, res) => {
+  const rows = db.prepare(`
+    SELECT ht.id, ht.title, ht.color, ht.granted_by, ht.granted_at,
+           u.id AS user_id, u.username, u.discord_id, u.avatar
+    FROM honorary_titles ht
+    JOIN users u ON u.id = ht.user_id
+    ORDER BY ht.granted_at DESC
+  `).all();
+  res.json(rows);
+});
+
+app.post('/api/admin/honorary-titles', requireAdmin, (req, res) => {
+  const { user_id, title, color } = req.body;
+  if (!user_id || !title?.trim()) return res.status(400).json({ error: 'user_id und title erforderlich' });
+  const titleText = String(title).trim().slice(0, 40);
+  const titleColor = /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#fbbf24';
+  const adminName = req.adminUser?.username || 'Admin';
+  const r = db.prepare(`
+    INSERT INTO honorary_titles (user_id, title, color, granted_by) VALUES (?, ?, ?, ?)
+  `).run(+user_id, titleText, titleColor, adminName);
+  auditLog(req, 'honorary_title', `Vergeben an user_id=${user_id}: "${titleText}"`);
+  res.json({ ok: true, id: r.lastInsertRowid });
+});
+
+app.delete('/api/admin/honorary-titles/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM honorary_titles WHERE id = ?').run(+req.params.id);
+  auditLog(req, 'honorary_title', `Entzogen: id=${req.params.id}`);
+  res.json({ ok: true });
+});
+
 // VIP-Test für die Leitung (Rang 12): 10 Minuten Probelauf, 1× pro Tag
 app.post('/api/shop/vip-test', requireAuth, (req, res) => {
   const u = getUser(req);
@@ -5073,6 +5105,7 @@ app.use(require('./routes/dashboard-config')({ ...sharedDeps }));
 app.use(require('./routes/complaints-ext')({ ...sharedDeps }));
 app.use(require('./routes/hilo')({ ...sharedDeps }));
 app.use(require('./routes/hangman')({ ...sharedDeps }));
+app.use(require('./routes/bets')({ ...sharedDeps }));
 
 app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');

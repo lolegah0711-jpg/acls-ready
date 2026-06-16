@@ -551,6 +551,32 @@ function initDb() {
       content    TEXT NOT NULL DEFAULT '',
       updated_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS coin_bets (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      creator_did    TEXT NOT NULL,
+      creator_name   TEXT,
+      opponent_did   TEXT NOT NULL,
+      opponent_name  TEXT,
+      amount         INTEGER NOT NULL,
+      description    TEXT NOT NULL,
+      status         TEXT NOT NULL DEFAULT 'pending',
+      winner_did     TEXT,
+      winner_name    TEXT,
+      resolved_by    TEXT,
+      admin_note     TEXT,
+      created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+      resolved_at    DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS honorary_titles (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title       TEXT NOT NULL,
+      color       TEXT NOT NULL DEFAULT '#fbbf24',
+      granted_by  TEXT NOT NULL,
+      granted_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Quiz-Duell: altes Schema (users-IDs) auf Discord-IDs umstellen, damit

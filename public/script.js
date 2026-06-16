@@ -162,6 +162,7 @@ const PAGES = {
   beschwerden:  { title: 'Beschwerde-Kanban',     sub: 'Beschwerden verwalten (Admin)' },
   nachrichten:  { title: 'Direktnachrichten',     sub: 'Private Nachrichten zwischen Mitarbeitern' },
   marktplatz:   { title: 'Marktplatz',            sub: 'Kosmetika kaufen & verkaufen' },
+  wetten:       { title: 'Coin-Wetten',           sub: 'Wette gegen andere Spieler & Bürger' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -1239,7 +1240,7 @@ function navigate(page) {
   $('pageContent').innerHTML    = loading();
 
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz, wetten };
   (renders[page] || dashboard)();
 }
 
@@ -4009,6 +4010,7 @@ window.openSteckbrief = async function(userId) {
     ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:72px;height:72px;border-radius:50%;object-fit:cover;flex-shrink:0">`
     : `<div style="width:72px;height:72px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:800;flex-shrink:0">${esc((u.username||'?').slice(0,2).toUpperCase())}</div>`;
 
+  const honoraryTitles = d.honoraryTitles || [];
   const passRate = s.conducted > 0 ? Math.round((s.passed_exams / s.total_exams) * 100) : 0;
   const memberSince = new Date(u.created_at).toLocaleDateString('de-DE', { day:'2-digit', month:'long', year:'numeric' });
 
@@ -4047,6 +4049,9 @@ window.openSteckbrief = async function(userId) {
             <span style="font-size:.68rem;font-weight:700;padding:.18rem .55rem;border-radius:20px;background:${ROLE_BG[u.role]||'rgba(255,255,255,.06)'};color:${ROLE_COLOR[u.role]||'var(--muted)'}">${ROLE_LABEL[u.role]||u.role}</span>
             ${u.rank ? `<span style="font-size:.68rem;color:var(--muted)">${esc(u.rank)}</span>` : ''}
           </div>
+          ${honoraryTitles.length ? `<div style="display:flex;flex-wrap:wrap;gap:.3rem;margin:.35rem 0">
+            ${honoraryTitles.map(t=>`<span style="font-size:.67rem;font-weight:700;padding:.15rem .5rem;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid ${t.color||'#fbbf24'}55;color:${t.color||'#fbbf24'}">⭐ ${esc(t.title)}</span>`).join('')}
+          </div>` : ''}
           <div style="font-size:.73rem;color:var(--muted)">Dabei seit ${memberSince}</div>
         </div>
       </div>
@@ -4717,6 +4722,51 @@ async function admin() {
         </div>
       </div>
 
+      <!-- Ehrentitel -->
+      <div style="${P};${BB}" id="honorarySection">
+        <div class="card-head" style="margin-bottom:.7rem">
+          <div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-star" style="color:#fbbf24"></i></div>
+          <div style="flex:1"><div class="card-title">Ehrentitel vergeben</div><div class="card-sub">Admin-Titel – kostenlos, dauerhaft, im Steckbrief sichtbar</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.65rem;align-items:start">
+          <div>
+            <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.4rem">Mitarbeiter suchen</div>
+            <div style="position:relative">
+              <input class="form-control" id="honorarySearch" placeholder="Name eingeben…" autocomplete="off"
+                oninput="honorarySearchUser()" onblur="setTimeout(()=>{const r=$('honoraryResults');if(r)r.style.display='none'},180)">
+              <div id="honoraryResults" style="position:absolute;z-index:30;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:var(--r);margin-top:.2rem;max-height:180px;overflow:auto;display:none"></div>
+            </div>
+            <div id="honoraryTarget" style="display:none;margin-top:.5rem;padding:.55rem .7rem;background:var(--input);border-radius:var(--r);font-size:.82rem">
+              <span id="honoraryTargetName" style="font-weight:700"></span>
+              <button onclick="honoraryClear()" style="float:right;background:none;border:none;color:var(--muted);cursor:pointer"><i class="fas fa-times"></i></button>
+            </div>
+            <div style="margin-top:.5rem;display:flex;flex-direction:column;gap:.35rem">
+              <input class="form-control" id="honoraryTitle" maxlength="40" placeholder="Titel (max. 40 Zeichen)…">
+              <div style="display:flex;align-items:center;gap:.5rem;font-size:.8rem">
+                <label style="color:var(--muted)">Farbe:</label>
+                <input type="color" id="honoraryColor" value="#fbbf24" style="width:36px;height:28px;border:1px solid var(--border);border-radius:5px;cursor:pointer;background:var(--input);padding:2px">
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="honoraryGrant()"><i class="fas fa-award"></i> Titel vergeben</button>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.4rem">Vergebene Titel</div>
+            <div id="honoraryList" style="max-height:230px;overflow-y:auto"><div style="color:var(--muted);font-size:.8rem">Wird geladen…</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Offene Wetten (nur bei vorhandenen) -->
+      <div id="adminBetsSection" style="display:none;${BB}">
+        <div style="${P}">
+          <div class="card-head" style="margin-bottom:.7rem">
+            <div class="card-head-icon" style="background:rgba(245,158,11,.15)"><i class="fas fa-handshake" style="color:#f59e0b"></i></div>
+            <div style="flex:1"><div class="card-title">Offene Wetten</div><div class="card-sub">Angenommene Wetten auflösen</div></div>
+          </div>
+          <div id="adminBetsList"></div>
+        </div>
+      </div>
+
       <!-- Live Analytics -->
       <div style="${P};${BB}">
         <div class="card-head" style="margin-bottom:.7rem">
@@ -4748,6 +4798,8 @@ async function admin() {
   loadAdminStats();
   loadCustomTitles();
   loadAdminAnalytics();
+  loadHonoraryTitles();
+  loadAdminBets();
 }
 
 // BATCH 9: Admin Analytics
@@ -4832,6 +4884,119 @@ async function loadCustomTitles() {
 window.decideCustomTitle = async (id, action) => {
   const r = await api(`/api/admin/custom-titles/${id}`, { method: 'POST', body: { action } });
   if (r) { toast(action === 'approve' ? 'Titel freigegeben! ✨' : 'Abgelehnt – Coins erstattet', 'ok'); loadCustomTitles(); }
+};
+
+// ── Ehrentitel (Admin) ───────────────────────────────────────────
+window._honoraryTargetId = null;
+
+async function loadHonoraryTitles() {
+  const el = $('honoraryList');
+  if (!el) return;
+  const rows = await api('/api/admin/honorary-titles');
+  if (!rows) return;
+  el.innerHTML = rows.length ? rows.map(r => `
+    <div style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+      <span style="font-size:.7rem;padding:.15rem .5rem;background:rgba(251,191,36,.12);border:1px solid ${r.color||'#fbbf24'}33;color:${r.color||'#fbbf24'};border-radius:999px;font-weight:700">⭐ ${esc(r.title)}</span>
+      <span style="font-size:.75rem;font-weight:600">${esc(r.username)}</span>
+      <span style="font-size:.68rem;color:var(--muted);margin-left:auto">von ${esc(r.granted_by)} · ${ago(r.granted_at)}</span>
+      <button class="btn btn-danger btn-sm" onclick="honoraryRevoke(${r.id})" title="Entziehen"><i class="fas fa-trash"></i></button>
+    </div>`).join('')
+  : '<div style="font-size:.8rem;color:var(--muted)">Noch keine Ehrentitel vergeben.</div>';
+}
+
+window.honorarySearchUser = async () => {
+  const q = $('honorarySearch')?.value.trim();
+  const res_el = $('honoraryResults');
+  if (!q) { if (res_el) res_el.style.display = 'none'; return; }
+  const rows = await api(`/api/users`);
+  if (!rows || !res_el) return;
+  const filtered = rows.filter(u => u.username.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
+  if (!filtered.length) { res_el.innerHTML = '<div style="padding:.45rem .75rem;font-size:.8rem;color:var(--muted)">Nicht gefunden</div>'; res_el.style.display = 'block'; return; }
+  res_el.innerHTML = filtered.map(u => `
+    <div style="padding:.4rem .75rem;cursor:pointer;font-size:.82rem;display:flex;align-items:center;gap:.5rem;border-bottom:1px solid var(--border)"
+      onmousedown="honorarySelect(${u.id},'${esc(u.username).replace(/'/g,"\\'")}')"
+      onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <i class="fas fa-user" style="color:var(--muted);font-size:.72rem"></i>
+      <span style="font-weight:600">${esc(u.username)}</span>
+      <span style="font-size:.68rem;color:var(--muted);margin-left:auto">${u.role}</span>
+    </div>`).join('');
+  res_el.style.display = 'block';
+};
+
+window.honorarySelect = (id, name) => {
+  window._honoraryTargetId = id;
+  const inp = $('honorarySearch'), tgt = $('honoraryTarget'), nm = $('honoraryTargetName'), res = $('honoraryResults');
+  if (inp) inp.style.display = 'none';
+  if (tgt) tgt.style.display = '';
+  if (nm)  nm.textContent = name;
+  if (res) res.style.display = 'none';
+};
+
+window.honoraryClear = () => {
+  window._honoraryTargetId = null;
+  const inp = $('honorarySearch'), tgt = $('honoraryTarget');
+  if (inp) { inp.style.display = ''; inp.value = ''; }
+  if (tgt) tgt.style.display = 'none';
+};
+
+window.honoraryGrant = async () => {
+  const user_id = window._honoraryTargetId;
+  const title   = $('honoraryTitle')?.value.trim();
+  const color   = $('honoraryColor')?.value || '#fbbf24';
+  if (!user_id) { toast('Mitarbeiter auswählen', 'err'); return; }
+  if (!title || title.length < 2) { toast('Titel eingeben', 'err'); return; }
+  const r = await api('/api/admin/honorary-titles', { method: 'POST', body: { user_id, title, color } });
+  if (r) {
+    toast('Ehrentitel vergeben! ⭐', 'ok');
+    honoraryClear();
+    if ($('honoraryTitle')) $('honoraryTitle').value = '';
+    loadHonoraryTitles();
+  }
+};
+
+window.honoraryRevoke = async id => {
+  if (!confirm('Ehrentitel entziehen?')) return;
+  const r = await api(`/api/admin/honorary-titles/${id}`, { method: 'DELETE' });
+  if (r) { toast('Titel entzogen.'); loadHonoraryTitles(); }
+};
+
+// ── Admin-Wetten ──────────────────────────────────────────────────
+async function loadAdminBets() {
+  const section = $('adminBetsSection'), list = $('adminBetsList');
+  if (!section || !list) return;
+  const rows = await api('/api/admin/bets');
+  if (!rows) return;
+  const accepted = rows.filter(b => b.status === 'accepted');
+  section.style.display = accepted.length ? '' : 'none';
+  if (!accepted.length) return;
+  list.innerHTML = accepted.map(b => `
+    <div style="background:var(--input);border-radius:var(--r);padding:.75rem;margin-bottom:.5rem">
+      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;flex-wrap:wrap">
+        <span style="font-size:.67rem;font-weight:700;color:var(--muted)">#${b.id}</span>
+        <span style="font-size:.78rem;font-weight:800;color:#fbbf24">${b.amount.toLocaleString('de-DE')} 🪙 je Seite</span>
+        <span style="font-size:.68rem;color:var(--muted);margin-left:auto">${ago(b.created_at)}</span>
+      </div>
+      <div style="font-size:.83rem;font-weight:700;margin-bottom:.35rem">${esc(b.description)}</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-bottom:.55rem">
+        <b>${esc(b.creator_name)}</b> vs. <b>${esc(b.opponent_name)}</b>
+      </div>
+      <input class="form-control" id="betNote-${b.id}" placeholder="Admin-Notiz (optional)" style="margin-bottom:.4rem;font-size:.8rem">
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="adminResolveBet(${b.id},'${b.creator_did}')">
+          <i class="fas fa-trophy"></i> ${esc(b.creator_name)} gewinnt
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="adminResolveBet(${b.id},'${b.opponent_did}')"
+          style="background:linear-gradient(135deg,#a855f7,#7c3aed)">
+          <i class="fas fa-trophy"></i> ${esc(b.opponent_name)} gewinnt
+        </button>
+      </div>
+    </div>`).join('');
+}
+
+window.adminResolveBet = async (id, winner_did) => {
+  const admin_note = $(`betNote-${id}`)?.value.trim() || null;
+  const r = await api(`/api/admin/bets/${id}/resolve`, { method: 'POST', body: { winner_did, admin_note } });
+  if (r) { toast('Wette aufgelöst – Coins ausgezahlt! 🏆', 'ok'); loadAdminBets(); }
 };
 
 let _adminCharts = [];
@@ -7520,5 +7685,207 @@ window.bkSavePhase = async id => {
   if (r) { toast('Status aktualisiert', 'ok'); closeModal(); beschwerden(); }
 };
 
+
+// ════════════════════════════════════════════════════════════════
+//  COIN-WETTEN
+// ════════════════════════════════════════════════════════════════
+async function wetten() {
+  const bets = await api('/api/bets/my');
+  if (!bets) return;
+
+  const myDid = currentUser?.discord_id || window._voterDiscordId;
+  const incoming  = bets.filter(b => b.opponent_did === myDid && b.status === 'pending');
+  const active    = bets.filter(b => (b.creator_did === myDid && ['pending','accepted'].includes(b.status))
+                                  || (b.opponent_did === myDid && b.status === 'accepted'));
+  const history   = bets.filter(b => ['resolved','declined','cancelled'].includes(b.status));
+
+  function betCard(b, role) {
+    const isCreator  = b.creator_did === myDid;
+    const opponent   = isCreator ? b.opponent_name : b.creator_name;
+    const statusMap  = { pending:'Offen', accepted:'Angenommen', resolved:'Abgeschlossen', declined:'Abgelehnt', cancelled:'Storniert' };
+    const statusColor= { pending:'#fbbf24', accepted:'#60a5fa', resolved:'#22c55e', declined:'#ef4444', cancelled:'#6b7280' };
+    const st = b.status;
+    const wonBadge = st === 'resolved' ? (b.winner_did === myDid
+      ? `<span style="font-size:.67rem;padding:.15rem .45rem;background:rgba(34,197,94,.15);border:1px solid #22c55e;color:#22c55e;border-radius:999px;font-weight:700">Gewonnen +${(b.amount*2).toLocaleString('de-DE')} 🪙</span>`
+      : `<span style="font-size:.67rem;padding:.15rem .45rem;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);color:#ef4444;border-radius:999px;font-weight:700">Verloren −${b.amount.toLocaleString('de-DE')} 🪙</span>`)
+      : '';
+
+    return `<div class="card" style="padding:.85rem 1rem;margin-bottom:.5rem">
+      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem;flex-wrap:wrap">
+        <span style="font-size:.67rem;font-weight:700;color:var(--muted)">#${b.id}</span>
+        <span style="font-size:.72rem;font-weight:800;color:${statusColor[st]||'var(--muted)'}">${statusMap[st]||st}</span>
+        ${wonBadge}
+        <span style="margin-left:auto;font-size:.72rem;color:var(--muted)">${ago(b.created_at)}</span>
+      </div>
+      <div style="font-size:.84rem;font-weight:700;margin-bottom:.3rem">${esc(b.description)}</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem">
+        ${isCreator?'Du':'<b>'+esc(b.creator_name)+'</b>'} vs. ${isCreator?'<b>'+esc(opponent)+'</b>':'Du'}
+        · <span style="color:#fbbf24;font-weight:700">${b.amount.toLocaleString('de-DE')} 🪙</span> je Seite
+        ${b.admin_note ? `· <i style="color:var(--muted)">„${esc(b.admin_note)}"</i>` : ''}
+      </div>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+        ${st === 'pending' && b.opponent_did === myDid ? `
+          <button class="btn btn-primary btn-sm" onclick="betAccept(${b.id})"><i class="fas fa-check"></i> Annehmen</button>
+          <button class="btn btn-ghost btn-sm" onclick="betDecline(${b.id})" style="color:#ef4444"><i class="fas fa-times"></i> Ablehnen</button>
+        ` : ''}
+        ${st === 'pending' && b.creator_did === myDid ? `
+          <button class="btn btn-ghost btn-sm" onclick="betCancel(${b.id})" style="color:#ef4444"><i class="fas fa-ban"></i> Stornieren</button>
+        ` : ''}
+      </div>
+    </div>`;
+  }
+
+  $('pageContent').innerHTML = `
+    <!-- Neue Wette -->
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-head" style="margin-bottom:.85rem">
+        <div class="card-head-icon" style="background:rgba(245,158,11,.15)"><i class="fas fa-handshake" style="color:#f59e0b"></i></div>
+        <div><div class="card-title">Neue Wette</div><div class="card-sub">Setze gegen einen anderen Spieler</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:.6rem">
+        <div style="position:relative">
+          <input class="input" id="betOpponentInput" placeholder="Gegner suchen (Name eingeben)…" autocomplete="off"
+            oninput="betSearchOpponent()" onblur="setTimeout(()=>{const r=$('betOpponentResults');if(r)r.style.display='none'},180)">
+          <div id="betOpponentResults" style="position:absolute;z-index:30;left:0;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--r);margin-top:.15rem;max-height:200px;overflow:auto;display:none"></div>
+        </div>
+        <div id="betOpponentTag" style="display:none;padding:.5rem .75rem;background:var(--surface2);border-radius:var(--r);font-size:.82rem;display:flex;align-items:center;gap:.5rem">
+          <i class="fas fa-user-check" style="color:#f59e0b"></i>
+          <span id="betOpponentName" style="font-weight:700"></span>
+          <button onclick="betClearOpponent()" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer"><i class="fas fa-times"></i></button>
+        </div>
+        <div>
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.4rem">Einsatz</div>
+          <div style="display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.4rem">
+            ${[100,250,500,1000,2500,5000].map(v=>`<button class="chip" onclick="betSetAmount(${v})">${v.toLocaleString('de-DE')}</button>`).join('')}
+          </div>
+          <div style="display:flex;align-items:center;gap:.5rem">
+            <input class="input" id="betAmountInput" type="number" min="100" max="10000" step="50" value="100" style="width:130px"
+              oninput="document.querySelectorAll('#pageContent .chip').forEach(c=>c.classList.remove('active'))">
+            <span style="font-size:.8rem;color:var(--muted)">🪙 je Seite · Gewinn: <b id="betWinDisplay" style="color:#fbbf24">200 🪙</b></span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.4rem">Bedingung (was wird gewettet?)</div>
+          <textarea class="input" id="betDescription" rows="2" maxlength="200" placeholder="z.B. „Wer als nächstes im Dienst ist gewinnt" · max. 200 Zeichen" style="resize:vertical"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="betCreate()"><i class="fas fa-handshake"></i> Wette abschicken</button>
+      </div>
+    </div>
+
+    <!-- Eingehende Wetten -->
+    ${incoming.length ? `
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-head" style="margin-bottom:.6rem">
+        <div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-inbox" style="color:#fbbf24"></i></div>
+        <div><div class="card-title">Eingehende Wetten</div><div class="card-sub">${incoming.length} offene Anfragen</div></div>
+      </div>
+      ${incoming.map(b=>betCard(b,'opponent')).join('')}
+    </div>` : ''}
+
+    <!-- Aktive Wetten -->
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-head" style="margin-bottom:.6rem">
+        <div class="card-head-icon" style="background:rgba(96,165,250,.15)"><i class="fas fa-fire" style="color:#60a5fa"></i></div>
+        <div><div class="card-title">Aktive Wetten</div><div class="card-sub">${active.length} laufend</div></div>
+      </div>
+      ${active.length ? active.map(b=>betCard(b,'active')).join('') : '<div class="empty" style="padding:.5rem"><p>Keine aktiven Wetten</p></div>'}
+    </div>
+
+    <!-- Historie -->
+    <div class="card">
+      <div class="card-head" style="margin-bottom:.6rem">
+        <div class="card-head-icon" style="background:rgba(107,114,128,.15)"><i class="fas fa-history" style="color:#6b7280"></i></div>
+        <div><div class="card-title">Verlauf</div><div class="card-sub">${history.length} abgeschlossen</div></div>
+      </div>
+      ${history.length ? history.slice(0,20).map(b=>betCard(b,'history')).join('') : '<div class="empty" style="padding:.5rem"><p>Noch keine abgeschlossenen Wetten</p></div>'}
+    </div>`;
+
+  // Chip-Styling init
+  $('betAmountInput')?.addEventListener('input', () => {
+    const v = +$('betAmountInput').value || 0;
+    const winEl = $('betWinDisplay');
+    if (winEl) winEl.textContent = (v * 2).toLocaleString('de-DE') + ' 🪙';
+  });
+}
+
+window._betOpponentDid  = null;
+window._betOpponentName = null;
+
+window.betSetAmount = v => {
+  const inp = $('betAmountInput');
+  if (inp) { inp.value = v; inp.dispatchEvent(new Event('input')); }
+  document.querySelectorAll('#pageContent .chip').forEach(c => {
+    const val = +c.textContent.replace(/\./g,'');
+    c.classList.toggle('active', val === v);
+  });
+  const winEl = $('betWinDisplay');
+  if (winEl) winEl.textContent = (v * 2).toLocaleString('de-DE') + ' 🪙';
+};
+
+window.betSearchOpponent = async () => {
+  const q = $('betOpponentInput')?.value.trim();
+  const res_el = $('betOpponentResults');
+  if (!q || q.length < 1) { if (res_el) res_el.style.display = 'none'; return; }
+  const rows = await api(`/api/bets/search?q=${encodeURIComponent(q)}`);
+  if (!rows || !res_el) return;
+  if (!rows.length) { res_el.innerHTML = '<div style="padding:.5rem .75rem;font-size:.8rem;color:var(--muted)">Niemanden gefunden</div>'; res_el.style.display = 'block'; return; }
+  res_el.innerHTML = rows.map(r => `
+    <div style="padding:.45rem .75rem;cursor:pointer;font-size:.82rem;display:flex;align-items:center;gap:.5rem;border-bottom:1px solid var(--border)"
+      onmousedown="betSelectOpponent('${r.discord_id}','${esc(r.username).replace(/'/g,"\\'")}')"
+      onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <i class="fas fa-user" style="color:var(--muted);font-size:.75rem"></i>
+      <span style="font-weight:600">${esc(r.username)}</span>
+      <span style="margin-left:auto;font-size:.7rem;color:#fbbf24">${(r.balance||0).toLocaleString('de-DE')} 🪙</span>
+    </div>`).join('');
+  res_el.style.display = 'block';
+};
+
+window.betSelectOpponent = (did, name) => {
+  window._betOpponentDid  = did;
+  window._betOpponentName = name;
+  const inp = $('betOpponentInput');
+  const tag = $('betOpponentTag');
+  const nm  = $('betOpponentName');
+  const res = $('betOpponentResults');
+  if (inp) inp.style.display = 'none';
+  if (tag) tag.style.display = 'flex';
+  if (nm)  nm.textContent = name;
+  if (res) res.style.display = 'none';
+};
+
+window.betClearOpponent = () => {
+  window._betOpponentDid  = null;
+  window._betOpponentName = null;
+  const inp = $('betOpponentInput');
+  const tag = $('betOpponentTag');
+  if (inp) { inp.style.display = ''; inp.value = ''; }
+  if (tag) tag.style.display = 'none';
+};
+
+window.betCreate = async () => {
+  const opponent_did = window._betOpponentDid;
+  const amount       = Math.round(+$('betAmountInput')?.value || 0);
+  const description  = $('betDescription')?.value.trim();
+  if (!opponent_did) { toast('Gegner auswählen', 'err'); return; }
+  const r = await api('/api/bets', { method: 'POST', body: { opponent_did, amount, description } });
+  if (r) { toast('Wette abgeschickt!', 'ok'); betClearOpponent(); wetten(); }
+};
+
+window.betAccept = async id => {
+  if (!confirm('Wette annehmen? Dein Einsatz wird sofort abgezogen.')) return;
+  const r = await api(`/api/bets/${id}/accept`, { method: 'POST' });
+  if (r) { toast('Wette angenommen!', 'ok'); wetten(); }
+};
+
+window.betDecline = async id => {
+  const r = await api(`/api/bets/${id}/decline`, { method: 'POST' });
+  if (r) { toast('Wette abgelehnt.'); wetten(); }
+};
+
+window.betCancel = async id => {
+  if (!confirm('Wette stornieren? Dein Einsatz wird zurückerstattet.')) return;
+  const r = await api(`/api/bets/${id}/cancel`, { method: 'POST' });
+  if (r) { toast('Wette storniert – Coins zurück.', 'ok'); wetten(); }
+};
 
 // ── Start wird in index.html nach allen Modulen aufgerufen ─────────
