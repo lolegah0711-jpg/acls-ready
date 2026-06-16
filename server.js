@@ -2735,7 +2735,11 @@ app.get('/api/admin/analytics', requireAdmin, (req, res) => {
 // ── BATCH 7: Referral-System ─────────────────────────────────────
 app.get('/join', (req, res) => {
   const ref = req.query.ref;
-  if (ref && /^\d+$/.test(ref)) req.session.referralBy = ref;
+  if (ref && /^\d+$/.test(ref)) {
+    req.session.referralBy = ref;
+    req.session.save(() => res.redirect('/'));
+    return;
+  }
   res.redirect('/');
 });
 
@@ -4243,13 +4247,17 @@ function bjValue(cards) {
   return total;
 }
 function bjPublic(g, done) {
-  return {
+  const base = {
     bet: g.bet, doubled: g.doubled,
-    player: g.player, playerVal: bjValue(g.player),
     dealer: done ? g.dealer : [g.dealer[0], { r: '?', s: '?' }],
     dealerVal: done ? bjValue(g.dealer) : null,
     done: !!done,
   };
+  if (g.split) {
+    const ai = Math.min(g.split.active, 1);
+    return { ...base, split: true, activeSplit: g.split.active, hands: g.split.hands, handVals: g.split.hands.map(bjValue), bets: g.split.bets, player: g.split.hands[ai], playerVal: bjValue(g.split.hands[ai]) };
+  }
+  return { ...base, player: g.player, playerVal: bjValue(g.player) };
 }
 // Dealer zieht bis 17, dann auswerten. Gibt {result, payout} zurück.
 function bjResolve(g, ident) {
@@ -4286,6 +4294,46 @@ function bjResolve(g, ident) {
     }
   }
   return { result, payout };
+}
+
+function resolveSplit(g, ident) {
+  const anyAlive = g.split.results.some(r => r !== 'bust');
+  if (anyAlive) while (bjValue(g.dealer) < 17) g.dealer.push(g.deck.pop());
+  const dv = bjValue(g.dealer);
+  let totalPayout = 0;
+  const splitResults = g.split.hands.map((hand, i) => {
+    if (g.split.results[i] === 'bust') return { result: 'bust', payout: 0 };
+    const pv = bjValue(hand);
+    let payout = 0, result;
+    if      (pv > 21)            { result = 'bust';  payout = 0; }
+    else if (dv > 21 || pv > dv) { result = 'win';   payout = g.split.bets[i] * 2; }
+    else if (pv === dv)          { result = 'push';  payout = g.split.bets[i]; }
+    else                         { result = 'loss';  payout = 0; }
+    totalPayout += payout;
+    return { result, payout };
+  });
+  if (totalPayout > 0) addCoins(ident.id, ident.name, totalPayout, 'blackjack:split_result', { splitResults });
+  bjGames.delete(ident.id);
+  db.prepare('DELETE FROM blackjack_pending WHERE discord_id = ?').run(ident.id);
+  if (ident.user) checkGameBadges(ident.user.id, ident.id);
+  const net = totalPayout - g.bet * 2;
+  if (net > 0) {
+    if (ident.user) {
+      db.prepare(`INSERT INTO game_scores (user_id, game, score, updated_at) VALUES (?, 'blackjack', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, game) DO UPDATE SET
+          score = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+          updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END
+      `).run(ident.user.id, net);
+    } else {
+      db.prepare(`INSERT INTO visitor_game_scores (discord_id, username, game, score, updated_at) VALUES (?, ?, 'blackjack', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(discord_id, game) DO UPDATE SET
+          score = CASE WHEN excluded.score > score THEN excluded.score ELSE score END,
+          updated_at = CASE WHEN excluded.score > score THEN CURRENT_TIMESTAMP ELSE updated_at END,
+          username = excluded.username
+      `).run(ident.id, ident.name, net);
+    }
+  }
+  return splitResults;
 }
 
 app.get('/api/blackjack/state', (req, res) => {
@@ -4326,6 +4374,19 @@ app.post('/api/blackjack/hit', (req, res) => {
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const g = bjGames.get(ident.id);
   if (!g) return res.status(400).json({ error: 'Keine aktive Hand' });
+  if (g.split) {
+    const hand = g.split.hands[g.split.active];
+    hand.push(g.deck.pop());
+    if (bjValue(hand) > 21) {
+      g.split.results[g.split.active] = 'bust';
+      if (g.split.active === 0) { g.split.active = 1; return res.json({ hand: bjPublic(g, false) }); }
+      const splitResults = resolveSplit(g, ident);
+      const pub = bjPublic(g, true);
+      const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+      return res.json({ hand: pub, splitResults, payout: splitResults.reduce((s,r) => s+r.payout, 0), balance: bal });
+    }
+    return res.json({ hand: bjPublic(g, false) });
+  }
   g.player.push(g.deck.pop());
   if (bjValue(g.player) > 21) {
     const { result, payout } = bjResolve(g, ident);
@@ -4340,6 +4401,7 @@ app.post('/api/blackjack/double', (req, res) => {
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const g = bjGames.get(ident.id);
   if (!g) return res.status(400).json({ error: 'Keine aktive Hand' });
+  if (g.split) return res.status(400).json({ error: 'Verdoppeln beim Split nicht möglich' });
   if (g.player.length !== 2) return res.status(400).json({ error: 'Verdoppeln nur als erster Zug' });
   const extra = addCoins(ident.id, ident.name, -g.bet, 'blackjack:double');
   if (extra === null) return res.status(400).json({ error: 'Nicht genug Coins zum Verdoppeln' });
@@ -4356,9 +4418,64 @@ app.post('/api/blackjack/stand', (req, res) => {
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const g = bjGames.get(ident.id);
   if (!g) return res.status(400).json({ error: 'Keine aktive Hand' });
+  if (g.split) {
+    if (g.split.active === 0) { g.split.active = 1; return res.json({ hand: bjPublic(g, false) }); }
+    const splitResults = resolveSplit(g, ident);
+    const pub = bjPublic(g, true);
+    const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+    return res.json({ hand: pub, splitResults, payout: splitResults.reduce((s,r) => s+r.payout, 0), balance: bal });
+  }
   const { result, payout } = bjResolve(g, ident);
   const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
   res.json({ hand: bjPublic(g, true), result, payout, balance: bal });
+});
+
+app.post('/api/blackjack/split', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const g = bjGames.get(ident.id);
+  if (!g) return res.status(400).json({ error: 'Keine aktive Hand' });
+  if (g.split) return res.status(400).json({ error: 'Bereits gesplittet' });
+  if (g.player.length !== 2) return res.status(400).json({ error: 'Split nur mit 2 Karten möglich' });
+  if (g.player[0].r !== g.player[1].r) return res.status(400).json({ error: 'Split nur bei gleichen Karten' });
+  const bal = addCoins(ident.id, ident.name, -g.bet, 'blackjack:split', { originalBet: g.bet });
+  if (bal === null) return res.status(400).json({ error: 'Nicht genug Coins zum Splitten' });
+  g.split = {
+    hands: [[g.player[0], g.deck.pop()], [g.player[1], g.deck.pop()]],
+    bets: [g.bet, g.bet],
+    active: 0,
+    results: [null, null],
+  };
+  db.prepare('UPDATE blackjack_pending SET bet = ? WHERE discord_id = ?').run(g.bet * 2, ident.id);
+  res.json({ hand: bjPublic(g, false), balance: bal });
+});
+
+app.post('/api/blackjack/insurance', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const g = bjGames.get(ident.id);
+  if (!g) return res.status(400).json({ error: 'Keine aktive Hand' });
+  if (g.insurance !== undefined) return res.status(400).json({ error: 'Versicherung bereits entschieden' });
+  if (g.player.length !== 2 || g.split) return res.status(400).json({ error: 'Versicherung nur als erster Zug' });
+  if (g.dealer[0].r !== 'A') return res.status(400).json({ error: 'Versicherung nur bei Dealer-Ass' });
+  const insAmt = Math.floor(g.bet / 2);
+  if (insAmt < 1) return res.status(400).json({ error: 'Einsatz zu klein für Versicherung' });
+  const balAfter = addCoins(ident.id, ident.name, -insAmt, 'blackjack:insurance:bet');
+  if (balAfter === null) return res.status(400).json({ error: 'Nicht genug Coins für Versicherung' });
+  g.insurance = insAmt;
+  const dealerBJ = bjValue(g.dealer) === 21;
+  if (dealerBJ) {
+    addCoins(ident.id, ident.name, insAmt * 3, 'blackjack:insurance:win');
+    const playerBJ = bjValue(g.player) === 21;
+    if (playerBJ) addCoins(ident.id, ident.name, g.bet, 'blackjack:push', { bet: g.bet });
+    bjGames.delete(ident.id);
+    db.prepare('DELETE FROM blackjack_pending WHERE discord_id = ?').run(ident.id);
+    if (ident.user) checkGameBadges(ident.user.id, ident.id);
+    const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+    return res.json({ hand: bjPublic(g, true), dealerBJ: true, insurance: 'win', insurancePayout: insAmt * 3, result: playerBJ ? 'push' : 'loss', payout: playerBJ ? g.bet : 0, balance: bal });
+  }
+  const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+  res.json({ hand: bjPublic(g, false), insurance: 'lost', balance: bal });
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -4913,6 +5030,140 @@ app.post('/api/notifications/read', requireAnySession, (req, res) => {
   const did = coinIdent(req)?.id;
   if (!did) return res.status(401).json({ error: 'Nicht angemeldet' });
   db.prepare('UPDATE notifications SET is_read = 1 WHERE discord_id = ?').run(did);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  DIREKTNACHRICHTEN
+// ════════════════════════════════════════════════════════════════
+app.get('/api/dm/unread', requireAuth, (req, res) => {
+  const me = req.session.userId ? db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id : null;
+  if (!me) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const count = db.prepare("SELECT COUNT(*) AS c FROM direct_messages WHERE receiver_id = ? AND read_at IS NULL").get(me)?.c ?? 0;
+  res.json({ count });
+});
+
+app.get('/api/dm/inbox', requireAuth, (req, res) => {
+  const me = db.prepare('SELECT discord_id, username FROM users WHERE id = ?').get(req.session.userId);
+  if (!me) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const rows = db.prepare(`
+    SELECT other_id, other_name, MAX(created_at) AS last_at,
+           SUM(CASE WHEN receiver_id = ? AND read_at IS NULL THEN 1 ELSE 0 END) AS unread,
+           (SELECT content FROM direct_messages m2
+            WHERE (m2.sender_id = dm.other_id AND m2.receiver_id = ?)
+               OR (m2.sender_id = ? AND m2.receiver_id = dm.other_id)
+            ORDER BY m2.created_at DESC LIMIT 1) AS last_msg
+    FROM (
+      SELECT CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END AS other_id,
+             CASE WHEN sender_id = ? THEN receiver_name ELSE sender_name END AS other_name,
+             receiver_id, read_at, created_at
+      FROM direct_messages WHERE sender_id = ? OR receiver_id = ?
+    ) dm
+    GROUP BY other_id ORDER BY last_at DESC LIMIT 50
+  `).all(me.discord_id, me.discord_id, me.discord_id, me.discord_id, me.discord_id, me.discord_id, me.discord_id);
+  res.json(rows);
+});
+
+app.get('/api/dm/history/:did', requireAuth, (req, res) => {
+  if (rateLimit('dm:hist:' + req.session.userId, 30, 60_000)) return res.status(429).json({ error: 'Zu schnell' });
+  const me = db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id;
+  if (!me) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const other = req.params.did;
+  const rows = db.prepare(`
+    SELECT id, sender_id, sender_name, receiver_id, receiver_name, content, read_at, created_at
+    FROM direct_messages
+    WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)
+    ORDER BY created_at ASC LIMIT 100
+  `).all(me, other, other, me);
+  db.prepare("UPDATE direct_messages SET read_at = datetime('now') WHERE receiver_id = ? AND sender_id = ? AND read_at IS NULL").run(me, other);
+  res.json(rows);
+});
+
+app.post('/api/dm/send', requireAuth, (req, res) => {
+  if (rateLimit('dm:send:' + req.session.userId, 20, 60_000)) return res.status(429).json({ error: 'Zu schnell' });
+  const sender = db.prepare('SELECT discord_id, username FROM users WHERE id = ?').get(req.session.userId);
+  if (!sender) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const { to, message } = req.body;
+  if (!to || !message?.trim()) return res.status(400).json({ error: 'Empfänger und Nachricht erforderlich' });
+  if (message.length > 1000) return res.status(400).json({ error: 'Nachricht zu lang (max 1000 Zeichen)' });
+  const receiver = db.prepare('SELECT discord_id, username FROM users WHERE discord_id = ?').get(to);
+  if (!receiver) return res.status(404).json({ error: 'Empfänger nicht gefunden' });
+  if (receiver.discord_id === sender.discord_id) return res.status(400).json({ error: 'Kannst du dir nicht selbst schreiben' });
+  const row = db.prepare(`INSERT INTO direct_messages (sender_id, sender_name, receiver_id, receiver_name, content) VALUES (?,?,?,?,?)`)
+    .run(sender.discord_id, sender.username, receiver.discord_id, receiver.username, message.trim());
+  sseEmit('dm', { from: sender.discord_id, fromName: sender.username, preview: message.trim().slice(0, 60), id: row.lastInsertRowid }, receiver.discord_id);
+  createNotif(receiver.discord_id, 'dm', { from: sender.username, preview: message.trim().slice(0, 60) });
+  res.json({ ok: true, id: row.lastInsertRowid });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  INVENTAR-MARKTPLATZ
+// ════════════════════════════════════════════════════════════════
+app.get('/api/market', requireAuth, (req, res) => {
+  const rows = db.prepare(`SELECT * FROM item_market WHERE sold_at IS NULL ORDER BY created_at DESC LIMIT 100`).all();
+  res.json(rows);
+});
+
+app.get('/api/market/my', requireAuth, (req, res) => {
+  const me = db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id;
+  if (!me) return res.status(401).json({ error: 'Nicht angemeldet' });
+  res.json(db.prepare(`SELECT * FROM item_market WHERE seller_id = ? AND sold_at IS NULL`).all(me));
+});
+
+app.get('/api/shop/owned', requireAuth, (req, res) => {
+  const me = db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id;
+  if (!me) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const rows = db.prepare('SELECT item_id FROM shop_purchases WHERE discord_id = ?').all(me);
+  res.json(rows.map(r => r.item_id));
+});
+
+app.post('/api/market/list', requireAuth, (req, res) => {
+  const me = db.prepare('SELECT discord_id, username FROM users WHERE id = ?').get(req.session.userId);
+  if (!me) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const { item_key, price } = req.body;
+  const p = Math.floor(+price || 0);
+  if (!item_key || typeof item_key !== 'string') return res.status(400).json({ error: 'Ungültiges Item' });
+  if (p < 1 || p > 100000) return res.status(400).json({ error: 'Preis: 1–100.000 Coins' });
+  const shopItem = SHOP_ITEMS.find(i => i.id === item_key);
+  if (!shopItem) return res.status(400).json({ error: 'Item nicht im Shop' });
+  const owned = db.prepare('SELECT 1 FROM shop_purchases WHERE discord_id = ? AND item_id = ?').get(me.discord_id, item_key);
+  if (!owned) return res.status(400).json({ error: 'Du besitzt dieses Item nicht' });
+  const alreadyListed = db.prepare('SELECT 1 FROM item_market WHERE seller_id = ? AND item_key = ? AND sold_at IS NULL').get(me.discord_id, item_key);
+  if (alreadyListed) return res.status(400).json({ error: 'Item bereits eingestellt' });
+  db.prepare('INSERT INTO item_market (seller_id, seller_name, item_key, item_name, price) VALUES (?,?,?,?,?)').run(me.discord_id, me.username, item_key, shopItem.name, p);
+  res.json({ ok: true });
+});
+
+app.post('/api/market/buy/:id', requireAuth, (req, res) => {
+  const buyer = db.prepare('SELECT discord_id, username FROM users WHERE id = ?').get(req.session.userId);
+  if (!buyer) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const listing = db.prepare('SELECT * FROM item_market WHERE id = ? AND sold_at IS NULL').get(+req.params.id);
+  if (!listing) return res.status(404).json({ error: 'Listing nicht gefunden' });
+  if (listing.seller_id === buyer.discord_id) return res.status(400).json({ error: 'Kannst dein eigenes Item nicht kaufen' });
+  const alreadyOwns = db.prepare('SELECT 1 FROM shop_purchases WHERE discord_id = ? AND item_id = ?').get(buyer.discord_id, listing.item_key);
+  if (alreadyOwns) return res.status(400).json({ error: 'Du besitzt dieses Item bereits' });
+  const newBal = addCoins(buyer.discord_id, buyer.username, -listing.price, 'market:buy', { item: listing.item_key });
+  if (newBal === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+  db.prepare("UPDATE item_market SET sold_at = datetime('now'), buyer_id = ?, buyer_name = ? WHERE id = ?").run(buyer.discord_id, buyer.username, listing.id);
+  db.prepare('DELETE FROM shop_purchases WHERE discord_id = ? AND item_id = ?').run(listing.seller_id, listing.item_key);
+  const shopItem = SHOP_ITEMS.find(i => i.id === listing.item_key);
+  if (shopItem) {
+    const equipCol = { title: 'equipped_title', frame: 'equipped_frame', deck: 'equipped_deck', namecolor: 'equipped_namecolor', deco: 'equipped_deco', banner: 'equipped_banner', truck: 'equipped_truck' }[shopItem.type];
+    if (equipCol) db.prepare(`UPDATE coin_balances SET ${equipCol} = NULL WHERE discord_id = ? AND ${equipCol} = ?`).run(listing.seller_id, listing.item_key);
+  }
+  db.prepare("INSERT OR IGNORE INTO shop_purchases (discord_id, item_id, price) VALUES (?, ?, 0)").run(buyer.discord_id, listing.item_key);
+  addCoins(listing.seller_id, listing.seller_name, listing.price, 'market:sold', { item: listing.item_key, buyer: buyer.username });
+  sseEmit('market_sold', { item: listing.item_name, buyer: buyer.username, price: listing.price }, listing.seller_id);
+  createNotif(listing.seller_id, 'market_sold', { item: listing.item_name, buyer: buyer.username, price: listing.price });
+  res.json({ ok: true, balance: newBal });
+});
+
+app.delete('/api/market/:id', requireAuth, (req, res) => {
+  const me = db.prepare('SELECT discord_id FROM users WHERE id = ?').get(req.session.userId)?.discord_id;
+  if (!me) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const listing = db.prepare('SELECT * FROM item_market WHERE id = ? AND sold_at IS NULL AND seller_id = ?').get(+req.params.id, me);
+  if (!listing) return res.status(404).json({ error: 'Listing nicht gefunden' });
+  db.prepare('DELETE FROM item_market WHERE id = ?').run(listing.id);
   res.json({ ok: true });
 });
 

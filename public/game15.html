@@ -21,7 +21,7 @@
     .card .bottom{transform:rotate(180deg);font-size:20px;line-height:1;}
     .card.back{background:repeating-linear-gradient(45deg,#7c2d12,#7c2d12 6px,#9a3412 6px,#9a3412 12px);border:3px solid #f8fafc;}
     .total{margin-top:8px;font-weight:800;font-size:15px;background:rgba(0,0,0,.5);border-radius:999px;padding:3px 14px;min-height:26px;}
-    .result{font-size:26px;font-weight:800;margin:12px 0 2px;min-height:36px;text-align:center;}
+    .result{font-size:26px;font-weight:800;margin:12px 0 2px;min-height:36px;text-align:center;line-height:1.4;}
     .result small{display:block;font-size:14px;color:#fbbf24;font-weight:700;}
     .controls{margin-top:14px;display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;}
     .bet-chips{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;}
@@ -35,6 +35,8 @@
     .btn-hit{background:#16a34a;color:#fff;}
     .btn-stand{background:#dc2626;color:#fff;}
     .btn-double{background:#7c3aed;color:#fff;}
+    .btn-split{background:#0ea5e9;color:#fff;}
+    .btn-ins{background:#d97706;color:#fff;}
     .btn-gray{background:#1f2937;color:#d1d5db;border:1px solid #374151;}
     .bet-display{font-weight:800;font-size:17px;color:#fbbf24;min-height:24px;}
     .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.88);z-index:100;}
@@ -46,6 +48,11 @@
     .lb-av img{width:100%;height:100%;object-fit:cover;}
     .lb-name{flex:1;font-weight:600;}.lb-score{font-weight:700;color:#fbbf24;}
     .sub{color:#6b7280;font-size:14px;margin-bottom:20px;line-height:1.5;}
+    .split-zone{display:flex;gap:20px;justify-content:center;flex-wrap:wrap;}
+    .split-hand{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border-radius:12px;border:2px solid transparent;transition:border-color .2s;}
+    .split-hand.active{border-color:#4ade80;}
+    .split-hand.done{opacity:.65;}
+    .split-label{font-size:11px;color:#9ca3af;font-weight:700;}
   </style>
 </head>
 <body>
@@ -66,8 +73,10 @@
   <div class="result" id="result"></div>
 
   <div class="zone-label">Deine Hand</div>
-  <div class="cards" id="player-cards"></div>
-  <div class="total" id="player-total"></div>
+  <div id="player-area">
+    <div class="cards" id="player-cards"></div>
+    <div class="total" id="player-total"></div>
+  </div>
 
   <div class="controls">
     <!-- Einsatz-Phase -->
@@ -85,13 +94,15 @@
         <button class="btn btn-gray" onclick="resetBet()">Zurücksetzen</button>
         <button class="btn btn-deal" id="deal-btn" onclick="deal()" disabled>KARTEN GEBEN</button>
       </div>
-      <div style="font-size:12px;color:rgba(255,255,255,.4)">Blackjack zahlt 3:2 · Dealer zieht bis 17 · Coins verdienst du in allen Minispielen</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.4)">Blackjack zahlt 3:2 · Dealer zieht bis 17 · Split &amp; Insurance verfügbar</div>
     </div>
     <!-- Spiel-Phase -->
-    <div id="play-ui" style="display:none;gap:12px">
+    <div id="play-ui" style="display:none;flex-wrap:wrap;justify-content:center;gap:10px">
       <button class="btn btn-hit"    onclick="hit()">KARTE</button>
       <button class="btn btn-stand"  onclick="stand()">HALTEN</button>
       <button class="btn btn-double" id="double-btn" onclick="doubleDown()">VERDOPPELN</button>
+      <button class="btn btn-split"  id="split-btn"  onclick="doSplit()" style="display:none">SPLIT</button>
+      <button class="btn btn-ins"    id="ins-btn"    onclick="doInsurance()" style="display:none">VERSICHERUNG</button>
     </div>
     <!-- Nach der Hand -->
     <div id="again-ui" style="display:none;gap:12px">
@@ -135,28 +146,51 @@ function fmtCard(c){
 
 function renderHand(h){
   $('dealer-cards').innerHTML=h.dealer.map(fmtCard).join('');
-  $('player-cards').innerHTML=h.player.map(fmtCard).join('');
-  $('player-total').textContent=h.playerVal;
   $('dealer-total').textContent=h.dealerVal!=null?h.dealerVal:'?';
-  $('double-btn').disabled=h.player.length!==2||h.doubled||balance<h.bet;
+
+  if(h.split){
+    $('player-area').innerHTML=`<div class="split-zone">${h.hands.map((hand,i)=>`
+      <div class="split-hand${!h.done&&h.activeSplit===i?' active':h.done?'':' done'}">
+        <div class="split-label">Hand ${i+1} · ${h.bets[i]}🪙</div>
+        <div class="cards" style="min-height:108px">${hand.map(fmtCard).join('')}</div>
+        <div class="total">${h.handVals[i]}</div>
+      </div>`).join('')}</div>`;
+    $('double-btn').disabled=true;
+    $('split-btn').style.display='none';
+    $('ins-btn').style.display='none';
+  } else {
+    $('player-area').innerHTML='<div class="cards" id="player-cards"></div><div class="total" id="player-total"></div>';
+    $('player-cards').innerHTML=h.player.map(fmtCard).join('');
+    $('player-total').textContent=h.playerVal;
+    $('double-btn').disabled=h.player.length!==2||h.doubled||balance<h.bet;
+    const canSplit=!h.done&&h.player.length===2&&h.player[0].r===h.player[1].r&&balance>=h.bet;
+    $('split-btn').style.display=canSplit?'inline-flex':'none';
+    const canIns=!h.done&&h.player.length===2&&h.dealer[0]&&h.dealer[0].r==='A'&&balance>=Math.floor(h.bet/2);
+    $('ins-btn').style.display=canIns?'inline-flex':'none';
+  }
 }
 
 function setBalance(b){balance=b;$('balance').textContent=b.toLocaleString('de-DE');}
 
-function showResult(result,payout,handBet){
-  const map={
-    win:     ['✅ GEWONNEN!','#4ade80'],
-    loss:    ['❌ VERLOREN','#ef4444'],
-    bust:    ['💥 ÜBERKAUFT!','#ef4444'],
-    push:    ['🤝 UNENTSCHIEDEN','#9ca3af'],
-  };
+function showResult(result,payout,handBet,splitResults){
+  if(splitResults){
+    const map={win:['✅ Gewonnen','#4ade80'],loss:['❌ Verloren','#ef4444'],bust:['💥 Überkauft','#ef4444'],push:['🤝 Unentschieden','#9ca3af']};
+    const totalNet=splitResults.reduce((s,r)=>s+r.payout,0)-handBet*2;
+    $('result').innerHTML=splitResults.map((r,i)=>{
+      const[txt,col]=map[r.result]||['','#fff'];
+      const net=r.payout-handBet;
+      return`<span style="color:${col};font-size:17px">Hand ${i+1}: ${txt} (${net>=0?'+'+net:net}🪙)</span>`;
+    }).join('<br>')+`<small>${totalNet>=0?'+'+totalNet:totalNet} 🪙 gesamt</small>`;
+    return;
+  }
+  const map={win:['✅ GEWONNEN!','#4ade80'],loss:['❌ VERLOREN','#ef4444'],bust:['💥 ÜBERKAUFT!','#ef4444'],push:['🤝 UNENTSCHIEDEN','#9ca3af']};
   const natural=payout>handBet*2;
   const[txt,col]=natural?['🃏 BLACKJACK!','#fbbf24']:(map[result]||['','#fff']);
   const net=payout-handBet;
   $('result').innerHTML=`<span style="color:${col}">${txt}</span><small>${net>0?`+${net}`:net<0?net:'±0'} 🪙</small>`;
 }
 
-function uiPhase(phase){ // 'bet' | 'play' | 'again'
+function uiPhase(phase){
   $('bet-ui').style.display  =phase==='bet'  ?'flex':'none';
   $('play-ui').style.display =phase==='play' ?'flex':'none';
   $('again-ui').style.display=phase==='again'?'flex':'none';
@@ -195,7 +229,7 @@ async function hit(){
   try{
     const d=await post('/api/blackjack/hit');
     renderHand(d.hand);
-    if(d.hand.done){setBalance(d.balance);showResult(d.result,d.payout,d.hand.bet);uiPhase('again');inHand=false;}
+    if(d.hand.done){setBalance(d.balance);showResult(d.result,d.payout,d.hand.bet,d.splitResults);uiPhase('again');inHand=false;}
   }catch(e){$('result').innerHTML=`<span style="color:#ef4444;font-size:15px">${e.message}</span>`;}
   busy=false;
 }
@@ -204,8 +238,8 @@ async function stand(){
   if(busy||!inHand)return;busy=true;
   try{
     const d=await post('/api/blackjack/stand');
-    renderHand(d.hand);setBalance(d.balance);
-    showResult(d.result,d.payout,d.hand.bet);uiPhase('again');inHand=false;
+    renderHand(d.hand);
+    if(d.hand.done){setBalance(d.balance);showResult(d.result,d.payout,d.hand.bet,d.splitResults);uiPhase('again');inHand=false;}
   }catch(e){$('result').innerHTML=`<span style="color:#ef4444;font-size:15px">${e.message}</span>`;}
   busy=false;
 }
@@ -220,10 +254,41 @@ async function doubleDown(){
   busy=false;
 }
 
+async function doSplit(){
+  if(busy||!inHand)return;busy=true;
+  try{
+    const d=await post('/api/blackjack/split');
+    if(d.balance!==undefined)setBalance(d.balance);
+    renderHand(d.hand);
+  }catch(e){$('result').innerHTML=`<span style="color:#ef4444;font-size:15px">${e.message}</span>`;}
+  busy=false;
+}
+
+async function doInsurance(){
+  if(busy||!inHand)return;busy=true;
+  try{
+    const d=await post('/api/blackjack/insurance');
+    setBalance(d.balance);
+    if(d.hand.done){
+      renderHand(d.hand);
+      showResult(d.result,d.payout,d.hand.bet);
+      const insLine=d.insurance==='win'
+        ?`<br><span style="color:#fbbf24;font-size:14px">🛡️ Versicherung gewonnen +${d.insurancePayout}🪙</span>`
+        :'';
+      $('result').innerHTML+= insLine;
+      uiPhase('again');inHand=false;
+    } else {
+      renderHand(d.hand);
+      $('result').innerHTML='<span style="color:#ef4444;font-size:13px">🛡️ Versicherung verloren – Spiel geht weiter</span>';
+    }
+  }catch(e){$('result').innerHTML=`<span style="color:#ef4444;font-size:15px">${e.message}</span>`;}
+  busy=false;
+}
+
 function newRound(){
-  $('dealer-cards').innerHTML='';$('player-cards').innerHTML='';
-  $('dealer-total').textContent='';$('player-total').textContent='';
-  $('result').textContent='';
+  $('dealer-cards').innerHTML='';
+  $('player-area').innerHTML='<div class="cards" id="player-cards"></div><div class="total" id="player-total"></div>';
+  $('dealer-total').textContent='';$('result').textContent='';
   resetBet();uiPhase('bet');
 }
 
@@ -248,7 +313,6 @@ async function openLb(){
 }
 function closeLb(){$('ov-lb').classList.add('hidden');}
 
-// Gekaufte Kartendeck-Designs aus dem Coin-Shop
 const DECK_DESIGNS={
   deck_gold:'repeating-linear-gradient(45deg,#7a5800,#7a5800 6px,#b8860b 6px,#b8860b 12px)',
   deck_carbon:'repeating-linear-gradient(135deg,#0d0d0d,#0d0d0d 4px,#2e2e2e 4px,#2e2e2e 8px)',

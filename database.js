@@ -995,6 +995,35 @@ function initDb() {
     review_note  TEXT
   )`);
 
+  // ── Direktnachrichten ────────────────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS direct_messages (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id    TEXT NOT NULL,
+    sender_name  TEXT NOT NULL,
+    receiver_id  TEXT NOT NULL,
+    receiver_name TEXT NOT NULL,
+    content      TEXT NOT NULL,
+    read_at      TEXT,
+    created_at   TEXT DEFAULT (datetime('now'))
+  )`);
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_dm_receiver ON direct_messages(receiver_id, created_at DESC)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_dm_sender ON direct_messages(sender_id, created_at DESC)'); } catch {}
+
+  // ── Inventar: Shop-Listings (Spieler-zu-Spieler Markt) ──────
+  db.exec(`CREATE TABLE IF NOT EXISTS item_market (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    seller_id    TEXT NOT NULL,
+    seller_name  TEXT NOT NULL,
+    item_key     TEXT NOT NULL,
+    item_name    TEXT NOT NULL,
+    price        INTEGER NOT NULL,
+    created_at   TEXT DEFAULT (datetime('now')),
+    sold_at      TEXT,
+    buyer_id     TEXT,
+    buyer_name   TEXT
+  )`);
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_market_item ON item_market(item_key, sold_at)'); } catch {}
+
   return db;
 }
 

@@ -160,6 +160,8 @@ const PAGES = {
   feedback:     { title: 'Feedback & Ideen',      sub: 'Vorschläge einreichen & abstimmen' },
   frageneditor: { title: 'Fragen-Editor',         sub: 'Prüfungsfragen verwalten (Admin)' },
   beschwerden:  { title: 'Beschwerde-Kanban',     sub: 'Beschwerden verwalten (Admin)' },
+  nachrichten:  { title: 'Direktnachrichten',     sub: 'Private Nachrichten zwischen Mitarbeitern' },
+  marktplatz:   { title: 'Marktplatz',            sub: 'Kosmetika kaufen & verkaufen' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -1083,6 +1085,8 @@ function bootApp() {
   // Abzeichen alle 30 Minuten neu laden wenn Dashboard aktiv
   setInterval(() => { if (_activePage === 'dashboard') dashboard(); }, 30 * 60 * 1000);
   loadNotifCount();
+  updateDMBadge();
+  setInterval(updateDMBadge, 60_000);
 }
 
 function renderUserWidget() {
@@ -1234,7 +1238,7 @@ function navigate(page) {
   $('pageContent').innerHTML    = loading();
 
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz };
   (renders[page] || dashboard)();
 }
 
@@ -7437,5 +7441,4 @@ window.bkSavePhase = async id => {
 };
 
 
-// ── Start ─────────────────────────────────────────────────────────
-init();
+// ── Start wird in index.html nach allen Modulen aufgerufen ─────────
