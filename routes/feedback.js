@@ -20,7 +20,7 @@ module.exports = function makeFeedbackRouter({ db, requireAdmin, coinIdent, rate
       ? new Set(db.prepare('SELECT idea_id FROM feedback_votes WHERE discord_id = ?').all(ident.id).map(r => r.idea_id))
       : new Set();
 
-    res.json(ideas.map(i => ({ ...i, my_vote: voted.has(i.id) })));
+    res.json({ ideas: ideas.map(i => ({ ...i, my_vote: voted.has(i.id) })) });
   });
 
   // POST /api/feedback — neue Idee einreichen
@@ -67,7 +67,7 @@ module.exports = function makeFeedbackRouter({ db, requireAdmin, coinIdent, rate
   router.patch('/api/feedback/:id/status', requireAdmin, (req, res) => {
     const id     = parseInt(req.params.id, 10);
     const status = String(req.body.status || '').trim();
-    const VALID  = ['offen', 'in_planung', 'umgesetzt', 'abgelehnt'];
+    const VALID  = ['offen', 'in_prüfung', 'umgesetzt', 'abgelehnt'];
     if (!VALID.includes(status)) return res.status(400).json({ error: 'Ungültiger Status' });
 
     const rows = db.prepare('UPDATE feedback_ideas SET status = ? WHERE id = ?').run(status, id);
