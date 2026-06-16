@@ -331,7 +331,7 @@ async function bootVoterApp() {
 const _voterPageMeta = {
   price:     { title: 'Preisliste',       sub: 'Aktuelle Fahrschul- & Servicepreise' },
   vote:      { title: 'MdW-Abstimmung',   sub: 'Mitarbeiter der Woche wählen' },
-  complaint: { title: 'Beschwerde',       sub: 'Anliegen an einen Admin senden' },
+  ticketpub: { title: 'Support-Ticket',   sub: 'Fragen, Bugs & Beschwerden einreichen' },
   market:    { title: 'Fahrzeugmarkt',    sub: 'Private Fahrzeuginserate von Bürgern' },
   team:      { title: 'Unser Team',       sub: 'ACLS Mitarbeiter & Organigramm' },
   apply:     { title: 'Bewerben',         sub: 'Bewirb dich beim ACLS Automobil-Club' },
@@ -367,7 +367,7 @@ async function renderVoterScreen() {
       <nav class="sidebar-nav">
         <a class="nav-item active" id="vnPrice"     onclick="voterTab('price')"    style="cursor:pointer"><i class="fas fa-tags"></i><span>Preisliste</span></a>
         <a class="nav-item"        id="vnVote"      onclick="voterTab('vote')"     style="cursor:pointer"><i class="fas fa-trophy"></i><span>MdW-Abstimmung</span></a>
-        <a class="nav-item"        id="vnComplaint" onclick="voterTab('complaint')" style="cursor:pointer"><i class="fas fa-comment-alt"></i><span>Beschwerde</span></a>
+        <a class="nav-item"        id="vnTicketPub" onclick="voterTab('ticketpub')" style="cursor:pointer"><i class="fas fa-ticket-alt"></i><span>Support-Ticket</span></a>
         <a class="nav-item"        id="vnMarket"    onclick="voterTab('market')"   style="cursor:pointer"><i class="fas fa-car-side" style="color:#f97316"></i><span>Fahrzeugmarkt</span></a>
         <a class="nav-item" href="/quiz" target="_blank" style="color:#22c55e"><i class="fas fa-graduation-cap" style="color:#22c55e"></i><span>Prüfungsvorbereitung</span></a>
         <a class="nav-item"        id="vnTeam"      onclick="voterTab('team')"     style="cursor:pointer"><i class="fas fa-users"></i><span>Unser Team</span></a>
@@ -491,19 +491,30 @@ async function renderVoterScreen() {
           </div>
         </div>
 
-        <!-- Beschwerde -->
-        <div id="complaintSection" style="display:none">
-          <div style="max-width:600px">
+        <!-- Support-Ticket (Bürger) -->
+        <div id="ticketpubSection" style="display:none">
+          <div style="max-width:640px">
             <div class="card" style="margin-bottom:1.25rem">
-              <form onsubmit="submitComplaintForm(event)">
-                <div class="form-group"><label>Dein Name (IC)</label><input class="form-control" id="cName" value="${esc(currentUser.username||'')}" required></div>
-                <div class="form-group"><label>Betreff</label><input class="form-control" id="cSubject" placeholder="Kurze Zusammenfassung" required></div>
-                <div class="form-group"><label>Nachricht</label><textarea class="form-control" id="cMessage" rows="4" placeholder="Beschreibe dein Anliegen ausführlich…" required style="resize:vertical"></textarea></div>
-                <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-paper-plane"></i> Absenden</button>
+              <div class="card-head"><div class="card-head-icon" style="background:rgba(251,191,36,.12)"><i class="fas fa-ticket-alt" style="color:#fbbf24"></i></div><div><div class="card-title">Support-Ticket erstellen</div><div class="card-sub">Fragen, Bugs & Beschwerden direkt an unser Team</div></div></div>
+              <form onsubmit="submitPublicTicketForm(event)">
+                <div class="form-group"><label>Dein Name (IC)</label><input class="form-control" id="ptName" value="${esc(currentUser.username||'')}" required></div>
+                <div class="form-group"><label>Kategorie</label>
+                  <select class="form-control" id="ptCategory" required>
+                    <option value="">— Bitte wählen —</option>
+                    <option value="Bug">Bug / Fehler</option>
+                    <option value="Frage">Frage</option>
+                    <option value="Beschwerde">Beschwerde</option>
+                    <option value="Feature-Wunsch">Feature-Wunsch</option>
+                    <option value="Sonstiges">Sonstiges</option>
+                  </select>
+                </div>
+                <div class="form-group"><label>Betreff</label><input class="form-control" id="ptTitle" placeholder="Kurze Zusammenfassung" required></div>
+                <div class="form-group"><label>Nachricht</label><textarea class="form-control" id="ptBody" rows="5" placeholder="Beschreibe dein Anliegen ausführlich…" required style="resize:vertical"></textarea></div>
+                <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-paper-plane"></i> Ticket absenden</button>
               </form>
             </div>
-            <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem">Meine Beschwerden</div>
-            <div id="my-complaints-list"><div style="color:var(--muted);font-size:.85rem">Wird geladen…</div></div>
+            <div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.75rem">Meine Tickets</div>
+            <div id="my-public-tickets-list"><div style="color:var(--muted);font-size:.85rem">Wird geladen…</div></div>
           </div>
         </div>
 
@@ -894,7 +905,7 @@ async function loadChallengesWidget(containerId) {
 }
 
 window.voterTab = tab => {
-  ['price','vote','complaint','market','team','apply','faq','duel','friends','saison'].forEach(t => {
+  ['price','vote','ticketpub','market','team','apply','faq','duel','friends','saison'].forEach(t => {
     const sec = document.getElementById(t + 'Section');
     if (sec) sec.style.display = t === tab ? '' : 'none';
     const nav = document.getElementById('vn' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -913,7 +924,7 @@ window.voterTab = tab => {
   if (tab === 'duel') { window._duelContainer = 'duelSection'; duell(); }
   if (tab === 'market')    loadVoterMarket();
   if (tab === 'price')     { loadVoterPrices(); loadPollWidget('vPollWidget'); }
-  if (tab === 'complaint') loadMyComplaints();
+  if (tab === 'ticketpub') loadMyPublicTickets();
   if (tab === 'faq')       loadVoterFaq();
   if (tab === 'friends')   loadVoterFriends();
   if (tab === 'saison')    saison();
@@ -1024,33 +1035,47 @@ window.voterDeleteListing = async id => {
   else toast('Fehler', 'err');
 };
 
-window.submitComplaintForm = async e => {
+window.submitPublicTicketForm = async e => {
   e.preventDefault();
-  const r = await fetch('/api/complaints', {
+  const name = $('ptName')?.value.trim();
+  const category = $('ptCategory')?.value;
+  const title = $('ptTitle')?.value.trim();
+  const body = $('ptBody')?.value.trim();
+  if (!name || !category || !title || !body) { toast('Bitte alle Felder ausfüllen', 'err'); return; }
+  const r = await fetch('/api/tickets/public', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ citizen_name: $('cName').value.trim(), citizen_discord_id: currentUser.discord_id, subject: $('cSubject').value.trim(), message: $('cMessage').value.trim() }),
+    body: JSON.stringify({ name, discord_id: currentUser.discord_id || null, category, title, body }),
   });
-  if (r.ok) { toast('Beschwerde eingereicht!', 'ok'); $('cSubject').value = ''; $('cMessage').value = ''; loadMyComplaints(); }
-  else toast('Fehler beim Senden', 'err');
+  const data = await r.json().catch(() => ({}));
+  if (r.ok) {
+    toast(`Ticket #${data.id} wurde eingereicht!`, 'ok');
+    $('ptTitle').value = '';
+    $('ptBody').value = '';
+    $('ptCategory').value = '';
+    loadMyPublicTickets();
+  } else toast(data.error || 'Fehler beim Senden', 'err');
 };
 
-async function loadMyComplaints() {
-  const el = document.getElementById('my-complaints-list');
+async function loadMyPublicTickets() {
+  const el = document.getElementById('my-public-tickets-list');
   if (!el) return;
   try {
-    const data = await (await fetch('/api/my-complaints')).json();
-    if (!data.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.85rem">Noch keine Beschwerden eingereicht.</div>'; return; }
-    const statusColor = s => s === 'offen' ? '#f59e0b' : s === 'in_bearbeitung' ? '#3b82f6' : '#22c55e';
-    const statusLabel = s => s === 'offen' ? 'Offen' : s === 'in_bearbeitung' ? 'In Bearbeitung' : 'Gelöst';
-    el.innerHTML = data.map(c => `
+    const data = await (await fetch('/api/tickets/public/mine')).json();
+    if (!data.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.85rem">Noch keine Tickets eingereicht.</div>'; return; }
+    const statusColor = s => s === 'offen' ? '#f59e0b' : s === 'in_bearbeitung' ? '#3b82f6' : s === 'geschlossen' ? '#22c55e' : '#f59e0b';
+    const statusLabel = s => s === 'offen' ? 'Offen' : s === 'in_bearbeitung' ? 'In Bearbeitung' : s === 'geschlossen' ? 'Geschlossen' : s;
+    const catColor = { Bug: '#ef4444', Frage: '#3b82f6', Beschwerde: '#f97316', 'Feature-Wunsch': '#a855f7', Sonstiges: '#6b7280' };
+    el.innerHTML = data.map(t => `
       <div style="border:1px solid var(--border);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:.5rem">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem">
-          <span style="font-weight:700;font-size:.9rem">${esc(c.subject)}</span>
-          <span style="font-size:.72rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;background:${statusColor(c.status)}22;color:${statusColor(c.status)}">${statusLabel(c.status)}</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;margin-bottom:.25rem">
+          <span style="font-weight:700;font-size:.88rem">${esc(t.title)}</span>
+          <div style="display:flex;gap:.35rem;flex-shrink:0">
+            <span style="font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:20px;background:${(catColor[t.category]||'#6b7280')}22;color:${catColor[t.category]||'#6b7280'}">${esc(t.category)}</span>
+            <span style="font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:20px;background:${statusColor(t.status)}22;color:${statusColor(t.status)}">${statusLabel(t.status)}</span>
+          </div>
         </div>
-        <div style="font-size:.75rem;color:var(--muted)">${new Date(c.created_at).toLocaleDateString('de-DE')}</div>
-        ${c.admin_response ? `<div style="margin-top:.5rem;padding:.5rem .75rem;background:var(--surface2);border-radius:6px;font-size:.82rem;border-left:3px solid #3b82f6"><span style="color:#3b82f6;font-weight:700;font-size:.72rem">Admin-Antwort:</span><br>${esc(c.admin_response)}</div>` : ''}
+        <div style="font-size:.72rem;color:var(--muted)">Ticket #${t.id} · ${new Date(t.created_at).toLocaleDateString('de-DE')}</div>
       </div>`).join('');
   } catch { el.innerHTML = '<div style="color:var(--muted);font-size:.85rem">Fehler beim Laden.</div>'; }
 }
@@ -7732,87 +7757,8 @@ window.submitQuestionSuggestion = async () => {
 // ════════════════════════════════════════════════════════════════
 //  BESCHWERDE-KANBAN (Admin)
 // ════════════════════════════════════════════════════════════════
-async function beschwerden() {
-  if (!isAdmin()) { toast('Kein Zugriff', 'err'); return; }
-  const kanban = await api('/api/complaints/kanban');
-  if (!kanban) return;
-
-  const COLS = [
-    { key: 'offen',         label: 'Offen',         color: '#6b7280', icon: 'fa-inbox' },
-    { key: 'in_bearbeitung',label: 'In Bearbeitung', color: '#fbbf24', icon: 'fa-spinner' },
-    { key: 'erledigt',      label: 'Erledigt',       color: '#22c55e', icon: 'fa-check-circle' },
-    { key: 'abgelehnt',     label: 'Abgelehnt',      color: '#ef4444', icon: 'fa-times-circle' },
-  ];
-
-  function card(c) {
-    return `
-      <div class="card" style="margin-bottom:.6rem;padding:.85rem 1rem;cursor:pointer" onclick="bkOpenDetail(${c.id})">
-        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;flex-wrap:wrap">
-          <span style="font-size:.65rem;font-weight:700;color:var(--muted)">#${c.id}</span>
-          ${c.type ? `<span style="font-size:.6rem;background:var(--surface2);border-radius:999px;padding:.1rem .45rem;border:1px solid var(--border)">${esc(c.type)}</span>` : ''}
-          ${c.assigned_name ? `<span style="font-size:.6rem;color:var(--muted);margin-left:auto"><i class="fas fa-user"></i> ${esc(c.assigned_name)}</span>` : ''}
-        </div>
-        <div style="font-weight:700;font-size:.82rem;margin-bottom:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.subject||'(kein Betreff)')}</div>
-        <div style="font-size:.7rem;color:var(--muted)">${esc(c.citizen_name||'Anonym')} · ${ago(c.created_at)}</div>
-      </div>`;
-  }
-
-  $('pageContent').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;align-items:start">
-      ${COLS.map(col => `
-        <div>
-          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem;padding-bottom:.5rem;border-bottom:2px solid ${col.color}">
-            <i class="fas ${col.icon}" style="color:${col.color};font-size:.85rem"></i>
-            <span style="font-weight:800;font-size:.82rem">${col.label}</span>
-            <span style="margin-left:auto;font-size:.7rem;font-weight:700;background:${col.color}22;color:${col.color};border-radius:999px;padding:.1rem .45rem">${(kanban[col.key]||[]).length}</span>
-          </div>
-          ${(kanban[col.key]||[]).map(card).join('') || '<div style="font-size:.75rem;color:var(--muted);text-align:center;padding:.5rem">Leer</div>'}
-        </div>`).join('')}
-    </div>`;
-}
-
-window.bkOpenDetail = async id => {
-  const kanban = await api('/api/complaints/kanban');
-  if (!kanban) return;
-  const all = [...(kanban.offen||[]), ...(kanban.in_bearbeitung||[]), ...(kanban.erledigt||[]), ...(kanban.abgelehnt||[])];
-  const c = all.find(x => x.id === id);
-  if (!c) return;
-
-  openModal(`
-    <div class="modal-head">
-      <div class="modal-title">Beschwerde #${c.id}</div>
-      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:.8rem;font-size:.85rem">
-      <div><b>Betreff:</b> ${esc(c.subject||'–')}</div>
-      <div><b>Bürger:</b> ${esc(c.citizen_name||'–')}</div>
-      ${c.description ? `<div><b>Beschreibung:</b><p style="margin:.25rem 0 0;color:var(--muted);line-height:1.6;white-space:pre-wrap">${esc(c.description)}</p></div>` : ''}
-      ${c.admin_response ? `<div><b>Admin-Antwort:</b><p style="margin:.25rem 0 0;color:#22c55e;line-height:1.6;white-space:pre-wrap">${esc(c.admin_response)}</p></div>` : ''}
-      <div style="border-top:1px solid var(--border);padding-top:.8rem">
-        <div style="font-weight:700;font-size:.78rem;margin-bottom:.5rem">Phase ändern</div>
-        <div style="display:flex;flex-direction:column;gap:.5rem">
-          <select id="bk-phase" class="input" style="">
-            <option value="offen" ${c.phase==='offen'?'selected':''}>Offen</option>
-            <option value="in_bearbeitung" ${c.phase==='in_bearbeitung'?'selected':''}>In Bearbeitung</option>
-            <option value="erledigt" ${c.phase==='erledigt'?'selected':''}>Erledigt</option>
-            <option value="abgelehnt" ${c.phase==='abgelehnt'?'selected':''}>Abgelehnt</option>
-          </select>
-          <textarea id="bk-response" class="input" placeholder="Admin-Antwort (optional, wird per DM gesendet)" rows="3" style="resize:vertical">${esc(c.admin_response||'')}</textarea>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
-      <button class="btn btn-primary" onclick="bkSavePhase(${c.id})">Speichern</button>
-    </div>`);
-};
-
-window.bkSavePhase = async id => {
-  const phase = $('bk-phase')?.value;
-  const admin_response = $('bk-response')?.value.trim() || null;
-  const r = await api(`/api/complaints/${id}/phase`, { method: 'PATCH', body: { phase, admin_response } });
-  if (r) { toast('Status aktualisiert', 'ok'); closeModal(); beschwerden(); }
-};
+// Beschwerde-Kanban wurde durch das einheitliche Ticket-System ersetzt
+async function beschwerden() { navigate('tickets'); }
 
 
 // ════════════════════════════════════════════════════════════════

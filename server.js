@@ -4648,6 +4648,26 @@ app.post('/api/tickets', requireAuth, (req, res) => {
   res.json({ id: r.lastInsertRowid });
 });
 
+// Öffentliche Endpunkte für Bürger (kein Login erforderlich) — müssen VOR /:id stehen
+app.post('/api/tickets/public', (req, res) => {
+  const ip = req.ip || req.socket?.remoteAddress || '';
+  if (rateLimit(`ticket_pub:${ip}`, 3, 10 * 60_000)) return res.status(429).json({ error: 'Bitte warte etwas bevor du ein weiteres Ticket einreichst' });
+  const { name, discord_id, category, title, body } = req.body || {};
+  if (!name?.trim() || !title?.trim() || !body?.trim()) return res.status(400).json({ error: 'Name, Titel und Beschreibung erforderlich' });
+  if (!TICKET_CATS.includes(category)) return res.status(400).json({ error: 'Ungültige Kategorie' });
+  const creatorDid = discord_id?.trim() || req.session?.voterDiscordId || null;
+  const r = db.prepare(`INSERT INTO tickets (creator_did, creator_name, category, title, body) VALUES (?,?,?,?,?)`)
+    .run(creatorDid, name.trim().slice(0, 100), category, title.trim().slice(0, 200), body.trim().slice(0, 2000));
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.get('/api/tickets/public/mine', (req, res) => {
+  const discordId = req.session?.voterDiscordId;
+  if (!discordId) return res.json([]);
+  const rows = db.prepare('SELECT id, category, title, status, updated_at, created_at FROM tickets WHERE creator_did = ? ORDER BY updated_at DESC LIMIT 20').all(discordId);
+  res.json(rows);
+});
+
 app.get('/api/tickets/:id', requireAuth, (req, res) => {
   const user = getUser(req);
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(+req.params.id);
