@@ -280,7 +280,9 @@ window.clearListingImage = (inputId, thumbId, wrapId, clearId) => {
   if (c) c.style.display = 'none';
 };
 
-const avatarUrl = u => (u?.avatar && u?.discord_id)
+const avatarUrl = u => u?.avatar_custom
+  ? u.avatar_custom
+  : (u?.avatar && u?.discord_id)
   ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64`
   : null;
 function avatarEl(u, size = 36, cls = '') {
@@ -1109,14 +1111,14 @@ function renderUserWidget() {
     <button onclick="navigate('shop')" title="ACLS-Coins – zum Shop" style="display:flex;align-items:center;gap:.35rem;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:#fbbf24;padding:.35rem .7rem;border-radius:999px;font-weight:800;font-size:.78rem;cursor:pointer;font-family:inherit;white-space:nowrap">
       🪙 <span id="coinChipVal">…</span>
     </button>
-    <div class="u-avatar" id="uAvatarBox" style="${url ? 'background:transparent;padding:0' : ''}">
+    <div class="u-avatar" id="uAvatarBox" style="cursor:pointer;${url ? 'background:transparent;padding:0' : ''}" onclick="navigate('profil')" title="Mein Profil / Profilbild hochladen">
       ${url ? `<img src="${url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.parentElement.textContent='${initials(u.username)}'">` : initials(u.username)}
     </div>
-    <div class="u-info">
+    <div class="u-info" style="cursor:pointer" onclick="navigate('profil')" title="Mein Profil">
       <div class="u-name">${esc(u.username)}</div>
       <div class="u-role" id="uRoleLine">${u.role === 'admin' ? 'Administrator' : 'Mitarbeiter'}</div>
     </div>
-    <button class="icon-btn" onclick="openProfileModal(${u.id})" title="Profil"><i class="fas fa-chevron-down"></i></button>
+    <button class="icon-btn" onclick="openProfileModal(${u.id})" title="Profil-Details"><i class="fas fa-chevron-down"></i></button>
     <button class="icon-btn" onclick="logout()" title="Abmelden"><i class="fas fa-sign-out-alt"></i></button>`;
   loadCoins();
 }
