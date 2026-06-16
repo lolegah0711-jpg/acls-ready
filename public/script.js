@@ -1124,7 +1124,8 @@ window.castCitizenVote = async nominee_id => {
   const data = await r.json();
   if (r.ok) {
     toast(data.changed ? 'Stimme geändert!' : 'Stimme abgegeben!', 'ok');
-    renderVoterScreen();
+    await renderVoterScreen();
+    voterTab('vote');
   } else toast(data.error || 'Fehler', 'err');
 };
 
