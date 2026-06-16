@@ -2733,7 +2733,7 @@ app.post('/api/birthday', requireAuth, (req, res) => {
   if (!/^\d{2}-\d{2}$/.test(birthday)) return res.status(400).json({ error: 'Format: MM-DD' });
   const [mm, dd] = birthday.split('-').map(Number);
   if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return res.status(400).json({ error: 'Ungültiges Datum' });
-  db.prepare('INSERT INTO user_birthdays (user_id, birthday) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET birthday=excluded.birthday, updated_at=datetime("now")').run(u.id, birthday);
+  db.prepare("INSERT INTO user_birthdays (user_id, birthday) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET birthday=excluded.birthday, updated_at=datetime('now')").run(u.id, birthday);
   res.json({ ok: true });
 });
 
