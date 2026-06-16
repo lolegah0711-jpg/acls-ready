@@ -497,23 +497,29 @@ async function renderVoterScreen() {
                 ? '<i class="fas fa-info-circle" style="margin-right:.35rem;color:var(--orange)"></i>Du hast bereits abgestimmt. Du kannst deine Stimme noch <strong>einmalig</strong> ändern.'
                 : '<i class="fas fa-lock" style="margin-right:.35rem;color:var(--muted)"></i>Du hast deine Stimme bereits geändert. Keine weitere Änderung möglich.'}
           </p>
-          <div style="display:flex;flex-direction:column;gap:.6rem;max-width:640px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.75rem">
           ${(users || []).map(u => {
-            const av = u.avatar_custom || (u.avatar && u.discord_id ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64` : null);
+            const av = u.avatar_custom || (u.avatar && u.discord_id ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128` : null);
             const voted    = myVote === u.id;
             const clickable = !myVote || canChange;
             const votes    = tally[u.id] || 0;
-            return `<div class="vote-item${voted ? ' voted' : ''}" ${clickable ? `onclick="castCitizenVote(${u.id})"` : ''} style="cursor:${clickable ? 'pointer' : 'default'}">
-              ${av
-                ? `<img src="${av}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">`
-                : `<div style="width:40px;height:40px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;flex-shrink:0">${(u.username||'?')[0].toUpperCase()}</div>`}
-              <div style="flex:1;min-width:0">
-                <div class="vote-name">${esc(u.username)}</div>
-                <div class="vote-count">${votes} Bürgerstimme${votes !== 1 ? 'n' : ''}</div>
+            return `<div ${clickable ? `onclick="castCitizenVote(${u.id})"` : ''}
+              style="display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:1rem .75rem;
+                     background:${voted?'var(--orange-dim)':'var(--input)'};
+                     border:1px solid ${voted?'rgba(249,115,22,.4)':'var(--border)'};
+                     border-radius:var(--r);text-align:center;
+                     cursor:${clickable?'pointer':'default'};
+                     transition:background .15s,border-color .15s,transform .1s"
+              ${clickable?'onmouseenter="this.style.transform=\'scale(1.03)\'" onmouseleave="this.style.transform=\'\'"':''}>
+              <div style="position:relative">
+                ${av
+                  ? `<img src="${av}" style="width:52px;height:52px;border-radius:50%;object-fit:cover" onerror="this.outerHTML='<div style=&quot;width:52px;height:52px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700&quot;>${(u.username||'?')[0].toUpperCase()}</div>'">`
+                  : `<div style="width:52px;height:52px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700">${(u.username||'?')[0].toUpperCase()}</div>`}
+                ${voted ? '<div style="position:absolute;bottom:-4px;right:-4px;width:20px;height:20px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center"><i class="fas fa-check" style="font-size:.6rem;color:#fff"></i></div>' : ''}
               </div>
-              ${voted
-                ? `<span style="background:#f9731622;color:var(--orange);font-size:.72rem;font-weight:700;padding:.2rem .65rem;border-radius:20px;flex-shrink:0"><i class="fas fa-check"></i> ${canChange ? 'Aktuelle Wahl' : 'Gewählt'}</span>`
-                : (clickable ? '<i class="fas fa-chevron-right" style="color:var(--muted);font-size:.75rem;flex-shrink:0"></i>' : '')}
+              <div style="font-weight:700;font-size:.88rem;word-break:break-word">${esc(u.username)}</div>
+              ${votes ? `<div style="font-size:.7rem;color:var(--muted)">${votes} Stimme${votes!==1?'n':''}</div>` : ''}
+              ${voted ? `<div style="font-size:.72rem;font-weight:600;color:var(--orange)"><i class="fas fa-check-circle"></i> ${canChange?'Aktuelle Wahl':'Gewählt'}</div>` : ''}
             </div>`;
           }).join('')}
           </div>
