@@ -4713,26 +4713,31 @@ app.post('/api/tickets/:id/reply', requireAuth, (req, res) => {
 //  STATISTIK-TRENDS (H9)
 // ════════════════════════════════════════════════════════════════
 app.get('/api/stats/trends', requireAuth, (req, res) => {
-  const exams = db.prepare(`
-    SELECT date(registered_at, 'weekday 0', '-6 days') AS wk,
-           COUNT(*) AS total, COALESCE(SUM(passed), 0) AS passed
-    FROM registry WHERE registered_at >= datetime('now', '-84 days')
-    GROUP BY wk ORDER BY wk`).all();
-  const ic = db.prepare(`
-    SELECT date(date, 'weekday 0', '-6 days') AS wk, ROUND(SUM(hours), 1) AS hours
-    FROM ic_log WHERE date >= date('now', '-84 days')
-    GROUP BY wk ORDER BY wk`).all();
-  const coins = db.prepare(`
-    SELECT date(created_at, 'weekday 0', '-6 days') AS wk,
-           SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS earned,
-           SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS spent
-    FROM coin_transactions WHERE created_at >= datetime('now', '-84 days')
-    GROUP BY wk ORDER BY wk`).all();
-  const topExaminers = db.prepare(`
-    SELECT examiner_name, COUNT(*) AS c FROM registry
-    WHERE registered_at >= datetime('now', '-28 days')
-    GROUP BY examiner_name ORDER BY c DESC LIMIT 5`).all();
-  res.json({ exams, ic, coins, topExaminers });
+  try {
+    const exams = db.prepare(`
+      SELECT date(registered_at, 'weekday 0', '-6 days') AS wk,
+             COUNT(*) AS total, COALESCE(SUM(passed), 0) AS passed
+      FROM registry WHERE registered_at >= datetime('now', '-84 days')
+      GROUP BY wk ORDER BY wk`).all();
+    const ic = db.prepare(`
+      SELECT date(il.date, 'weekday 0', '-6 days') AS wk, ROUND(SUM(il.hours), 1) AS hours
+      FROM ic_log il WHERE il.date >= date('now', '-84 days')
+      GROUP BY wk ORDER BY wk`).all();
+    const coins = db.prepare(`
+      SELECT date(created_at, 'weekday 0', '-6 days') AS wk,
+             SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS earned,
+             SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS spent
+      FROM coin_transactions WHERE created_at >= datetime('now', '-84 days')
+      GROUP BY wk ORDER BY wk`).all();
+    const topExaminers = db.prepare(`
+      SELECT examiner_name, COUNT(*) AS c FROM registry
+      WHERE registered_at >= datetime('now', '-28 days')
+      GROUP BY examiner_name ORDER BY c DESC LIMIT 5`).all();
+    res.json({ exams, ic, coins, topExaminers });
+  } catch (err) {
+    console.error('[/api/stats/trends]', err.message);
+    res.status(500).json({ error: 'Statistiken konnten nicht geladen werden' });
+  }
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -4840,6 +4845,18 @@ function seedChangelogs() {
   for (const e of entries) stmt.run(e.version, e.type, e.title, e.body, e.released_at);
 }
 try { seedChangelogs(); } catch {}
+
+// Neue Einträge automatisch einfügen (idempotent – prüft ob Titel bereits existiert)
+function ensureChangelog(version, type, title, body, released_at) {
+  try {
+    if (!db.prepare('SELECT 1 FROM changelogs WHERE title = ?').get(title)) {
+      db.prepare('INSERT INTO changelogs (version, type, title, body, released_at) VALUES (?,?,?,?,?)').run(version, type, title, body, released_at);
+    }
+  } catch {}
+}
+
+ensureChangelog('2.1.0', 'fix', 'Fix: Beschwerde-System durch Ticket-System ersetzt', 'Das alte Beschwerde-Formular für Bürger wurde durch das einheitliche Support-Ticket-System ersetzt. Bürger können nun direkt Tickets erstellen (Bug, Frage, Beschwerde, Feature-Wunsch) – ohne Login. Admins verwalten alle Tickets zentral in einer Ansicht.', '2026-06-17 00:00:00');
+ensureChangelog('2.2.0', 'feature', 'Navigation-Redesign & Mein ACLS Hub', 'Die Sidebar wurde von 33+ flachen Einträgen auf 6 farbkodierte, einklappbare Sektionen umgebaut (Mein ACLS, Fahrschule, Community, Wirtschaft, Info & Karten, Spiele). Neuer persönlicher Hub "Mein ACLS" mit Profil-Hero, XP-Fortschrittsbalken, Saison-Pass-Status und Schnellzugriff auf alle persönlichen Features.', '2026-06-17 00:00:00');
 
 app.get('/api/changelogs', (req, res) => {
   res.json(db.prepare('SELECT * FROM changelogs ORDER BY released_at DESC').all());

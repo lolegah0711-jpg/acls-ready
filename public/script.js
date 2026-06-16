@@ -8715,19 +8715,22 @@ window.answerTrivia = async (code, answer, btn) => {
 async function onboarding() {
   const d = await api('/api/onboarding/mine');
   if (!d) return;
-  const { items, done, pct } = d;
+  const items = d.items || [];
+  const doneCount = typeof d.done === 'number' ? d.done : items.filter(i => i.done).length;
+  const total = d.total || items.length || 1;
+  const pct = Math.round((doneCount / total) * 100);
   $('pageContent').innerHTML = `
     <div class="card" style="margin-bottom:1rem">
       <div class="card-head"><div class="card-head-icon" style="background:rgba(74,222,128,.15)"><i class="fas fa-tasks" style="color:#4ade80"></i></div><div><div class="card-title">Onboarding-Wizard</div><div class="card-sub">Deine Einarbeitungs-Checkliste</div></div></div>
       <div style="margin-bottom:1rem">
-        <div style="display:flex;justify-content:space-between;font-size:.82rem;color:var(--muted);margin-bottom:.4rem"><span>${done.length} von ${items.length} erledigt</span><span>${pct}%</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:.82rem;color:var(--muted);margin-bottom:.4rem"><span>${doneCount} von ${total} erledigt</span><span>${pct}%</span></div>
         <div style="height:12px;background:var(--input);border-radius:8px;overflow:hidden">
           <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:8px;transition:width .5s"></div>
         </div>
       </div>
       ${pct >= 100 ? `<div style="text-align:center;padding:1rem;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px;color:#22c55e;font-weight:700"><i class="fas fa-check-circle" style="margin-right:.4rem"></i>Onboarding abgeschlossen! Willkommen im Team 🎉</div>` : ''}
       ${items.map(item => {
-        const isDone = done.includes(item.id);
+        const isDone = item.done === true;
         return `<div style="display:flex;align-items:flex-start;gap:.75rem;padding:.65rem 0;border-bottom:1px solid var(--border);opacity:${isDone?'.7':'1'}">
           <div style="width:22px;height:22px;border-radius:4px;border:2px solid ${isDone?'#22c55e':'var(--border)'};background:${isDone?'rgba(34,197,94,.15)':'transparent'};flex-shrink:0;margin-top:.1rem;display:flex;align-items:center;justify-content:center">
             ${isDone?'<i class="fas fa-check" style="color:#22c55e;font-size:.6rem"></i>':''}
