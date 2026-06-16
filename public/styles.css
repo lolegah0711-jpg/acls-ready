@@ -741,6 +741,33 @@ input, select, textarea { font-family: inherit; }
 .nav-item:hover { background: var(--surface2); color: var(--text); }
 .nav-item.active { background: var(--orange-dim); color: var(--orange); font-weight: 600; }
 
+/* ── Nav Groups (collapsible sections) ──────────────────────────── */
+.nav-group { margin-top: .1rem; }
+.nav-group-header {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .7rem .85rem .28rem;
+  font-size: .59rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .09em;
+  color: #4b5563; cursor: pointer; user-select: none;
+  border-radius: var(--r);
+  transition: color .15s;
+}
+.nav-group-header:hover { color: var(--text); }
+.nav-group-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.nav-group-chev {
+  margin-left: auto; font-size: .5rem;
+  transition: transform .2s; color: #4b5563;
+}
+.nav-group-items {
+  overflow: hidden;
+  transition: max-height .25s ease;
+}
+/* icon-only mode: hide group headers, show all items flat */
+.sidebar.collapsed .nav-group-header { display: none; }
+.sidebar.collapsed .nav-group-items  { max-height: none !important; overflow: visible !important; }
+
 /* ── Main Wrapper ────────────────────────────────────────────────── */
 .main-wrapper {
   flex: 1; min-width: 0;

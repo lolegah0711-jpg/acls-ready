@@ -54,79 +54,128 @@
         </button>
       </div>
       <nav class="sidebar-nav" id="sidebarNav">
+
+        <!-- Dashboard – immer oben sichtbar -->
         <a class="nav-item active" data-page="dashboard"><i class="fas fa-th-large"></i><span>Dashboard</span></a>
-        <a class="nav-item" data-page="activity"><i class="fas fa-chart-line"></i><span>Aktivität</span></a>
-        <a class="nav-item" data-page="eow"><i class="fas fa-trophy"></i><span>Mitarbeiter der Woche</span></a>
-        <a class="nav-item" data-page="exams"><i class="fas fa-play-circle"></i><span>Prüfung starten</span></a>
-        <a class="nav-item" data-page="registry"><i class="fas fa-id-card"></i><span>Bürgerregister</span></a>
-        <a class="nav-item" data-page="factions"><i class="fas fa-palette"></i><span>Fraktionsfarben</span></a>
-        <a class="nav-item" data-page="map"><i class="fas fa-map-marked-alt"></i><span>Abschlepphöfe</span></a>
-        <a class="nav-item" data-page="iczeit"><i class="fas fa-clock"></i><span>IC-Zeit</span></a>
-        <a class="nav-item" data-page="prices"><i class="fas fa-tags"></i><span>Preise</span></a>
-        <a class="nav-item" data-page="carmarket"><i class="fas fa-car-side"></i><span>Fahrzeugmarkt</span></a>
-        <a class="nav-item" href="/quiz" target="_blank" style="color:#22c55e"><i class="fas fa-graduation-cap" style="color:#22c55e"></i><span>Prüfungsvorbereitung</span></a>
-        <a class="nav-item" data-page="turnier" style="color:#fbbf24"><i class="fas fa-trophy" style="color:#fbbf24"></i><span>Wochenturnier</span></a>
-        <a class="nav-item" data-page="duell" style="color:#f472b6"><i class="fas fa-bolt" style="color:#f472b6"></i><span>Quiz-Duell</span></a>
-        <a class="nav-item" data-page="shop" style="color:#fbbf24"><i class="fas fa-coins" style="color:#fbbf24"></i><span>Coin-Shop</span></a>
-        <a class="nav-item" data-page="saison" style="color:#a855f7"><i class="fas fa-medal" style="color:#a855f7"></i><span>Saison-Pass</span></a>
-        <a class="nav-item" data-page="freunde" style="color:#4ade80"><i class="fas fa-user-friends" style="color:#4ade80"></i><span>Freunde</span></a>
-        <a class="nav-item" data-page="nachrichten" style="color:#38bdf8"><i class="fas fa-envelope" style="color:#38bdf8"></i><span>Nachrichten <span id="dmBadge" style="display:none;background:#ef4444;color:#fff;border-radius:999px;padding:1px 6px;font-size:10px;margin-left:4px"></span></span></a>
-        <a class="nav-item" data-page="marktplatz" style="color:#fb923c"><i class="fas fa-exchange-alt" style="color:#fb923c"></i><span>Marktplatz</span></a>
-        <a class="nav-item" data-page="wetten" style="color:#f59e0b"><i class="fas fa-handshake" style="color:#f59e0b"></i><span>Coin-Wetten</span></a>
-        <a class="nav-item" data-page="schwarzmarkt" style="color:#ef4444"><i class="fas fa-store-slash" style="color:#ef4444"></i><span>Schwarzmarkt</span></a>
-        <a class="nav-item" data-page="feedback" style="color:#22d3ee"><i class="fas fa-lightbulb" style="color:#22d3ee"></i><span>Feedback & Ideen</span></a>
-        <a class="nav-item" data-page="faq" style="color:#38bdf8"><i class="fas fa-question-circle" style="color:#38bdf8"></i><span>FAQ</span></a>
-        <a class="nav-item" data-page="organigramm"><i class="fas fa-users"></i><span>Unser Team</span></a>
-        <a class="nav-item" data-page="team_vorstellung" style="color:#818cf8"><i class="fas fa-id-badge" style="color:#818cf8"></i><span>Mitarbeiter-Vorstellung</span></a>
-        <a class="nav-item" data-page="tickets" style="color:#fb7185"><i class="fas fa-ticket-alt" style="color:#fb7185"></i><span>Support-Tickets</span></a>
-        <a class="nav-item" data-page="statistiken" style="color:#34d399"><i class="fas fa-chart-bar" style="color:#34d399"></i><span>Statistik-Trends</span></a>
-        <a class="nav-item" data-page="level" style="color:#fbbf24"><i class="fas fa-star" style="color:#fbbf24"></i><span>Level & Prestige</span></a>
-        <a class="nav-item" data-page="wheel" style="color:#c084fc"><i class="fas fa-dharmachakra" style="color:#c084fc"></i><span>Daily Wheel</span></a>
-        <a class="nav-item" data-page="milestones" style="color:#f59e0b"><i class="fas fa-flag-checkered" style="color:#f59e0b"></i><span>Meilensteine</span></a>
-        <a class="nav-item" data-page="changelog" style="color:#6ee7b7"><i class="fas fa-code-branch" style="color:#6ee7b7"></i><span>Changelog</span></a>
-        <a class="nav-item" data-page="trivia" style="color:#f472b6"><i class="fas fa-users-cog" style="color:#f472b6"></i><span>Trivia-Team</span></a>
-        <div id="games-toggle" onclick="toggleGames()" style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
-          <span>Minispiele</span>
-          <i id="games-chevron" class="fas fa-chevron-down" style="font-size:.55rem;transition:transform .2s"></i>
+
+        <!-- ── MEIN ACLS ───────────────────────────────── -->
+        <div class="nav-group" data-group="mein-acls">
+          <div class="nav-group-header" onclick="toggleNavGroup('mein-acls')">
+            <span class="nav-group-dot" style="background:#a855f7"></span>
+            <span>Mein ACLS</span>
+            <i class="fas fa-chevron-down nav-group-chev"></i>
+          </div>
+          <div class="nav-group-items">
+            <a class="nav-item" data-page="meinacls"><i class="fas fa-home" style="color:#a855f7"></i><span>Mein Hub</span></a>
+            <a class="nav-item" data-page="profil"><i class="fas fa-user-circle" style="color:#a855f7"></i><span>Mein Profil</span></a>
+            <a class="nav-item" data-page="nachrichten"><i class="fas fa-envelope" style="color:#a855f7"></i><span>Nachrichten <span id="dmBadge" style="display:none;background:#ef4444;color:#fff;border-radius:999px;padding:1px 6px;font-size:10px;margin-left:4px"></span></span></a>
+            <a class="nav-item" data-page="level"><i class="fas fa-star" style="color:#a855f7"></i><span>Level & Prestige</span></a>
+            <a class="nav-item" data-page="milestones"><i class="fas fa-flag-checkered" style="color:#a855f7"></i><span>Meilensteine</span></a>
+            <a class="nav-item" data-page="wheel"><i class="fas fa-dharmachakra" style="color:#a855f7"></i><span>Daily Wheel</span></a>
+            <a class="nav-item" data-page="saison"><i class="fas fa-medal" style="color:#a855f7"></i><span>Saison-Pass</span></a>
+            <a class="nav-item" data-page="freunde"><i class="fas fa-user-friends" style="color:#a855f7"></i><span>Freunde</span></a>
+            <a class="nav-item" data-page="activity"><i class="fas fa-chart-line" style="color:#a855f7"></i><span>Aktivitäts-Log</span></a>
+          </div>
         </div>
-        <div id="games-list">
-          <a class="nav-item" href="/game"  target="_blank"><i class="fas fa-car"></i><span>Autorennen</span></a>
-          <a class="nav-item" href="/game2" target="_blank"><i class="fas fa-th-large"></i><span>Brick Breaker</span></a>
-          <a class="nav-item" href="/game3" target="_blank" style="color:#ef4444"><i class="fas fa-biohazard" style="color:#ef4444"></i><span>Dead Zone</span></a>
-          <a class="nav-item" href="/game4" target="_blank"><i class="fas fa-snake"></i><span>Snake</span></a>
-          <a class="nav-item" href="/game5" target="_blank"><i class="fas fa-th-large"></i><span>Tetris</span></a>
-          <a class="nav-item" href="/game7" target="_blank" style="color:#60a5fa"><i class="fas fa-helicopter" style="color:#60a5fa"></i><span>Sky Cop</span></a>
-          <a class="nav-item" href="/game8" target="_blank" style="color:#4ade80"><i class="fas fa-frog" style="color:#4ade80"></i><span>Doodle Jump</span></a>
-          <a class="nav-item" href="/game9" target="_blank" style="color:#f97316"><i class="fas fa-shield-alt" style="color:#f97316"></i><span>Tower Defense</span></a>
-          <a class="nav-item" href="/game10" target="_blank" style="color:#f59e0b"><i class="fas fa-th" style="color:#f59e0b"></i><span>2048</span></a>
-          <a class="nav-item" href="/game11" target="_blank" style="color:#a855f7"><i class="fas fa-brain" style="color:#a855f7"></i><span>Quiz Survival</span></a>
-          <a class="nav-item" href="/game12" target="_blank" style="color:#f97316"><i class="fas fa-wrench" style="color:#f97316"></i><span>ACLS Werkstatt</span></a>
-          <a class="nav-item" href="/game13" target="_blank" style="color:#60a5fa"><i class="fas fa-dungeon" style="color:#60a5fa"></i><span>Dungeon RPG</span></a>
-          <a class="nav-item" href="/game14" target="_blank" style="color:#fb923c"><i class="fas fa-truck-pickup" style="color:#fb923c"></i><span>Abschlepp-Simulator</span></a>
-          <a class="nav-item" href="/game16" target="_blank" style="color:#38bdf8"><i class="fas fa-clone" style="color:#38bdf8"></i><span>Memory</span></a>
-          <a class="nav-item" href="/game24" target="_blank" style="color:#4ade80"><i class="fas fa-bolt" style="color:#4ade80"></i><span>Reaktionstest</span></a>
+
+        <!-- ── FAHRSCHULE ─────────────────────────────── -->
+        <div class="nav-group" data-group="fahrschule">
+          <div class="nav-group-header" onclick="toggleNavGroup('fahrschule')">
+            <span class="nav-group-dot" style="background:#22c55e"></span>
+            <span>Fahrschule</span>
+            <i class="fas fa-chevron-down nav-group-chev"></i>
+          </div>
+          <div class="nav-group-items">
+            <a class="nav-item" data-page="exams"><i class="fas fa-play-circle" style="color:#22c55e"></i><span>Prüfung starten</span></a>
+            <a class="nav-item" data-page="registry"><i class="fas fa-id-card" style="color:#22c55e"></i><span>Bürgerregister</span></a>
+            <a class="nav-item" href="/quiz" target="_blank"><i class="fas fa-graduation-cap" style="color:#22c55e"></i><span>Prüfungsvorbereitung</span></a>
+            <a class="nav-item" data-page="iczeit"><i class="fas fa-clock" style="color:#22c55e"></i><span>IC-Zeit</span></a>
+            <a class="nav-item" data-page="statistiken"><i class="fas fa-chart-bar" style="color:#22c55e"></i><span>Statistiken</span></a>
+            <a class="nav-item" data-page="onboarding"><i class="fas fa-tasks" style="color:#22c55e"></i><span>Onboarding</span></a>
+          </div>
         </div>
-        <a class="nav-item" href="/spielbank" target="_blank" style="color:#fbbf24"><i class="fas fa-dice" style="color:#fbbf24"></i><span>🎰 Spielbank</span></a>
-        <script>
-          (function(){
-            var list=document.getElementById('games-list');
-            var chev=document.getElementById('games-chevron');
-            var open=localStorage.getItem('games-open')!=='0';
-            list.style.overflow='hidden';
-            list.style.transition='max-height .22s ease';
-            list.style.maxHeight=open?'900px':'0';
-            chev.style.transform=open?'':'rotate(-90deg)';
-            window.toggleGames=function(){
-              open=!open;
-              list.style.maxHeight=open?'900px':'0';
-              chev.style.transform=open?'':'rotate(-90deg)';
-              localStorage.setItem('games-open',open?'1':'0');
-            };
-          })();
-        </script>
+
+        <!-- ── COMMUNITY ──────────────────────────────── -->
+        <div class="nav-group" data-group="community">
+          <div class="nav-group-header" onclick="toggleNavGroup('community')">
+            <span class="nav-group-dot" style="background:#38bdf8"></span>
+            <span>Community</span>
+            <i class="fas fa-chevron-down nav-group-chev"></i>
+          </div>
+          <div class="nav-group-items">
+            <a class="nav-item" data-page="eow"><i class="fas fa-trophy" style="color:#38bdf8"></i><span>Mitarbeiter der Woche</span></a>
+            <a class="nav-item" data-page="organigramm"><i class="fas fa-users" style="color:#38bdf8"></i><span>Unser Team</span></a>
+            <a class="nav-item" data-page="team_vorstellung"><i class="fas fa-id-badge" style="color:#38bdf8"></i><span>Mitarbeiter-Vorstellung</span></a>
+            <a class="nav-item" data-page="tickets"><i class="fas fa-ticket-alt" style="color:#38bdf8"></i><span>Support-Tickets</span></a>
+            <a class="nav-item" data-page="feedback"><i class="fas fa-lightbulb" style="color:#38bdf8"></i><span>Feedback & Ideen</span></a>
+            <a class="nav-item" data-page="faq"><i class="fas fa-question-circle" style="color:#38bdf8"></i><span>FAQ</span></a>
+            <a class="nav-item" data-page="changelog"><i class="fas fa-code-branch" style="color:#38bdf8"></i><span>Changelog</span></a>
+            <a class="nav-item" data-page="turnier"><i class="fas fa-crown" style="color:#38bdf8"></i><span>Wochenturnier</span></a>
+            <a class="nav-item" data-page="duell"><i class="fas fa-bolt" style="color:#38bdf8"></i><span>Quiz-Duell</span></a>
+            <a class="nav-item" data-page="trivia"><i class="fas fa-users-cog" style="color:#38bdf8"></i><span>Trivia-Team</span></a>
+          </div>
+        </div>
+
+        <!-- ── WIRTSCHAFT ─────────────────────────────── -->
+        <div class="nav-group" data-group="wirtschaft">
+          <div class="nav-group-header" onclick="toggleNavGroup('wirtschaft')">
+            <span class="nav-group-dot" style="background:#fbbf24"></span>
+            <span>Wirtschaft</span>
+            <i class="fas fa-chevron-down nav-group-chev"></i>
+          </div>
+          <div class="nav-group-items">
+            <a class="nav-item" data-page="shop"><i class="fas fa-coins" style="color:#fbbf24"></i><span>Coin-Shop</span></a>
+            <a class="nav-item" data-page="marktplatz"><i class="fas fa-exchange-alt" style="color:#fbbf24"></i><span>Marktplatz</span></a>
+            <a class="nav-item" data-page="wetten"><i class="fas fa-handshake" style="color:#fbbf24"></i><span>Coin-Wetten</span></a>
+            <a class="nav-item" data-page="schwarzmarkt"><i class="fas fa-store-slash" style="color:#fbbf24"></i><span>Schwarzmarkt</span></a>
+            <a class="nav-item" data-page="carmarket"><i class="fas fa-car-side" style="color:#fbbf24"></i><span>Fahrzeugmarkt</span></a>
+          </div>
+        </div>
+
+        <!-- ── INFO & KARTEN ──────────────────────────── -->
+        <div class="nav-group" data-group="info">
+          <div class="nav-group-header" onclick="toggleNavGroup('info')">
+            <span class="nav-group-dot" style="background:#6b7280"></span>
+            <span>Info & Karten</span>
+            <i class="fas fa-chevron-down nav-group-chev"></i>
+          </div>
+          <div class="nav-group-items">
+            <a class="nav-item" data-page="map"><i class="fas fa-map-marked-alt" style="color:#6b7280"></i><span>Abschlepphöfe</span></a>
+            <a class="nav-item" data-page="factions"><i class="fas fa-palette" style="color:#6b7280"></i><span>Fraktionsfarben</span></a>
+            <a class="nav-item" data-page="prices"><i class="fas fa-tags" style="color:#6b7280"></i><span>Preisliste</span></a>
+          </div>
+        </div>
+
+        <!-- ── SPIELE ─────────────────────────────────── -->
+        <div class="nav-group" data-group="spiele">
+          <div class="nav-group-header" onclick="toggleNavGroup('spiele')">
+            <span class="nav-group-dot" style="background:#f97316"></span>
+            <span>Spiele</span>
+            <i class="fas fa-chevron-down nav-group-chev"></i>
+          </div>
+          <div class="nav-group-items">
+            <a class="nav-item" href="/game"  target="_blank"><i class="fas fa-car" style="color:#f97316"></i><span>Autorennen</span></a>
+            <a class="nav-item" href="/game2" target="_blank"><i class="fas fa-th-large" style="color:#f97316"></i><span>Brick Breaker</span></a>
+            <a class="nav-item" href="/game3" target="_blank"><i class="fas fa-biohazard" style="color:#f97316"></i><span>Dead Zone</span></a>
+            <a class="nav-item" href="/game4" target="_blank"><i class="fas fa-snake" style="color:#f97316"></i><span>Snake</span></a>
+            <a class="nav-item" href="/game5" target="_blank"><i class="fas fa-th-large" style="color:#f97316"></i><span>Tetris</span></a>
+            <a class="nav-item" href="/game7" target="_blank"><i class="fas fa-helicopter" style="color:#f97316"></i><span>Sky Cop</span></a>
+            <a class="nav-item" href="/game8" target="_blank"><i class="fas fa-frog" style="color:#f97316"></i><span>Doodle Jump</span></a>
+            <a class="nav-item" href="/game9" target="_blank"><i class="fas fa-shield-alt" style="color:#f97316"></i><span>Tower Defense</span></a>
+            <a class="nav-item" href="/game10" target="_blank"><i class="fas fa-th" style="color:#f97316"></i><span>2048</span></a>
+            <a class="nav-item" href="/game11" target="_blank"><i class="fas fa-brain" style="color:#f97316"></i><span>Quiz Survival</span></a>
+            <a class="nav-item" href="/game12" target="_blank"><i class="fas fa-wrench" style="color:#f97316"></i><span>ACLS Werkstatt</span></a>
+            <a class="nav-item" href="/game13" target="_blank"><i class="fas fa-dungeon" style="color:#f97316"></i><span>Dungeon RPG</span></a>
+            <a class="nav-item" href="/game14" target="_blank"><i class="fas fa-truck-pickup" style="color:#f97316"></i><span>Abschlepp-Simulator</span></a>
+            <a class="nav-item" href="/game16" target="_blank"><i class="fas fa-clone" style="color:#f97316"></i><span>Memory</span></a>
+            <a class="nav-item" href="/game24" target="_blank"><i class="fas fa-bolt" style="color:#f97316"></i><span>Reaktionstest</span></a>
+            <a class="nav-item" href="/spielbank" target="_blank"><i class="fas fa-dice" style="color:#fbbf24"></i><span style="color:#fbbf24">🎰 Spielbank</span></a>
+          </div>
+        </div>
+
       </nav>
       <div class="sidebar-bottom">
-        <div id="admin-toggle" onclick="toggleAdminNav()" style="display:none;margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
+        <div id="admin-toggle" onclick="toggleAdminNav()" style="display:none;margin:.3rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
           <span>Verwaltung</span>
           <i id="admin-chevron" class="fas fa-chevron-down" style="font-size:.55rem;transition:transform .2s"></i>
         </div>
@@ -149,6 +198,9 @@
           <a class="nav-item" data-page="ausbildung" id="ausbildungNavItem" style="display:none">
             <i class="fas fa-graduation-cap"></i><span>Ausbildung</span>
           </a>
+          <a class="nav-item" data-page="bans">
+            <i class="fas fa-ban"></i><span>Aktive Sperren</span>
+          </a>
         </div>
         <script>
           (function(){
@@ -157,17 +209,16 @@
             var open=localStorage.getItem('admin-nav-open')!=='0';
             list.style.overflow='hidden';
             list.style.transition='max-height .22s ease';
-            list.style.maxHeight=open?'400px':'0';
+            list.style.maxHeight=open?'500px':'0';
             if(chev) chev.style.transform=open?'':'rotate(-90deg)';
             window.toggleAdminNav=function(){
               open=!open;
-              list.style.maxHeight=open?'400px':'0';
+              list.style.maxHeight=open?'500px':'0';
               if(chev) chev.style.transform=open?'':'rotate(-90deg)';
               localStorage.setItem('admin-nav-open',open?'1':'0');
             };
           })();
         </script>
-        <a class="nav-item" data-page="bans"><i class="fas fa-ban"></i><span>Aktive Sperren</span></a>
       </div>
     </aside>
 

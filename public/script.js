@@ -110,6 +110,33 @@ window.toggleSidebar = () => {
   localStorage.setItem('acls-sidebar', collapsed ? '1' : '0');
 };
 
+// ── Nav group toggle ─────────────────────────────────────────────
+window.toggleNavGroup = function(name) {
+  const grp = document.querySelector(`.nav-group[data-group="${name}"]`);
+  if (!grp) return;
+  const items = grp.querySelector('.nav-group-items');
+  const chev  = grp.querySelector('.nav-group-chev');
+  const willCollapse = !grp.classList.contains('collapsed');
+  grp.classList.toggle('collapsed', willCollapse);
+  if (items) items.style.maxHeight = willCollapse ? '0' : '1400px';
+  if (chev)  chev.style.transform  = willCollapse ? 'rotate(-90deg)' : '';
+  localStorage.setItem(`nav-grp-${name}`, willCollapse ? '0' : '1');
+};
+
+function initNavGroups() {
+  const defaults = { 'mein-acls': true, fahrschule: true, community: true, wirtschaft: false, info: false, spiele: false };
+  document.querySelectorAll('.nav-group').forEach(grp => {
+    const name  = grp.dataset.group;
+    const saved = localStorage.getItem(`nav-grp-${name}`);
+    const open  = saved !== null ? saved === '1' : (defaults[name] !== false);
+    const items = grp.querySelector('.nav-group-items');
+    const chev  = grp.querySelector('.nav-group-chev');
+    if (items) { items.style.overflow = 'hidden'; items.style.transition = 'max-height .25s ease'; items.style.maxHeight = open ? '1400px' : '0'; }
+    if (chev)  chev.style.transform = open ? '' : 'rotate(-90deg)';
+    if (!open) grp.classList.add('collapsed');
+  });
+}
+
 // ── Mobile sidebar ───────────────────────────────────────────────
 window.toggleMobileMenu = () => {
   const s = document.querySelector('.sidebar');
@@ -124,6 +151,7 @@ window.closeMobileMenu = () => {
 function initSidebar() {
   if (localStorage.getItem('acls-sidebar') === '1')
     document.querySelector('.sidebar').classList.add('collapsed');
+  initNavGroups();
 }
 
 // ── Globals ─────────────────────────────────────────────────────
@@ -173,6 +201,7 @@ const PAGES = {
   trivia:       { title: 'Trivia-Team',           sub: 'Team-Quiz in Echtzeit · 2 Teams gegeneinander' },
   onboarding:   { title: 'Onboarding-Wizard',     sub: 'Deine Einarbeitungs-Checkliste' },
   profil:       { title: 'Mein Profil',           sub: 'Profilbild, Bio & Kosmetika' },
+  meinacls:     { title: 'Mein ACLS',             sub: 'Dein persönlicher Hub – Profil, Coins, Level & mehr' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -1278,7 +1307,7 @@ function navigate(page) {
   $('pageContent').innerHTML    = loading();
 
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz, wetten, tickets, statistiken, team_vorstellung, level, wheel, milestones, changelog, trivia, onboarding, profil };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz, wetten, tickets, statistiken, team_vorstellung, level, wheel, milestones, changelog, trivia, onboarding, profil, meinacls };
   (renders[page] || dashboard)();
 }
 
@@ -8714,6 +8743,104 @@ async function onboarding() {
 
 // ════════════════════════════════════════════════════════════════
 //  PROFILBILD-UPLOAD (L1) — Profil-Seite
+// ════════════════════════════════════════════════════════════════
+//  MEIN ACLS – Persönlicher Hub
+// ════════════════════════════════════════════════════════════════
+async function meinacls() {
+  const u = currentUser;
+  if (!u) { navigate('dashboard'); return; }
+  const [lvl, wheel, season, badges] = await Promise.all([
+    api('/api/levels/me'),
+    api('/api/wheel/status'),
+    api('/api/season'),
+    api('/api/my-badges'),
+  ]);
+
+  const url     = avatarUrl(u);
+  const level   = lvl?.level || 1;
+  const xpIn    = lvl?.xp_in_level || 0;
+  const xpNeed  = lvl?.xp_needed || 120;
+  const prestige = lvl?.prestige || 0;
+  const xpPct   = xpNeed > 0 ? Math.min((xpIn / xpNeed) * 100, 100).toFixed(1) : 100;
+  const wheelOk = wheel && !wheel.spun_today;
+  const sXP     = season?.xp || 0;
+  const sLvl    = Math.min(Math.floor(sXP / 100) + 1, 30);
+  const sPct    = ((sXP % 100)).toFixed(1);
+  const earnedB = badges ? Object.values(badges).filter(b => b.earned).length : 0;
+  const totalB  = badges ? Object.keys(BADGE_DEFS).length : 0;
+
+  const hub = [
+    { icon: 'fa-dharmachakra', label: 'Daily Wheel',     page: 'wheel',      c: '#c084fc', pulse: wheelOk, note: wheelOk ? 'Jetzt drehen!' : 'Bereits gedreht' },
+    { icon: 'fa-medal',        label: 'Saison-Pass',     page: 'saison',     c: '#a855f7', note: `Level ${sLvl}/30` },
+    { icon: 'fa-envelope',     label: 'Nachrichten',     page: 'nachrichten',c: '#a855f7', note: 'Posteingang' },
+    { icon: 'fa-user-friends', label: 'Freunde',         page: 'freunde',    c: '#a855f7', note: 'Netzwerk' },
+    { icon: 'fa-flag-checkered',label:'Meilensteine',    page: 'milestones', c: '#a855f7', note: 'Lebensziele' },
+    { icon: 'fa-star',         label: 'Level & Prestige',page: 'level',      c: '#a855f7', note: `Level ${level}` },
+    { icon: 'fa-chart-line',   label: 'Aktivitäts-Log', page: 'activity',   c: '#a855f7', note: 'Verlauf' },
+    { icon: 'fa-user-circle',  label: 'Mein Profil',    page: 'profil',     c: '#a855f7', note: 'Bio & Avatar' },
+  ];
+
+  $('pageContent').innerHTML = `
+    <!-- Hero-Profil-Karte -->
+    <div class="card" style="margin-bottom:1rem;padding:1.5rem;background:linear-gradient(135deg,rgba(168,85,247,.09),rgba(99,102,241,.04));border-color:rgba(168,85,247,.28)">
+      <div style="display:flex;align-items:center;gap:1.1rem;flex-wrap:wrap">
+        <div style="position:relative;flex-shrink:0">
+          ${url
+            ? `<img src="${url}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:2.5px solid rgba(168,85,247,.55)">`
+            : `<div style="width:72px;height:72px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:1.8rem;border:2px solid rgba(168,85,247,.3)">👤</div>`}
+          <div style="position:absolute;bottom:-3px;right:-3px;background:var(--bg);border-radius:999px;padding:2px 6px;font-size:.58rem;font-weight:900;color:#a855f7;border:1px solid rgba(168,85,247,.45)">Lv.${level}</div>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:1.15rem;font-weight:800;margin-bottom:.1rem">${esc(u.username || 'Mitarbeiter')}</div>
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:.6rem">${esc(u.title || u.role || 'Mitarbeiter')}${prestige > 0 ? ` · ✨ Prestige ${prestige}` : ''}</div>
+          <div style="display:flex;align-items:center;gap:.55rem">
+            <div style="flex:1;height:7px;background:var(--input);border-radius:4px;overflow:hidden">
+              <div style="height:100%;width:${xpPct}%;background:linear-gradient(90deg,#a855f7,#6366f1);border-radius:4px;transition:width .7s ease"></div>
+            </div>
+            <span style="font-size:.7rem;color:#a855f7;font-weight:800;white-space:nowrap">${xpIn}/${xpNeed} XP</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:1.5rem;flex-shrink:0;flex-wrap:wrap">
+          <div style="text-align:center">
+            <div style="font-size:1.4rem;font-weight:900;color:#a855f7">${earnedB}</div>
+            <div style="font-size:.65rem;color:var(--muted)">von ${totalB} Badges</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:1.4rem;font-weight:900;color:#a855f7">S${sLvl}</div>
+            <div style="font-size:.65rem;color:var(--muted)">Saison-Level</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Saison-Pass Bar -->
+    <div class="card" style="margin-bottom:1rem;padding:.9rem 1.1rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+        <div style="font-size:.78rem;font-weight:700"><i class="fas fa-medal" style="color:#a855f7;margin-right:.4rem"></i>Saison-Pass – Level ${sLvl}/30</div>
+        <span style="font-size:.72rem;color:var(--muted)">${sXP} XP gesamt</span>
+      </div>
+      <div style="height:8px;background:var(--input);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${sPct}%;background:linear-gradient(90deg,#a855f7,#ec4899);border-radius:4px;transition:width .7s ease"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:.3rem">
+        <span style="font-size:.65rem;color:var(--muted)">${sPct}% zum nächsten Level</span>
+        <button onclick="navigate('saison')" style="font-size:.65rem;color:#a855f7;background:none;border:none;cursor:pointer;font-family:inherit">Zum Pass →</button>
+      </div>
+    </div>
+
+    <!-- Quick-Access Grid -->
+    <div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:.6rem">Schnellzugriff</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.6rem;margin-bottom:1rem">
+      ${hub.map(h => `
+        <button onclick="navigate('${h.page}')" style="display:flex;flex-direction:column;align-items:center;gap:.4rem;padding:.9rem .5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);cursor:pointer;transition:border-color .15s,background .15s,transform .1s;font-family:inherit;position:relative" onmouseover="this.style.borderColor='${h.c}';this.style.background='${h.c}12';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)';this.style.transform=''">
+          ${h.pulse ? `<span style="position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#22c55e;animation:pulse 1.5s ease-in-out infinite"></span>` : ''}
+          <i class="fas ${h.icon}" style="color:${h.c};font-size:1.15rem"></i>
+          <span style="font-size:.73rem;font-weight:700;color:var(--text);text-align:center;line-height:1.2">${h.label}</span>
+          <span style="font-size:.63rem;color:var(--muted);text-align:center">${h.note}</span>
+        </button>`).join('')}
+    </div>`;
+}
+
 // ════════════════════════════════════════════════════════════════
 async function profil() {
   if (!currentUser) { navigate('dashboard'); return; }
