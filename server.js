@@ -4347,7 +4347,7 @@ app.get('/api/game-leaderboard', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  NEUE FEATURE-ROUTES (modular)
 // ════════════════════════════════════════════════════════════════
-const sharedDeps = { db, requireAdmin, requireAuth, requireLogin, getUser, coinIdent, addCoins, rateLimit, queueNotification, createNotif, sseEmit, auditLog, friendStats, checkGameBadges, seasonIncQuest, SHOP_ITEMS, makeGameToken };
+const sharedDeps = { db, requireAdmin, requireAuth, requireLogin, getUser, coinIdent, addCoins, rateLimit, queueNotification, createNotif, sseEmit, auditLog, friendStats, checkGameBadges, seasonIncQuest, SHOP_ITEMS, makeGameToken, ALL_GAMES };
 app.use(require('./routes/blackmarket')({ ...sharedDeps }));
 app.use(require('./routes/feedback')({ ...sharedDeps }));
 app.use(require('./routes/roulette')({ ...sharedDeps }));
@@ -4361,6 +4361,7 @@ app.use(require('./routes/market')({ ...sharedDeps }));
 app.use(require('./routes/community')({ ...sharedDeps }));
 app.use(require('./routes/casino')({ ...sharedDeps }));
 app.use(require('./routes/tracks')({ ...sharedDeps }));
+app.use(require('./routes/admin-games')({ ...sharedDeps }));
 
 app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');

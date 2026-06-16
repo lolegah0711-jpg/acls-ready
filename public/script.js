@@ -4774,6 +4774,16 @@ async function admin() {
         </div>
       </div>
 
+      <!-- Spiele-Ranglisten verwalten -->
+      <div style="${P};${BB}">
+        <div class="card-head" style="margin-bottom:.7rem">
+          <div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-gamepad" style="color:#fbbf24"></i></div>
+          <div style="flex:1"><div class="card-title">Spiele-Ranglisten verwalten</div><div class="card-sub">Einzelne Einträge entfernen</div></div>
+          <select class="form-control" id="adminGameScoreSelect" style="width:auto;font-size:.81rem" onchange="loadGameScoresAdmin(this.value)"></select>
+        </div>
+        <div id="adminGameScoresList"><div style="color:var(--muted);font-size:.82rem">Spiel auswählen…</div></div>
+      </div>
+
       <!-- Live Analytics -->
       <div style="${P};${BB}">
         <div class="card-head" style="margin-bottom:.7rem">
@@ -4807,7 +4817,41 @@ async function admin() {
   loadAdminAnalytics();
   loadHonoraryTitles();
   loadAdminBets();
+  loadGameScoresAdminList();
 }
+
+async function loadGameScoresAdminList() {
+  const sel = $('adminGameScoreSelect');
+  if (!sel) return;
+  const games = await api('/api/admin/games-list');
+  if (!games) return;
+  sel.innerHTML = `<option value="">Spiel wählen…</option>` + games.map(g => `<option value="${g.key}">${esc(g.label)}</option>`).join('');
+}
+
+window.loadGameScoresAdmin = async game => {
+  const list = $('adminGameScoresList');
+  if (!list) return;
+  if (!game) { list.innerHTML = '<div style="color:var(--muted);font-size:.82rem">Spiel auswählen…</div>'; return; }
+  list.innerHTML = '<div style="color:var(--muted);font-size:.82rem">Wird geladen…</div>';
+  const rows = await api(`/api/admin/game-scores/${game}`);
+  if (!rows) return;
+  if (!rows.length) { list.innerHTML = '<div class="empty" style="padding:.6rem"><p>Keine Einträge</p></div>'; return; }
+  list.innerHTML = `<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table class="data-tbl">
+    <thead><tr><th>#</th><th>Spieler</th><th>Punkte</th><th></th></tr></thead>
+    <tbody>${rows.map((r, i) => `<tr>
+      <td style="color:var(--muted);font-size:.78rem">${i + 1}</td>
+      <td><div style="display:flex;align-items:center;gap:.45rem">${avatarEl(r, 22)}<span style="font-weight:600;font-size:.82rem">${esc(r.username)}</span></div></td>
+      <td style="font-weight:700;font-size:.82rem">${(r.score || 0).toLocaleString('de-DE')}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="removeGameScore('${game}','${r.discord_id}','${esc(r.username)}')"><i class="fas fa-trash"></i></button></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+};
+
+window.removeGameScore = async (game, discordId, username) => {
+  if (!confirm(`${username} aus der Rangliste entfernen?`)) return;
+  const r = await api(`/api/admin/game-scores/${game}/${discordId}`, { method: 'DELETE' });
+  if (r) { toast('Entfernt.', 'ok'); loadGameScoresAdmin(game); }
+};
 
 // BATCH 9: Admin Analytics
 async function loadAdminAnalytics() {
