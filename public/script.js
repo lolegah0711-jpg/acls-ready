@@ -8379,11 +8379,125 @@ async function milestones() {
 // ════════════════════════════════════════════════════════════════
 //  CHANGELOG-SYSTEM
 // ════════════════════════════════════════════════════════════════
-async function changelog() {
+const FEATURES_LIST = [
+  {
+    cat: 'Mitarbeiter-Tools', icon: 'fa-briefcase', color: '#f97316', items: [
+      { name: 'Dashboard', desc: 'Persönliche Übersicht: Coins, Streak, IC-Zeit, letzte Prüfungen, Nachrichten & Schnellzugriff auf alle Bereiche.' },
+      { name: 'Aktivitäts-Log', desc: 'Chronologische Zeitleiste aller Ereignisse im Portal (Prüfungen, Abstimmungen, IC-Zeit, Turniere u.v.m.).' },
+      { name: 'Mitarbeiter der Woche', desc: 'Wöchentliche Community-Abstimmung. Mitarbeiter & Bürger können abstimmen. Automatische Auswertung sonntags.' },
+      { name: 'Prüfungssystem', desc: 'Theorie- & Praxisprüfungen für Bürger in allen Fahrzeugkategorien. Automatische Bewertung, K.O.-Fragen, sofortiger Bann bei K.O.-Versagen, PDF-Zertifikat.' },
+      { name: 'Rang-Prüfungen (Ausbildung)', desc: '3-Modul Gesellen-/Meisterprüfung (Ortskunde, Mentalteil, Praktischer Teil). Echtzeit-Kollaboration zweier Prüfer via SSE, automatische Zertifikat-Generierung.' },
+      { name: 'Bürgerregister', desc: 'Vollständige Datenbank aller Führerschein-Inhaber. Filterfähig nach Kategorie, Prüfer und Zeitraum.' },
+      { name: 'IC-Zeit Tracking', desc: 'Automatische Messung der In-Character-Zeit über Discord Voice-Kanäle. Wochenstunden, Rangliste und Monatsberichte.' },
+      { name: 'Onboarding-Wizard', desc: 'Einarbeitungs-Checkliste für neue Mitarbeiter mit Fortschrittsbalken. Ausbilder sehen den Status aller Neuzugänge.' },
+      { name: 'Bewerbungssystem', desc: 'Online-Bewerbungsformular für Bewerber. Admin-Kanban-Board zur Verwaltung (Offen / In Prüfung / Angenommen / Abgelehnt).' },
+      { name: 'Support-Tickets', desc: 'Ticket-System für Bugs, Fragen & Beschwerden. Kategorien, Statusverwaltung, Staff-Replies.' },
+    ]
+  },
+  {
+    cat: 'Informationen & Karten', icon: 'fa-map-marked-alt', color: '#22c55e', items: [
+      { name: 'Abschlepphöfe-Karte', desc: 'Interaktive Leaflet-Karte mit allen ACLS-Standorten in GTA V inkl. Fahrzeuglisten.' },
+      { name: 'Fraktionsfarben', desc: 'Übersicht aller offiziellen Fraktionsfahrzeugfarben mit Hex-Codes und Vorschau.' },
+      { name: 'Preisliste', desc: 'Tabellarische Fahrschul- & Servicepreise, jederzeit von Admins aktualisierbar.' },
+      { name: 'Fahrzeugmarkt', desc: 'Private Fahrzeuginserate der Mitarbeiter. Mit Bild-Upload und Direktkontakt-Funktion.' },
+      { name: 'Prüfungsvorbereitung', desc: 'Externe Lernseite (/quiz) mit dem gesamten Fragenkatalog — auch ohne Login nutzbar.' },
+      { name: 'FAQ', desc: 'Verwaltbare FAQ-Sektion. Admins können Fragen & Antworten direkt im Portal pflegen.' },
+      { name: 'Organigramm / Unser Team', desc: 'Hierarchische Darstellung aller aktiven Mitarbeiter mit Steckbrief-Modal.' },
+      { name: 'Mitarbeiter-Vorstellung', desc: 'Öffentliche Profilkarten für alle Mitarbeiter mit Bio, Spezialgebiet und Fun Fact.' },
+      { name: 'Statistik-Trends', desc: 'Chart.js-Charts für Prüfungen, IC-Zeit, Coin-Umsatz und Top-Prüfer (letzte 12 Wochen).' },
+    ]
+  },
+  {
+    cat: 'Coins & Wirtschaft', icon: 'fa-coins', color: '#fbbf24', items: [
+      { name: 'ACLS-Coin-System', desc: 'Interne Währung für alle Aktivitäten. Täglicher Bonus mit Streak-Multiplikator (bis 5×), wöchentliches Cap.' },
+      { name: 'Daily Bonus Wheel', desc: 'Täglich einmal drehen: animiertes 8-Segment-Rad mit Coins- & XP-Preisen.' },
+      { name: 'Coin-Shop', desc: 'Shop für Kosmetika: Titel, Profilrahmen, Namensfarben, Dekorationen, Trucks, Decks, VIP-Rolle, XP-Booster, Lotterietickets.' },
+      { name: 'Coin-Transfers', desc: 'Coins an andere Mitarbeiter senden (max. 200/Tag, timing-sicher).' },
+      { name: 'Marktplatz', desc: 'Spieler-zu-Spieler Kosmetika-Handel. Listings mit Bild und Direktkauf.' },
+      { name: 'Schwarzmarkt', desc: 'Tägliche Sonderangebote mit Timer (24h). Zufällige Auswahl aus dem gesamten Shop-Katalog mit Rabatt.' },
+      { name: 'Coin-Wetten', desc: 'Wette gegen andere Mitarbeiter & Bürger. Herausforderung annehmen/ablehnen, Coins automatisch reserviert.' },
+      { name: 'Lotteriesystem', desc: 'Wöchentliche Coin-Lotterie. Tickets kaufen, Freitags-Ziehung, Jackpot gestaffelt nach Teilnehmerzahl.' },
+    ]
+  },
+  {
+    cat: 'Progression & Profil', icon: 'fa-star', color: '#a855f7', items: [
+      { name: 'Globales Level-System', desc: 'Permanentes XP-System über alle Aktivitäten. XP durch Tagesbonus (+25), Prüfungen (+50), Wheel. Rangliste Top 50.' },
+      { name: 'Prestige-System 2.0', desc: 'Bei Level 50: Prestige-Reset mit Stern-Badge. Mehrfach prestigeable.' },
+      { name: 'Saison-Pass (Battle Pass)', desc: '30 Tiers pro Saison (monatlich). Gratis-Track + Premium-Track (500 Coins). Wochen-Quests für XP.' },
+      { name: 'Meilenstein-System', desc: '14 permanente Lebensziele (Exams, IC-Zeit, Streak, Coins, Level). Automatische Coin-Belohnung bei Abschluss.' },
+      { name: 'Badge-System', desc: '25+ Errungenschaften für besondere Leistungen. Badges mit SVG-Animationen auf dem Profil.' },
+      { name: 'Profilrahmen-Animationen', desc: 'Kosmetische Rahmen mit CSS-Animationen: Rainbow, Neon (Cyan-Glow), Gold-Puls, Prestige-Farbwechsel.' },
+      { name: 'Titel-System 2.0', desc: 'Über 20 Titel im Shop + Custom-Titel (Admin-genehmigt) + Ehrentiitel. Werden neben dem Namen angezeigt.' },
+      { name: 'Profilbild-Upload', desc: 'Eigenes Bild hochladen (max 300 KB, auto-komprimiert auf 256px). Ersetzt das Discord-Avatar.' },
+      { name: 'Mein Profil', desc: 'Persönliche Seite für Bio, Spezialgebiet, Fun Fact und Profilbild-Verwaltung.' },
+      { name: 'Freundesliste', desc: 'Freundschaftsanfragen senden, Statistik-Vergleich, Gästebuch-Einträge.' },
+    ]
+  },
+  {
+    cat: 'Soziales & Community', icon: 'fa-users', color: '#38bdf8', items: [
+      { name: 'Direktnachrichten', desc: 'Private 1:1 Nachrichten zwischen Mitarbeitern. Ungelesen-Badge, Posteingang und Verlauf.' },
+      { name: 'Feedback & Ideen', desc: 'Community-Vorschläge einreichen und abstimmen (👍/👎). Kommentarfunktion.' },
+      { name: 'Benachrichtigungs-Center', desc: 'Echtzeit-Benachrichtigungen via SSE für Coins, Badges, Duelle, Turniere und Tickets.' },
+      { name: 'Aktive Sperren', desc: 'Übersicht aller aktiven Hausverbote mit automatischem Ablauf nach 24h.' },
+      { name: 'Globale Suche', desc: 'Sperren, Mitarbeiter & Bürgerregister gleichzeitig durchsuchen.' },
+    ]
+  },
+  {
+    cat: 'Admin-Bereich', icon: 'fa-shield-alt', color: '#ef4444', items: [
+      { name: 'Admin-Panel', desc: 'Nutzerverwaltung, Rollen, Aktivierungsstatus, manuelle Coin-Vergabe, Twitch-Widget, Dashboard-Config.' },
+      { name: 'Audit-Log', desc: 'Lückenlose Protokollierung aller Admin-Aktionen (Wer hat was wann geändert).' },
+      { name: 'Fragen-Editor', desc: 'Prüfungsfragen verwalten: Erstellen, Bearbeiten, Kategorisieren, K.O.-Fragen markieren.' },
+      { name: 'Beschwerde-Kanban', desc: 'Eingehende Beschwerden als Kanban-Board verwalten (Offen / In Bearbeitung / Gelöst).' },
+      { name: 'Ranglisten-Verwaltung', desc: 'Spieler aus Minispiel-Highscore-Listen entfernen ohne andere Einträge zu beeinflussen.' },
+      { name: 'Changelog-Verwaltung', desc: 'Neue Changelog-Einträge erstellen und bestehende löschen.' },
+    ]
+  },
+  {
+    cat: 'Wettbewerb & Live-Spiele', icon: 'fa-trophy', color: '#f59e0b', items: [
+      { name: 'Wochenturnier', desc: 'Jede Woche ein anderes Minispiel im Turniermodus. Automatische Auswertung Freitagabend, Coins für Top 3.' },
+      { name: 'Quiz-Duell (1v1)', desc: 'Live-Duell gegen andere Mitarbeiter oder Bürger. SSE-Echtzeit, Emote-Reaktionen, Bracket-Turnier.' },
+      { name: 'Trivia-Team', desc: 'Team-Quiz: 2 Teams gegeneinander, 20 Fragen, 20 Sekunden pro Frage, SSE-Live-Updates, 100 Coins für das Siegerteam.' },
+    ]
+  },
+  {
+    cat: 'Minispiele', icon: 'fa-gamepad', color: '#4ade80', items: [
+      { name: 'Autorennen', desc: 'Top-Down Rennsimulator mit Strecken-Editor (eigene Pattern-Strecken erstellen) und Ghost-Rennen (gegen aufgezeichnete Bestzeiten anderer Spieler antreten).' },
+      { name: 'Brick Breaker', desc: 'Klassischer Breakout-Klon. Bälle, Power-Ups und Highscore-Liste.' },
+      { name: 'Dead Zone', desc: 'Zombie-Shooter aus der Vogelperspektive. Wellen-System, Coins pro Kill.' },
+      { name: 'Snake', desc: 'Klassische Schlange. Wächst mit jeder Beute, je länger desto mehr Punkte.' },
+      { name: 'Tetris', desc: 'Original Tetris-Mechanik mit modernem ACLS-Design und Highscore.' },
+      { name: 'Sky Cop', desc: 'Hubschrauber-Stealth-Game: Fahrzeuge verfolgen, Verdächtige markieren.' },
+      { name: 'Doodle Jump', desc: 'Endlos-Springer. Plattformen generieren sich zufällig, Highscore-Liste.' },
+      { name: 'Tower Defense', desc: 'Türme platzieren, Wellen abwehren, Upgrades kaufen. Mehrstufige Karte.' },
+      { name: '2048', desc: 'Zahlen-Puzzle: Gleiche Kacheln zusammenschieben bis 2048.' },
+      { name: 'Quiz Survival', desc: 'Prüfungsfragen im Überlebensmodus. 3 Leben, steigende Schwierigkeit.' },
+      { name: 'ACLS Werkstatt-Tycoon', desc: 'Idle-Manager: Mechaniker einstellen & leveln, Aufträge bearbeiten, Forschungspunkte sammeln, Technologien erforschen.' },
+      { name: 'Dungeon RPG', desc: 'Rundenbasiertes Dungeon-Crawler-RPG. Klassen, Ausrüstung, Bosse.' },
+      { name: 'Abschlepp-Simulator', desc: 'Fahre Abschleppwagen, befestige Fahrzeuge mit physikalischer Simulation, liefere zum Hof.' },
+      { name: 'Memory', desc: 'Kartenpaare aufdecken. ACLS-Motive, Zeitangriff-Modus.' },
+      { name: 'Reaktionstest', desc: 'Reflexe testen: Reagiere so schnell wie möglich auf visuelle Reize. Ranking der schnellsten Mitarbeiter.' },
+    ]
+  },
+  {
+    cat: 'Spielbank (Casino)', icon: 'fa-dice', color: '#fbbf24', items: [
+      { name: 'Blackjack', desc: 'Klassisches Blackjack mit Split (Paare aufteilen), Insurance (Versicherung gegen Dealer-Blackjack) und Double Down.' },
+      { name: 'Mega Spin', desc: 'Slotmaschine mit 5 Walzen, Bonus-Symbolen und Multiplikatoren.' },
+      { name: 'Plinko', desc: 'Ball fällt durch Pins, landet in Coin-Multiplikator-Slots. Physik-Simulation.' },
+      { name: 'Big Bass Bonanza', desc: 'Angel-Slot im Fisch-Thema. Freispiele, Wilds und gestaffelte Multiplikatoren.' },
+      { name: 'Mines', desc: 'Minesweeper-Prinzip mit Coin-Einsatz: mehr aufgedeckte Felder = höherer Multiplikator.' },
+      { name: 'Rocket', desc: 'Crash-Game: Rakete steigt, Multiplikator wächst – auszahlen bevor sie crasht.' },
+    ]
+  },
+];
+
+async function changelog(tab = 'changelog') {
   const data = await api('/api/changelogs');
   if (!data) return;
   const typeBadge = t => t === 'feature' ? '<span class="badge badge-g" style="font-size:.65rem">NEU</span>' : t === 'fix' ? '<span class="badge badge-r" style="font-size:.65rem">FIX</span>' : '<span class="badge" style="background:rgba(96,165,250,.15);color:#60a5fa;border-color:rgba(96,165,250,.3);font-size:.65rem">UPDATE</span>';
-  $('pageContent').innerHTML = `
+
+  const tabBtn = (id, label, icon) => `<button onclick="changelog('${id}')" style="display:flex;align-items:center;gap:.45rem;padding:.55rem 1.1rem;border-radius:8px;border:1px solid ${tab===id?'var(--orange)':'var(--border)'};background:${tab===id?'rgba(249,115,22,.12)':'var(--surface)'};color:${tab===id?'var(--orange)':'var(--muted)'};font-weight:${tab===id?'700':'400'};font-size:.83rem;cursor:pointer;font-family:inherit;transition:all .15s"><i class="fas ${icon}"></i>${label}</button>`;
+
+  const changelogHtml = `
     ${isAdmin() ? `<div style="display:flex;justify-content:flex-end;margin-bottom:1rem"><button class="btn btn-primary btn-sm" onclick="openChangelogForm()"><i class="fas fa-plus"></i> Eintrag</button></div>` : ''}
     <div class="card">
       <div class="card-head"><div class="card-head-icon" style="background:rgba(110,231,183,.12)"><i class="fas fa-code-branch" style="color:#6ee7b7"></i></div><div><div class="card-title">Changelog</div><div class="card-sub">${data.length} Einträge</div></div></div>
@@ -8403,6 +8517,42 @@ async function changelog() {
           </div>`).join('')}
       </div>
     </div>`;
+
+  const totalFeatures = FEATURES_LIST.reduce((s, c) => s + c.items.length, 0);
+  const featuresHtml = `
+    <div class="card" style="margin-bottom:1rem;padding:.9rem 1.1rem;background:linear-gradient(135deg,rgba(249,115,22,.08),rgba(251,191,36,.04));border-color:rgba(249,115,22,.25)">
+      <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+        <div style="font-size:2rem">🚀</div>
+        <div>
+          <div style="font-weight:800;font-size:1rem">ACLS Portal – Vollständige Feature-Übersicht</div>
+          <div style="font-size:.78rem;color:var(--muted);margin-top:.1rem">${FEATURES_LIST.length} Kategorien · ${totalFeatures} Features & Funktionen</div>
+        </div>
+      </div>
+    </div>
+    ${FEATURES_LIST.map(cat => `
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-head">
+          <div class="card-head-icon" style="background:${cat.color}22"><i class="fas ${cat.icon}" style="color:${cat.color}"></i></div>
+          <div><div class="card-title">${esc(cat.cat)}</div><div class="card-sub">${cat.items.length} Einträge</div></div>
+        </div>
+        ${cat.items.map((item, i) => `
+          <div style="display:flex;gap:.75rem;padding:.6rem 0;border-bottom:${i < cat.items.length-1 ? '1px solid var(--border)' : 'none'}">
+            <div style="flex-shrink:0;margin-top:.15rem">
+              <div style="width:8px;height:8px;border-radius:50%;background:${cat.color};margin-top:.3rem"></div>
+            </div>
+            <div>
+              <div style="font-weight:700;font-size:.88rem">${esc(item.name)}</div>
+              <div style="font-size:.78rem;color:var(--muted);line-height:1.55;margin-top:.1rem">${esc(item.desc)}</div>
+            </div>
+          </div>`).join('')}
+      </div>`).join('')}`;
+
+  $('pageContent').innerHTML = `
+    <div style="display:flex;gap:.5rem;margin-bottom:1.25rem;flex-wrap:wrap">
+      ${tabBtn('changelog', 'Changelog', 'fa-code-branch')}
+      ${tabBtn('features',  'Features & Funktionen', 'fa-list-ul')}
+    </div>
+    ${tab === 'features' ? featuresHtml : changelogHtml}`;
 }
 window.openChangelogForm = () => {
   openModal(`
