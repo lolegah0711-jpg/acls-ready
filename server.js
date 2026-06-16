@@ -455,7 +455,7 @@ app.get('/auth/me', (req, res) => {
   const u = getUser(req);
   if (u) {
     if (u.role === 'citizen') return res.json({ voter: true, id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar });
-    return res.json({ id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, role: u.role, rank: u.rank });
+    return res.json({ id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, avatar_custom: u.avatar_custom || null, role: u.role, rank: u.rank, bio: u.bio || '', specialty: u.specialty || '', fun_fact: u.fun_fact || '' });
   }
   if (req.session.voterDiscordId) return res.json({
     voter: true,
@@ -4713,31 +4713,28 @@ app.post('/api/tickets/:id/reply', requireAuth, (req, res) => {
 //  STATISTIK-TRENDS (H9)
 // ════════════════════════════════════════════════════════════════
 app.get('/api/stats/trends', requireAuth, (req, res) => {
-  try {
-    const exams = db.prepare(`
-      SELECT date(registered_at, 'weekday 0', '-6 days') AS wk,
-             COUNT(*) AS total, COALESCE(SUM(passed), 0) AS passed
-      FROM registry WHERE registered_at >= datetime('now', '-84 days')
-      GROUP BY wk ORDER BY wk`).all();
-    const ic = db.prepare(`
-      SELECT date(il.date, 'weekday 0', '-6 days') AS wk, ROUND(SUM(il.hours), 1) AS hours
-      FROM ic_log il WHERE il.date >= date('now', '-84 days')
-      GROUP BY wk ORDER BY wk`).all();
-    const coins = db.prepare(`
-      SELECT date(created_at, 'weekday 0', '-6 days') AS wk,
-             SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS earned,
-             SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS spent
-      FROM coin_transactions WHERE created_at >= datetime('now', '-84 days')
-      GROUP BY wk ORDER BY wk`).all();
-    const topExaminers = db.prepare(`
-      SELECT examiner_name, COUNT(*) AS c FROM registry
-      WHERE registered_at >= datetime('now', '-28 days')
-      GROUP BY examiner_name ORDER BY c DESC LIMIT 5`).all();
-    res.json({ exams, ic, coins, topExaminers });
-  } catch (err) {
-    console.error('[/api/stats/trends]', err.message);
-    res.status(500).json({ error: 'Statistiken konnten nicht geladen werden' });
-  }
+  let exams = [], ic = [], coins = [], topExaminers = [];
+  try { exams = db.prepare(`
+    SELECT date(registered_at, 'weekday 0', '-6 days') AS wk,
+           COUNT(*) AS total, COALESCE(SUM(passed), 0) AS passed
+    FROM registry WHERE registered_at >= datetime('now', '-84 days')
+    GROUP BY wk ORDER BY wk`).all(); } catch(e) { console.error('[stats/exams]', e.message); }
+  try { ic = db.prepare(`
+    SELECT date(il.date, 'weekday 0', '-6 days') AS wk, ROUND(SUM(il.hours), 1) AS hours
+    FROM ic_log il WHERE il.date >= date('now', '-84 days')
+    GROUP BY wk ORDER BY wk`).all(); } catch(e) { console.error('[stats/ic]', e.message); }
+  try { coins = db.prepare(`
+    SELECT date(created_at, 'weekday 0', '-6 days') AS wk,
+           SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS earned,
+           SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS spent
+    FROM coin_transactions WHERE created_at >= datetime('now', '-84 days')
+    GROUP BY wk ORDER BY wk`).all(); } catch(e) { console.error('[stats/coins]', e.message); }
+  try { topExaminers = db.prepare(`
+    SELECT u.username AS examiner_name, COUNT(*) AS c
+    FROM registry r JOIN users u ON u.id = r.examiner_id
+    WHERE r.registered_at >= datetime('now', '-28 days')
+    GROUP BY r.examiner_id ORDER BY c DESC LIMIT 5`).all(); } catch(e) { console.error('[stats/topExaminers]', e.message); }
+  res.json({ exams, ic, coins, topExaminers });
 });
 
 // ════════════════════════════════════════════════════════════════
