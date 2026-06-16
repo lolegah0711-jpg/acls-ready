@@ -1366,7 +1366,7 @@ function _saveDashLayout() {
     ...hiddenIds.map(id => ({ id, visible: false })),
   ];
   _dashLayout = newLayout;
-  api('/api/dashboard/prefs', { method: 'POST', body: JSON.stringify({ layout: newLayout }), headers: { 'Content-Type': 'application/json' } });
+  api('/api/dashboard/prefs', { method: 'POST', body: { layout: newLayout } });
 }
 
 function openDashSettings() {
@@ -1604,7 +1604,7 @@ async function dashboard() {
     let _nt;
     noteEl.addEventListener('input', () => {
       clearTimeout(_nt);
-      _nt = setTimeout(() => api('/api/dashboard/note', {method:'POST',body:JSON.stringify({content:noteEl.value}),headers:{'Content-Type':'application/json'}}), 800);
+      _nt = setTimeout(() => api('/api/dashboard/note', {method:'POST', body:{content:noteEl.value}}), 800);
     });
   }
   _initDashDrag();
@@ -1616,10 +1616,10 @@ async function _loadDashDMs() {
   if (!el) return;
   const inbox = await api('/api/dm/inbox');
   if (!inbox?.length) { el.innerHTML = ''; return; }
-  const unread = inbox.filter(m => !m.read_at);
+  const totalUnread = inbox.reduce((s,m) => s + (m.unread||0), 0);
   el.innerHTML = `<div class="card" style="margin:0">
-    <div class="card-head"><div class="card-head-icon blue"><i class="fas fa-envelope"></i></div><div><div class="card-title">Direktnachrichten</div><div class="card-sub">${unread.length?unread.length+' ungelesen':'Alle gelesen'}</div></div><button class="btn btn-ghost btn-sm" onclick="navigate('nachrichten')" style="margin-left:auto">Alle</button></div>
-    ${inbox.slice(0,3).map(m=>`<div style="display:flex;align-items:center;gap:.6rem;padding:.4rem 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="navigate('nachrichten')"><div style="width:30px;height:30px;flex-shrink:0;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700">${esc((m.sender_name||'?')[0].toUpperCase())}</div><div style="flex:1;min-width:0"><div style="font-weight:${m.read_at?'400':'700'};font-size:.85rem">${esc(m.sender_name||'Unbekannt')}</div><div style="font-size:.75rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((m.content||'').slice(0,50))}</div></div>${!m.read_at?'<span class="badge badge-r" style="font-size:.65rem">NEU</span>':''}</div>`).join('')}
+    <div class="card-head"><div class="card-head-icon blue"><i class="fas fa-envelope"></i></div><div><div class="card-title">Direktnachrichten</div><div class="card-sub">${totalUnread?totalUnread+' ungelesen':'Alle gelesen'}</div></div><button class="btn btn-ghost btn-sm" onclick="navigate('nachrichten')" style="margin-left:auto">Alle</button></div>
+    ${inbox.slice(0,3).map(m=>`<div style="display:flex;align-items:center;gap:.6rem;padding:.4rem 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="navigate('nachrichten')"><div style="width:30px;height:30px;flex-shrink:0;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700">${esc((m.other_name||'?')[0].toUpperCase())}</div><div style="flex:1;min-width:0"><div style="font-weight:${m.unread>0?'700':'400'};font-size:.85rem">${esc(m.other_name||'Unbekannt')}</div><div style="font-size:.75rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((m.last_msg||'').slice(0,50))}</div></div>${m.unread>0?`<span class="badge badge-r" style="font-size:.65rem">${m.unread}</span>`:''}</div>`).join('')}
   </div>`;
 }
 
