@@ -230,18 +230,23 @@ function auditLog(req, action, details = '') {
     .run(userId, username, action, details, ip);
 }
 
-// ── Rate Limiter (in-memory, per IP) ────────────────────────────
-const _rateLimits = new Map();
+// ── Rate Limiter (SQLite-backed, überlebt Neustarts) ────────────
 function rateLimit(key, maxPerWindow, windowMs) {
   const now = Date.now();
-  const entry = _rateLimits.get(key) || { count: 0, reset: now + windowMs };
-  if (now > entry.reset) { entry.count = 0; entry.reset = now + windowMs; }
-  entry.count++;
-  _rateLimits.set(key, entry);
-  return entry.count > maxPerWindow;
+  const newReset = now + windowMs;
+  db.prepare(`
+    INSERT INTO rate_limits (key, count, reset) VALUES (?, 1, ?)
+    ON CONFLICT(key) DO UPDATE SET
+      count = CASE WHEN rate_limits.reset < ? THEN 1 ELSE rate_limits.count + 1 END,
+      reset = CASE WHEN rate_limits.reset < ? THEN ? ELSE rate_limits.reset END
+  `).run(key, newReset, now, now, newReset);
+  const row = db.prepare('SELECT count FROM rate_limits WHERE key = ?').get(key);
+  return row.count > maxPerWindow;
 }
-// Cleanup alle 5 Minuten
-setInterval(() => { const now = Date.now(); _rateLimits.forEach((v, k) => { if (now > v.reset) _rateLimits.delete(k); }); }, 5 * 60 * 1000);
+// Alte Einträge täglich bereinigen
+setInterval(() => {
+  try { db.prepare('DELETE FROM rate_limits WHERE reset < ?').run(Date.now()); } catch {}
+}, 24 * 60 * 60 * 1000);
 
 // ── Helpers ─────────────────────────────────────────────────────
 // Hilfsfunktion: Berliner Datumsteile auslesen
@@ -720,6 +725,12 @@ app.post('/api/exams/submit', requireAuth, (req, res) => {
     date: new Date().toISOString().split('T')[0],
   });
   sseEmit('exam', { passed, category: exam.categoryName });
+  // Level-XP für den Prüfer
+  try {
+    const examTotal = db.prepare('SELECT COUNT(*) AS c FROM registry WHERE examiner_id = ?').get(user.id)?.c || 0;
+    awardXP(user.discord_id, user.username, 50);
+    checkMilestone(user.discord_id, user.username, 'exams', examTotal);
+  } catch {}
   res.json({ score, total, passed, percentage: Math.round((score / total) * 100), results, registryId, banId });
 });
 
@@ -1759,7 +1770,19 @@ app.put('/api/rank-exam/active', requireAusbilder, (req, res) => {
   if (req.body.m3_notes   !== undefined) { fields.push('m3_notes=?');   vals.push(req.body.m3_notes); }
   if (req.body.current_module  !== undefined) { fields.push('current_module=?');  vals.push(req.body.current_module); }
   if (req.body.current_m2_idx !== undefined) { fields.push('current_m2_idx=?'); vals.push(req.body.current_m2_idx); }
-  if (fields.length) db.prepare(`UPDATE active_rank_exams SET ${fields.join(',')} WHERE join_code=?`).run(...vals, exam.join_code);
+  if (fields.length) {
+    db.prepare(`UPDATE active_rank_exams SET ${fields.join(',')} WHERE join_code=?`).run(...vals, exam.join_code);
+    const upd = db.prepare('SELECT * FROM active_rank_exams WHERE join_code=?').get(exam.join_code);
+    if (upd) sseEmit('rank_exam_update', {
+      join_code:      upd.join_code,
+      m1_data:        JSON.parse(upd.m1_data    || 'null'),
+      m2_answers:     JSON.parse(upd.m2_answers || '{}'),
+      m3_ratings:     JSON.parse(upd.m3_ratings || '[0,0,0,0,0,0]'),
+      m3_notes:       upd.m3_notes   || '',
+      current_module: upd.current_module  || 'm1',
+      current_m2_idx: upd.current_m2_idx  ?? 0,
+    });
+  }
   res.json({ ok: true });
 });
 
@@ -1781,8 +1804,11 @@ app.post('/api/rank-exam/submit', requireAusbilder, (req, res) => {
   const exam = getActiveExam(req);
   const user = getUser(req);
   if (!exam) return res.status(400).json({ error: 'Kein aktiver Test' });
+  const joinCode = exam.join_code;
   delete req.session.rankExamCode;
-  res.json(scoreAndFinalize(exam, user));
+  const result = scoreAndFinalize(exam, user);
+  sseEmit('rank_exam_done', { join_code: joinCode });
+  res.json(result);
 });
 
 app.get('/api/rank-exams', requireAusbilder, (req, res) => {
@@ -3285,22 +3311,41 @@ const SEASON_QUESTS = [
 ];
 
 // Belohnungsstufen. Stufe L wird bei xp >= L*250 erreicht.
-// free = Gratis-Bahn · vip = nur mit aktiver VIP-Rolle.
+// free = Gratis-Bahn · premium = nur mit Premium-Pass (500 Coins einmalig).
 const SEASON_REWARDS = [
-  { level: 1,  free: { coins: 100 },              vip: { coins: 100 } },
-  { level: 2,  free: { coins: 150 },              vip: { ticket: 1 } },
-  { level: 3,  free: { ticket: 1 },               vip: { coins: 250 } },
-  { level: 4,  free: { coins: 200 },              vip: { booster: 24 } },
-  { level: 5,  free: { coins: 300 },              vip: { coins: 400 } },
-  { level: 6,  free: { booster: 24 },             vip: { ticket: 2 } },
-  { level: 7,  free: { coins: 350 },              vip: { coins: 500 } },
-  { level: 8,  free: { ticket: 2 },               vip: { booster: 48 } },
-  { level: 9,  free: { coins: 450 },              vip: { coins: 700 } },
-  { level: 10, free: { coins: 600 },              vip: { item: 'frame_neon' } },
-  { level: 11, free: { booster: 48 },             vip: { coins: 1000 } },
-  { level: 12, free: { item: 'frame_gold', coins: 500 }, vip: { item: 'deco_crown', coins: 1000 } },
+  { level: 1,  free: { coins: 100 },              premium: { coins: 150, xp: 25 } },
+  { level: 2,  free: { coins: 150 },              premium: { ticket: 1,  coins: 100 } },
+  { level: 3,  free: { ticket: 1 },               premium: { coins: 250, xp: 50 } },
+  { level: 4,  free: { coins: 200 },              premium: { booster: 24, coins: 200 } },
+  { level: 5,  free: { coins: 300 },              premium: { coins: 400, xp: 75 } },
+  { level: 6,  free: { booster: 24 },             premium: { ticket: 2,  coins: 300 } },
+  { level: 7,  free: { coins: 350 },              premium: { coins: 500, xp: 100 } },
+  { level: 8,  free: { ticket: 2 },               premium: { booster: 48, coins: 400 } },
+  { level: 9,  free: { coins: 450 },              premium: { coins: 700, xp: 150 } },
+  { level: 10, free: { coins: 600 },              premium: { item: 'frame_neon', coins: 500 } },
+  { level: 11, free: { booster: 48 },             premium: { coins: 1000, xp: 200 } },
+  { level: 12, free: { item: 'frame_gold', coins: 500 }, premium: { item: 'deco_crown', coins: 1000 } },
+  { level: 13, free: { coins: 700 },              premium: { coins: 800, xp: 250 } },
+  { level: 14, free: { coins: 800 },              premium: { ticket: 3,  coins: 600 } },
+  { level: 15, free: { ticket: 2 },               premium: { item: 'frame_gold', coins: 750 } },
+  { level: 16, free: { coins: 900 },              premium: { coins: 1200, xp: 300 } },
+  { level: 17, free: { booster: 72 },             premium: { booster: 96, coins: 800 } },
+  { level: 18, free: { coins: 1000 },             premium: { coins: 1500, xp: 350 } },
+  { level: 19, free: { ticket: 3 },               premium: { ticket: 4,  coins: 900 } },
+  { level: 20, free: { coins: 1200 },             premium: { item: 'title_season_legend', coins: 2000 } },
+  { level: 21, free: { coins: 800 },              premium: { coins: 1000, xp: 400 } },
+  { level: 22, free: { coins: 900 },              premium: { booster: 120, coins: 1000 } },
+  { level: 23, free: { booster: 48 },             premium: { coins: 1200, xp: 450 } },
+  { level: 24, free: { ticket: 3 },               premium: { ticket: 5,  coins: 1100 } },
+  { level: 25, free: { coins: 1000 },             premium: { item: 'namecolor_gold', coins: 1500 } },
+  { level: 26, free: { coins: 1100 },             premium: { coins: 1600, xp: 500 } },
+  { level: 27, free: { booster: 72 },             premium: { booster: 120, coins: 1200 } },
+  { level: 28, free: { ticket: 4 },               premium: { ticket: 6,  coins: 1300 } },
+  { level: 29, free: { coins: 1500 },             premium: { coins: 2000, xp: 600 } },
+  { level: 30, free: { item: 'frame_prestige', coins: 2000 }, premium: { item: 'title_season_champion', coins: 5000 } },
 ];
 const SEASON_MAX_LEVEL = SEASON_REWARDS.length;
+const PREMIUM_PASS_COST = 500;
 
 function seasonLevel(xp) { return Math.min(SEASON_MAX_LEVEL, Math.floor(xp / SEASON_XP_PER_LEVEL)); }
 
@@ -3344,17 +3389,18 @@ app.get('/api/season', (req, res) => {
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const s   = seasonKey();
   const wk  = weekKey();
-  const row = db.prepare('SELECT xp, claimed FROM season_pass WHERE season = ? AND discord_id = ?').get(s, ident.id);
+  const row = db.prepare('SELECT xp, claimed, premium_unlocked FROM season_pass WHERE season = ? AND discord_id = ?').get(s, ident.id);
   const xp  = row?.xp || 0;
   const claimed = new Set(JSON.parse(row?.claimed || '[]'));
   const level   = seasonLevel(xp);
   const isVip   = !!getPerk(ident.id, 'vip');
 
+  const premiumUnlocked = !!row?.premium_unlocked;
   const rewards = SEASON_REWARDS.map(r => ({
-    level: r.level, free: r.free, vip: r.vip,
+    level: r.level, free: r.free, premium: r.premium,
     reached: level >= r.level,
     freeClaimed: claimed.has('f' + r.level),
-    vipClaimed:  claimed.has('v' + r.level),
+    premiumClaimed: claimed.has('p' + r.level),
   }));
 
   const prog = db.prepare('SELECT quest_id, progress, claimed FROM season_quest_progress WHERE week = ? AND discord_id = ?').all(wk, ident.id);
@@ -3369,7 +3415,7 @@ app.get('/api/season', (req, res) => {
     seasonName: seasonName(),
     xp, level, maxLevel: SEASON_MAX_LEVEL, xpPerLevel: SEASON_XP_PER_LEVEL,
     xpInLevel: level >= SEASON_MAX_LEVEL ? SEASON_XP_PER_LEVEL : xp - level * SEASON_XP_PER_LEVEL,
-    isVip, rewards, quests,
+    isVip, premiumUnlocked, premiumCost: PREMIUM_PASS_COST, rewards, quests,
   });
 });
 
@@ -3392,24 +3438,38 @@ app.post('/api/season/claim-level', (req, res) => {
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const { level, track } = req.body;
   const reward = SEASON_REWARDS.find(r => r.level === level);
-  if (!reward || (track !== 'free' && track !== 'vip')) return res.status(400).json({ error: 'Ungültige Stufe' });
+  if (!reward || (track !== 'free' && track !== 'premium')) return res.status(400).json({ error: 'Ungültige Stufe' });
 
   const s   = seasonKey();
-  const row = db.prepare('SELECT xp, claimed FROM season_pass WHERE season = ? AND discord_id = ?').get(s, ident.id);
+  const row = db.prepare('SELECT xp, claimed, premium_unlocked FROM season_pass WHERE season = ? AND discord_id = ?').get(s, ident.id);
   const xp  = row?.xp || 0;
   if (seasonLevel(xp) < level) return res.status(400).json({ error: 'Stufe noch nicht erreicht' });
-  if (track === 'vip' && !getPerk(ident.id, 'vip')) return res.status(403).json({ error: 'Nur mit VIP-Rolle' });
+  if (track === 'premium' && !row?.premium_unlocked) return res.status(403).json({ error: 'Premium-Pass nicht freigeschaltet (500 Coins)' });
 
   const claimed = new Set(JSON.parse(row?.claimed || '[]'));
-  const key = (track === 'vip' ? 'v' : 'f') + level;
+  const key = (track === 'premium' ? 'p' : 'f') + level;
   if (claimed.has(key)) return res.status(400).json({ error: 'Bereits abgeholt' });
 
-  grantSeasonReward(ident, track === 'vip' ? reward.vip : reward.free);
+  grantSeasonReward(ident, track === 'premium' ? reward.premium : reward.free);
   claimed.add(key);
   db.prepare(`INSERT INTO season_pass (season, discord_id, username, xp, claimed) VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(season, discord_id) DO UPDATE SET claimed = excluded.claimed, username = COALESCE(excluded.username, username)`)
     .run(s, ident.id, ident.name, xp, JSON.stringify([...claimed]));
   res.json({ ok: true });
+});
+
+app.post('/api/season/buy-premium', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const s = seasonKey();
+  const row = db.prepare('SELECT xp, premium_unlocked FROM season_pass WHERE season = ? AND discord_id = ?').get(s, ident.id);
+  if (row?.premium_unlocked) return res.status(400).json({ error: 'Premium bereits freigeschaltet' });
+  const newBal = addCoins(ident.id, ident.name, -PREMIUM_PASS_COST, 'season_premium');
+  if (newBal === null) return res.status(400).json({ error: `Nicht genug Coins (${PREMIUM_PASS_COST} benötigt)` });
+  db.prepare(`INSERT INTO season_pass (season, discord_id, username, xp, premium_unlocked) VALUES (?,?,?,0,1)
+    ON CONFLICT(season,discord_id) DO UPDATE SET premium_unlocked=1`).run(s, ident.id, ident.name);
+  sseEmit('season', { discord_id: ident.id }, ident.id);
+  res.json({ ok: true, balance: newBal });
 });
 
 app.get('/api/coins/me', (req, res) => {
@@ -3464,6 +3524,11 @@ app.post('/api/coins/daily', (req, res) => {
   }
   // Saison-Pass: XP + Wochen-Quest „Tagesbonus"
   try { seasonIncQuest(ident.id, 'daily', 1); addSeasonXp(ident.id, ident.name, 50); } catch {}
+  // Level-XP + Milestone-Checks
+  try {
+    awardXP(ident.id, ident.name, 25);
+    checkMilestone(ident.id, ident.name, 'streak', streak);
+  } catch {}
   res.json({ ok: true, balance: bal, amount, streak, milestone: STREAK_MILESTONES[streak] || 0 });
 });
 
@@ -4457,6 +4522,424 @@ app.get('/api/shop/owned', requireAuth, (req, res) => {
   if (!me) return res.status(401).json({ error: 'Nicht angemeldet' });
   const rows = db.prepare('SELECT item_id FROM shop_purchases WHERE discord_id = ?').all(me);
   res.json(rows.map(r => r.item_id));
+});
+
+// ════════════════════════════════════════════════════════════════
+//  GLOBALES LEVEL-SYSTEM
+// ════════════════════════════════════════════════════════════════
+function xpForLevel(lvl) { return Math.floor(Math.pow(lvl - 1, 1.7) * 120); }
+function levelFromXP(xp) {
+  let lvl = 1;
+  while (xpForLevel(lvl + 1) <= xp) lvl++;
+  return Math.min(lvl, 50);
+}
+function awardXP(discordId, username, amount) {
+  if (!discordId || amount <= 0) return;
+  try {
+    db.prepare(`
+      INSERT INTO player_levels (discord_id, username, total_xp, level, prestige, updated_at)
+      VALUES (?, ?, ?, 1, 0, datetime('now'))
+      ON CONFLICT(discord_id) DO UPDATE SET
+        total_xp = total_xp + ?,
+        username = excluded.username,
+        updated_at = datetime('now')
+    `).run(discordId, username, amount, amount);
+    const row = db.prepare('SELECT total_xp, level, prestige FROM player_levels WHERE discord_id = ?').get(discordId);
+    let newLevel = levelFromXP(row.total_xp);
+    let prestige = row.prestige;
+    if (newLevel >= 50 && row.level < 50) {
+      prestige += 1;
+      newLevel = 1;
+      db.prepare('UPDATE player_levels SET total_xp = 0, prestige = ?, level = 1, updated_at = datetime(\'now\') WHERE discord_id = ?').run(prestige, discordId);
+    } else if (newLevel !== row.level) {
+      db.prepare('UPDATE player_levels SET level = ?, updated_at = datetime(\'now\') WHERE discord_id = ?').run(newLevel, discordId);
+    }
+    checkMilestone(discordId, username, 'xp_earned', row.total_xp + amount);
+    checkMilestone(discordId, username, 'prestige', prestige);
+  } catch (e) { /* non-critical */ }
+}
+
+app.get('/api/levels', (req, res) => {
+  const rows = db.prepare(`SELECT discord_id, username, total_xp, level, prestige FROM player_levels ORDER BY prestige DESC, total_xp DESC LIMIT 50`).all();
+  res.json(rows);
+});
+app.get('/api/levels/me', requireAuth, (req, res) => {
+  const did = coinIdent(req)?.id;
+  if (!did) return res.status(401).end();
+  const row = db.prepare('SELECT * FROM player_levels WHERE discord_id = ?').get(did) || { total_xp: 0, level: 1, prestige: 0 };
+  const nextLvlXp = xpForLevel(row.level + 1);
+  res.json({ ...row, xp_next: nextLvlXp, xp_pct: Math.min(100, Math.round(row.total_xp / nextLvlXp * 100)) });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  MILESTONE-SYSTEM
+// ════════════════════════════════════════════════════════════════
+const MILESTONES = [
+  { key: 'exams_10',    title: '10 Prüfungen',          icon: 'fa-graduation-cap', goal: 10,    field: 'exams',     reward: 200 },
+  { key: 'exams_50',    title: '50 Prüfungen',          icon: 'fa-graduation-cap', goal: 50,    field: 'exams',     reward: 500 },
+  { key: 'exams_100',   title: '100 Prüfungen',         icon: 'fa-medal',          goal: 100,   field: 'exams',     reward: 1000 },
+  { key: 'iczeit_50',   title: '50h IC-Zeit',           icon: 'fa-clock',          goal: 50,    field: 'iczeit',    reward: 300 },
+  { key: 'iczeit_200',  title: '200h IC-Zeit',          icon: 'fa-clock',          goal: 200,   field: 'iczeit',    reward: 800 },
+  { key: 'daily_7',     title: '7 Tage Streak',         icon: 'fa-fire',           goal: 7,     field: 'streak',    reward: 100 },
+  { key: 'daily_30',    title: '30 Tage Streak',        icon: 'fa-fire-alt',       goal: 30,    field: 'streak',    reward: 400 },
+  { key: 'coins_1k',    title: '1.000 Coins verdient',  icon: 'fa-coins',          goal: 1000,  field: 'total_earned', reward: 50 },
+  { key: 'coins_10k',   title: '10.000 Coins verdient', icon: 'fa-piggy-bank',     goal: 10000, field: 'total_earned', reward: 200 },
+  { key: 'level_10',    title: 'Level 10',              icon: 'fa-star',           goal: 10,    field: 'level',     reward: 150 },
+  { key: 'level_50',    title: 'Level 50 (Prestige!)',  icon: 'fa-crown',          goal: 50,    field: 'level',     reward: 1000 },
+  { key: 'prestige',    title: 'Prestige I',            icon: 'fa-gem',            goal: 1,     field: 'prestige',  reward: 500 },
+  { key: 'xp_earned',   title: '10.000 XP gesammelt',  icon: 'fa-bolt',           goal: 10000, field: 'xp_earned', reward: 300 },
+  { key: 'games_100',   title: '100 Spiele gespielt',   icon: 'fa-gamepad',        goal: 100,   field: 'games',     reward: 250 },
+];
+
+function checkMilestone(discordId, username, field, value) {
+  const relevant = MILESTONES.filter(m => m.field === field && value >= m.goal);
+  for (const m of relevant) {
+    const existing = db.prepare('SELECT completed_at FROM milestone_progress WHERE discord_id = ? AND milestone_key = ?').get(discordId, m.key);
+    if (existing?.completed_at) continue;
+    db.prepare(`INSERT INTO milestone_progress (discord_id, milestone_key, progress, completed_at) VALUES (?,?,?,datetime('now'))
+      ON CONFLICT(discord_id, milestone_key) DO UPDATE SET progress=?, completed_at=COALESCE(completed_at, datetime('now'))`
+    ).run(discordId, m.key, value, value);
+    // Coin-Belohnung
+    awardCoins(discordId, username, m.reward, `milestone:${m.key}`);
+    sseEmit('milestone', { discord_id: discordId, key: m.key, title: m.title, reward: m.reward }, discordId);
+  }
+}
+
+function awardCoins(discordId, username, amount, reason) {
+  if (!discordId || amount <= 0) return;
+  try { addCoins(discordId, username, amount, reason); } catch {}
+}
+
+app.get('/api/milestones', requireAuth, (req, res) => {
+  const did = coinIdent(req)?.id;
+  if (!did) return res.status(401).end();
+  const progress = db.prepare('SELECT * FROM milestone_progress WHERE discord_id = ?').all(did);
+  const map = Object.fromEntries(progress.map(p => [p.milestone_key, p]));
+  const result = MILESTONES.map(m => ({
+    ...m,
+    progress: map[m.key]?.progress || 0,
+    completed: !!map[m.key]?.completed_at,
+    completed_at: map[m.key]?.completed_at || null,
+  }));
+  res.json(result);
+});
+
+// ════════════════════════════════════════════════════════════════
+//  TICKETSYSTEM (H4)
+// ════════════════════════════════════════════════════════════════
+const TICKET_CATS = ['Bug', 'Frage', 'Beschwerde', 'Feature-Wunsch', 'Sonstiges'];
+
+app.get('/api/tickets', requireAuth, (req, res) => {
+  const user = getUser(req);
+  const isStaff = user.role === 'admin' || user.role === 'ausbilder';
+  const rows = isStaff
+    ? db.prepare('SELECT t.*, (SELECT COUNT(*) FROM ticket_replies WHERE ticket_id=t.id) AS replies FROM tickets t ORDER BY t.updated_at DESC LIMIT 100').all()
+    : db.prepare('SELECT t.*, (SELECT COUNT(*) FROM ticket_replies WHERE ticket_id=t.id) AS replies FROM tickets t WHERE t.creator_did = ? ORDER BY t.updated_at DESC LIMIT 50').all(user.discord_id);
+  res.json(rows);
+});
+
+app.post('/api/tickets', requireAuth, (req, res) => {
+  const user = getUser(req);
+  const { category, title, body } = req.body || {};
+  if (!title?.trim() || !body?.trim()) return res.status(400).json({ error: 'Titel und Beschreibung erforderlich' });
+  if (!TICKET_CATS.includes(category)) return res.status(400).json({ error: 'Ungültige Kategorie' });
+  const r = db.prepare(`INSERT INTO tickets (creator_did, creator_name, category, title, body) VALUES (?,?,?,?,?)`
+  ).run(user.discord_id, user.username, category, title.trim().slice(0, 200), body.trim().slice(0, 2000));
+  res.json({ id: r.lastInsertRowid });
+});
+
+app.get('/api/tickets/:id', requireAuth, (req, res) => {
+  const user = getUser(req);
+  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(+req.params.id);
+  if (!ticket) return res.status(404).json({ error: 'Nicht gefunden' });
+  const isStaff = user.role === 'admin' || user.role === 'ausbilder';
+  if (!isStaff && ticket.creator_did !== user.discord_id) return res.status(403).json({ error: 'Kein Zugriff' });
+  const replies = db.prepare('SELECT * FROM ticket_replies WHERE ticket_id = ? ORDER BY created_at').all(+req.params.id);
+  res.json({ ...ticket, replies });
+});
+
+app.put('/api/tickets/:id', requireAuth, (req, res) => {
+  const user = getUser(req);
+  const isStaff = user.role === 'admin' || user.role === 'ausbilder';
+  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(+req.params.id);
+  if (!ticket) return res.status(404).json({ error: 'Nicht gefunden' });
+  if (!isStaff && ticket.creator_did !== user.discord_id) return res.status(403).json({ error: 'Kein Zugriff' });
+  const { status, assigned_did, assigned_name } = req.body || {};
+  if (status && !['open', 'in_progress', 'closed'].includes(status)) return res.status(400).json({ error: 'Ungültiger Status' });
+  const fields = [`updated_at=datetime('now')`], vals = [];
+  if (status) { fields.push('status=?'); vals.push(status); if (status === 'closed') { fields.push("closed_at=datetime('now')"); } }
+  if (assigned_did !== undefined && isStaff) { fields.push('assigned_did=?', 'assigned_name=?'); vals.push(assigned_did, assigned_name || ''); }
+  db.prepare(`UPDATE tickets SET ${fields.join(',')} WHERE id=?`).run(...vals, +req.params.id);
+  sseEmit('ticket_update', { id: +req.params.id, status: status || ticket.status }, ticket.creator_did);
+  res.json({ ok: true });
+});
+
+app.post('/api/tickets/:id/reply', requireAuth, (req, res) => {
+  const user = getUser(req);
+  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(+req.params.id);
+  if (!ticket) return res.status(404).json({ error: 'Nicht gefunden' });
+  const isStaff = user.role === 'admin' || user.role === 'ausbilder';
+  if (!isStaff && ticket.creator_did !== user.discord_id) return res.status(403).json({ error: 'Kein Zugriff' });
+  const { body } = req.body || {};
+  if (!body?.trim()) return res.status(400).json({ error: 'Nachricht leer' });
+  db.prepare(`INSERT INTO ticket_replies (ticket_id, author_did, author_name, body, is_staff) VALUES (?,?,?,?,?)`
+  ).run(+req.params.id, user.discord_id, user.username, body.trim().slice(0, 2000), isStaff ? 1 : 0);
+  db.prepare(`UPDATE tickets SET updated_at=datetime('now') WHERE id=?`).run(+req.params.id);
+  sseEmit('ticket_update', { id: +req.params.id, new_reply: true }, ticket.creator_did);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  STATISTIK-TRENDS (H9)
+// ════════════════════════════════════════════════════════════════
+app.get('/api/stats/trends', requireAuth, (req, res) => {
+  const exams = db.prepare(`
+    SELECT date(registered_at, 'weekday 0', '-6 days') AS wk,
+           COUNT(*) AS total, COALESCE(SUM(passed), 0) AS passed
+    FROM registry WHERE registered_at >= datetime('now', '-84 days')
+    GROUP BY wk ORDER BY wk`).all();
+  const ic = db.prepare(`
+    SELECT date(date, 'weekday 0', '-6 days') AS wk, ROUND(SUM(hours), 1) AS hours
+    FROM ic_log WHERE date >= date('now', '-84 days')
+    GROUP BY wk ORDER BY wk`).all();
+  const coins = db.prepare(`
+    SELECT date(created_at, 'weekday 0', '-6 days') AS wk,
+           SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS earned,
+           SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS spent
+    FROM coin_transactions WHERE created_at >= datetime('now', '-84 days')
+    GROUP BY wk ORDER BY wk`).all();
+  const topExaminers = db.prepare(`
+    SELECT examiner_name, COUNT(*) AS c FROM registry
+    WHERE registered_at >= datetime('now', '-28 days')
+    GROUP BY examiner_name ORDER BY c DESC LIMIT 5`).all();
+  res.json({ exams, ic, coins, topExaminers });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  PROFILBILD-UPLOAD (L1)
+// ════════════════════════════════════════════════════════════════
+app.post('/api/upload/avatar', requireAuth, (req, res) => {
+  const user = getUser(req);
+  const { dataUrl } = req.body || {};
+  if (!dataUrl || !dataUrl.startsWith('data:image/')) return res.status(400).json({ error: 'Kein gültiges Bild' });
+  if (dataUrl.length > 400_000) return res.status(400).json({ error: 'Bild zu groß (max 300 KB)' });
+  db.prepare('UPDATE users SET avatar_custom = ? WHERE id = ?').run(dataUrl, user.id);
+  res.json({ ok: true, dataUrl });
+});
+
+app.delete('/api/upload/avatar', requireAuth, (req, res) => {
+  const user = getUser(req);
+  db.prepare('UPDATE users SET avatar_custom = NULL WHERE id = ?').run(user.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  MITARBEITER-VORSTELLUNG
+// ════════════════════════════════════════════════════════════════
+app.get('/api/team-profiles', (req, res) => {
+  const rows = db.prepare(`
+    SELECT u.id, u.discord_id, u.username, u.avatar, u.avatar_custom, u.role, u.rank,
+           u.bio, u.specialty, u.fun_fact
+    FROM users u
+    WHERE u.is_active = 1 AND u.role IN ('admin','ausbilder','member')
+    ORDER BY CASE u.role WHEN 'admin' THEN 0 WHEN 'ausbilder' THEN 1 ELSE 2 END, u.username
+  `).all();
+  res.json(rows);
+});
+
+app.put('/api/team-profiles/me', requireAuth, (req, res) => {
+  const user = getUser(req);
+  const { bio, specialty, fun_fact } = req.body || {};
+  db.prepare('UPDATE users SET bio=?, specialty=?, fun_fact=? WHERE id=?'
+  ).run((bio || '').slice(0, 500), (specialty || '').slice(0, 200), (fun_fact || '').slice(0, 300), user.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  DAILY BONUS WHEEL
+// ════════════════════════════════════════════════════════════════
+const WHEEL_PRIZES = [
+  { label: '50 Coins',     coins: 50,   xp: 10,  type: 'coins',  color: '#fbbf24' },
+  { label: '25 Coins',     coins: 25,   xp: 5,   type: 'coins',  color: '#f59e0b' },
+  { label: '100 Coins',    coins: 100,  xp: 20,  type: 'coins',  color: '#f97316' },
+  { label: '10 XP',        coins: 0,    xp: 10,  type: 'xp',     color: '#22c55e' },
+  { label: '75 Coins',     coins: 75,   xp: 15,  type: 'coins',  color: '#eab308' },
+  { label: '200 Coins',    coins: 200,  xp: 40,  type: 'jackpot',color: '#a855f7' },
+  { label: '30 XP',        coins: 0,    xp: 30,  type: 'xp',     color: '#10b981' },
+  { label: '150 Coins',    coins: 150,  xp: 25,  type: 'coins',  color: '#ef4444' },
+];
+
+app.get('/api/wheel/status', requireAuth, (req, res) => {
+  const did = coinIdent(req)?.id;
+  if (!did) return res.status(401).end();
+  const today = new Date().toISOString().slice(0, 10);
+  const row = db.prepare('SELECT * FROM daily_wheel WHERE discord_id = ?').get(did);
+  res.json({ can_spin: !row || row.last_spin_date !== today, total_spins: row?.total_spins || 0, prizes: WHEEL_PRIZES });
+});
+
+app.post('/api/wheel/spin', requireAuth, (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).end();
+  const today = new Date().toISOString().slice(0, 10);
+  const row = db.prepare('SELECT * FROM daily_wheel WHERE discord_id = ?').get(ident.id);
+  if (row?.last_spin_date === today) return res.status(400).json({ error: 'Heute bereits gedreht' });
+  const idx = Math.floor(Math.random() * WHEEL_PRIZES.length);
+  const prize = WHEEL_PRIZES[idx];
+  db.prepare(`INSERT INTO daily_wheel (discord_id, last_spin_date, total_spins) VALUES (?,?,1)
+    ON CONFLICT(discord_id) DO UPDATE SET last_spin_date=?, total_spins=total_spins+1`
+  ).run(ident.id, today, today);
+  if (prize.coins > 0) awardCoins(ident.id, ident.name, prize.coins, 'wheel');
+  if (prize.xp > 0) awardXP(ident.id, ident.name, prize.xp);
+  res.json({ prize_idx: idx, prize });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  CHANGELOG-SYSTEM
+// ════════════════════════════════════════════════════════════════
+function seedChangelogs() {
+  if (db.prepare('SELECT COUNT(*) AS c FROM changelogs').get().c > 0) return;
+  const entries = [
+    { version: '1.0.0', type: 'feature', title: 'ACLS-Portal Launch', body: 'Erststart des ACLS Mitarbeiterportals mit Dashboard, Bürgerregister, IC-Zeit-Tracking, Prüfungsverwaltung, Fraktionsfarben und Abschlepphof-Karte.', released_at: '2024-01-15 00:00:00' },
+    { version: '1.1.0', type: 'feature', title: 'Coin-System & Shop', body: 'Einführung des ACLS-Coin-Systems mit täglichem Bonus, Coin-Shop für Kosmetika (Titel, Rahmen, Farben) und Coin-Transaktionshistorie.', released_at: '2024-02-01 00:00:00' },
+    { version: '1.2.0', type: 'feature', title: 'Wochenturnier', body: 'Wöchentliches Spiel-Turnier mit automatischer Auswertung und Coin-Belohnungen für die Top 3 Platzierten.', released_at: '2024-02-15 00:00:00' },
+    { version: '1.3.0', type: 'feature', title: 'Quiz-Duell (1v1)', body: '1-gegen-1 Quiz-Duell live in Echtzeit via SSE. Mitarbeiter und Bürger können gegeneinander antreten. Emote-Reaktionen und Bracket-Turnier.', released_at: '2024-03-01 00:00:00' },
+    { version: '1.4.0', type: 'feature', title: 'Saison-Pass & Quests', body: 'Monatlicher Battle Pass mit XP-Track, Wochen-Quests, Belohnungs-Tiers und Premium-Unlock-Option.', released_at: '2024-03-15 00:00:00' },
+    { version: '1.5.0', type: 'feature', title: 'Spielbank (Casino)', body: 'Eröffnung der ACLS Spielbank mit Blackjack (inkl. Split & Insurance), Mega Spin, Plinko, Big Bass Bonanza, Mines und Rocket.', released_at: '2024-04-01 00:00:00' },
+    { version: '1.6.0', type: 'feature', title: 'Freunde & Direktnachrichten', body: 'Freundesliste mit Statistik-Vergleich, Gästebuch-Einträge auf Profilen und private Direktnachrichten zwischen Mitarbeitern.', released_at: '2024-04-15 00:00:00' },
+    { version: '1.7.0', type: 'feature', title: 'Marktplatz & Schwarzmarkt', body: 'Spieler-zu-Spieler Kosmetika-Marktplatz sowie täglicher Schwarzmarkt mit zeitlich begrenzten Sonderangeboten.', released_at: '2024-05-01 00:00:00' },
+    { version: '1.8.0', type: 'feature', title: 'Rang-Prüfungssystem', body: 'Digitales Prüfungssystem für Gesellen- und Meisterprüfungen mit 3 Modulen (Ortskunde, Mentalteil, Praktischer Teil), Kollaboration zweier Prüfer und automatischer Zertifikat-Generierung.', released_at: '2024-05-20 00:00:00' },
+    { version: '1.9.0', type: 'feature', title: 'Bewerbungssystem & Onboarding', body: 'Online-Bewerbungsformular für neue Mitarbeiter mit Admin-Kanban-Board zur Verwaltung. Einarbeitungs-Checkliste für neue Mitarbeiter.', released_at: '2024-06-01 00:00:00' },
+    { version: '1.10.0', type: 'feature', title: 'Feedback & Ideen', body: 'Community-Feedback-System: Ideen einreichen, abstimmen und kommentieren. Top-Ideen werden monatlich priorisiert.', released_at: '2024-06-10 00:00:00' },
+    { version: '1.11.0', type: 'feature', title: 'Werkstatt-Tycoon', body: 'Idle-Game: Mechaniker einstellen, Forschungspunkte sammeln, Technologien erforschen und Aufträge bearbeiten.', released_at: '2024-07-01 00:00:00' },
+    { version: '1.11.1', type: 'feature', title: 'Strecken-Editor & Ghost-Rennen', body: 'Eigene Rennstrecken aus Pattern erstellen und als Ghost-Run hinterlegen. Andere Spieler können gegen aufgezeichnete Ghost-Runs antreten.', released_at: '2024-07-15 00:00:00' },
+    { version: '1.12.0', type: 'fix', title: 'Fix: Feedback-Tab Ladezeichen', body: 'Behebung eines Fehlers, bei dem der Feedback & Ideen Tab dauerhaft im Ladezustand verblieb.', released_at: '2024-07-20 00:00:00' },
+    { version: '1.13.0', type: 'feature', title: 'Admin: Spieler aus Ranglisten entfernen', body: 'Admins können einzelne Spieler aus Spiele-Ranglisten (Highscores) entfernen, ohne alle anderen Einträge zu beeinflussen.', released_at: '2024-08-01 00:00:00' },
+    { version: '2.0.0', type: 'feature', title: 'ACLS 2.0 – Großes Update', body: 'SSE-basierte Echtzeit-Kollaboration bei Rang-Prüfungen, persistenter Rate Limiter, Ticketsystem, Statistik-Charts, Onboarding-Wizard, Profilbild-Upload, Mitarbeiter-Vorstellung, Globales Level-System, Prestige 2.0, Titel-System 2.0, Daily Bonus Wheel, Milestone-System, Changelog-System, separater Spiele-Tab, erweiterter Battle Pass und Trivia-Team Multiplayer.', released_at: '2026-06-16 00:00:00' },
+  ];
+  const stmt = db.prepare(`INSERT INTO changelogs (version, type, title, body, released_at) VALUES (?,?,?,?,?)`);
+  for (const e of entries) stmt.run(e.version, e.type, e.title, e.body, e.released_at);
+}
+try { seedChangelogs(); } catch {}
+
+app.get('/api/changelogs', (req, res) => {
+  res.json(db.prepare('SELECT * FROM changelogs ORDER BY released_at DESC').all());
+});
+app.post('/api/changelogs', requireAdmin, (req, res) => {
+  const { version, title, body, type, released_at } = req.body || {};
+  if (!version || !title || !body) return res.status(400).json({ error: 'Fehlende Felder' });
+  const r = db.prepare(`INSERT INTO changelogs (version, type, title, body, released_at) VALUES (?,?,?,?,?)`
+  ).run(version, type || 'update', title, body, released_at || new Date().toISOString().replace('T', ' ').slice(0, 19));
+  res.json({ id: r.lastInsertRowid });
+});
+app.delete('/api/changelogs/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM changelogs WHERE id = ?').run(+req.params.id);
+  res.json({ ok: true });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  TRIVIA-TEAM MULTIPLAYER
+// ════════════════════════════════════════════════════════════════
+function triviaCode() { return Math.random().toString(36).slice(2, 7).toUpperCase(); }
+
+app.get('/api/trivia/rooms', requireAuth, (req, res) => {
+  const rooms = db.prepare(`SELECT r.*, (SELECT COUNT(*) FROM trivia_players WHERE room_code=r.code) AS player_count FROM trivia_rooms r WHERE r.status='lobby' ORDER BY r.created_at DESC LIMIT 20`).all();
+  res.json(rooms);
+});
+
+app.post('/api/trivia/rooms', requireAuth, (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).end();
+  const { team_a_name, team_b_name } = req.body || {};
+  const code = triviaCode();
+  const allQs = db.prepare('SELECT id FROM rank_questions ORDER BY RANDOM() LIMIT 20').all().map(r => r.id);
+  db.prepare(`INSERT INTO trivia_rooms (code, host_did, team_a_name, team_b_name, question_ids) VALUES (?,?,?,?,?)`
+  ).run(code, ident.id, (team_a_name || 'Team A').slice(0, 30), (team_b_name || 'Team B').slice(0, 30), JSON.stringify(allQs));
+  db.prepare(`INSERT INTO trivia_players (room_code, discord_id, username, team) VALUES (?,?,?,'a')`).run(code, ident.id, ident.name);
+  res.json({ code });
+});
+
+app.post('/api/trivia/rooms/:code/join', requireAuth, (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).end();
+  const room = db.prepare('SELECT * FROM trivia_rooms WHERE code = ?').get(req.params.code.toUpperCase());
+  if (!room) return res.status(404).json({ error: 'Raum nicht gefunden' });
+  if (room.status !== 'lobby') return res.status(400).json({ error: 'Spiel läuft bereits' });
+  const { team } = req.body || {};
+  const t = team === 'b' ? 'b' : 'a';
+  db.prepare(`INSERT INTO trivia_players (room_code, discord_id, username, team) VALUES (?,?,?,?)
+    ON CONFLICT(room_code, discord_id) DO UPDATE SET team=?`).run(room.code, ident.id, ident.name, t, t);
+  sseEmit('trivia_lobby', { code: room.code });
+  res.json({ ok: true });
+});
+
+app.get('/api/trivia/rooms/:code', requireAuth, (req, res) => {
+  const room = db.prepare('SELECT * FROM trivia_rooms WHERE code = ?').get(req.params.code.toUpperCase());
+  if (!room) return res.status(404).json({ error: 'Nicht gefunden' });
+  const players = db.prepare('SELECT * FROM trivia_players WHERE room_code = ?').all(room.code);
+  res.json({ ...room, question_ids: JSON.parse(room.question_ids || '[]'), players });
+});
+
+app.post('/api/trivia/rooms/:code/start', requireAuth, (req, res) => {
+  const ident = coinIdent(req);
+  const room = db.prepare('SELECT * FROM trivia_rooms WHERE code = ?').get(req.params.code.toUpperCase());
+  if (!room) return res.status(404).json({ error: 'Nicht gefunden' });
+  if (room.host_did !== ident?.id) return res.status(403).json({ error: 'Nur der Host kann starten' });
+  if (room.status !== 'lobby') return res.status(400).json({ error: 'Bereits gestartet' });
+  const qids = JSON.parse(room.question_ids || '[]');
+  if (qids.length === 0) return res.status(400).json({ error: 'Keine Fragen verfügbar' });
+  const firstQ = db.prepare('SELECT * FROM rank_questions WHERE id = ?').get(qids[0]);
+  db.prepare(`UPDATE trivia_rooms SET status='running', q_idx=0, current_q=? WHERE code=?`).run(JSON.stringify(firstQ), room.code);
+  sseEmit('trivia_question', { code: room.code, q_idx: 0, question: { id: firstQ.id, q: firstQ.q, options: JSON.parse(firstQ.options || '[]') } });
+  // Auto-advance nach 20s
+  setTimeout(() => triviaAdvance(room.code), 20_000);
+  res.json({ ok: true });
+});
+
+function triviaAdvance(code) {
+  const room = db.prepare('SELECT * FROM trivia_rooms WHERE code = ?').get(code);
+  if (!room || room.status !== 'running') return;
+  const currentQ = JSON.parse(room.current_q || 'null');
+  // Ergebnis bekannt geben
+  if (currentQ) sseEmit('trivia_reveal', { code, correct_answer: currentQ.answer, scores: { a: room.score_a, b: room.score_b } });
+  const qids = JSON.parse(room.question_ids || '[]');
+  const nextIdx = room.q_idx + 1;
+  if (nextIdx >= qids.length) {
+    // Spiel zu Ende
+    const winner = room.score_a > room.score_b ? 'a' : room.score_b > room.score_a ? 'b' : 'draw';
+    db.prepare(`UPDATE trivia_rooms SET status='done' WHERE code=?`).run(code);
+    sseEmit('trivia_end', { code, score_a: room.score_a, score_b: room.score_b, winner });
+    // Coins für Gewinner-Team
+    if (winner !== 'draw') {
+      const winners = db.prepare('SELECT discord_id, username FROM trivia_players WHERE room_code=? AND team=?').all(code, winner);
+      for (const p of winners) awardCoins(p.discord_id, p.username, 100, 'trivia_win');
+    }
+    return;
+  }
+  const nextQ = db.prepare('SELECT * FROM rank_questions WHERE id = ?').get(qids[nextIdx]);
+  db.prepare(`UPDATE trivia_rooms SET q_idx=?, current_q=? WHERE code=?`).run(nextIdx, JSON.stringify(nextQ), code);
+  // Antworten zurücksetzen
+  db.prepare(`UPDATE trivia_players SET answered=0 WHERE room_code=?`).run(code);
+  sseEmit('trivia_question', { code, q_idx: nextIdx, question: { id: nextQ.id, q: nextQ.q, options: JSON.parse(nextQ.options || '[]') } });
+  setTimeout(() => triviaAdvance(code), 20_000);
+}
+
+app.post('/api/trivia/rooms/:code/answer', requireAuth, (req, res) => {
+  const ident = coinIdent(req);
+  const room = db.prepare('SELECT * FROM trivia_rooms WHERE code = ?').get(req.params.code.toUpperCase());
+  if (!room || room.status !== 'running') return res.status(400).json({ error: 'Kein aktives Spiel' });
+  const player = db.prepare('SELECT * FROM trivia_players WHERE room_code=? AND discord_id=?').get(room.code, ident?.id);
+  if (!player) return res.status(403).json({ error: 'Nicht in diesem Raum' });
+  if (player.answered) return res.status(400).json({ error: 'Bereits geantwortet' });
+  const { answer } = req.body || {};
+  const currentQ = JSON.parse(room.current_q || 'null');
+  const correct = currentQ && answer === currentQ.answer;
+  db.prepare('UPDATE trivia_players SET answered=1, correct=correct+? WHERE room_code=? AND discord_id=?').run(correct ? 1 : 0, room.code, ident.id);
+  if (correct) {
+    const scoreField = player.team === 'a' ? 'score_a' : 'score_b';
+    db.prepare(`UPDATE trivia_rooms SET ${scoreField}=${scoreField}+1 WHERE code=?`).run(room.code);
+  }
+  sseEmit('trivia_answer', { code: room.code, discord_id: ident.id, team: player.team, correct });
+  res.json({ correct });
 });
 
 app.get('/team', (req, res) => {

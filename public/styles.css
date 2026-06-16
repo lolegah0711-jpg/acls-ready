@@ -1437,6 +1437,50 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   .dash-bottom, .admin-grid, .eow-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
+/* ── Profilrahmen-Animationen ──────────────────────────────── */
+@keyframes frame-rainbow {
+  0%   { border-color: #ef4444; box-shadow: 0 0 8px #ef4444; }
+  16%  { border-color: #f97316; box-shadow: 0 0 8px #f97316; }
+  33%  { border-color: #fbbf24; box-shadow: 0 0 8px #fbbf24; }
+  50%  { border-color: #22c55e; box-shadow: 0 0 8px #22c55e; }
+  66%  { border-color: #60a5fa; box-shadow: 0 0 8px #60a5fa; }
+  83%  { border-color: #a855f7; box-shadow: 0 0 8px #a855f7; }
+  100% { border-color: #ef4444; box-shadow: 0 0 8px #ef4444; }
+}
+@keyframes frame-neon {
+  0%,100% { box-shadow: 0 0 6px #00f5ff, 0 0 12px #00f5ff; border-color: #00f5ff; }
+  50%      { box-shadow: 0 0 14px #00f5ff, 0 0 28px #00f5ff; border-color: #7efff5; }
+}
+@keyframes frame-gold {
+  0%,100% { box-shadow: 0 0 8px #fbbf24; border-color: #fbbf24; }
+  50%      { box-shadow: 0 0 18px #fbbf24, 0 0 4px #fff; border-color: #f59e0b; }
+}
+@keyframes frame-prestige {
+  0%   { border-color: #a855f7; box-shadow: 0 0 10px #a855f7; }
+  33%  { border-color: #fbbf24; box-shadow: 0 0 10px #fbbf24; }
+  66%  { border-color: #22c55e; box-shadow: 0 0 10px #22c55e; }
+  100% { border-color: #a855f7; box-shadow: 0 0 10px #a855f7; }
+}
+.frame-rainbow { animation: frame-rainbow 3s linear infinite; }
+.frame-neon    { animation: frame-neon    2s ease-in-out infinite; }
+.frame-gold    { animation: frame-gold    2.5s ease-in-out infinite; }
+.frame-prestige { animation: frame-prestige 4s linear infinite; }
+
+/* ── Wheel Canvas ─────────────────────────────────────────── */
+#wheelCanvas { display: block; margin: 0 auto; cursor: pointer; }
+
+/* ── Level Badge ──────────────────────────────────────────── */
+.level-badge {
+  display: inline-flex; align-items: center; gap: .2rem;
+  background: linear-gradient(135deg, rgba(249,115,22,.15), rgba(251,191,36,.15));
+  border: 1px solid rgba(251,191,36,.35); border-radius: 99px;
+  padding: .15rem .5rem; font-size: .7rem; font-weight: 800; color: #fbbf24;
+}
+
+/* ── Trivia Teams ─────────────────────────────────────────── */
+.trivia-team-a { background: rgba(59,130,246,.08); border-color: rgba(59,130,246,.3); }
+.trivia-team-b { background: rgba(239,68,68,.08);  border-color: rgba(239,68,68,.3); }
+
   :root { --sidebar-w: 260px; }
   .sidebar {
     position: fixed; top: 0; left: 0; height: 100vh; z-index: 1000;

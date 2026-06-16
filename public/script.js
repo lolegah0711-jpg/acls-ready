@@ -163,6 +163,16 @@ const PAGES = {
   nachrichten:  { title: 'Direktnachrichten',     sub: 'Private Nachrichten zwischen Mitarbeitern' },
   marktplatz:   { title: 'Marktplatz',            sub: 'Kosmetika kaufen & verkaufen' },
   wetten:       { title: 'Coin-Wetten',           sub: 'Wette gegen andere Spieler & Bürger' },
+  tickets:      { title: 'Support-Tickets',       sub: 'Fragen, Bugs & Beschwerden einreichen' },
+  statistiken:  { title: 'Statistik-Trends',      sub: 'Prüfungen, IC-Zeit & Coins – letzte 12 Wochen' },
+  team_vorstellung: { title: 'Mitarbeiter-Vorstellung', sub: 'Lerne das ACLS-Team kennen' },
+  level:        { title: 'Level & Prestige',      sub: 'Globales XP-System · Prestige-Rangliste' },
+  wheel:        { title: 'Daily Wheel',           sub: 'Täglich drehen & Belohnungen sichern' },
+  milestones:   { title: 'Meilensteine',          sub: 'Lebenslange Ziele & besondere Belohnungen' },
+  changelog:    { title: 'Changelog',             sub: 'Was ist neu im ACLS-Portal?' },
+  trivia:       { title: 'Trivia-Team',           sub: 'Team-Quiz in Echtzeit · 2 Teams gegeneinander' },
+  onboarding:   { title: 'Onboarding-Wizard',     sub: 'Deine Einarbeitungs-Checkliste' },
+  profil:       { title: 'Mein Profil',           sub: 'Profilbild, Bio & Kosmetika' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -1241,7 +1251,7 @@ function navigate(page) {
   $('pageContent').innerHTML    = loading();
 
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz, wetten };
+  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz, wetten, tickets, statistiken, team_vorstellung, level, wheel, milestones, changelog, trivia, onboarding, profil };
   (renders[page] || dashboard)();
 }
 
@@ -1731,6 +1741,61 @@ function connectSSE() {
     });
     _sseSource.addEventListener('notification', () => {
       loadNotifCount();
+    });
+    _sseSource.addEventListener('milestone', e => {
+      try { const d = JSON.parse(e.data); toast(`🏆 Meilenstein: ${d.title} (+${d.reward} Coins)`, 'ok'); } catch {}
+    });
+    _sseSource.addEventListener('ticket_update', e => {
+      try { if (_activePage === 'tickets') tickets(); } catch {}
+    });
+    _sseSource.addEventListener('trivia_lobby', e => {
+      try { const d = JSON.parse(e.data); handleTriviaSSE('trivia_lobby', d); } catch {}
+    });
+    _sseSource.addEventListener('trivia_question', e => {
+      try { const d = JSON.parse(e.data); handleTriviaSSE('trivia_question', d); } catch {}
+    });
+    _sseSource.addEventListener('trivia_reveal', e => {
+      try { const d = JSON.parse(e.data); handleTriviaSSE('trivia_reveal', d); } catch {}
+    });
+    _sseSource.addEventListener('trivia_answer', e => {
+      try { /* answerTracker handled inline */ } catch {}
+    });
+    _sseSource.addEventListener('trivia_end', e => {
+      try { const d = JSON.parse(e.data); handleTriviaSSE('trivia_end', d); } catch {}
+    });
+    _sseSource.addEventListener('rank_exam_update', e => {
+      try {
+        const d = JSON.parse(e.data);
+        if (!activeRankExam || d.join_code !== activeRankExam.join_code) return;
+        if (d.m1_data    !== null)      activeRankExam.m1Data    = d.m1_data;
+        if (d.m2_answers)               activeRankExam.m2Answers = d.m2_answers;
+        if (d.m3_ratings)               activeRankExam.m3Ratings = d.m3_ratings;
+        if (d.m3_notes   !== undefined) activeRankExam.m3Notes   = d.m3_notes;
+        const serverM2Idx = d.current_m2_idx ?? currentRankM2Idx;
+        if (d.current_module && d.current_module !== currentRankModule) {
+          currentRankModule = d.current_module;
+          if (d.current_module === 'm1') window.renderRankM1?.();
+          if (d.current_module === 'm2') { currentRankM2Idx = serverM2Idx; window.renderRankM2?.(serverM2Idx); }
+          if (d.current_module === 'm3') window.renderRankM3?.();
+        } else {
+          if (currentRankModule === 'm1') window.renderRankM1?.();
+          if (currentRankModule === 'm2') { currentRankM2Idx = serverM2Idx; window.renderRankM2?.(serverM2Idx); }
+          if (currentRankModule === 'm3') {
+            const ta = document.getElementById('rM3Notes');
+            if (ta && document.activeElement === ta) activeRankExam.m3Notes = ta.value;
+            window.renderRankM3?.();
+          }
+        }
+      } catch {}
+    });
+    _sseSource.addEventListener('rank_exam_done', e => {
+      try {
+        const d = JSON.parse(e.data);
+        if (!activeRankExam || d.join_code !== activeRankExam.join_code) return;
+        activeRankExam = null;
+        closeModal();
+        toast('Prüfung wurde abgeschlossen.', 'info');
+      } catch {}
     });
     _sseSource.onerror = () => { _sseSource.close(); _sseSource = null; setTimeout(connectSSE, 30_000); };
   } catch {}
@@ -5609,6 +5674,7 @@ let examPollTimer      = null;  // setInterval-Handle für Sync-Polling
 let _lastExamSig = '';
 
 function startExamPolling() {
+  // SSE übernimmt Echtzeit-Sync; Polling nur als Fallback (30s) für Verbindungsabbrüche
   stopExamPolling();
   _lastExamSig = '';
   examPollTimer = setInterval(async () => {
@@ -5616,51 +5682,36 @@ function startExamPolling() {
     let resp, state;
     try { resp = await fetch('/api/rank-exam/state', { headers: { 'Content-Type': 'application/json' } }); } catch { return; }
     if (resp.status === 404 || resp.status === 403) {
-      // Prüfung wurde vom anderen Prüfer abgeschlossen oder Session ungültig
       stopExamPolling();
-      activeRankExam = null;
-      closeModal();
-      toast('Prüfung wurde abgeschlossen.', 'info');
+      if (activeRankExam) { activeRankExam = null; closeModal(); toast('Prüfung wurde abgeschlossen.', 'info'); }
       return;
     }
     if (!resp.ok) return;
     try { state = await resp.json(); } catch { return; }
     if (!state || !activeRankExam) return;
-
-    // Signatur um unnötige Re-renders zu vermeiden
     const sig = JSON.stringify([state.m1_data, state.m2_answers, state.m3_ratings, state.m3_notes, state.current_module, state.current_m2_idx]);
-    const changed = sig !== _lastExamSig;
+    if (sig === _lastExamSig) return;
     _lastExamSig = sig;
-
-    // State immer mergen
     if (state.m1_data    !== null)      activeRankExam.m1Data    = state.m1_data;
     if (state.m2_answers)               activeRankExam.m2Answers = state.m2_answers;
     if (state.m3_ratings)               activeRankExam.m3Ratings = state.m3_ratings;
     if (state.m3_notes   !== undefined) activeRankExam.m3Notes   = state.m3_notes;
-
-    if (!changed) return; // nichts geändert → kein Re-render
-
-    // Fragen-Index aus Server übernehmen
     const serverM2Idx = state.current_m2_idx ?? currentRankM2Idx;
-
-    // Modulwechsel → automatisch navigieren
     if (state.current_module && state.current_module !== currentRankModule) {
       currentRankModule = state.current_module;
-      if (state.current_module === 'm1') window.renderRankM1();
-      if (state.current_module === 'm2') { currentRankM2Idx = serverM2Idx; window.renderRankM2(serverM2Idx); }
-      if (state.current_module === 'm3') window.renderRankM3();
+      if (state.current_module === 'm1') window.renderRankM1?.();
+      if (state.current_module === 'm2') { currentRankM2Idx = serverM2Idx; window.renderRankM2?.(serverM2Idx); }
+      if (state.current_module === 'm3') window.renderRankM3?.();
     } else {
-      // Gleiche Ansicht mit neuem Stand aktualisieren
-      if (currentRankModule === 'm1') window.renderRankM1();
-      if (currentRankModule === 'm2') { currentRankM2Idx = serverM2Idx; window.renderRankM2(serverM2Idx); }
+      if (currentRankModule === 'm1') window.renderRankM1?.();
+      if (currentRankModule === 'm2') { currentRankM2Idx = serverM2Idx; window.renderRankM2?.(serverM2Idx); }
       if (currentRankModule === 'm3') {
-        // Textarea-Inhalt retten falls gerade fokussiert
         const ta = document.getElementById('rM3Notes');
         if (ta && document.activeElement === ta) activeRankExam.m3Notes = ta.value;
-        window.renderRankM3();
+        window.renderRankM3?.();
       }
     }
-  }, 2000);
+  }, 30_000); // 30s Fallback — SSE liefert Echtzeit
 }
 
 function stopExamPolling() {
@@ -6711,19 +6762,19 @@ async function saison() {
   // Belohnungsstufen (Track-Tabelle)
   const rewardHtml = d.rewards.map(r => {
     const cell = (track) => {
-      const rew = track === 'vip' ? r.vip : r.free;
-      const claimed = track === 'vip' ? r.vipClaimed : r.freeClaimed;
-      const vipLocked = track === 'vip' && !d.isVip;
-      const claimable = r.reached && !claimed && !vipLocked;
+      const rew = track === 'premium' ? r.premium : r.free;
+      const claimed = track === 'premium' ? r.premiumClaimed : r.freeClaimed;
+      const premLocked = track === 'premium' && !d.premiumUnlocked;
+      const claimable = r.reached && !claimed && !premLocked;
       return `<div style="flex:1;min-width:130px;padding:.55rem .7rem;border-radius:10px;border:1px solid ${claimed ? 'rgba(34,197,94,.4)' : claimable ? 'rgba(168,85,247,.5)' : 'var(--border)'};background:${claimed ? 'rgba(34,197,94,.07)' : claimable ? 'rgba(168,85,247,.08)' : 'var(--surface2)'};opacity:${r.reached ? 1 : .5}">
-        <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${track === 'vip' ? '#fbbf24' : 'var(--muted)'};margin-bottom:.2rem">${track === 'vip' ? '⭐ VIP' : 'Gratis'}</div>
+        <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${track === 'premium' ? '#fbbf24' : 'var(--muted)'};margin-bottom:.2rem">${track === 'premium' ? '🌟 Premium' : 'Gratis'}</div>
         <div style="font-size:.78rem;font-weight:600">${seasonRewardLabel(rew)}</div>
         ${claimed
           ? '<div style="font-size:.66rem;color:#22c55e;font-weight:700;margin-top:.3rem"><i class="fas fa-check"></i> Abgeholt</div>'
           : claimable
             ? `<button class="btn btn-primary btn-sm" style="margin-top:.35rem;padding:.2rem .6rem;font-size:.7rem" onclick="seasonClaimLevel(${r.level},'${track}')">Abholen</button>`
-            : vipLocked && r.reached
-              ? '<div style="font-size:.64rem;color:#fbbf24;margin-top:.3rem"><i class="fas fa-lock"></i> VIP nötig</div>'
+            : premLocked && r.reached
+              ? '<div style="font-size:.64rem;color:#fbbf24;margin-top:.3rem"><i class="fas fa-lock"></i> Premium nötig</div>'
               : ''}
       </div>`;
     };
@@ -6733,7 +6784,7 @@ async function saison() {
         <div style="font-size:1.1rem;font-weight:800;color:${r.reached ? '#fff' : 'var(--muted)'}">${r.level}</div>
       </div>
       ${cell('free')}
-      ${cell('vip')}
+      ${cell('premium')}
     </div>`;
   }).join('');
 
@@ -6747,9 +6798,9 @@ async function saison() {
           <div style="font-size:1.45rem;font-weight:800;margin:.1rem 0">Stufe ${d.level}${atMax ? ' · MAX 🏆' : ''}</div>
           <div style="font-size:.78rem;color:var(--muted)">Verdiene XP durch Minispiele, Tagesbonus, Duelle & Quests. Jede Stufe schaltet Belohnungen frei.</div>
         </div>
-        ${d.isVip ? '<span style="font-size:.7rem;font-weight:800;color:#fbbf24;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.08);padding:.3rem .7rem;border-radius:99px">⭐ VIP aktiv</span>'
+        ${d.premiumUnlocked ? '<span style="font-size:.7rem;font-weight:800;color:#fbbf24;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.08);padding:.3rem .7rem;border-radius:99px">🌟 Premium aktiv</span>'
                   : currentUser?.voter ? ''
-                  : '<button onclick="navigate(\'shop\')" title="VIP-Rolle (30 Tage) im Shop für 2000 Coins" style="font-size:.68rem;font-weight:700;color:#fbbf24;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.08);padding:.3rem .7rem;border-radius:99px;cursor:pointer;font-family:inherit;white-space:nowrap">⭐ VIP-Bahn freischalten → Shop</button>'}
+                  : `<button onclick="buySeasonPremium()" title="Premium-Pass freischalten" style="font-size:.68rem;font-weight:700;color:#fbbf24;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.08);padding:.3rem .7rem;border-radius:99px;cursor:pointer;font-family:inherit;white-space:nowrap">🌟 Premium (${d.premiumCost||500} Coins)</button>`}
       </div>
       <div style="display:flex;align-items:center;gap:.6rem">
         <div style="flex:1;height:14px;background:var(--surface2);border-radius:99px;overflow:hidden;position:relative">
@@ -6779,6 +6830,11 @@ window.seasonClaimQuest = async (id) => {
 window.seasonClaimLevel = async (level, track) => {
   const r = await api('/api/season/claim-level', { method: 'POST', body: { level, track } });
   if (r) { toast('Belohnung abgeholt! 🎁', 'ok'); loadCoins(); saison(); }
+};
+window.buySeasonPremium = async () => {
+  if (!confirm('Premium-Pass für 500 Coins freischalten? Schaltet alle Premium-Belohnungen dieser Saison frei.')) return;
+  const r = await api('/api/season/buy-premium', { method: 'POST' });
+  if (r) { toast('🌟 Premium-Pass freigeschaltet!', 'ok'); updateCoinChip(r.balance); saison(); }
 };
 
 // BATCH 7: Referral-Widget
@@ -7959,4 +8015,666 @@ window.betCancel = async id => {
   if (r) { toast('Wette storniert – Coins zurück.', 'ok'); wetten(); }
 };
 
-// ── Start wird in index.html nach allen Modulen aufgerufen ─────────
+// ════════════════════════════════════════════════════════════════
+//  SUPPORT-TICKETS (H4)
+// ════════════════════════════════════════════════════════════════
+async function tickets() {
+  const data = await api('/api/tickets');
+  if (!data) return;
+  const statusBadge = s => s === 'open' ? '<span class="badge badge-r">Offen</span>' : s === 'in_progress' ? '<span class="badge badge-o" style="background:rgba(251,191,36,.15);color:#fbbf24;border-color:rgba(251,191,36,.3)">In Bearbeitung</span>' : '<span class="badge badge-g">Geschlossen</span>';
+  const catColor = { Bug:'#ef4444', Frage:'#38bdf8', Beschwerde:'#f97316', 'Feature-Wunsch':'#a855f7', Sonstiges:'#9ca3af' };
+  $('pageContent').innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:1rem">
+      <button class="btn btn-primary" onclick="openTicketForm()"><i class="fas fa-plus"></i> Neues Ticket</button>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-head-icon" style="background:rgba(251,113,133,.15)"><i class="fas fa-ticket-alt" style="color:#fb7185"></i></div><div><div class="card-title">Meine Tickets</div><div class="card-sub">${data.length} Einträge</div></div></div>
+      ${data.length ? data.map(t => `
+        <div style="padding:.75rem 0;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:flex-start;gap:.75rem" onclick="openTicket(${t.id})">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.2rem">
+              <span style="font-weight:700;font-size:.88rem">${esc(t.title)}</span>
+              ${statusBadge(t.status)}
+              <span style="font-size:.7rem;padding:.15rem .5rem;border-radius:99px;background:rgba(0,0,0,.15);color:${catColor[t.category]||'#9ca3af'}">${esc(t.category)}</span>
+            </div>
+            <div style="font-size:.77rem;color:var(--muted)">${ago(t.created_at)} · ${t.replies || 0} Antwort(en)${t.assigned_name ? ' · Bearbeiter: ' + esc(t.assigned_name) : ''}</div>
+          </div>
+          <i class="fas fa-chevron-right" style="color:var(--muted);margin-top:.25rem;flex-shrink:0"></i>
+        </div>
+      `).join('') : '<div class="empty"><i class="fas fa-ticket-alt"></i><p>Noch keine Tickets</p></div>'}
+    </div>`;
+}
+
+window.openTicketForm = () => {
+  openModal(`
+    <div class="modal-head"><div class="modal-icon" style="background:rgba(251,113,133,.15)"><i class="fas fa-ticket-alt" style="color:#fb7185"></i></div><div><div class="modal-title">Neues Ticket</div></div><button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Kategorie</label>
+        <select id="tCat" class="form-control">
+          ${['Bug','Frage','Beschwerde','Feature-Wunsch','Sonstiges'].map(c => `<option>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Titel</label><input id="tTitle" class="form-control" maxlength="200" placeholder="Kurze Zusammenfassung"></div>
+      <div class="form-group"><label class="form-label">Beschreibung</label><textarea id="tBody" class="form-control" rows="5" maxlength="2000" placeholder="Beschreibe das Problem oder deine Frage möglichst genau…"></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button><button class="btn btn-primary" onclick="submitTicket()">Absenden</button></div>`);
+};
+
+window.submitTicket = async () => {
+  const r = await api('/api/tickets', { method: 'POST', body: { category: $('tCat').value, title: $('tTitle').value, body: $('tBody').value } });
+  if (r) { closeModal(); toast('Ticket erstellt!', 'ok'); tickets(); }
+};
+
+window.openTicket = async id => {
+  const t = await api(`/api/tickets/${id}`);
+  if (!t) return;
+  const statusOptions = ['open','in_progress','closed'];
+  const statusLabel = { open:'Offen', in_progress:'In Bearbeitung', closed:'Geschlossen' };
+  const isStaff = isAusbilder();
+  openModal(`
+    <div class="modal-head"><div class="modal-icon" style="background:rgba(251,113,133,.15)"><i class="fas fa-ticket-alt" style="color:#fb7185"></i></div>
+      <div><div class="modal-title">${esc(t.title)}</div><div class="modal-sub">${esc(t.category)} · #${t.id}</div></div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      ${isStaff ? `<div style="display:flex;gap:.5rem;margin-bottom:.75rem;align-items:center;flex-wrap:wrap">
+        <span style="font-size:.8rem;color:var(--muted)">Status:</span>
+        ${statusOptions.map(s => `<button class="btn btn-sm ${t.status===s?'btn-primary':'btn-ghost'}" onclick="setTicketStatus(${id},'${s}')">${statusLabel[s]}</button>`).join('')}
+      </div>` : ''}
+      <div style="background:var(--surface2);border-radius:8px;padding:.75rem;margin-bottom:1rem;font-size:.88rem">${esc(t.body)}</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-bottom:1rem">Erstellt ${ago(t.created_at)} von ${esc(t.creator_name)}</div>
+      ${t.replies?.map(r => `
+        <div style="margin-bottom:.75rem;padding:.6rem .75rem;border-radius:8px;background:${r.is_staff?'rgba(34,197,94,.06)':'var(--surface2)'};border:1px solid ${r.is_staff?'rgba(34,197,94,.2)':'var(--border)'}">
+          <div style="font-size:.73rem;color:var(--muted);margin-bottom:.25rem">${esc(r.author_name)}${r.is_staff?' <span style="color:#22c55e;font-weight:700">[Staff]</span>':''} · ${ago(r.created_at)}</div>
+          <div style="font-size:.85rem">${esc(r.body)}</div>
+        </div>`).join('') || ''}
+      <textarea id="ticketReplyBox" class="form-control" rows="3" placeholder="Antwort schreiben…" style="margin-top:.5rem"></textarea>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Schließen</button><button class="btn btn-primary" onclick="replyTicket(${id})"><i class="fas fa-paper-plane"></i> Antworten</button></div>`);
+};
+
+window.setTicketStatus = async (id, status) => {
+  const r = await api(`/api/tickets/${id}`, { method: 'PUT', body: { status } });
+  if (r) { toast('Status aktualisiert', 'ok'); openTicket(id); }
+};
+window.replyTicket = async id => {
+  const body = $('ticketReplyBox')?.value;
+  if (!body?.trim()) { toast('Antwort leer', 'err'); return; }
+  const r = await api(`/api/tickets/${id}/reply`, { method: 'POST', body: { body } });
+  if (r) { toast('Antwort gesendet!', 'ok'); openTicket(id); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  STATISTIK-TRENDS (H9)
+// ════════════════════════════════════════════════════════════════
+async function statistiken() {
+  const d = await api('/api/stats/trends');
+  if (!d) return;
+  const fmt_wk = wk => { const p = (wk||'').split('-'); return p.length>=3?`${p[2]}.${p[1]}`:wk; };
+  const labels = [...new Set([...d.exams.map(r=>r.wk),...d.ic.map(r=>r.wk),...d.coins.map(r=>r.wk)])].sort();
+  $('pageContent').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+      <div class="card"><div class="card-head"><div class="card-head-icon orange"><i class="fas fa-graduation-cap"></i></div><div><div class="card-title">Prüfungen</div><div class="card-sub">pro Woche (12 Wochen)</div></div></div><canvas id="chartExams" height="160"></canvas></div>
+      <div class="card"><div class="card-head"><div class="card-head-icon" style="background:rgba(34,197,94,.15)"><i class="fas fa-clock" style="color:#22c55e"></i></div><div><div class="card-title">IC-Zeit</div><div class="card-sub">Stunden pro Woche</div></div></div><canvas id="chartIc" height="160"></canvas></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+      <div class="card"><div class="card-head"><div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-coins" style="color:#fbbf24"></i></div><div><div class="card-title">Coin-Umsatz</div><div class="card-sub">Verdient vs. Ausgegeben</div></div></div><canvas id="chartCoins" height="160"></canvas></div>
+      <div class="card"><div class="card-head"><div class="card-head-icon" style="background:rgba(168,85,247,.15)"><i class="fas fa-users" style="color:#a855f7"></i></div><div><div class="card-title">Top Prüfer</div><div class="card-sub">letzte 4 Wochen</div></div></div>
+        ${d.topExaminers.map((e,i) => `<div style="display:flex;align-items:center;gap:.75rem;padding:.5rem 0;border-bottom:1px solid var(--border)"><div class="rank-badge${i<3?['',' r2',' r3'][i]:''}">${i+1}</div><div style="flex:1;font-weight:600;font-size:.85rem">${esc(e.examiner_name)}</div><span style="font-size:.8rem;color:var(--orange);font-weight:700">${e.c} Prüfungen</span></div>`).join('')||'<div class="empty"><p>Keine Daten</p></div>'}
+      </div>
+    </div>`;
+  requestAnimationFrame(() => {
+    const chartOpts = (labels, datasets, y_label) => ({
+      type:'line', data:{ labels: labels.map(fmt_wk), datasets },
+      options:{ responsive:true, plugins:{ legend:{ labels:{ color:'#9ca3af', font:{ size:11 } } } }, scales:{ x:{ ticks:{ color:'#6b7280', font:{size:10} }, grid:{color:'rgba(255,255,255,.05)' }}, y:{ ticks:{ color:'#6b7280', font:{size:10} }, grid:{color:'rgba(255,255,255,.05)' }, title:{ display:!!y_label, text:y_label||'', color:'#9ca3af' } } } }
+    });
+    const getVal = (arr, wk, field) => arr.find(r=>r.wk===wk)?.[field] ?? 0;
+    new Chart($('chartExams'), chartOpts(labels, [
+      { label:'Gesamt', data: labels.map(wk=>getVal(d.exams,wk,'total')), borderColor:'#f97316', backgroundColor:'rgba(249,115,22,.1)', tension:.3, fill:true },
+      { label:'Bestanden', data: labels.map(wk=>getVal(d.exams,wk,'passed')), borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,.08)', tension:.3, fill:true },
+    ]));
+    new Chart($('chartIc'), chartOpts(labels, [
+      { label:'IC-Stunden', data: labels.map(wk=>getVal(d.ic,wk,'hours')), borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,.1)', tension:.3, fill:true },
+    ], 'Stunden'));
+    new Chart($('chartCoins'), chartOpts(labels, [
+      { label:'Verdient', data: labels.map(wk=>getVal(d.coins,wk,'earned')), borderColor:'#fbbf24', backgroundColor:'rgba(251,191,36,.1)', tension:.3, fill:true },
+      { label:'Ausgegeben', data: labels.map(wk=>getVal(d.coins,wk,'spent')), borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,.08)', tension:.3, fill:true },
+    ], 'Coins'));
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MITARBEITER-VORSTELLUNG
+// ════════════════════════════════════════════════════════════════
+async function team_vorstellung() {
+  const data = await api('/api/team-profiles');
+  if (!data) return;
+  const roleLabel = { admin:'Admin', ausbilder:'Ausbilder', member:'Mitarbeiter' };
+  const roleColor = { admin:'#ef4444', ausbilder:'#f97316', member:'#22c55e' };
+  const isMine = u => currentUser && u.discord_id === currentUser.discord_id;
+  $('pageContent').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem">
+      ${data.map(u => {
+        const avUrl = u.avatar_custom || (u.avatar && u.discord_id ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128` : null);
+        return `<div class="card" style="text-align:center;padding:1.5rem 1rem">
+          <div style="width:80px;height:80px;border-radius:50%;margin:0 auto .75rem;overflow:hidden;border:3px solid ${roleColor[u.role]||'var(--orange)'};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:700;background:var(--surface2)">
+            ${avUrl ? `<img src="${avUrl}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">` : (u.username||'?')[0].toUpperCase()}
+          </div>
+          <div style="font-weight:800;font-size:1rem">${esc(u.username)}</div>
+          <div style="font-size:.72rem;margin:.2rem 0 .5rem;color:${roleColor[u.role]||'var(--orange)'};font-weight:700;text-transform:uppercase;letter-spacing:.05em">${roleLabel[u.role]||''}${u.rank && u.rank !== 'Mitarbeiter' ? ' · ' + esc(u.rank) : ''}</div>
+          ${u.specialty ? `<div style="font-size:.78rem;color:var(--muted);margin-bottom:.3rem"><i class="fas fa-tools" style="margin-right:.3rem;color:var(--orange)"></i>${esc(u.specialty)}</div>` : ''}
+          ${u.bio ? `<div style="font-size:.8rem;color:var(--muted);line-height:1.5;margin-bottom:.4rem">${esc(u.bio)}</div>` : '<div style="font-size:.78rem;color:var(--surface2);margin-bottom:.4rem">Noch kein Profil ausgefüllt</div>'}
+          ${u.fun_fact ? `<div style="font-size:.75rem;padding:.4rem .7rem;background:var(--surface2);border-radius:8px;color:var(--muted);margin-top:.3rem"><i class="fas fa-star" style="color:#fbbf24;margin-right:.3rem"></i>${esc(u.fun_fact)}</div>` : ''}
+          ${isMine(u) ? `<button class="btn btn-ghost btn-sm" style="margin-top:.75rem;width:100%" onclick="editMyProfile()"><i class="fas fa-edit"></i> Profil bearbeiten</button>` : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+window.editMyProfile = async () => {
+  const data = await api('/api/team-profiles');
+  const me = data?.find(u => u.discord_id === currentUser?.discord_id) || {};
+  openModal(`
+    <div class="modal-head"><div class="modal-icon orange"><i class="fas fa-id-badge"></i></div><div><div class="modal-title">Profil bearbeiten</div></div><button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Über mich (Bio)</label><textarea id="pBio" class="form-control" rows="3" maxlength="500">${esc(me.bio||'')}</textarea></div>
+      <div class="form-group"><label class="form-label">Spezialgebiet</label><input id="pSpec" class="form-control" maxlength="200" value="${esc(me.specialty||'')}"></div>
+      <div class="form-group"><label class="form-label">Fun Fact</label><input id="pFun" class="form-control" maxlength="300" value="${esc(me.fun_fact||'')}"></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button><button class="btn btn-primary" onclick="saveProfile()">Speichern</button></div>`);
+};
+window.saveProfile = async () => {
+  const r = await api('/api/team-profiles/me', { method: 'PUT', body: { bio: $('pBio').value, specialty: $('pSpec').value, fun_fact: $('pFun').value } });
+  if (r) { closeModal(); toast('Profil gespeichert!', 'ok'); team_vorstellung(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  GLOBALES LEVEL-SYSTEM
+// ════════════════════════════════════════════════════════════════
+async function level() {
+  const [me, board] = await Promise.all([api('/api/levels/me'), api('/api/levels')]);
+  if (!me) return;
+  const prestigeStars = n => n > 0 ? `<span style="color:#fbbf24;font-weight:700">✦`.repeat(Math.min(n,5)) + `</span>` : '';
+  $('pageContent').innerHTML = `
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-head"><div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-star" style="color:#fbbf24"></i></div><div><div class="card-title">Mein Level</div><div class="card-sub">Prestige: ${me.prestige || 0}</div></div></div>
+      <div style="display:flex;align-items:center;gap:1.5rem;padding:.75rem 0">
+        <div style="text-align:center;min-width:70px">
+          <div style="font-size:2.5rem;font-weight:800;color:var(--orange);line-height:1">${me.level || 1}</div>
+          <div style="font-size:.7rem;color:var(--muted);font-weight:600;text-transform:uppercase">Level</div>
+          ${prestigeStars(me.prestige || 0)}
+        </div>
+        <div style="flex:1">
+          <div style="display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);margin-bottom:.3rem">
+            <span>${me.total_xp || 0} XP</span><span>Nächstes Level: ${me.xp_next || '–'} XP</span>
+          </div>
+          <div style="height:12px;background:var(--input);border-radius:8px;overflow:hidden">
+            <div style="height:100%;width:${me.xp_pct||0}%;background:linear-gradient(90deg,#f97316,#fbbf24);border-radius:8px;transition:width .5s"></div>
+          </div>
+          <div style="font-size:.73rem;color:var(--muted);margin-top:.25rem">${me.xp_pct||0}% zum nächsten Level · XP durch: Tagesbonus (+25), Prüfungen (+50), Wheel</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-trophy"></i></div><div><div class="card-title">XP-Rangliste</div><div class="card-sub">Top 50 aller Zeiten</div></div></div>
+      ${(board||[]).map((u,i) => `
+        <div class="lb-item" style="${currentUser?.discord_id===u.discord_id?'background:rgba(249,115,22,.06);border-radius:8px;':''}">
+          ${i<3?`<div class="rank-badge${i===0?'':i===1?' r2':' r3'}">${i+1}</div>`:` <div style="width:28px;text-align:center;font-size:.8rem;color:var(--muted);font-weight:700">${i+1}</div>`}
+          <div style="flex:1;min-width:0"><div class="lb-name">${esc(u.username)}${u.prestige>0?` ${prestigeStars(u.prestige)}`:''}</div></div>
+          <div style="text-align:right">
+            <div style="font-size:.88rem;font-weight:700;color:var(--orange)">Lv. ${u.level}</div>
+            <div style="font-size:.7rem;color:var(--muted)">${u.total_xp} XP${u.prestige>0?` · P${u.prestige}`:''}</div>
+          </div>
+        </div>`).join('')||'<div class="empty"><i class="fas fa-star"></i><p>Noch keine Einträge</p></div>'}
+    </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  DAILY BONUS WHEEL
+// ════════════════════════════════════════════════════════════════
+let _wheelSpinning = false;
+
+async function wheel() {
+  const d = await api('/api/wheel/status');
+  if (!d) return;
+  const prizes = d.prizes || [];
+  const colors = prizes.map(p => p.color);
+  const N = prizes.length;
+  const arc = (Math.PI * 2) / N;
+  $('pageContent').innerHTML = `
+    <div style="max-width:480px;margin:0 auto">
+      <div class="card" style="text-align:center;padding:1.5rem">
+        <div style="font-size:1.1rem;font-weight:700;margin-bottom:.5rem"><i class="fas fa-dharmachakra" style="color:#c084fc;margin-right:.5rem"></i>Daily Bonus Wheel</div>
+        <div style="font-size:.83rem;color:var(--muted);margin-bottom:1.25rem">Täglich einmal drehen – Coins & XP gewinnen!</div>
+        <div style="position:relative;display:inline-block">
+          <canvas id="wheelCanvas" width="300" height="300" style="border-radius:50%;box-shadow:0 0 32px rgba(192,132,252,.3)"></canvas>
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:36px;height:36px;border-radius:50%;background:var(--bg);border:3px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:.8rem;pointer-events:none;z-index:2"><i class="fas fa-star" style="color:#fbbf24"></i></div>
+          <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);color:#c084fc;font-size:1.6rem;pointer-events:none">▼</div>
+        </div>
+        <div style="margin-top:1rem">
+          ${d.can_spin
+            ? `<button id="wheelBtn" class="btn btn-primary" style="background:linear-gradient(135deg,#a855f7,#c084fc);border:none;font-size:1rem;padding:.7rem 2rem" onclick="spinWheel()"><i class="fas fa-sync-alt"></i> Jetzt drehen!</button>`
+            : `<div style="padding:.75rem;background:var(--surface2);border-radius:8px;color:var(--muted);font-size:.85rem"><i class="fas fa-check-circle" style="color:#22c55e;margin-right:.4rem"></i>Heute bereits gedreht – morgen wieder!</div>`}
+          <div style="font-size:.73rem;color:var(--muted);margin-top:.5rem">Gesamt gedreht: ${d.total_spins} mal</div>
+        </div>
+      </div>
+    </div>`;
+  // Rad zeichnen
+  const canvas = $('wheelCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let rotation = 0;
+  function drawWheel(rot) {
+    ctx.clearRect(0, 0, 300, 300);
+    for (let i = 0; i < N; i++) {
+      const start = rot + i * arc - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(150, 150);
+      ctx.arc(150, 150, 148, start, start + arc);
+      ctx.closePath();
+      ctx.fillStyle = colors[i];
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.3)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(150, 150);
+      ctx.rotate(start + arc / 2);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 12px Inter, sans-serif';
+      ctx.shadowColor = 'rgba(0,0,0,.5)';
+      ctx.shadowBlur = 3;
+      ctx.fillText(prizes[i].label, 140, 4);
+      ctx.restore();
+    }
+  }
+  drawWheel(0);
+  window._wheelCtx = ctx;
+  window._wheelDraw = drawWheel;
+  window._wheelN = N;
+  window._wheelArc = arc;
+}
+
+window.spinWheel = async () => {
+  if (_wheelSpinning) return;
+  _wheelSpinning = true;
+  const btn = $('wheelBtn');
+  if (btn) btn.disabled = true;
+  const r = await api('/api/wheel/spin', { method: 'POST' });
+  if (!r) { _wheelSpinning = false; if (btn) btn.disabled = false; return; }
+  const targetIdx = r.prize_idx;
+  const N = window._wheelN || 8;
+  const arc = window._wheelArc || (Math.PI * 2 / N);
+  // Drehe so, dass targetIdx oben (unter dem Pfeil) landet
+  const targetAngle = -(targetIdx * arc + arc / 2);
+  const totalRotation = Math.PI * 2 * 5 + targetAngle; // 5 Umdrehungen + Ziel
+  const startTime = performance.now();
+  const duration = 4000;
+  function animate(now) {
+    const elapsed = now - startTime;
+    const t = Math.min(elapsed / duration, 1);
+    const ease = 1 - Math.pow(1 - t, 4);
+    const currentRot = totalRotation * ease;
+    window._wheelDraw?.(currentRot);
+    if (t < 1) { requestAnimationFrame(animate); }
+    else {
+      _wheelSpinning = false;
+      const prize = r.prize;
+      openModal(`
+        <div style="text-align:center;padding:2rem 1rem">
+          <div style="font-size:3rem;margin-bottom:.5rem">🎉</div>
+          <div style="font-size:1.4rem;font-weight:800;color:${prize.color||'var(--orange)'}">${esc(prize.label)}</div>
+          <div style="font-size:.85rem;color:var(--muted);margin-top:.5rem">
+            ${prize.coins>0?`+${prize.coins} Coins `:''} ${prize.xp>0?`+${prize.xp} XP`:''}
+          </div>
+          <button class="btn btn-primary" style="margin-top:1.25rem" onclick="closeModal();wheel()">Super!</button>
+        </div>`);
+    }
+  }
+  requestAnimationFrame(animate);
+};
+
+// ════════════════════════════════════════════════════════════════
+//  MILESTONE-SYSTEM
+// ════════════════════════════════════════════════════════════════
+async function milestones() {
+  const data = await api('/api/milestones');
+  if (!data) return;
+  const done = data.filter(m => m.completed);
+  const pending = data.filter(m => !m.completed);
+  $('pageContent').innerHTML = `
+    <div style="display:flex;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap">
+      <div class="stat-card"><div class="stat-val">${done.length}</div><div class="stat-lab">Abgeschlossen</div></div>
+      <div class="stat-card"><div class="stat-val">${pending.length}</div><div class="stat-lab">Offen</div></div>
+    </div>
+    ${pending.length ? `<div class="card" style="margin-bottom:1rem">
+      <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-flag"></i></div><div><div class="card-title">Offene Meilensteine</div></div></div>
+      ${pending.map(m => {
+        const pct = Math.min(100, Math.round(m.progress / m.goal * 100));
+        return `<div style="display:flex;align-items:center;gap:.75rem;padding:.65rem 0;border-bottom:1px solid var(--border)">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas ${m.icon}" style="color:var(--orange)"></i></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:.85rem">${esc(m.title)}</div>
+            <div style="height:5px;background:var(--input);border-radius:3px;overflow:hidden;margin:.2rem 0;max-width:200px">
+              <div style="height:100%;width:${pct}%;background:var(--orange);border-radius:3px;transition:width .4s"></div>
+            </div>
+            <div style="font-size:.7rem;color:var(--muted)">${m.progress}/${m.goal} · +${m.reward} Coins</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
+    ${done.length ? `<div class="card">
+      <div class="card-head"><div class="card-head-icon" style="background:rgba(34,197,94,.15)"><i class="fas fa-check-circle" style="color:#22c55e"></i></div><div><div class="card-title">Abgeschlossen</div></div></div>
+      ${done.map(m => `<div style="display:flex;align-items:center;gap:.75rem;padding:.6rem 0;border-bottom:1px solid var(--border)">
+        <div style="width:36px;height:36px;border-radius:50%;background:rgba(34,197,94,.12);border:2px solid rgba(34,197,94,.3);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas ${m.icon}" style="color:#22c55e"></i></div>
+        <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:.85rem">${esc(m.title)}</div><div style="font-size:.7rem;color:var(--muted)">${ago(m.completed_at)} · +${m.reward} Coins</div></div>
+        <i class="fas fa-check" style="color:#22c55e"></i>
+      </div>`).join('')}
+    </div>` : ''}`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  CHANGELOG-SYSTEM
+// ════════════════════════════════════════════════════════════════
+async function changelog() {
+  const data = await api('/api/changelogs');
+  if (!data) return;
+  const typeBadge = t => t === 'feature' ? '<span class="badge badge-g" style="font-size:.65rem">NEU</span>' : t === 'fix' ? '<span class="badge badge-r" style="font-size:.65rem">FIX</span>' : '<span class="badge" style="background:rgba(96,165,250,.15);color:#60a5fa;border-color:rgba(96,165,250,.3);font-size:.65rem">UPDATE</span>';
+  $('pageContent').innerHTML = `
+    ${isAdmin() ? `<div style="display:flex;justify-content:flex-end;margin-bottom:1rem"><button class="btn btn-primary btn-sm" onclick="openChangelogForm()"><i class="fas fa-plus"></i> Eintrag</button></div>` : ''}
+    <div class="card">
+      <div class="card-head"><div class="card-head-icon" style="background:rgba(110,231,183,.12)"><i class="fas fa-code-branch" style="color:#6ee7b7"></i></div><div><div class="card-title">Changelog</div><div class="card-sub">${data.length} Einträge</div></div></div>
+      <div style="position:relative;padding-left:1.5rem">
+        <div style="position:absolute;left:.6rem;top:0;bottom:0;width:2px;background:var(--border);border-radius:1px"></div>
+        ${data.map(e => `
+          <div style="position:relative;padding:.75rem 0 .75rem .75rem;border-bottom:1px solid var(--border)">
+            <div style="position:absolute;left:-.9rem;top:1.1rem;width:10px;height:10px;border-radius:50%;background:${e.type==='feature'?'#22c55e':e.type==='fix'?'#ef4444':'#60a5fa'};border:2px solid var(--bg)"></div>
+            <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.2rem;flex-wrap:wrap">
+              <span style="font-weight:800;font-size:.9rem">${esc(e.title)}</span>
+              ${typeBadge(e.type)}
+              <span style="font-size:.72rem;background:var(--surface2);padding:.1rem .5rem;border-radius:99px;color:var(--muted)">v${esc(e.version)}</span>
+            </div>
+            <div style="font-size:.8rem;color:var(--muted);line-height:1.55;margin-bottom:.2rem">${esc(e.body)}</div>
+            <div style="font-size:.7rem;color:var(--surface3)">${fmt(e.released_at)}</div>
+            ${isAdmin() ? `<button class="btn btn-ghost btn-sm" style="margin-top:.3rem;color:#ef4444" onclick="deleteChangelog(${e.id})"><i class="fas fa-trash"></i></button>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+window.openChangelogForm = () => {
+  openModal(`
+    <div class="modal-head"><div class="modal-icon" style="background:rgba(110,231,183,.12)"><i class="fas fa-code-branch" style="color:#6ee7b7"></i></div><div><div class="modal-title">Neuer Changelog-Eintrag</div></div><button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Version</label><input id="clVer" class="form-control" placeholder="z.B. 2.1.0"></div>
+      <div class="form-group"><label class="form-label">Typ</label><select id="clType" class="form-control"><option value="feature">Feature (NEU)</option><option value="fix">Fix</option><option value="update">Update</option></select></div>
+      <div class="form-group"><label class="form-label">Titel</label><input id="clTitle" class="form-control" maxlength="200"></div>
+      <div class="form-group"><label class="form-label">Beschreibung</label><textarea id="clBody" class="form-control" rows="4" maxlength="2000"></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button><button class="btn btn-primary" onclick="submitChangelog()">Speichern</button></div>`);
+};
+window.submitChangelog = async () => {
+  const r = await api('/api/changelogs', { method: 'POST', body: { version: $('clVer').value, type: $('clType').value, title: $('clTitle').value, body: $('clBody').value } });
+  if (r) { closeModal(); toast('Eintrag gespeichert!', 'ok'); changelog(); }
+};
+window.deleteChangelog = async id => {
+  if (!confirm('Eintrag löschen?')) return;
+  const r = await api(`/api/changelogs/${id}`, { method: 'DELETE' });
+  if (r) { toast('Gelöscht', 'ok'); changelog(); }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  TRIVIA-TEAM MULTIPLAYER
+// ════════════════════════════════════════════════════════════════
+let _triviaRoom = null;
+let _triviaTimer = null;
+let _triviaTimeLeft = 20;
+
+async function trivia() {
+  const rooms = await api('/api/trivia/rooms');
+  $('pageContent').innerHTML = `
+    <div style="display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="createTriviaRoom()"><i class="fas fa-plus"></i> Neuer Raum</button>
+      <button class="btn btn-ghost" onclick="joinTriviaByCode()"><i class="fas fa-sign-in-alt"></i> Per Code beitreten</button>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-head-icon" style="background:rgba(244,114,182,.15)"><i class="fas fa-users-cog" style="color:#f472b6"></i></div><div><div class="card-title">Offene Trivia-Räume</div><div class="card-sub">${(rooms||[]).length} verfügbar</div></div></div>
+      ${(rooms||[]).length ? rooms.map(r => `
+        <div style="display:flex;align-items:center;gap:.75rem;padding:.65rem 0;border-bottom:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:.9rem">${esc(r.team_a_name)} <span style="color:var(--muted)">vs</span> ${esc(r.team_b_name)}</div>
+            <div style="font-size:.73rem;color:var(--muted)">${r.player_count} Spieler · Code: <code style="background:var(--surface2);padding:.1rem .4rem;border-radius:4px">${r.code}</code></div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="joinTriviaRoom('${r.code}')">Beitreten</button>
+        </div>`).join('') : '<div class="empty"><i class="fas fa-users-cog"></i><p>Keine offenen Räume – erstelle einen!</p></div>'}
+    </div>`;
+}
+
+window.createTriviaRoom = () => {
+  openModal(`
+    <div class="modal-head"><div class="modal-icon" style="background:rgba(244,114,182,.15)"><i class="fas fa-users-cog" style="color:#f472b6"></i></div><div><div class="modal-title">Neuer Trivia-Raum</div></div><button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Team A Name</label><input id="tA" class="form-control" value="Team A" maxlength="30"></div>
+      <div class="form-group"><label class="form-label">Team B Name</label><input id="tB" class="form-control" value="Team B" maxlength="30"></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button><button class="btn btn-primary" onclick="doCreateRoom()">Erstellen</button></div>`);
+};
+window.doCreateRoom = async () => {
+  const r = await api('/api/trivia/rooms', { method: 'POST', body: { team_a_name: $('tA').value, team_b_name: $('tB').value } });
+  if (r) { closeModal(); toast(`Raum erstellt: ${r.code}`, 'ok'); openTriviaLobby(r.code); }
+};
+window.joinTriviaByCode = () => {
+  openModal(`
+    <div class="modal-head"><div class="modal-icon" style="background:rgba(244,114,182,.15)"><i class="fas fa-sign-in-alt" style="color:#f472b6"></i></div><div><div class="modal-title">Raum beitreten</div></div><button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Raum-Code</label><input id="roomCode" class="form-control" placeholder="z.B. A1B2C" maxlength="10" style="text-transform:uppercase"></div>
+      <div style="display:flex;gap:.5rem;margin-top:.5rem">
+        <button class="btn btn-primary" onclick="joinTriviaRoom(document.getElementById('roomCode').value,'a')">Team A</button>
+        <button class="btn btn-ghost" onclick="joinTriviaRoom(document.getElementById('roomCode').value,'b')">Team B</button>
+      </div>
+    </div>`);
+};
+window.joinTriviaRoom = async (code, team = 'a') => {
+  const r = await api(`/api/trivia/rooms/${code}/join`, { method: 'POST', body: { team } });
+  if (r) { closeModal(); openTriviaLobby(code); }
+};
+
+async function openTriviaLobby(code) {
+  _triviaRoom = null;
+  const refresh = async () => {
+    const room = await api(`/api/trivia/rooms/${code}`);
+    if (!room) return;
+    _triviaRoom = room;
+    const isHost = currentUser?.discord_id === room.host_did;
+    $('pageContent').innerHTML = `
+      <div class="card" style="max-width:500px;margin:0 auto">
+        <div class="card-head"><div class="modal-icon" style="background:rgba(244,114,182,.15)"><i class="fas fa-users-cog" style="color:#f472b6"></i></div><div><div class="card-title">Trivia Lobby – <code>${room.code}</code></div></div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+          <div style="text-align:center;padding:.75rem;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:8px">
+            <div style="font-weight:800;color:#60a5fa">${esc(room.team_a_name)}</div>
+            ${room.players.filter(p=>p.team==='a').map(p=>`<div style="font-size:.8rem;color:var(--muted)">${esc(p.username)}</div>`).join('')||'<div style="font-size:.75rem;color:var(--surface3)">Leer</div>'}
+            <button class="btn btn-ghost btn-sm" style="margin-top:.4rem" onclick="joinTriviaRoom('${room.code}','a')">Wechseln</button>
+          </div>
+          <div style="text-align:center;padding:.75rem;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px">
+            <div style="font-weight:800;color:#f87171">${esc(room.team_b_name)}</div>
+            ${room.players.filter(p=>p.team==='b').map(p=>`<div style="font-size:.8rem;color:var(--muted)">${esc(p.username)}</div>`).join('')||'<div style="font-size:.75rem;color:var(--surface3)">Leer</div>'}
+            <button class="btn btn-ghost btn-sm" style="margin-top:.4rem" onclick="joinTriviaRoom('${room.code}','b')">Wechseln</button>
+          </div>
+        </div>
+        ${isHost
+          ? `<button class="btn btn-primary" style="width:100%" onclick="startTrivia('${room.code}')"><i class="fas fa-play"></i> Spiel starten (${room.players.length} Spieler)</button>`
+          : `<div style="text-align:center;color:var(--muted);font-size:.85rem"><i class="fas fa-hourglass-half" style="margin-right:.4rem"></i>Warten auf Host…</div>`}
+      </div>`;
+  };
+  await refresh();
+  navigate('trivia');
+}
+
+async function startTrivia(code) {
+  const r = await api(`/api/trivia/rooms/${code}/start`, { method: 'POST' });
+  if (r) toast('Spiel gestartet!', 'ok');
+}
+
+// SSE: Trivia-Events
+function handleTriviaSSE(eventName, data) {
+  if (!_triviaRoom || data.code !== _triviaRoom.code) return;
+  if (eventName === 'trivia_lobby') { if (_activePage === 'trivia') openTriviaLobby(data.code); return; }
+  if (eventName === 'trivia_question') renderTriviaQuestion(data);
+  if (eventName === 'trivia_reveal') renderTriviaReveal(data);
+  if (eventName === 'trivia_end') renderTriviaEnd(data);
+}
+
+function renderTriviaQuestion(data) {
+  const q = data.question;
+  const opts = JSON.parse(q.options || '[]');
+  $('pageContent').innerHTML = `
+    <div class="card" style="max-width:500px;margin:0 auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <span style="font-size:.8rem;color:var(--muted)">Frage ${(data.q_idx||0)+1}</span>
+        <span id="triviaTimer" style="font-size:1.2rem;font-weight:800;color:var(--orange)">20</span>
+      </div>
+      <div style="font-size:.95rem;font-weight:600;margin-bottom:1.25rem;line-height:1.55">${esc(q.q)}</div>
+      <div style="display:grid;gap:.5rem">
+        ${opts.map((o,i) => `<button class="btn btn-ghost" style="text-align:left;font-size:.85rem;padding:.65rem .9rem" onclick="answerTrivia('${_triviaRoom?.code}','${esc(o)}',this)">${esc(o)}</button>`).join('')}
+      </div>
+    </div>`;
+  if (_triviaTimer) clearInterval(_triviaTimer);
+  _triviaTimeLeft = 20;
+  _triviaTimer = setInterval(() => {
+    _triviaTimeLeft--;
+    const el = $('triviaTimer');
+    if (el) { el.textContent = _triviaTimeLeft; if (_triviaTimeLeft <= 5) el.style.color = '#ef4444'; }
+    if (_triviaTimeLeft <= 0) clearInterval(_triviaTimer);
+  }, 1000);
+}
+
+function renderTriviaReveal(data) {
+  if (_triviaTimer) { clearInterval(_triviaTimer); _triviaTimer = null; }
+  document.querySelectorAll('#pageContent .btn').forEach(btn => { btn.disabled = true; });
+  const msg = `<div style="text-align:center;padding:.75rem;background:var(--surface2);border-radius:8px;margin-top:.75rem"><div style="font-weight:700">Richtige Antwort: <span style="color:#22c55e">${esc(data.correct_answer)}</span></div><div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">Scores: ${_triviaRoom?.team_a_name||'A'} ${data.scores?.a||0} – ${data.scores?.b||0} ${_triviaRoom?.team_b_name||'B'}</div></div>`;
+  const card = $('pageContent')?.querySelector('.card');
+  if (card) card.insertAdjacentHTML('beforeend', msg);
+}
+
+function renderTriviaEnd(data) {
+  if (_triviaTimer) { clearInterval(_triviaTimer); _triviaTimer = null; }
+  const winnerName = data.winner === 'a' ? (_triviaRoom?.team_a_name||'Team A') : data.winner === 'b' ? (_triviaRoom?.team_b_name||'Team B') : null;
+  $('pageContent').innerHTML = `
+    <div class="card" style="max-width:400px;margin:0 auto;text-align:center;padding:2rem 1.5rem">
+      <div style="font-size:3rem;margin-bottom:.5rem">${data.winner==='draw'?'🤝':'🏆'}</div>
+      <div style="font-size:1.3rem;font-weight:800;margin-bottom:.5rem">${winnerName ? esc(winnerName) + ' gewinnt!' : 'Unentschieden!'}</div>
+      <div style="font-size:1rem;color:var(--muted)">${data.score_a} : ${data.score_b}</div>
+      ${winnerName ? `<div style="font-size:.8rem;color:#fbbf24;margin-top:.5rem">Gewinner erhalten 100 Coins!</div>` : ''}
+      <button class="btn btn-primary" style="margin-top:1.25rem" onclick="_triviaRoom=null;trivia()"><i class="fas fa-arrow-left"></i> Zurück zur Lobby</button>
+    </div>`;
+  _triviaRoom = null;
+}
+
+window.answerTrivia = async (code, answer, btn) => {
+  btn.style.opacity = '.5';
+  btn.disabled = true;
+  const r = await api(`/api/trivia/rooms/${code}/answer`, { method: 'POST', body: { answer } });
+  if (r) {
+    btn.style.borderColor = r.correct ? '#22c55e' : '#ef4444';
+    btn.style.background = r.correct ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.08)';
+    btn.style.opacity = '1';
+    if (r.correct) toast('Richtig! 🎉', 'ok');
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  ONBOARDING-WIZARD (M2)
+// ════════════════════════════════════════════════════════════════
+async function onboarding() {
+  const d = await api('/api/onboarding/mine');
+  if (!d) return;
+  const { items, done, pct } = d;
+  $('pageContent').innerHTML = `
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-head"><div class="card-head-icon" style="background:rgba(74,222,128,.15)"><i class="fas fa-tasks" style="color:#4ade80"></i></div><div><div class="card-title">Onboarding-Wizard</div><div class="card-sub">Deine Einarbeitungs-Checkliste</div></div></div>
+      <div style="margin-bottom:1rem">
+        <div style="display:flex;justify-content:space-between;font-size:.82rem;color:var(--muted);margin-bottom:.4rem"><span>${done.length} von ${items.length} erledigt</span><span>${pct}%</span></div>
+        <div style="height:12px;background:var(--input);border-radius:8px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:8px;transition:width .5s"></div>
+        </div>
+      </div>
+      ${pct >= 100 ? `<div style="text-align:center;padding:1rem;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px;color:#22c55e;font-weight:700"><i class="fas fa-check-circle" style="margin-right:.4rem"></i>Onboarding abgeschlossen! Willkommen im Team 🎉</div>` : ''}
+      ${items.map(item => {
+        const isDone = done.includes(item.id);
+        return `<div style="display:flex;align-items:flex-start;gap:.75rem;padding:.65rem 0;border-bottom:1px solid var(--border);opacity:${isDone?'.7':'1'}">
+          <div style="width:22px;height:22px;border-radius:4px;border:2px solid ${isDone?'#22c55e':'var(--border)'};background:${isDone?'rgba(34,197,94,.15)':'transparent'};flex-shrink:0;margin-top:.1rem;display:flex;align-items:center;justify-content:center">
+            ${isDone?'<i class="fas fa-check" style="color:#22c55e;font-size:.6rem"></i>':''}
+          </div>
+          <div style="flex:1">
+            <div style="font-weight:${isDone?'400':'600'};font-size:.88rem;${isDone?'text-decoration:line-through;color:var(--muted)':''}">${esc(item.label)}</div>
+            ${item.description?`<div style="font-size:.75rem;color:var(--muted);margin-top:.15rem">${esc(item.description)}</div>`:''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  PROFILBILD-UPLOAD (L1) — Profil-Seite
+// ════════════════════════════════════════════════════════════════
+async function profil() {
+  if (!currentUser) { navigate('dashboard'); return; }
+  const avUrl = currentUser.avatar_custom || (currentUser.avatar && currentUser.discord_id
+    ? `https://cdn.discordapp.com/avatars/${currentUser.discord_id}/${currentUser.avatar}.png?size=128` : null);
+  $('pageContent').innerHTML = `
+    <div style="max-width:480px;margin:0 auto">
+      <div class="card" style="text-align:center;padding:2rem 1.5rem;margin-bottom:1rem">
+        <div id="profilAvBox" style="width:100px;height:100px;border-radius:50%;margin:0 auto 1rem;overflow:hidden;border:3px solid var(--orange);display:flex;align-items:center;justify-content:center;font-size:2.2rem;font-weight:700;background:var(--surface2)">
+          ${avUrl ? `<img id="profilAv" src="${avUrl}" style="width:100%;height:100%;object-fit:cover">` : (currentUser.username||'?')[0].toUpperCase()}
+        </div>
+        <div style="font-size:1.1rem;font-weight:800">${esc(currentUser.username)}</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem">${currentUser.role}</div>
+        <input type="file" id="avatarFile" accept="image/*" style="display:none" onchange="previewAvatar(this)">
+        <div style="display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="$('avatarFile').click()"><i class="fas fa-upload"></i> Profilbild hochladen</button>
+          ${currentUser.avatar_custom ? `<button class="btn btn-ghost btn-sm" onclick="removeAvatar()"><i class="fas fa-times"></i> Zurücksetzen</button>` : ''}
+        </div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:.5rem">Max. 300 KB · JPG/PNG/WebP</div>
+      </div>
+      <div class="card" style="padding:1.25rem">
+        <div style="font-weight:700;margin-bottom:.75rem"><i class="fas fa-id-badge" style="color:var(--orange);margin-right:.4rem"></i>Mein Steckbrief</div>
+        <div class="form-group"><label class="form-label">Bio</label><textarea id="prBio" class="form-control" rows="3" maxlength="500">${esc(currentUser.bio||'')}</textarea></div>
+        <div class="form-group"><label class="form-label">Spezialgebiet</label><input id="prSpec" class="form-control" maxlength="200" value="${esc(currentUser.specialty||'')}"></div>
+        <div class="form-group"><label class="form-label">Fun Fact</label><input id="prFun" class="form-control" maxlength="300" value="${esc(currentUser.fun_fact||'')}"></div>
+        <button class="btn btn-primary" onclick="saveOwnProfile()">Speichern</button>
+      </div>
+    </div>`;
+}
+
+window.previewAvatar = file => {
+  const f = file.files[0];
+  if (!f) return;
+  if (f.size > 3_000_000) { toast('Bild zu groß! Max 3 MB.', 'err'); return; }
+  compressImage(f, 256, 0.85, dataUrl => {
+    const box = $('profilAvBox');
+    if (box) box.innerHTML = `<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover" id="profilAv">`;
+    uploadAvatar(dataUrl);
+  });
+};
+window.uploadAvatar = async dataUrl => {
+  const r = await api('/api/upload/avatar', { method: 'POST', body: { dataUrl } });
+  if (r) {
+    toast('Profilbild gespeichert!', 'ok');
+    if (currentUser) currentUser.avatar_custom = r.dataUrl;
+    // User-Widget aktualisieren
+    const uBox = document.querySelector('#uAvatarBox img') || document.querySelector('#uAvatarBox');
+    if (uBox && uBox.tagName === 'IMG') uBox.src = r.dataUrl;
+  }
+};
+window.removeAvatar = async () => {
+  if (!confirm('Profilbild zurücksetzen?')) return;
+  const r = await api('/api/upload/avatar', { method: 'DELETE' });
+  if (r) { toast('Zurückgesetzt', 'ok'); if (currentUser) { currentUser.avatar_custom = null; } profil(); }
+};
+window.saveOwnProfile = async () => {
+  const r = await api('/api/team-profiles/me', { method: 'PUT', body: { bio: $('prBio').value, specialty: $('prSpec').value, fun_fact: $('prFun').value } });
+  if (r) { toast('Profil gespeichert!', 'ok'); if (currentUser) { currentUser.bio = $('prBio').value; currentUser.specialty = $('prSpec').value; currentUser.fun_fact = $('prFun').value; } }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  Start wird in index.html nach allen Modulen aufgerufen ─────────

@@ -747,6 +747,11 @@ function initDb() {
   // is_seeded: 1 = von Seed generiert (wird bei Neustart neu gesetzt), 0 = Admin-eigene Frage (bleibt erhalten)
   try { db.exec('ALTER TABLE exam_questions ADD COLUMN is_seeded INTEGER DEFAULT 1'); } catch(e) {}
   try { db.exec("ALTER TABLE users ADD COLUMN rank TEXT DEFAULT 'Mitarbeiter'"); } catch(e) {}
+  try { db.exec("ALTER TABLE season_pass ADD COLUMN premium_unlocked INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { db.exec("ALTER TABLE users ADD COLUMN avatar_custom TEXT"); } catch {}
+  try { db.exec("ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''"); } catch {}
+  try { db.exec("ALTER TABLE users ADD COLUMN fun_fact TEXT DEFAULT ''"); } catch {}
+  try { db.exec("ALTER TABLE users ADD COLUMN specialty TEXT DEFAULT ''"); } catch {}
   try { db.exec('ALTER TABLE rank_exams ADD COLUMN examiner2_id INTEGER REFERENCES users(id)'); } catch(e) {}
   try { db.exec("ALTER TABLE active_rank_exams ADD COLUMN current_module TEXT DEFAULT 'm1'"); } catch(e) {}
   try { db.exec("ALTER TABLE active_rank_exams ADD COLUMN current_m2_idx INTEGER DEFAULT 0"); } catch(e) {}
@@ -1068,6 +1073,110 @@ function initDb() {
   try { db.exec('ALTER TABLE idle_saves ADD COLUMN research_points INTEGER NOT NULL DEFAULT 0'); } catch {}
   try { db.exec("ALTER TABLE idle_saves ADD COLUMN research TEXT NOT NULL DEFAULT '{}'"); } catch {}
   try { db.exec('ALTER TABLE idle_saves ADD COLUMN active_contract TEXT'); } catch {}
+
+  // ── Persistenter Rate Limiter ────────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS rate_limits (
+    key    TEXT PRIMARY KEY,
+    count  INTEGER NOT NULL DEFAULT 0,
+    reset  INTEGER NOT NULL DEFAULT 0
+  )`);
+
+  // ── Support-Tickets ──────────────────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS tickets (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    creator_did  TEXT NOT NULL,
+    creator_name TEXT NOT NULL,
+    category     TEXT NOT NULL DEFAULT 'allgemein',
+    title        TEXT NOT NULL,
+    body         TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'open',
+    assigned_did TEXT,
+    assigned_name TEXT,
+    created_at   TEXT DEFAULT (datetime('now')),
+    updated_at   TEXT DEFAULT (datetime('now')),
+    closed_at    TEXT
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS ticket_replies (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id  INTEGER NOT NULL REFERENCES tickets(id),
+    author_did TEXT NOT NULL,
+    author_name TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    is_staff   INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_tickets_did ON tickets(creator_did)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_treply_tid ON ticket_replies(ticket_id)'); } catch {}
+
+  // ── Globales Level-System ────────────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS player_levels (
+    discord_id TEXT PRIMARY KEY,
+    username   TEXT NOT NULL,
+    total_xp   INTEGER NOT NULL DEFAULT 0,
+    level      INTEGER NOT NULL DEFAULT 1,
+    prestige   INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`);
+
+  // ── Mitarbeiter-Vorstellung ──────────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS staff_profiles (
+    user_id     INTEGER PRIMARY KEY REFERENCES users(id),
+    bio         TEXT NOT NULL DEFAULT '',
+    specialty   TEXT NOT NULL DEFAULT '',
+    fun_fact    TEXT NOT NULL DEFAULT '',
+    show_public INTEGER NOT NULL DEFAULT 1,
+    sort_order  INTEGER NOT NULL DEFAULT 99
+  )`);
+
+  // ── Daily Bonus Wheel ────────────────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS daily_wheel (
+    discord_id    TEXT PRIMARY KEY,
+    last_spin_date TEXT NOT NULL DEFAULT '',
+    total_spins   INTEGER NOT NULL DEFAULT 0
+  )`);
+
+  // ── Milestone-System ─────────────────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS milestone_progress (
+    discord_id     TEXT NOT NULL,
+    milestone_key  TEXT NOT NULL,
+    progress       INTEGER NOT NULL DEFAULT 0,
+    completed_at   TEXT,
+    PRIMARY KEY (discord_id, milestone_key)
+  )`);
+
+  // ── Changelog ────────────────────────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS changelogs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    version     TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    type        TEXT NOT NULL DEFAULT 'update',
+    released_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`);
+
+  // ── Trivia-Team ──────────────────────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS trivia_rooms (
+    code        TEXT PRIMARY KEY,
+    status      TEXT NOT NULL DEFAULT 'lobby',
+    team_a_name TEXT NOT NULL DEFAULT 'Team A',
+    team_b_name TEXT NOT NULL DEFAULT 'Team B',
+    score_a     INTEGER NOT NULL DEFAULT 0,
+    score_b     INTEGER NOT NULL DEFAULT 0,
+    q_idx       INTEGER NOT NULL DEFAULT 0,
+    question_ids TEXT NOT NULL DEFAULT '[]',
+    current_q   TEXT,
+    created_at  TEXT DEFAULT (datetime('now')),
+    host_did    TEXT NOT NULL
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS trivia_players (
+    room_code  TEXT NOT NULL,
+    discord_id TEXT NOT NULL,
+    username   TEXT NOT NULL,
+    team       TEXT NOT NULL DEFAULT 'a',
+    answered   INTEGER NOT NULL DEFAULT 0,
+    correct    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (room_code, discord_id)
+  )`);
 
   // ── Strecken-Editor + Ghost-Rennen (Autorennen) ─────────────
   db.exec(`CREATE TABLE IF NOT EXISTS custom_tracks (
