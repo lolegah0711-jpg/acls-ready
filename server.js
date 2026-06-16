@@ -2721,10 +2721,11 @@ app.get('/api/admin/analytics', requireAdmin, (req, res) => {
   `).all(days);
 
   const topEarners = db.prepare(`
-    SELECT discord_id, MAX(username) as username, SUM(amount) as net
-    FROM coin_transactions
-    WHERE created_at >= datetime('now', '-7 days') AND amount > 0
-    GROUP BY discord_id
+    SELECT ct.discord_id, u.username, SUM(ct.amount) as net
+    FROM coin_transactions ct
+    LEFT JOIN users u ON u.discord_id = ct.discord_id
+    WHERE ct.created_at >= datetime('now', '-7 days') AND ct.amount > 0
+    GROUP BY ct.discord_id
     ORDER BY net DESC
     LIMIT 10
   `).all();

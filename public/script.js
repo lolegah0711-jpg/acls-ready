@@ -567,13 +567,13 @@ async function loadVoterTeam() {
     const bc = isL?'rgba(201,162,39,.45)':u.role==='admin'?'rgba(249,115,22,.3)':u.role==='ausbilder'?'rgba(96,165,250,.2)':'var(--border)';
     window._gbNames = window._gbNames || {};
     window._gbNames[u.id] = u.username;
-    return `<div onclick="openGuestbookModal(${u.id})" title="Gästebuch öffnen" style="cursor:pointer;background:var(--surface);border:1px solid ${bc};border-radius:var(--r);padding:1rem .85rem;display:flex;flex-direction:column;align-items:center;gap:.5rem;text-align:center;transition:transform .12s${isL?';box-shadow:0 0 14px rgba(201,162,39,.15)':''}" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+    return `<div onclick="openSteckbrief(${u.id})" title="Steckbrief öffnen" style="cursor:pointer;background:var(--surface);border:1px solid ${bc};border-radius:var(--r);padding:1rem .85rem;display:flex;flex-direction:column;align-items:center;gap:.5rem;text-align:center;transition:transform .12s${isL?';box-shadow:0 0 14px rgba(201,162,39,.15)':''}" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
       ${isL?'<i class="fas fa-crown" style="color:#c9a227;font-size:.8rem"></i>':''}
       ${av(u, isL)}
       <div style="font-weight:700;font-size:.9rem;${nameColorCss(u.equipped_namecolor)}">${decoEmoji(u.equipped_deco)}${esc(u.username)}</div>
       ${titleLine(u.equipped_title)}
       <span style="font-size:.68rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;background:${rb};color:${rc}">${rn}</span>
-      <span style="font-size:.62rem;color:var(--muted)"><i class="fas fa-book-open" style="margin-right:.25rem"></i>Gästebuch</span>
+      <span style="font-size:.62rem;color:var(--muted)"><i class="fas fa-id-card" style="margin-right:.25rem"></i>Steckbrief</span>
     </div>`;
   }
   function tier(label, icon, color, members, isL = false) {
@@ -1072,6 +1072,7 @@ function bootApp() {
   $('applicationsNavItem').style.display = isAdmin()     ? '' : 'none';
   $('frageneditorNavItem').style.display = isAdmin()     ? '' : 'none';
   $('beschwerdenNavItem').style.display  = isAdmin()     ? '' : 'none';
+  if (isAdmin() || isAusbilder()) $('admin-toggle').style.display = 'flex';
   document.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', e => {
       if (el.getAttribute('href') && !el.dataset.page) return; // external links open normally

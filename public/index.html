@@ -117,24 +117,47 @@
         </script>
       </nav>
       <div class="sidebar-bottom">
-        <a class="nav-item" data-page="frageneditor" id="frageneditorNavItem" style="display:none">
-          <i class="fas fa-edit" style="color:#fbbf24"></i><span style="color:#fbbf24">Fragen-Editor</span>
-        </a>
-        <a class="nav-item" data-page="beschwerden" id="beschwerdenNavItem" style="display:none">
-          <i class="fas fa-tasks" style="color:#f97316"></i><span style="color:#f97316">Beschwerden</span>
-        </a>
-        <a class="nav-item" data-page="applications" id="applicationsNavItem" style="display:none">
-          <i class="fas fa-file-alt" style="color:#a78bfa"></i><span style="color:#a78bfa">Bewerbungen</span>
-        </a>
-        <a class="nav-item" data-page="admin" id="adminNavItem" style="display:none">
-          <i class="fas fa-shield-alt"></i><span>Admin</span>
-        </a>
-        <a class="nav-item" data-page="auditlog" id="auditlogNavItem" style="display:none">
-          <i class="fas fa-scroll" style="color:#a78bfa"></i><span style="color:#a78bfa">Audit-Log</span>
-        </a>
-        <a class="nav-item" data-page="ausbildung" id="ausbildungNavItem" style="display:none">
-          <i class="fas fa-graduation-cap"></i><span>Ausbildung</span>
-        </a>
+        <div id="admin-toggle" onclick="toggleAdminNav()" style="display:none;margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
+          <span>Verwaltung</span>
+          <i id="admin-chevron" class="fas fa-chevron-down" style="font-size:.55rem;transition:transform .2s"></i>
+        </div>
+        <div id="admin-list">
+          <a class="nav-item" data-page="frageneditor" id="frageneditorNavItem" style="display:none">
+            <i class="fas fa-edit" style="color:#fbbf24"></i><span style="color:#fbbf24">Fragen-Editor</span>
+          </a>
+          <a class="nav-item" data-page="beschwerden" id="beschwerdenNavItem" style="display:none">
+            <i class="fas fa-tasks" style="color:#f97316"></i><span style="color:#f97316">Beschwerden</span>
+          </a>
+          <a class="nav-item" data-page="applications" id="applicationsNavItem" style="display:none">
+            <i class="fas fa-file-alt" style="color:#a78bfa"></i><span style="color:#a78bfa">Bewerbungen</span>
+          </a>
+          <a class="nav-item" data-page="admin" id="adminNavItem" style="display:none">
+            <i class="fas fa-shield-alt"></i><span>Admin</span>
+          </a>
+          <a class="nav-item" data-page="auditlog" id="auditlogNavItem" style="display:none">
+            <i class="fas fa-scroll" style="color:#a78bfa"></i><span style="color:#a78bfa">Audit-Log</span>
+          </a>
+          <a class="nav-item" data-page="ausbildung" id="ausbildungNavItem" style="display:none">
+            <i class="fas fa-graduation-cap"></i><span>Ausbildung</span>
+          </a>
+        </div>
+        <script>
+          (function(){
+            var list=document.getElementById('admin-list');
+            var chev=document.getElementById('admin-chevron');
+            var open=localStorage.getItem('admin-nav-open')!=='0';
+            list.style.overflow='hidden';
+            list.style.transition='max-height .22s ease';
+            list.style.maxHeight=open?'400px':'0';
+            if(chev) chev.style.transform=open?'':'rotate(-90deg)';
+            window.toggleAdminNav=function(){
+              open=!open;
+              list.style.maxHeight=open?'400px':'0';
+              if(chev) chev.style.transform=open?'':'rotate(-90deg)';
+              localStorage.setItem('admin-nav-open',open?'1':'0');
+            };
+          })();
+        </script>
         <a class="nav-item" data-page="bans"><i class="fas fa-ban"></i><span>Aktive Sperren</span></a>
       </div>
     </aside>
