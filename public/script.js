@@ -3953,6 +3953,7 @@ async function organigramm() {
       ${av}
       <div style="font-weight:700;font-size:${isLeitung?'1rem':'.95rem'};${nameColorCss(u.equipped_namecolor)}">${decoEmoji(u.equipped_deco)}${esc(u.username)}</div>
       ${titleLine(u.equipped_title)}
+      ${(u.honorary_titles||[]).length ? `<div style="display:flex;flex-wrap:wrap;gap:.25rem;justify-content:center">${(u.honorary_titles).map(t=>`<span style="font-size:.62rem;font-weight:700;padding:.12rem .4rem;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid ${t.color||'#fbbf24'}44;color:${t.color||'#fbbf24'};white-space:nowrap">${t.icon||'⭐'} ${esc(t.title)}</span>`).join('')}</div>` : ''}
       <span style="font-size:.7rem;font-weight:700;padding:.18rem .6rem;border-radius:20px;background:${roleBg};color:${roleColor}">${roleName}</span>
     </div>`;
   }
@@ -4050,7 +4051,7 @@ window.openSteckbrief = async function(userId) {
             ${u.rank ? `<span style="font-size:.68rem;color:var(--muted)">${esc(u.rank)}</span>` : ''}
           </div>
           ${honoraryTitles.length ? `<div style="display:flex;flex-wrap:wrap;gap:.3rem;margin:.35rem 0">
-            ${honoraryTitles.map(t=>`<span style="font-size:.67rem;font-weight:700;padding:.15rem .5rem;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid ${t.color||'#fbbf24'}55;color:${t.color||'#fbbf24'}">⭐ ${esc(t.title)}</span>`).join('')}
+            ${honoraryTitles.map(t=>`<span style="font-size:.67rem;font-weight:700;padding:.15rem .5rem;border-radius:999px;background:rgba(251,191,36,.1);border:1px solid ${t.color||'#fbbf24'}55;color:${t.color||'#fbbf24'}">${t.icon||'⭐'} ${esc(t.title)}</span>`).join('')}
           </div>` : ''}
           <div style="font-size:.73rem;color:var(--muted)">Dabei seit ${memberSince}</div>
         </div>
@@ -4742,6 +4743,11 @@ async function admin() {
             </div>
             <div style="margin-top:.5rem;display:flex;flex-direction:column;gap:.35rem">
               <input class="form-control" id="honoraryTitle" maxlength="40" placeholder="Titel (max. 40 Zeichen)…">
+              <div>
+                <div style="font-size:.7rem;color:var(--muted);margin-bottom:.3rem">Symbol wählen:</div>
+                <div style="display:flex;flex-wrap:wrap;gap:.3rem" id="honoraryIconGrid">${['⭐','🏆','👑','🎖️','🛡️','⚡','🔥','💎','🎯','🚨','🦅','💪','❤️','🌟','🏅','🎪','🔱','🌈','🦁','⚔️'].map(ic=>`<button type="button" onclick="honoraryPickIcon('${ic}')" id="hicon-${ic.codePointAt(0)}" style="font-size:1.1rem;width:32px;height:32px;border:2px solid var(--border);border-radius:7px;background:var(--input);cursor:pointer;transition:.12s" title="${ic}">${ic}</button>`).join('')}</div>
+                <div style="margin-top:.4rem;font-size:.8rem;color:var(--muted)">Gewählt: <span id="honoraryIconPreview" style="font-size:1rem">⭐</span></div>
+              </div>
               <div style="display:flex;align-items:center;gap:.5rem;font-size:.8rem">
                 <label style="color:var(--muted)">Farbe:</label>
                 <input type="color" id="honoraryColor" value="#fbbf24" style="width:36px;height:28px;border:1px solid var(--border);border-radius:5px;cursor:pointer;background:var(--input);padding:2px">
@@ -4888,6 +4894,18 @@ window.decideCustomTitle = async (id, action) => {
 
 // ── Ehrentitel (Admin) ───────────────────────────────────────────
 window._honoraryTargetId = null;
+window._honoraryIcon = '⭐';
+
+window.honoraryPickIcon = icon => {
+  window._honoraryIcon = icon;
+  const prev = $('honoraryIconPreview');
+  if (prev) prev.textContent = icon;
+  document.querySelectorAll('#honoraryIconGrid button').forEach(b => {
+    const match = b.textContent.trim() === icon;
+    b.style.borderColor = match ? 'var(--orange)' : 'var(--border)';
+    b.style.background  = match ? 'rgba(249,115,22,.15)' : 'var(--input)';
+  });
+};
 
 async function loadHonoraryTitles() {
   const el = $('honoraryList');
@@ -4896,7 +4914,7 @@ async function loadHonoraryTitles() {
   if (!rows) return;
   el.innerHTML = rows.length ? rows.map(r => `
     <div style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
-      <span style="font-size:.7rem;padding:.15rem .5rem;background:rgba(251,191,36,.12);border:1px solid ${r.color||'#fbbf24'}33;color:${r.color||'#fbbf24'};border-radius:999px;font-weight:700">⭐ ${esc(r.title)}</span>
+      <span style="font-size:.7rem;padding:.15rem .5rem;background:rgba(251,191,36,.12);border:1px solid ${r.color||'#fbbf24'}33;color:${r.color||'#fbbf24'};border-radius:999px;font-weight:700">${r.icon||'⭐'} ${esc(r.title)}</span>
       <span style="font-size:.75rem;font-weight:600">${esc(r.username)}</span>
       <span style="font-size:.68rem;color:var(--muted);margin-left:auto">von ${esc(r.granted_by)} · ${ago(r.granted_at)}</span>
       <button class="btn btn-danger btn-sm" onclick="honoraryRevoke(${r.id})" title="Entziehen"><i class="fas fa-trash"></i></button>
@@ -4937,19 +4955,27 @@ window.honoraryClear = () => {
   const inp = $('honorarySearch'), tgt = $('honoraryTarget');
   if (inp) { inp.style.display = ''; inp.value = ''; }
   if (tgt) tgt.style.display = 'none';
+  // Reset icon selection
+  window._honoraryIcon = '⭐';
+  const prev = $('honoraryIconPreview'); if (prev) prev.textContent = '⭐';
+  document.querySelectorAll('#honoraryIconGrid button').forEach(b => { b.style.borderColor = 'var(--border)'; b.style.background = 'var(--input)'; });
 };
 
 window.honoraryGrant = async () => {
   const user_id = window._honoraryTargetId;
   const title   = $('honoraryTitle')?.value.trim();
   const color   = $('honoraryColor')?.value || '#fbbf24';
+  const icon    = window._honoraryIcon || '⭐';
   if (!user_id) { toast('Mitarbeiter auswählen', 'err'); return; }
   if (!title || title.length < 2) { toast('Titel eingeben', 'err'); return; }
-  const r = await api('/api/admin/honorary-titles', { method: 'POST', body: { user_id, title, color } });
+  const r = await api('/api/admin/honorary-titles', { method: 'POST', body: { user_id, title, color, icon } });
   if (r) {
-    toast('Ehrentitel vergeben! ⭐', 'ok');
+    toast(`Ehrentitel vergeben! ${icon}`, 'ok');
     honoraryClear();
     if ($('honoraryTitle')) $('honoraryTitle').value = '';
+    window._honoraryIcon = '⭐';
+    const prev = $('honoraryIconPreview'); if (prev) prev.textContent = '⭐';
+    document.querySelectorAll('#honoraryIconGrid button').forEach(b => { b.style.borderColor = 'var(--border)'; b.style.background = 'var(--input)'; });
     loadHonoraryTitles();
   }
 };

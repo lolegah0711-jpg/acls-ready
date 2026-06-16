@@ -2634,6 +2634,10 @@ app.get('/api/organigramm', (req, res) => {
     WHERE u.is_active = 1
     ORDER BY CASE u.role WHEN 'admin' THEN 0 WHEN 'ausbilder' THEN 1 ELSE 2 END, u.username
   `).all();
+  const htMap = {};
+  db.prepare('SELECT user_id, icon, title, color FROM honorary_titles ORDER BY granted_at ASC').all()
+    .forEach(ht => { (htMap[ht.user_id] = htMap[ht.user_id] || []).push({ icon: ht.icon, title: ht.title, color: ht.color }); });
+  staff.forEach(u => { u.honorary_titles = htMap[u.id] || []; });
   res.json(staff);
 });
 
@@ -3651,15 +3655,16 @@ app.get('/api/admin/honorary-titles', requireAdmin, (req, res) => {
 });
 
 app.post('/api/admin/honorary-titles', requireAdmin, (req, res) => {
-  const { user_id, title, color } = req.body;
+  const { user_id, title, color, icon } = req.body;
   if (!user_id || !title?.trim()) return res.status(400).json({ error: 'user_id und title erforderlich' });
-  const titleText = String(title).trim().slice(0, 40);
+  const titleText  = String(title).trim().slice(0, 40);
   const titleColor = /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#fbbf24';
-  const adminName = req.adminUser?.username || 'Admin';
+  const titleIcon  = String(icon || '⭐').slice(0, 8);
+  const adminName  = req.adminUser?.username || 'Admin';
   const r = db.prepare(`
-    INSERT INTO honorary_titles (user_id, title, color, granted_by) VALUES (?, ?, ?, ?)
-  `).run(+user_id, titleText, titleColor, adminName);
-  auditLog(req, 'honorary_title', `Vergeben an user_id=${user_id}: "${titleText}"`);
+    INSERT INTO honorary_titles (user_id, title, color, icon, granted_by) VALUES (?, ?, ?, ?, ?)
+  `).run(+user_id, titleText, titleColor, titleIcon, adminName);
+  auditLog(req, 'honorary_title', `Vergeben an user_id=${user_id}: "${titleIcon} ${titleText}"`);
   res.json({ ok: true, id: r.lastInsertRowid });
 });
 

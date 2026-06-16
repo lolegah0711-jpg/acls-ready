@@ -982,6 +982,7 @@ function initDb() {
   // ── Beschwerde-Tracking: assigned_to-Spalte ──────────────────
   try { db.exec('ALTER TABLE complaints ADD COLUMN assigned_to INTEGER REFERENCES users(id)'); } catch {}
   try { db.exec("ALTER TABLE complaints ADD COLUMN phase TEXT DEFAULT 'offen'"); } catch {}
+  try { db.exec("ALTER TABLE honorary_titles ADD COLUMN icon TEXT NOT NULL DEFAULT '⭐'"); } catch {}
 
   // ── BATCH 1.1: Performance-Indizes ──────────────────────────
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_coin_tx_discord_date ON coin_transactions(discord_id, created_at DESC)'); } catch {}
