@@ -4474,84 +4474,71 @@ async function admin() {
   const totalQuestions = cats?.reduce((s,c)=>s+c.question_count,0)||0;
   const activeUsers    = users.filter(u => u.is_active).length;
 
-  // ── Hilfsfunktionen ─────────────────────────────────────
-  const secHead = (icon, color, label) =>
-    `<div style="display:flex;align-items:center;gap:.6rem;padding:.55rem 1rem;background:var(--surface2);border-bottom:1px solid var(--border)">
-       <i class="fas ${icon}" style="color:${color};font-size:.75rem"></i>
-       <span style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)">${label}</span>
-     </div>`;
-
-  const P = 'padding:1rem 1.1rem';  // einheitliches Innen-Padding
+  const P = 'padding:1rem 1.1rem';
+  const BR = 'border-right:1px solid var(--border)';
+  const BB = 'border-bottom:1px solid var(--border)';
 
   $('pageContent').innerHTML = `
 
-    <!-- ── Topbar ─────────────────────────────────────── -->
+    <!-- Topbar -->
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.6rem;margin-bottom:.85rem">
       <div style="display:flex;gap:.5rem;flex-wrap:wrap">
         <span style="display:flex;align-items:center;gap:.4rem;padding:.3rem .65rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:.78rem">
-          <i class="fas fa-users" style="color:var(--orange);font-size:.7rem"></i>
-          <b>${activeUsers}</b><span style="color:var(--muted)"> Nutzer</span>
+          <i class="fas fa-users" style="color:var(--orange);font-size:.7rem"></i><b>${activeUsers}</b><span style="color:var(--muted)"> Nutzer</span>
         </span>
         <span style="display:flex;align-items:center;gap:.4rem;padding:.3rem .65rem;background:var(--surface);border:1px solid ${openComplaints?'rgba(239,68,68,.4)':'var(--border)'};border-radius:6px;font-size:.78rem">
-          <i class="fas fa-comment-alt" style="color:${openComplaints?'#ef4444':'var(--muted)'};font-size:.7rem"></i>
-          <b style="color:${openComplaints?'#ef4444':'inherit'}">${openComplaints}</b><span style="color:var(--muted)"> offen</span>
+          <i class="fas fa-comment-alt" style="color:${openComplaints?'#ef4444':'var(--muted)'};font-size:.7rem"></i><b style="color:${openComplaints?'#ef4444':'inherit'}">${openComplaints}</b><span style="color:var(--muted)"> offen</span>
         </span>
         <span style="display:flex;align-items:center;gap:.4rem;padding:.3rem .65rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:.78rem">
-          <i class="fas fa-question-circle" style="color:#60a5fa;font-size:.7rem"></i>
-          <b>${totalQuestions}</b><span style="color:var(--muted)"> Fragen</span>
+          <i class="fas fa-question-circle" style="color:#60a5fa;font-size:.7rem"></i><b>${totalQuestions}</b><span style="color:var(--muted)"> Fragen</span>
         </span>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="enterCitizenView()"><i class="fas fa-eye" style="margin-right:.35rem"></i>Bürgeransicht</button>
     </div>
 
-    <!-- ══ BLOCK 1: Team & Inhalte ══════════════════════ -->
-    <div style="border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;background:var(--card-bg);margin-bottom:.75rem">
-      ${secHead('fa-users','var(--orange)','Team &amp; Inhalte')}
-      <div style="display:grid;grid-template-columns:1fr 1fr">
+    <!-- Alles in einem Container, kein Abstand zwischen Blöcken -->
+    <div style="border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;background:var(--card-bg)">
 
-        <!-- Benutzerverwaltung -->
-        <div style="${P};border-right:1px solid var(--border)">
-          <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.75rem">
-            <div class="card-head-icon orange" style="width:30px;height:30px;font-size:.8rem"><i class="fas fa-users"></i></div>
+      <!-- Zeile 1: Benutzerverwaltung | Fragenverwaltung -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;${BB}">
+        <div style="${P};${BR}">
+          <div class="card-head" style="margin-bottom:.7rem">
+            <div class="card-head-icon orange"><i class="fas fa-users"></i></div>
             <div style="flex:1"><div class="card-title">Benutzerverwaltung</div><div class="card-sub">${activeUsers} aktive Nutzer</div></div>
             <button class="btn btn-primary btn-sm" onclick="openAddUser()"><i class="fas fa-user-plus"></i> Hinzufügen</button>
           </div>
           <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
             <table class="data-tbl">
               <thead><tr><th>Name</th><th>Rolle / Rang</th><th colspan="2"></th></tr></thead>
-              <tbody>
-                ${users.filter(u => u.is_active).map(u => `<tr>
-                  <td><div style="display:flex;align-items:center;gap:.45rem">${avatarEl(u,24)}<span style="font-weight:600;font-size:.82rem">${esc(u.username)}</span></div></td>
-                  <td><div style="display:flex;flex-direction:column;gap:.2rem">
-                    <select class="form-control" style="padding:.15rem .3rem;height:auto;font-size:.77rem;width:auto" onchange="setRole(${u.id},this.value)">
-                      <option value="member"    ${u.role==='member'   ?'selected':''}>Mitarbeiter</option>
-                      <option value="ausbilder" ${u.role==='ausbilder'?'selected':''}>Ausbilder</option>
-                      <option value="admin"     ${u.role==='admin'    ?'selected':''}>Admin</option>
-                      <option value="citizen"   ${u.role==='citizen'  ?'selected':''}>Bürger</option>
-                    </select>
-                    <select class="form-control" style="padding:.15rem .3rem;height:auto;font-size:.77rem;width:auto" onchange="setRank(${u.id},this.value)">
-                      ${['Azubi','Mitarbeiter','Senior','Führungskraft','Rang 12'].map(r=>`<option ${(u.rank||'Mitarbeiter')===r?'selected':''}>${r}</option>`).join('')}
-                    </select>
-                  </div></td>
-                  <td style="white-space:nowrap">
-                    <button class="btn btn-ghost btn-sm" onclick="openProfileModal(${u.id})" title="Statistiken"><i class="fas fa-chart-bar"></i></button>
-                    <button class="btn btn-ghost btn-sm" onclick="openRenameUser(${u.id})" title="Umbenennen"><i class="fas fa-pen"></i></button>
-                  </td>
-                  <td><button class="btn btn-danger btn-sm" onclick="removeUser(${u.id})"><i class="fas fa-trash"></i></button></td>
-                </tr>`).join('')}
-              </tbody>
+              <tbody>${users.filter(u=>u.is_active).map(u=>`<tr>
+                <td><div style="display:flex;align-items:center;gap:.45rem">${avatarEl(u,24)}<span style="font-weight:600;font-size:.82rem">${esc(u.username)}</span></div></td>
+                <td><div style="display:flex;flex-direction:column;gap:.2rem">
+                  <select class="form-control" style="padding:.15rem .3rem;height:auto;font-size:.77rem;width:auto" onchange="setRole(${u.id},this.value)">
+                    <option value="member"    ${u.role==='member'   ?'selected':''}>Mitarbeiter</option>
+                    <option value="ausbilder" ${u.role==='ausbilder'?'selected':''}>Ausbilder</option>
+                    <option value="admin"     ${u.role==='admin'    ?'selected':''}>Admin</option>
+                    <option value="citizen"   ${u.role==='citizen'  ?'selected':''}>Bürger</option>
+                  </select>
+                  <select class="form-control" style="padding:.15rem .3rem;height:auto;font-size:.77rem;width:auto" onchange="setRank(${u.id},this.value)">
+                    ${['Azubi','Mitarbeiter','Senior','Führungskraft','Rang 12'].map(r=>`<option ${(u.rank||'Mitarbeiter')===r?'selected':''}>${r}</option>`).join('')}
+                  </select>
+                </div></td>
+                <td style="white-space:nowrap">
+                  <button class="btn btn-ghost btn-sm" onclick="openProfileModal(${u.id})" title="Statistiken"><i class="fas fa-chart-bar"></i></button>
+                  <button class="btn btn-ghost btn-sm" onclick="openRenameUser(${u.id})" title="Umbenennen"><i class="fas fa-pen"></i></button>
+                </td>
+                <td><button class="btn btn-danger btn-sm" onclick="removeUser(${u.id})"><i class="fas fa-trash"></i></button></td>
+              </tr>`).join('')}</tbody>
             </table>
           </div>
         </div>
-
-        <!-- Fragenverwaltung -->
         <div style="${P}">
-          <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.75rem">
-            <div class="card-head-icon blue" style="width:30px;height:30px;font-size:.8rem"><i class="fas fa-question-circle"></i></div>
+          <div class="card-head" style="margin-bottom:.7rem">
+            <div class="card-head-icon blue"><i class="fas fa-question-circle"></i></div>
             <div style="flex:1"><div class="card-title">Fragenverwaltung</div><div class="card-sub">${totalQuestions} Fragen total</div></div>
             <button class="btn btn-primary btn-sm" onclick="openAddQuestion()"><i class="fas fa-plus"></i> Hinzufügen</button>
           </div>
-          ${(cats || []).map(cat => `
+          ${(cats||[]).map(cat=>`
             <div style="display:flex;align-items:center;justify-content:space-between;padding:.4rem .6rem;background:var(--input);border-radius:var(--r);margin-bottom:.3rem">
               <div style="display:flex;align-items:center;gap:.45rem">
                 <i class="fas ${cat.icon}" style="color:var(--orange);width:13px;text-align:center;font-size:.78rem"></i>
@@ -4564,20 +4551,15 @@ async function admin() {
             </div>`).join('')}
         </div>
       </div>
-    </div>
 
-    <!-- ══ BLOCK 2: Kommunikation ════════════════════════ -->
-    <div style="border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;background:var(--card-bg);margin-bottom:.75rem">
-      ${secHead('fa-comment-alt','#ef4444','Kommunikation')}
-      <div style="display:grid;grid-template-columns:1fr 1fr">
-
-        <!-- Beschwerden -->
-        <div style="${P};border-right:1px solid var(--border)">
-          <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.75rem">
-            <div class="card-head-icon" style="width:30px;height:30px;font-size:.8rem;background:rgba(239,68,68,.15)"><i class="fas fa-comment-alt" style="color:#ef4444"></i></div>
+      <!-- Zeile 2: Beschwerden | Schwarzes Brett -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;${BB}">
+        <div style="${P};${BR}">
+          <div class="card-head" style="margin-bottom:.7rem">
+            <div class="card-head-icon" style="background:rgba(239,68,68,.15)"><i class="fas fa-comment-alt" style="color:#ef4444"></i></div>
             <div><div class="card-title">Beschwerden</div><div class="card-sub">${openComplaints} offen</div></div>
           </div>
-          ${(complaints||[]).length ? `
+          ${(complaints||[]).length?`
           <div class="tbl-wrap" style="max-height:260px;overflow-y:auto"><table class="data-tbl">
             <thead><tr><th>Bürger</th><th>Betreff</th><th>Datum</th><th>Status</th><th></th></tr></thead>
             <tbody>${complaints.map(c=>`<tr style="cursor:pointer" onclick="openComplaint(${c.id})">
@@ -4585,46 +4567,37 @@ async function admin() {
               <td style="font-size:.81rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.subject)}</td>
               <td style="font-size:.75rem;color:var(--muted);white-space:nowrap">${new Date(c.created_at).toLocaleDateString('de-DE')}</td>
               <td><span style="font-size:.71rem;padding:.1rem .4rem;border-radius:5px;font-weight:700;background:${c.status==='offen'?'rgba(239,68,68,.15)':'rgba(34,197,94,.15)'};color:${c.status==='offen'?'#ef4444':'#22c55e'}">${c.status}</span></td>
-              <td onclick="event.stopPropagation()">
-                ${c.status==='offen'
-                  ?`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'erledigt')"><i class="fas fa-check"></i></button>`
-                  :`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'offen')"><i class="fas fa-undo"></i></button>`}
-              </td>
+              <td onclick="event.stopPropagation()">${c.status==='offen'
+                ?`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'erledigt')"><i class="fas fa-check"></i></button>`
+                :`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'offen')"><i class="fas fa-undo"></i></button>`}</td>
             </tr>`).join('')}</tbody>
-          </table></div>` : '<div class="empty" style="padding:.6rem"><p>Keine Beschwerden</p></div>'}
+          </table></div>`:'<div class="empty" style="padding:.6rem"><p>Keine Beschwerden</p></div>'}
         </div>
-
-        <!-- Schwarzes Brett -->
         <div style="${P}">
-          <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.75rem">
-            <div class="card-head-icon orange" style="width:30px;height:30px;font-size:.8rem"><i class="fas fa-bullhorn"></i></div>
+          <div class="card-head" style="margin-bottom:.7rem">
+            <div class="card-head-icon orange"><i class="fas fa-bullhorn"></i></div>
             <div style="flex:1"><div class="card-title">Schwarzes Brett</div><div class="card-sub">${announcements?.length||0} Ankündigungen</div></div>
             <button class="btn btn-primary btn-sm" onclick="openAnnouncementModal()"><i class="fas fa-plus"></i> Neu</button>
           </div>
-          ${(announcements||[]).length ? announcements.map(a=>`
+          ${(announcements||[]).length?announcements.map(a=>`
             <div style="padding:.45rem .6rem;background:var(--input);border-radius:var(--r);margin-bottom:.3rem${a.is_pinned?';border-left:3px solid var(--orange)':''}">
               <div style="display:flex;align-items:center;gap:.35rem">
                 ${a.is_pinned?'<i class="fas fa-thumbtack" style="color:var(--orange);font-size:.68rem"></i>':''}
                 <div style="font-weight:600;font-size:.84rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title)}</div>
-                <button class="btn btn-ghost btn-sm" onclick="pinAnnouncement(${a.id})" title="${a.is_pinned?'Loslösen':'Anheften'}"><i class="fas fa-thumbtack"></i></button>
+                <button class="btn btn-ghost btn-sm" onclick="pinAnnouncement(${a.id})"><i class="fas fa-thumbtack"></i></button>
                 <button class="btn btn-danger btn-sm" onclick="deleteAnnouncement(${a.id})"><i class="fas fa-trash"></i></button>
               </div>
               <div style="font-size:.75rem;color:var(--muted);margin-top:.12rem">${esc(a.content.slice(0,90))}${a.content.length>90?'…':''}</div>
             </div>`).join('')
-          : '<div class="empty" style="padding:.6rem"><p>Keine Ankündigungen</p></div>'}
+          :'<div class="empty" style="padding:.6rem"><p>Keine Ankündigungen</p></div>'}
         </div>
       </div>
-    </div>
 
-    <!-- ══ BLOCK 3: Tools ════════════════════════════════ -->
-    <div style="border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;background:var(--card-bg);margin-bottom:.75rem">
-      ${secHead('fa-tools','#fbbf24','Tools')}
-      <div style="display:grid;grid-template-columns:1fr 1fr">
-
-        <!-- Coins verwalten -->
-        <div style="${P};border-right:1px solid var(--border)">
-          <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.75rem">
-            <div class="card-head-icon" style="width:30px;height:30px;font-size:.8rem;background:rgba(251,191,36,.15)"><i class="fas fa-coins" style="color:#fbbf24"></i></div>
+      <!-- Zeile 3: Coins | Umfrage -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;${BB}">
+        <div style="${P};${BR}">
+          <div class="card-head" style="margin-bottom:.7rem">
+            <div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-coins" style="color:#fbbf24"></i></div>
             <div><div class="card-title">Coins verwalten</div><div class="card-sub">Gutschreiben, abziehen oder setzen</div></div>
           </div>
           <div style="position:relative">
@@ -4647,11 +4620,9 @@ async function admin() {
             <div style="font-size:.69rem;color:var(--muted);margin-top:.4rem">Wird im Audit-Log protokolliert.</div>
           </div>
         </div>
-
-        <!-- Umfrage -->
         <div style="${P}">
-          <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.75rem">
-            <div class="card-head-icon" style="width:30px;height:30px;font-size:.8rem;background:rgba(99,102,241,.15)"><i class="fas fa-poll" style="color:#818cf8"></i></div>
+          <div class="card-head" style="margin-bottom:.7rem">
+            <div class="card-head-icon" style="background:rgba(99,102,241,.15)"><i class="fas fa-poll" style="color:#818cf8"></i></div>
             <div><div class="card-title">Umfrage</div><div class="card-sub">Frage der Woche</div></div>
           </div>
           <div id="pollAdminContent" style="margin-bottom:.65rem"><div style="color:var(--muted);font-size:.81rem">Wird geladen…</div></div>
@@ -4668,54 +4639,44 @@ async function admin() {
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Wunsch-Titel: volle Breite, nur wenn ausstehend -->
-    <div style="display:none;border:1px solid rgba(251,191,36,.35);border-radius:var(--rl);overflow:hidden;background:var(--card-bg);margin-bottom:.75rem" id="customTitleCard">
-      ${secHead('fa-pen','#fbbf24','Wunsch-Titel – Freigaben ausstehend')}
-      <div style="${P}" id="customTitleList"></div>
-    </div>
-
-    <!-- ══ BLOCK 4: Analytics ════════════════════════════ -->
-    <div style="border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;background:var(--card-bg);margin-bottom:.75rem">
-      ${secHead('fa-chart-bar','#22c55e','Live Analytics – Letzte 7 Tage')}
-      <div style="${P}">
-        <div id="adminAnalyticsSection"><div style="color:var(--muted);font-size:.82rem">Wird geladen…</div></div>
-      </div>
-    </div>
-
-    <!-- ══ BLOCK 5: Statistiken ══════════════════════════ -->
-    <div style="border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;background:var(--card-bg)">
-      ${secHead('fa-chart-line','#38bdf8','Statistiken – Letzte 12 Wochen')}
-      <div style="${P}">
-        <div id="adminStatsSummary" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.85rem"></div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.1rem">
-          <div>
-            <div style="font-size:.67rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">Prüfungen / Woche</div>
-            <canvas id="chartExams" height="150"></canvas>
+      <!-- Wunsch-Titel: volle Breite, nur wenn ausstehend -->
+      <div style="display:none;${BB}" id="customTitleCard">
+        <div style="${P}">
+          <div class="card-head" style="margin-bottom:.7rem">
+            <div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-pen" style="color:#fbbf24"></i></div>
+            <div><div class="card-title">Wunsch-Titel</div><div class="card-sub">Freigeben oder ablehnen – Ablehnung erstattet 2.500 Coins</div></div>
           </div>
-          <div>
-            <div style="font-size:.67rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">IC-Stunden / Woche</div>
-            <canvas id="chartIc" height="150"></canvas>
-          </div>
-          <div>
-            <div style="font-size:.67rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">Coin-Wirtschaft / Woche</div>
-            <canvas id="chartCoins" height="150"></canvas>
-          </div>
-          <div>
-            <div style="font-size:.67rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">Beliebteste Spiele (12W)</div>
-            <canvas id="chartGames" height="150"></canvas>
-          </div>
-          <div>
-            <div style="font-size:.67rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">Aktive Spieler / Woche</div>
-            <canvas id="chartPlayers" height="150"></canvas>
-          </div>
-          <div>
-            <div style="font-size:.67rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">Längste Login-Serien</div>
-            <div id="topStreaksList" style="font-size:.81rem"></div>
-          </div>
+          <div id="customTitleList"></div>
         </div>
       </div>
+
+      <!-- Live Analytics -->
+      <div style="${P};${BB}">
+        <div class="card-head" style="margin-bottom:.7rem">
+          <div class="card-head-icon" style="background:rgba(34,197,94,.15)"><i class="fas fa-chart-bar" style="color:#22c55e"></i></div>
+          <div><div class="card-title">Live Analytics</div><div class="card-sub">Letzte 7 Tage</div></div>
+        </div>
+        <div id="adminAnalyticsSection"><div style="color:var(--muted);font-size:.82rem">Wird geladen…</div></div>
+      </div>
+
+      <!-- Statistiken -->
+      <div style="${P}">
+        <div class="card-head" style="margin-bottom:.7rem">
+          <div class="card-head-icon" style="background:rgba(56,189,248,.15)"><i class="fas fa-chart-line" style="color:#38bdf8"></i></div>
+          <div><div class="card-title">Statistiken</div><div class="card-sub">Letzte 12 Wochen</div></div>
+        </div>
+        <div id="adminStatsSummary" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.85rem"></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.1rem">
+          <div><div style="font-size:.67rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">Prüfungen / Woche</div><canvas id="chartExams" height="150"></canvas></div>
+          <div><div style="font-size:.67rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">IC-Stunden / Woche</div><canvas id="chartIc" height="150"></canvas></div>
+          <div><div style="font-size:.67rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">Coin-Wirtschaft / Woche</div><canvas id="chartCoins" height="150"></canvas></div>
+          <div><div style="font-size:.67rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">Beliebteste Spiele (12W)</div><canvas id="chartGames" height="150"></canvas></div>
+          <div><div style="font-size:.67rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">Aktive Spieler / Woche</div><canvas id="chartPlayers" height="150"></canvas></div>
+          <div><div style="font-size:.67rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem">Längste Login-Serien</div><div id="topStreaksList" style="font-size:.81rem"></div></div>
+        </div>
+      </div>
+
     </div>`;
   loadPollAdmin();
   loadAdminStats();
