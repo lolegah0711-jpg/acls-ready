@@ -3189,19 +3189,6 @@ async function iczeit() {
       <span>Damit die IC-Zeit automatisch getrackt wird, müssen Mitarbeiter einem <strong>„Im Dienst"</strong>-Voice-Kanal auf dem Discord-Server beitreten. Die Zeit wird beim Verlassen des Kanals automatisch eingetragen.</span>
     </div>
 
-    <!-- BATCH 6: Geburtstag eintragen -->
-    <div class="card" style="margin-bottom:1.1rem">
-      <div class="card-head">
-        <div class="card-head-icon" style="background:rgba(249,115,22,.15)"><i class="fas fa-birthday-cake" style="color:var(--orange)"></i></div>
-        <div><div class="card-title">Mein Geburtstag</div><div class="card-sub">Wird im Team-Dashboard angezeigt</div></div>
-      </div>
-      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-        <input class="form-control" id="birthdayInput" type="text" placeholder="MM-TT (z.B. 06-15)" maxlength="5" style="width:160px"
-          oninput="this.value=this.value.replace(/[^0-9\-]/g,'')">
-        <button class="btn btn-primary btn-sm" onclick="saveBirthday()"><i class="fas fa-save"></i> Speichern</button>
-        <span style="font-size:.75rem;color:var(--muted)">Format: Monat-Tag (z.B. 06-15 für 15. Juni)</span>
-      </div>
-    </div>
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1.25rem">
       ${isAdmin() ? `<div style="display:flex;gap:.5rem">
         <button class="btn btn-primary" onclick="openLogTime()"><i class="fas fa-plus"></i> Manuell eintragen</button>
@@ -5307,7 +5294,7 @@ const RANK_COLOR = { Azubi: '#6b7280', Mitarbeiter: '#3b82f6', Senior: '#f97316'
 window.openProfileModal = async id => {
   const d = await api(`/api/profile/${id}`);
   if (!d) return;
-  const { user: u, stats: st, recentExams, badges } = d;
+  const { user: u, stats: st, recentExams, badges, birthday } = d;
   const url = avatarUrl(u);
   const rank = u.rank || 'Mitarbeiter';
   const rankColor = RANK_COLOR[rank] || '#6b7280';
@@ -5359,6 +5346,17 @@ window.openProfileModal = async id => {
         </div>
         <div class="re-time">${ago(s.taken_at)}</div>
       </div>`).join('') : '<div class="empty" style="padding:.5rem"><p>Keine Tests absolviert</p></div>'}
+    ${id == currentUser?.id ? `
+    <div class="divider"></div>
+    <div style="display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
+      <div class="card-head-icon" style="width:28px;height:28px;font-size:.75rem;background:rgba(249,115,22,.15)"><i class="fas fa-birthday-cake" style="color:var(--orange)"></i></div>
+      <div style="flex:1"><div style="font-weight:600;font-size:.85rem">Mein Geburtstag</div><div style="font-size:.73rem;color:var(--muted)">Wird im Team-Dashboard angezeigt</div></div>
+    </div>
+    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.55rem">
+      <input class="form-control" id="birthdayInput" type="text" placeholder="MM-TT (z.B. 06-15)" maxlength="5" value="${birthday||''}" style="width:150px" oninput="this.value=this.value.replace(/[^0-9\\-]/g,'')">
+      <button class="btn btn-primary btn-sm" onclick="saveBirthday()"><i class="fas fa-save"></i> Speichern</button>
+      <span style="font-size:.73rem;color:var(--muted)">z.B. 06-15 für 15. Juni</span>
+    </div>` : ''}
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Schließen</button>
     </div>`);
