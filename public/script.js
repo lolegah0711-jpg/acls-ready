@@ -4570,6 +4570,7 @@ async function admin() {
       <i class="fas fa-comment-alt" style="color:#ef4444"></i>Kommunikation
       <div style="flex:1;height:1px;background:var(--border)"></div>
     </div>
+    <!-- Beschwerden + Schwarzes Brett: beide Listen, ähnliche Höhe -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start;margin-bottom:1rem">
 
       <!-- Beschwerden -->
@@ -4579,11 +4580,11 @@ async function admin() {
           <div><div class="card-title">Beschwerden</div><div class="card-sub">${openComplaints} offen</div></div>
         </div>
         ${(complaints || []).length ? `
-        <div class="tbl-wrap" style="max-height:280px;overflow-y:auto"><table class="data-tbl">
+        <div class="tbl-wrap" style="max-height:260px;overflow-y:auto"><table class="data-tbl">
           <thead><tr><th>Bürger</th><th>Betreff</th><th>Datum</th><th>Status</th><th></th></tr></thead>
           <tbody>${complaints.map(c => `<tr style="cursor:pointer" onclick="openComplaint(${c.id})">
             <td style="font-weight:600;font-size:.83rem">${esc(c.citizen_name)}</td>
-            <td style="font-size:.82rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.subject)}</td>
+            <td style="font-size:.82rem;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.subject)}</td>
             <td style="font-size:.76rem;color:var(--muted);white-space:nowrap">${new Date(c.created_at).toLocaleDateString('de-DE')}</td>
             <td><span style="font-size:.72rem;padding:.12rem .45rem;border-radius:6px;font-weight:700;background:${c.status==='offen'?'rgba(239,68,68,.15)':'rgba(34,197,94,.15)'};color:${c.status==='offen'?'#ef4444':'#22c55e'}">${c.status}</span></td>
             <td onclick="event.stopPropagation()">
@@ -4595,46 +4596,24 @@ async function admin() {
         </table></div>` : '<div class="empty" style="padding:.75rem"><p>Keine Beschwerden</p></div>'}
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:1rem">
-        <!-- Schwarzes Brett -->
-        <div class="card">
-          <div class="card-head">
-            <div class="card-head-icon orange"><i class="fas fa-bullhorn"></i></div>
-            <div><div class="card-title">Schwarzes Brett</div><div class="card-sub">${announcements?.length || 0} Ankündigungen</div></div>
-            <button class="btn btn-primary btn-sm" onclick="openAnnouncementModal()" style="margin-left:auto"><i class="fas fa-plus"></i> Neu</button>
-          </div>
-          ${(announcements || []).length ? (announcements || []).map(a => `
-            <div style="padding:.5rem .65rem;background:var(--input);border-radius:var(--r);margin-bottom:.35rem${a.is_pinned?';border-left:3px solid var(--orange)':''}">
-              <div style="display:flex;align-items:center;gap:.4rem">
-                ${a.is_pinned?'<i class="fas fa-thumbtack" style="color:var(--orange);font-size:.7rem"></i>':''}
-                <div style="font-weight:600;font-size:.85rem;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.title)}</div>
-                <button class="btn btn-ghost btn-sm" onclick="pinAnnouncement(${a.id})" title="${a.is_pinned?'Loslösen':'Anheften'}"><i class="fas fa-thumbtack"></i></button>
-                <button class="btn btn-danger btn-sm" onclick="deleteAnnouncement(${a.id})"><i class="fas fa-trash"></i></button>
-              </div>
-              <div style="font-size:.76rem;color:var(--muted);margin-top:.15rem">${esc(a.content.slice(0,70))}${a.content.length>70?'…':''}</div>
-            </div>`).join('')
-          : '<div class="empty" style="padding:.75rem"><p>Keine Ankündigungen</p></div>'}
+      <!-- Schwarzes Brett -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-icon orange"><i class="fas fa-bullhorn"></i></div>
+          <div><div class="card-title">Schwarzes Brett</div><div class="card-sub">${announcements?.length || 0} Ankündigungen</div></div>
+          <button class="btn btn-primary btn-sm" onclick="openAnnouncementModal()" style="margin-left:auto"><i class="fas fa-plus"></i> Neu</button>
         </div>
-
-        <!-- Umfrage-Widget -->
-        <div class="card">
-          <div class="card-head">
-            <div class="card-head-icon" style="background:rgba(99,102,241,.15)"><i class="fas fa-poll" style="color:#818cf8"></i></div>
-            <div><div class="card-title">Umfrage</div><div class="card-sub">Frage der Woche</div></div>
-          </div>
-          <div id="pollAdminContent" style="margin-bottom:.75rem"><div style="color:var(--muted);font-size:.82rem">Wird geladen…</div></div>
-          <div style="border-top:1px solid var(--border);padding-top:.75rem">
-            <div style="font-weight:600;font-size:.8rem;margin-bottom:.4rem">Neue Umfrage</div>
-            <input class="form-control" id="pollQuestion" placeholder="Frage eingeben…" style="margin-bottom:.3rem">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.3rem;margin-bottom:.3rem">
-              <input class="form-control" id="pollOpt1" placeholder="Option 1">
-              <input class="form-control" id="pollOpt2" placeholder="Option 2">
-              <input class="form-control" id="pollOpt3" placeholder="Option 3 (optional)">
-              <input class="form-control" id="pollOpt4" placeholder="Option 4 (optional)">
+        ${(announcements || []).length ? (announcements || []).map(a => `
+          <div style="padding:.5rem .65rem;background:var(--input);border-radius:var(--r);margin-bottom:.35rem${a.is_pinned?';border-left:3px solid var(--orange)':''}">
+            <div style="display:flex;align-items:center;gap:.4rem">
+              ${a.is_pinned?'<i class="fas fa-thumbtack" style="color:var(--orange);font-size:.7rem"></i>':''}
+              <div style="font-weight:600;font-size:.85rem;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.title)}</div>
+              <button class="btn btn-ghost btn-sm" onclick="pinAnnouncement(${a.id})" title="${a.is_pinned?'Loslösen':'Anheften'}"><i class="fas fa-thumbtack"></i></button>
+              <button class="btn btn-danger btn-sm" onclick="deleteAnnouncement(${a.id})"><i class="fas fa-trash"></i></button>
             </div>
-            <button class="btn btn-primary btn-sm" style="width:100%" onclick="submitPollAdmin()"><i class="fas fa-plus"></i> Umfrage starten</button>
-          </div>
-        </div>
+            <div style="font-size:.76rem;color:var(--muted);margin-top:.15rem">${esc(a.content.slice(0,80))}${a.content.length>80?'…':''}</div>
+          </div>`).join('')
+        : '<div class="empty" style="padding:.75rem"><p>Keine Ankündigungen</p></div>'}
       </div>
     </div>
 
@@ -4643,6 +4622,7 @@ async function admin() {
       <i class="fas fa-tools" style="color:#fbbf24"></i>Tools
       <div style="flex:1;height:1px;background:var(--border)"></div>
     </div>
+    <!-- Coins + Umfrage: beide Formulare, ähnliche Höhe -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start;margin-bottom:1rem">
 
       <!-- Coins verwalten -->
@@ -4672,14 +4652,34 @@ async function admin() {
         </div>
       </div>
 
-      <!-- Wunsch-Titel Freigaben -->
-      <div class="card" style="display:none" id="customTitleCard">
+      <!-- Umfrage -->
+      <div class="card">
         <div class="card-head">
-          <div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-pen" style="color:#fbbf24"></i></div>
-          <div><div class="card-title">Wunsch-Titel</div><div class="card-sub">Freigeben oder ablehnen (Ablehnung erstattet 2.500 Coins)</div></div>
+          <div class="card-head-icon" style="background:rgba(99,102,241,.15)"><i class="fas fa-poll" style="color:#818cf8"></i></div>
+          <div><div class="card-title">Umfrage</div><div class="card-sub">Frage der Woche</div></div>
         </div>
-        <div id="customTitleList"></div>
+        <div id="pollAdminContent" style="margin-bottom:.75rem"><div style="color:var(--muted);font-size:.82rem">Wird geladen…</div></div>
+        <div style="border-top:1px solid var(--border);padding-top:.7rem">
+          <div style="font-weight:600;font-size:.8rem;margin-bottom:.4rem">Neue Umfrage</div>
+          <input class="form-control" id="pollQuestion" placeholder="Frage eingeben…" style="margin-bottom:.3rem">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.3rem;margin-bottom:.3rem">
+            <input class="form-control" id="pollOpt1" placeholder="Option 1">
+            <input class="form-control" id="pollOpt2" placeholder="Option 2">
+            <input class="form-control" id="pollOpt3" placeholder="Option 3 (optional)">
+            <input class="form-control" id="pollOpt4" placeholder="Option 4 (optional)">
+          </div>
+          <button class="btn btn-primary btn-sm" style="width:100%" onclick="submitPollAdmin()"><i class="fas fa-plus"></i> Umfrage starten</button>
+        </div>
       </div>
+    </div>
+
+    <!-- Wunsch-Titel: volle Breite, nur wenn ausstehend -->
+    <div class="card" style="display:none;margin-bottom:1rem" id="customTitleCard">
+      <div class="card-head">
+        <div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-pen" style="color:#fbbf24"></i></div>
+        <div><div class="card-title">Wunsch-Titel</div><div class="card-sub">Freigeben oder ablehnen – Ablehnung erstattet 2.500 Coins</div></div>
+      </div>
+      <div id="customTitleList"></div>
     </div>
 
     <!-- ── Abschnitt: Analytics ────────────────────────────── -->
