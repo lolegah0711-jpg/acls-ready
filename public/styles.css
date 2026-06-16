@@ -1138,8 +1138,31 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 /* Dash Bottom */
 .dash-bottom {
   display: grid; grid-template-columns: 1fr 1fr;
-  gap: 1rem; margin-top: 1rem;
+  gap: 1rem; margin-top: 0;
 }
+
+/* Dashboard Widget Drag & Drop */
+.dash-widget {
+  position: relative;
+  margin-bottom: 1rem;
+}
+.dash-widget:last-child { margin-bottom: 0; }
+.dash-drag-handle {
+  position: absolute;
+  top: .6rem; right: .55rem;
+  color: var(--muted);
+  font-size: .75rem;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity .15s;
+  z-index: 5;
+  padding: .2rem .3rem;
+  border-radius: 4px;
+}
+.dash-widget:hover .dash-drag-handle { opacity: 1; }
+.dash-drag-handle:active { cursor: grabbing; }
+.dash-widget.dragging { opacity: .45; }
+.dash-widget.drag-over { outline: 2px dashed var(--orange); outline-offset: 3px; border-radius: var(--rl); }
 
 /* Leaderboard */
 .lb-item {

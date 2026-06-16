@@ -539,6 +539,18 @@ function initDb() {
       finished_at      DATETIME,
       created_at       DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS dashboard_prefs (
+      user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      layout     TEXT NOT NULL DEFAULT '[]',
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS dashboard_notes (
+      user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      content    TEXT NOT NULL DEFAULT '',
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Quiz-Duell: altes Schema (users-IDs) auf Discord-IDs umstellen, damit

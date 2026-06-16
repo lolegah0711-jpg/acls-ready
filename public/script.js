@@ -1297,278 +1297,342 @@ async function loadTwitchWidget() {
   }
 }
 
+const WIDGET_DEFS = [
+  { id: 'eow',             label: 'Mitarbeiter der Woche',  icon: 'fa-trophy'          },
+  { id: 'stats',           label: 'Prüfungs-Statistiken',   icon: 'fa-chart-bar'       },
+  { id: 'exams',           label: 'Zuletzt Prüfungen',      icon: 'fa-clipboard-check' },
+  { id: 'rankings',        label: 'Top 5 & Rangliste',      icon: 'fa-medal'           },
+  { id: 'badges',          label: 'Meine Abzeichen',        icon: 'fa-award'           },
+  { id: 'iczeit',          label: 'IC-Zeit diese Woche',    icon: 'fa-clock'           },
+  { id: 'gameLeaderboard', label: 'Spiele-Rangliste',       icon: 'fa-gamepad'         },
+  { id: 'challenges',      label: 'Challenges',             icon: 'fa-tasks'           },
+  { id: 'achievementFeed', label: 'Letzte Abzeichen',       icon: 'fa-award'           },
+  { id: 'birthday',        label: 'Geburtstage',            icon: 'fa-birthday-cake'   },
+  { id: 'poll',            label: 'Umfrage',                icon: 'fa-poll'            },
+  { id: 'twitch',          label: 'Twitch Stream',          icon: 'fa-twitch'          },
+  { id: 'onboarding',      label: 'Onboarding',             icon: 'fa-tasks'           },
+  { id: 'streak',          label: 'Login-Serie',            icon: 'fa-fire'            },
+  { id: 'dms',             label: 'Direktnachrichten',      icon: 'fa-envelope'        },
+  { id: 'market',          label: 'Meine Listings',         icon: 'fa-store'           },
+  { id: 'quickActions',    label: 'Schnellaktionen',        icon: 'fa-bolt'            },
+  { id: 'note',            label: 'Persönliche Notiz',      icon: 'fa-sticky-note'     },
+  { id: 'coinHistory',     label: 'Coin-Verlauf',           icon: 'fa-coins'           },
+];
+
+let _dashLayout = []; // { id, visible }
+
+function _dashWidget(id, html) {
+  return `<div class="dash-widget" data-wid="${id}" draggable="true">
+    <div class="dash-drag-handle" title="Verschieben"><i class="fas fa-grip-vertical"></i></div>
+    ${html}
+  </div>`;
+}
+
+function _initDashDrag() {
+  let src = null;
+  document.querySelectorAll('.dash-widget').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      src = el; e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => el.classList.add('dragging'), 0);
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      document.querySelectorAll('.dash-widget').forEach(w => w.classList.remove('drag-over'));
+      _saveDashLayout();
+    });
+    el.addEventListener('dragover', e => {
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      if (src && el !== src) {
+        document.querySelectorAll('.dash-widget').forEach(w => w.classList.remove('drag-over'));
+        el.classList.add('drag-over');
+      }
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+    el.addEventListener('drop', e => {
+      e.preventDefault(); el.classList.remove('drag-over');
+      if (!src || src === el) return;
+      const parent = el.parentNode;
+      const all = [...parent.querySelectorAll('.dash-widget')];
+      parent.insertBefore(src, all.indexOf(src) < all.indexOf(el) ? el.nextSibling : el);
+    });
+  });
+}
+
+function _saveDashLayout() {
+  const visible = [...document.querySelectorAll('.dash-widget')].map(el => el.dataset.wid);
+  const hiddenIds = _dashLayout.filter(w => !w.visible).map(w => w.id);
+  const newLayout = [
+    ...visible.map(id => ({ id, visible: true })),
+    ...hiddenIds.map(id => ({ id, visible: false })),
+  ];
+  _dashLayout = newLayout;
+  api('/api/dashboard/prefs', { method: 'POST', body: JSON.stringify({ layout: newLayout }), headers: { 'Content-Type': 'application/json' } });
+}
+
+function openDashSettings() {
+  let panel = document.getElementById('dashSettingsPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'dashSettingsPanel';
+    panel.style.cssText = 'position:fixed;top:0;right:0;height:100%;width:270px;background:var(--card-bg);border-left:1px solid var(--border);z-index:300;overflow-y:auto;padding:1.1rem;transform:translateX(100%);transition:transform .22s ease;box-shadow:-4px 0 20px rgba(0,0,0,.3)';
+    document.body.appendChild(panel);
+  }
+  const hidden = new Set(_dashLayout.filter(w => !w.visible).map(w => w.id));
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.8rem">
+      <span style="font-weight:700;font-size:.92rem"><i class="fas fa-sliders-h" style="color:var(--orange);margin-right:.4rem"></i>Dashboard anpassen</span>
+      <button class="btn btn-ghost btn-sm" onclick="closeDashSettings()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="font-size:.74rem;color:var(--muted);margin-bottom:.9rem">Reihenfolge per Drag &amp; Drop auf dem Dashboard ändern.</div>
+    ${WIDGET_DEFS.map(w => `
+      <label style="display:flex;align-items:center;gap:.7rem;padding:.5rem 0;border-bottom:1px solid var(--border);cursor:pointer">
+        <i class="fas ${w.icon}" style="color:var(--orange);width:14px;text-align:center;font-size:.8rem"></i>
+        <span style="flex:1;font-size:.84rem">${w.label}</span>
+        <input type="checkbox" ${!hidden.has(w.id)?'checked':''} onchange="toggleDashWidget('${w.id}',this.checked)" style="accent-color:var(--orange)">
+      </label>`).join('')}`;
+  requestAnimationFrame(() => panel.style.transform = 'translateX(0)');
+  panel._overlay = document.createElement('div');
+  panel._overlay.style.cssText = 'position:fixed;inset:0;z-index:299;background:rgba(0,0,0,.3)';
+  panel._overlay.onclick = closeDashSettings;
+  document.body.appendChild(panel._overlay);
+}
+
+function closeDashSettings() {
+  const panel = document.getElementById('dashSettingsPanel');
+  if (!panel) return;
+  panel.style.transform = 'translateX(100%)';
+  panel._overlay?.remove();
+  setTimeout(() => panel.remove(), 230);
+}
+
+async function toggleDashWidget(id, visible) {
+  const el = document.querySelector(`.dash-widget[data-wid="${id}"]`);
+  if (visible && !el) {
+    // Re-render the whole dashboard to show the widget
+    closeDashSettings();
+    await dashboard();
+    openDashSettings();
+    return;
+  }
+  if (!visible && el) el.style.display = 'none';
+  // Update local layout
+  const idx = _dashLayout.findIndex(w => w.id === id);
+  if (idx >= 0) _dashLayout[idx].visible = visible;
+  else _dashLayout.push({ id, visible });
+  _saveDashLayout();
+}
+
 async function dashboard() {
-  const [d, announcements, myBadgesRes, myOnb] = await Promise.all([api('/api/dashboard'), api('/api/announcements'), api('/api/my-badges'), api('/api/onboarding/mine')]);
+  const [d, announcements, myBadgesRes, myOnb, prefs, streakData, coinHist, noteData] = await Promise.all([
+    api('/api/dashboard'), api('/api/announcements'), api('/api/my-badges'), api('/api/onboarding/mine'),
+    api('/api/dashboard/prefs'), api('/api/dashboard/streak'), api('/api/dashboard/coin-history'), api('/api/dashboard/note'),
+  ]);
   if (!d) return;
+
+  // Layout
+  const savedLayout = prefs?.layout || [];
+  const hiddenSet   = new Set(savedLayout.filter(w => w.visible === false).map(w => w.id));
+  const savedOrder  = savedLayout.filter(w => w.visible !== false).map(w => w.id);
+  const allIds      = WIDGET_DEFS.map(w => w.id);
+  const newIds      = allIds.filter(id => !savedLayout.find(w => w.id === id));
+  const order       = [...savedOrder, ...newIds].filter(id => !hiddenSet.has(id));
+  _dashLayout = [...order.map(id => ({ id, visible: true })), ...[...hiddenSet].map(id => ({ id, visible: false }))];
+
+  // Data prep
   const myBadgesList = myBadgesRes?.badges || [];
   const badgeStats   = myBadgesRes?.stats  || { conducted: 0, eowWins: 0, icTotal: 0, distinctGames: 0, duelWins: 0, coinsEarned: 0, towBest: 0, bjBest: 0 };
   const earnedSet    = new Set(myBadgesList.map(b => b.badge_type));
   const badgeMap     = Object.fromEntries(myBadgesList.map(b => [b.badge_type, b.earned_at]));
-
   const eow      = d.eowWinner;
   const isCurWk  = d.isCurrentWeekWinner;
   const curWk    = d.currentWeek ? `KW ${isoWeek(d.currentWeek)}` : '';
   const top      = d.eowStandings?.[0];
-  const rankBadge = i => `<div class="rank-badge${i === 1 ? '' : i === 2 ? ' r2' : ' r3'}"${i > 3 ? ' style="background:#2a2a2a;color:var(--muted)"' : ''}>${i}</div>`;
+  const rankBadge = i => `<div class="rank-badge${i===1?'':i===2?' r2':' r3'}"${i>3?' style="background:#2a2a2a;color:var(--muted)"':''}>${i}</div>`;
 
-  // Karte 1: letzter/aktueller Gewinner
+  // ── Widget HTML map ──────────────────────────────────────────
+  const W = {};
+
   const winnerCard = eow
-    ? `<div class="eow-banner" style="flex:1">
-         <div class="eow-av">${avatarUrl(eow) ? `<img src="${avatarUrl(eow)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(eow.username)}</div>
-         <div class="eow-info">
-           <div class="eow-label"><i class="fas fa-trophy" style="margin-right:.3rem"></i>Mitarbeiter der Woche · KW ${isoWeek(eow.week)}</div>
-           <div class="eow-name">${esc(eow.username)}</div>
-           <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">${eow.vote_count} Stimmen${isCurWk ? ' · Diese Woche' : ' · Letzte Woche'}</div>
-         </div>
-         <div class="eow-ml"><button class="btn btn-ghost btn-sm" onclick="navigate('eow')"><i class="fas fa-list"></i> Details</button></div>
-       </div>`
-    : `<div class="eow-banner" style="flex:1">
-         <div class="eow-av" style="background:var(--surface2);color:var(--muted);font-size:1.4rem"><i class="fas fa-trophy"></i></div>
-         <div class="eow-info">
-           <div class="eow-label"><i class="fas fa-trophy" style="margin-right:.3rem"></i>Mitarbeiter der Woche</div>
-           <div class="eow-name" style="color:var(--muted)">Noch kein Gewinner</div>
-         </div>
-       </div>`;
-
-  // Karte 2: immer aktuellen Führenden zeigen; Label je nachdem ob schon ausgezählt
+    ? `<div class="eow-banner" style="flex:1"><div class="eow-av">${avatarUrl(eow)?`<img src="${avatarUrl(eow)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:initials(eow.username)}</div><div class="eow-info"><div class="eow-label"><i class="fas fa-trophy" style="margin-right:.3rem"></i>Mitarbeiter der Woche · KW ${isoWeek(eow.week)}</div><div class="eow-name">${esc(eow.username)}</div><div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">${eow.vote_count} Stimmen${isCurWk?' · Diese Woche':' · Letzte Woche'}</div></div><div class="eow-ml"><button class="btn btn-ghost btn-sm" onclick="navigate('eow')"><i class="fas fa-list"></i> Details</button></div></div>`
+    : `<div class="eow-banner" style="flex:1"><div class="eow-av" style="background:var(--surface2);color:var(--muted);font-size:1.4rem"><i class="fas fa-trophy"></i></div><div class="eow-info"><div class="eow-label"><i class="fas fa-trophy" style="margin-right:.3rem"></i>Mitarbeiter der Woche</div><div class="eow-name" style="color:var(--muted)">Noch kein Gewinner</div></div></div>`;
   const voteLabel = isCurWk ? 'Nächste Abstimmung' : 'Abstimmung läuft';
   const voteCard = top
-    ? `<div class="eow-banner" style="flex:1;border-color:rgba(249,115,22,.25)">
-         <div class="eow-av" style="border-color:rgba(249,115,22,.4)">${avatarUrl(top) ? `<img src="${avatarUrl(top)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : initials(top.username)}</div>
-         <div class="eow-info">
-           <div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>${voteLabel} · ${curWk}</div>
-           <div class="eow-name">${esc(top.username)} führt</div>
-           <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">${top.votes} Stimmen · Auszählung Sonntag 18:00</div>
-         </div>
-         <div class="eow-ml"><button class="btn btn-primary btn-sm" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Abstimmen</button></div>
-       </div>`
-    : `<div class="eow-banner" style="flex:1">
-         <div class="eow-av" style="background:var(--surface2);color:var(--muted);font-size:1.4rem"><i class="fas fa-vote-yea"></i></div>
-         <div class="eow-info">
-           <div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>${voteLabel} · ${curWk}</div>
-           <div class="eow-name" style="color:var(--muted)">Noch keine Stimmen</div>
-           <div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">Auszählung: Sonntag 18:00 Uhr</div>
-         </div>
-         <div class="eow-ml"><button class="btn btn-primary btn-sm" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Jetzt abstimmen</button></div>
-       </div>`;
+    ? `<div class="eow-banner" style="flex:1;border-color:rgba(249,115,22,.25)"><div class="eow-av" style="border-color:rgba(249,115,22,.4)">${avatarUrl(top)?`<img src="${avatarUrl(top)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:initials(top.username)}</div><div class="eow-info"><div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>${voteLabel} · ${curWk}</div><div class="eow-name">${esc(top.username)} führt</div><div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">${top.votes} Stimmen · Auszählung Sonntag 18:00</div></div><div class="eow-ml"><button class="btn btn-primary btn-sm" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Abstimmen</button></div></div>`
+    : `<div class="eow-banner" style="flex:1"><div class="eow-av" style="background:var(--surface2);color:var(--muted);font-size:1.4rem"><i class="fas fa-vote-yea"></i></div><div class="eow-info"><div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>${voteLabel} · ${curWk}</div><div class="eow-name" style="color:var(--muted)">Noch keine Stimmen</div><div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">Auszählung: Sonntag 18:00 Uhr</div></div><div class="eow-ml"><button class="btn btn-primary btn-sm" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Jetzt abstimmen</button></div></div>`;
+  W.eow = `<div style="display:flex;gap:1rem;flex-wrap:wrap">${winnerCard}${voteCard}</div>`;
 
-  $('pageContent').innerHTML = `
-    <!-- Ankündigungen -->
-    ${announcements?.length ? announcements.slice(0,3).map(a => `
-    <div style="display:flex;align-items:flex-start;gap:1rem;padding:1rem 1.1rem;border-radius:var(--r);margin-bottom:.6rem;background:linear-gradient(135deg,rgba(249,115,22,.12),rgba(249,115,22,.04));border:1px solid rgba(249,115,22,.3);border-left:4px solid var(--orange)">
-      <div style="width:36px;height:36px;border-radius:50%;background:rgba(249,115,22,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:.1rem">
-        <i class="fas ${a.is_pinned ? 'fa-thumbtack' : 'fa-bullhorn'}" style="color:var(--orange);font-size:.85rem"></i>
-      </div>
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem">
-          <span style="font-weight:700;font-size:.95rem">${esc(a.title)}</span>
-          ${a.is_pinned ? '<span style="font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:20px;background:rgba(249,115,22,.2);color:var(--orange);text-transform:uppercase;letter-spacing:.05em">Angeheftet</span>' : ''}
-          <span style="font-size:.72rem;color:var(--muted);margin-left:auto">${esc(a.author)} · ${new Date(a.created_at).toLocaleDateString('de-DE')}</span>
-        </div>
-        <div style="font-size:.85rem;color:var(--fg);opacity:.85;white-space:pre-wrap;line-height:1.5">${esc(a.content)}</div>
-      </div>
-      ${isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="navigate('admin')" title="Verwalten" style="flex-shrink:0"><i class="fas fa-cog"></i></button>` : ''}
-    </div>`).join('') : ''}
+  W.onboarding = myOnb?.show ? `<div class="card" style="border-color:rgba(74,222,128,.3);margin:0"><div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap"><div style="width:36px;height:36px;border-radius:50%;background:rgba(74,222,128,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-tasks" style="color:#4ade80;font-size:.85rem"></i></div><div style="flex:1;min-width:200px"><div style="font-weight:700;font-size:.92rem">Dein Onboarding · ${myOnb.done}/${myOnb.total} erledigt</div><div style="height:6px;background:var(--input);border-radius:3px;overflow:hidden;margin-top:.35rem;max-width:340px"><div style="height:100%;width:${Math.round(myOnb.done/myOnb.total*100)}%;background:#4ade80"></div></div></div><div style="font-size:.74rem;color:var(--muted);max-width:320px">Noch offen: ${myOnb.items.filter(i=>!i.done).slice(0,3).map(i=>i.label).join(' · ')}${myOnb.items.filter(i=>!i.done).length>3?' …':''}</div></div></div>` : null;
 
-    <!-- EoW Banner (zwei Karten) -->
-    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0">
-      ${winnerCard}
-      ${voteCard}
-    </div>
+  W.poll   = `<div id="staffPollWidget"></div>`;
+  W.twitch = `<div id="twitch-widget"><div class="twitch-card"><div class="twitch-offline-dot"></div><div class="twitch-info"><div style="font-size:.8rem;color:#9ca3af">Wird geladen…</div></div></div></div>`;
 
-    <!-- Onboarding-Fortschritt für neue Mitarbeiter -->
-    ${myOnb?.show ? `
-    <div class="card" style="border-color:rgba(74,222,128,.3)">
-      <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap">
-        <div style="width:36px;height:36px;border-radius:50%;background:rgba(74,222,128,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <i class="fas fa-tasks" style="color:#4ade80;font-size:.85rem"></i>
-        </div>
-        <div style="flex:1;min-width:200px">
-          <div style="font-weight:700;font-size:.92rem">Dein Onboarding · ${myOnb.done}/${myOnb.total} erledigt</div>
-          <div style="height:6px;background:var(--input);border-radius:3px;overflow:hidden;margin-top:.35rem;max-width:340px">
-            <div style="height:100%;width:${Math.round(myOnb.done / myOnb.total * 100)}%;background:#4ade80"></div>
-          </div>
-        </div>
-        <div style="font-size:.74rem;color:var(--muted);max-width:320px">
-          Noch offen: ${myOnb.items.filter(i => !i.done).slice(0, 3).map(i => i.label).join(' · ')}${myOnb.items.filter(i => !i.done).length > 3 ? ' …' : ''}
-        </div>
-      </div>
-    </div>` : ''}
-
-    <!-- Umfrage-Widget -->
-    <div id="staffPollWidget"></div>
-
-    <!-- Twitch -->
-    <div id="twitch-widget">
-      <div class="twitch-card">
-        <div class="twitch-offline-dot"></div>
-        <div class="twitch-info">
-          <div style="font-size:.8rem;color:#9ca3af">Wird geladen…</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 4 Stat cards -->
+  W.stats = `
     <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-info"><div class="stat-lbl">Gesamt Prüfungen</div><div class="stat-val" data-countup="${d.total}">0</div></div>
-        <div class="stat-ico o"><i class="fas fa-clipboard-list"></i></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-info"><div class="stat-lbl">Bestanden</div><div class="stat-val g" data-countup="${d.passed}">0</div></div>
-        <div class="stat-ico g"><i class="fas fa-check-circle"></i></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-info"><div class="stat-lbl">Durchgefallen</div><div class="stat-val r" data-countup="${d.failed}">0</div></div>
-        <div class="stat-ico r"><i class="fas fa-times-circle"></i></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-info"><div class="stat-lbl">Erfolgsquote</div><div class="stat-val o" data-countup="${d.rate}" data-suffix="%">0%</div></div>
-        <div class="stat-ico b"><i class="fas fa-chart-line"></i></div>
-      </div>
+      <div class="stat-card"><div class="stat-info"><div class="stat-lbl">Gesamt Prüfungen</div><div class="stat-val" data-countup="${d.total}">0</div></div><div class="stat-ico o"><i class="fas fa-clipboard-list"></i></div></div>
+      <div class="stat-card"><div class="stat-info"><div class="stat-lbl">Bestanden</div><div class="stat-val g" data-countup="${d.passed}">0</div></div><div class="stat-ico g"><i class="fas fa-check-circle"></i></div></div>
+      <div class="stat-card"><div class="stat-info"><div class="stat-lbl">Durchgefallen</div><div class="stat-val r" data-countup="${d.failed}">0</div></div><div class="stat-ico r"><i class="fas fa-times-circle"></i></div></div>
+      <div class="stat-card"><div class="stat-info"><div class="stat-lbl">Erfolgsquote</div><div class="stat-val o" data-countup="${d.rate}" data-suffix="%">0%</div></div><div class="stat-ico b"><i class="fas fa-chart-line"></i></div></div>
     </div>
-
-    <!-- Time cards -->
     <div class="time-row">
       <div class="time-card"><div class="time-lbl">Heute</div><div class="time-val" data-countup="${d.todayCount}">0</div></div>
       <div class="time-card"><div class="time-lbl">Diese Woche</div><div class="time-val" data-countup="${d.weekCount}">0</div></div>
       <div class="time-card"><div class="time-lbl">Dieser Monat</div><div class="time-val" data-countup="${d.monthCount}">0</div></div>
-    </div>
+    </div>`;
 
-    <!-- Letzte 3 Prüfungen — prominent -->
-    ${d.lastExams.length ? `
-    <div class="card last-exam-card">
-      <div class="card-head">
-        <div class="card-head-icon orange"><i class="fas fa-clipboard-check"></i></div>
-        <div><div class="card-title">Zuletzt abgenommene Prüfungen</div><div class="card-sub">Die letzten 3 Prüfungen</div></div>
-      </div>
-      ${d.lastExams.slice(0,3).map(ex => `
-      <div style="display:flex;align-items:center;gap:1rem;padding:.75rem 0;border-bottom:1px solid var(--border);last-child:border-bottom:none">
-        <span class="badge ${ex.passed ? 'badge-g' : 'badge-r'}" style="min-width:100px;text-align:center">${ex.passed ? '✓ Bestanden' : '✗ Nicht bestanden'}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(ex.citizen_name)}${ex.citizen_id ? ` <span style="font-size:.75rem;color:var(--muted);font-weight:400">${esc(ex.citizen_id)}</span>` : ''}</div>
-          <div style="font-size:.78rem;color:var(--muted);margin-top:.1rem"><i class="fas ${ex.icon}" style="margin-right:.3rem"></i>${esc(ex.category_name)} – ${esc(ex.exam_type)} · Prüfer: ${esc(ex.examiner_name)}</div>
-        </div>
-        <div style="font-size:.78rem;color:var(--muted);white-space:nowrap">${ago(ex.registered_at)}</div>
-      </div>`).join('')}
-    </div>` : ''}
+  W.exams = d.lastExams.length ? `
+    <div class="card last-exam-card" style="margin:0">
+      <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-clipboard-check"></i></div><div><div class="card-title">Zuletzt abgenommene Prüfungen</div><div class="card-sub">Die letzten 3 Prüfungen</div></div></div>
+      ${d.lastExams.slice(0,3).map(ex=>`<div style="display:flex;align-items:center;gap:1rem;padding:.75rem 0;border-bottom:1px solid var(--border)"><span class="badge ${ex.passed?'badge-g':'badge-r'}" style="min-width:100px;text-align:center">${ex.passed?'✓ Bestanden':'✗ Nicht bestanden'}</span><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(ex.citizen_name)}${ex.citizen_id?` <span style="font-size:.75rem;color:var(--muted);font-weight:400">${esc(ex.citizen_id)}</span>`:''}</div><div style="font-size:.78rem;color:var(--muted);margin-top:.1rem"><i class="fas ${ex.icon}" style="margin-right:.3rem"></i>${esc(ex.category_name)} – ${esc(ex.exam_type)} · Prüfer: ${esc(ex.examiner_name)}</div></div><div style="font-size:.78rem;color:var(--muted);white-space:nowrap">${ago(ex.registered_at)}</div></div>`).join('')}
+    </div>` : null;
 
-    <!-- Bottom grid -->
+  W.rankings = `
     <div class="dash-bottom">
-      <!-- Top 5 -->
-      <div class="card">
-        <div class="card-head">
-          <div class="card-head-icon green"><i class="fas fa-trophy"></i></div>
-          <div><div class="card-title">Top 5 Mitarbeiter</div><div class="card-sub">Meiste Prüfungen</div></div>
-        </div>
-        ${d.top5.length ? d.top5.map((e, i) => `
-          <div class="lb-item">
-            ${rankBadge(i + 1)}
-            <div style="display:flex;align-items:center;gap:.6rem;flex:1">
-              <div style="width:30px;height:30px;flex-shrink:0">${avatarEl(e, 30)}</div>
-              <div><div class="lb-name">${esc(e.username)}</div><div class="lb-sub">${e.count} Prüfungen</div></div>
-            </div>
-            <div class="lb-score"><i class="fas fa-fire"></i>${e.count}</div>
-          </div>`).join('') : '<div class="empty"><i class="fas fa-trophy"></i><p>Keine Einträge</p></div>'}
+      <div class="card"><div class="card-head"><div class="card-head-icon green"><i class="fas fa-trophy"></i></div><div><div class="card-title">Top 5 Mitarbeiter</div><div class="card-sub">Meiste Prüfungen</div></div></div>
+        ${d.top5.length?d.top5.map((e,i)=>`<div class="lb-item">${rankBadge(i+1)}<div style="display:flex;align-items:center;gap:.6rem;flex:1"><div style="width:30px;height:30px;flex-shrink:0">${avatarEl(e,30)}</div><div><div class="lb-name">${esc(e.username)}</div><div class="lb-sub">${e.count} Prüfungen</div></div></div><div class="lb-score"><i class="fas fa-fire"></i>${e.count}</div></div>`).join(''):'<div class="empty"><i class="fas fa-trophy"></i><p>Keine Einträge</p></div>'}
       </div>
+      <div class="card"><div class="card-head"><div class="card-head-icon blue"><i class="fas fa-history"></i></div><div><div class="card-title">Letzte Prüfungen</div><div class="card-sub">Aktuelle Aktivität</div></div></div>
+        ${d.lastExams.map(r=>`<div class="re-item"><div class="re-ico ${r.passed?'pass':'fail'}"><i class="fas ${r.passed?'fa-check':'fa-times'}"></i></div><div class="re-info"><div class="re-name">${esc(r.citizen_name)}</div><div class="re-meta"><i class="fas ${r.icon}" style="font-size:.65rem"></i> ${esc(r.exam_type)}<span class="sep"></span>${esc(r.category_name)}<span class="sep"></span>${esc(r.examiner_name)}</div></div><div class="re-time">${ago(r.registered_at)}</div></div>`).join('')||'<div class="empty"><i class="fas fa-history"></i><p>Keine Einträge</p></div>'}
+      </div>
+    </div>`;
 
-      <!-- Letzte Prüfungen Liste -->
-      <div class="card">
-        <div class="card-head">
-          <div class="card-head-icon blue"><i class="fas fa-history"></i></div>
-          <div><div class="card-title">Letzte Prüfungen</div><div class="card-sub">Aktuelle Aktivität</div></div>
-        </div>
-        ${d.lastExams.map(r => `
-          <div class="re-item">
-            <div class="re-ico ${r.passed ? 'pass' : 'fail'}"><i class="fas ${r.passed ? 'fa-check' : 'fa-times'}"></i></div>
-            <div class="re-info">
-              <div class="re-name">${esc(r.citizen_name)}</div>
-              <div class="re-meta">
-                <i class="fas ${r.icon}" style="font-size:.65rem"></i> ${esc(r.exam_type)}
-                <span class="sep"></span>${esc(r.category_name)}
-                <span class="sep"></span>${esc(r.examiner_name)}
-              </div>
-            </div>
-            <div class="re-time">${ago(r.registered_at)}</div>
-          </div>`).join('') || '<div class="empty"><i class="fas fa-history"></i><p>Keine Einträge</p></div>'}
-      </div>
-    </div>
-
-    <!-- Meine Abzeichen -->
-    <div class="card" id="badgesCard" style="margin-top:1.1rem">
-      <div class="card-head">
-        <div class="card-head-icon" style="background:rgba(250,204,21,.15)"><i class="fas fa-medal" style="color:#facc15"></i></div>
-        <div><div class="card-title">Meine Abzeichen</div><div class="card-sub">${earnedSet.size} von ${Object.keys(BADGE_DEFS).length} freigeschaltet</div></div>
-      </div>
+  W.badges = `
+    <div class="card" id="badgesCard" style="margin:0">
+      <div class="card-head"><div class="card-head-icon" style="background:rgba(250,204,21,.15)"><i class="fas fa-medal" style="color:#facc15"></i></div><div><div class="card-title">Meine Abzeichen</div><div class="card-sub">${earnedSet.size} von ${Object.keys(BADGE_DEFS).length} freigeschaltet</div></div></div>
       ${[
         { label: 'Prüfungen', icon: 'fa-clipboard-check', color: '#f97316', keys: ['cat_pkw','cat_motorrad','cat_boot','cat_lkw','cat_flugschein','exams_10','exams_50','exams_100'] },
         { label: 'IC-Zeit',   icon: 'fa-clock',           color: '#22c55e', keys: ['ic_10','ic_50','ic_100','ic_250','ic_500'] },
         { label: 'Mitarbeiter der Woche', icon: 'fa-trophy', color: '#facc15', keys: ['eow_1','eow_3','eow_5'] },
         { label: 'Gaming',    icon: 'fa-gamepad',         color: '#f472b6', keys: ['game_3','game_10','duel_5','duel_25','tow_pro','bj_500','coins_1k','coins_10k','streak_7','streak_30'] },
-      ].map(group => {
-        // Index des ersten noch nicht verdienten Abzeichens = nächstes Ziel
-        const nextGoalIdx = group.keys.findIndex(k => !earnedSet.has(k));
-        return `
-        <div style="margin-bottom:1rem">
-          <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.65rem;padding-bottom:.4rem;border-bottom:1px solid var(--border)">
-            <i class="fas ${group.icon}" style="color:${group.color};font-size:.8rem"></i>
-            <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">${group.label}</span>
-            ${nextGoalIdx === -1 ? `<span style="margin-left:auto;font-size:.65rem;font-weight:700;color:#22c55e"><i class="fas fa-check-circle"></i> Alle freigeschaltet</span>` : ''}
-          </div>
-          <div style="display:flex;flex-wrap:wrap;gap:.75rem">
-            ${group.keys.map((key, i) => {
-              const b      = BADGE_DEFS[key];
-              const earned = earnedSet.has(key);
-              const isNext = i === nextGoalIdx;
-              const date   = badgeMap[key] ? new Date(badgeMap[key]).toLocaleDateString('de-DE') : null;
-              return renderBadge(key, b, earned, isNext, date, badgeStats);
-            }).join('')}
-          </div>
-        </div>`;
+      ].map(group=>{
+        const nextGoalIdx=group.keys.findIndex(k=>!earnedSet.has(k));
+        return `<div style="margin-bottom:1rem"><div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.65rem;padding-bottom:.4rem;border-bottom:1px solid var(--border)"><i class="fas ${group.icon}" style="color:${group.color};font-size:.8rem"></i><span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">${group.label}</span>${nextGoalIdx===-1?'<span style="margin-left:auto;font-size:.65rem;font-weight:700;color:#22c55e"><i class="fas fa-check-circle"></i> Alle freigeschaltet</span>':''}</div><div style="display:flex;flex-wrap:wrap;gap:.75rem">${group.keys.map((key,i)=>{const b=BADGE_DEFS[key];const earned=earnedSet.has(key);const isNext=i===nextGoalIdx;const date=badgeMap[key]?new Date(badgeMap[key]).toLocaleDateString('de-DE'):null;return renderBadge(key,b,earned,isNext,date,badgeStats);}).join('')}</div></div>`;
       }).join('')}
+    </div>`;
+
+  W.iczeit = d.icWeekTop?.some(u=>u.hours>0) ? `
+    <div class="card" style="margin:0">
+      <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-clock"></i></div><div><div class="card-title">IC-Zeit diese Woche</div><div class="card-sub">Top Mitarbeiter</div></div><button class="btn btn-ghost btn-sm" onclick="navigate('iczeit')" style="margin-left:auto">Alle anzeigen</button></div>
+      ${d.icWeekTop.filter(u=>u.hours>0).map((u,i)=>`<div class="lb-item"><div class="rank-badge${i===0?'':i===1?' r2':' r3'}">${i+1}</div><div style="display:flex;align-items:center;gap:.6rem;flex:1"><div style="width:30px;height:30px;flex-shrink:0">${avatarEl(u,30)}</div><div class="lb-name">${esc(u.username)}</div></div><div class="lb-score"><i class="fas fa-clock"></i>${(+u.hours).toFixed(1)}h</div></div>`).join('')}
+    </div>` : null;
+
+  W.challenges      = `<div id="staffChallengesWidget"></div>`;
+  W.gameLeaderboard = `<div id="gameLeaderboardWidget"></div>`;
+  W.achievementFeed = `<div id="achievementFeedWidget"></div>`;
+  W.birthday        = `<div id="birthdayTodayWidget"></div>`;
+
+  // ── Neue Widgets ─────────────────────────────────────────────
+  const streak = streakData?.streak || 0;
+  const bestStreak = streakData?.best_streak || 0;
+  const streakPct = bestStreak > 0 ? Math.min(streak/bestStreak*100,100) : (streak>0?100:0);
+  W.streak = `<div class="card" style="margin:0">
+    <div class="card-head"><div class="card-head-icon" style="background:rgba(249,115,22,.15)"><i class="fas fa-fire" style="color:#f97316"></i></div><div><div class="card-title">Login-Serie</div><div class="card-sub">Tägliches Einloggen</div></div></div>
+    <div style="display:flex;gap:1.5rem;align-items:center;flex-wrap:wrap">
+      <div style="text-align:center"><div style="font-size:2rem;font-weight:800;color:#f97316">${streak}</div><div style="font-size:.72rem;color:var(--muted)">Aktuell</div></div>
+      <div style="flex:1;min-width:120px"><div style="display:flex;justify-content:space-between;font-size:.74rem;color:var(--muted);margin-bottom:.3rem"><span>Serie</span><span>Rekord: ${bestStreak}</span></div><div style="height:8px;background:var(--input);border-radius:4px;overflow:hidden"><div style="height:100%;width:${streakPct}%;background:linear-gradient(90deg,#f97316,#fb923c)"></div></div><div style="font-size:.72rem;color:var(--muted);margin-top:.35rem">${streak>=7?'<i class="fas fa-check-circle" style="color:#22c55e"></i> Streak-7 Abzeichen':'Noch '+Math.max(0,7-streak)+' Tage bis Streak-7 Abzeichen'}</div></div>
+      <div style="text-align:center"><div style="font-size:2rem;font-weight:800;color:var(--muted)">${bestStreak}</div><div style="font-size:.72rem;color:var(--muted)">Rekord</div></div>
     </div>
+  </div>`;
 
-    <!-- IC-Zeit Widget -->
-    ${d.icWeekTop?.some(u => u.hours > 0) ? `
-    <div class="card" style="margin-top:1.1rem">
-      <div class="card-head">
-        <div class="card-head-icon orange"><i class="fas fa-clock"></i></div>
-        <div><div class="card-title">IC-Zeit diese Woche</div><div class="card-sub">Top Mitarbeiter</div></div>
-        <button class="btn btn-ghost btn-sm" onclick="navigate('iczeit')" style="margin-left:auto">Alle anzeigen</button>
-      </div>
-      ${d.icWeekTop.filter(u => u.hours > 0).map((u, i) => `
-        <div class="lb-item">
-          <div class="rank-badge${i === 0 ? '' : i === 1 ? ' r2' : ' r3'}">${i + 1}</div>
-          <div style="display:flex;align-items:center;gap:.6rem;flex:1">
-            <div style="width:30px;height:30px;flex-shrink:0">${avatarEl(u, 30)}</div>
-            <div class="lb-name">${esc(u.username)}</div>
-          </div>
-          <div class="lb-score"><i class="fas fa-clock"></i>${(+u.hours).toFixed(1)}h</div>
-        </div>`).join('')}
-    </div>` : ''}
+  W.dms    = `<div id="dashDmsWidget"></div>`;
+  W.market = `<div id="dashMarketWidget"></div>`;
 
-    <!-- Wöchentliche Challenges (ganz unten, volle Breite) -->
-    <div id="staffChallengesWidget" style="margin-top:1.1rem"></div>
+  W.quickActions = `<div class="card" style="margin:0">
+    <div class="card-head"><div class="card-head-icon" style="background:rgba(99,102,241,.15)"><i class="fas fa-bolt" style="color:#818cf8"></i></div><div><div class="card-title">Schnellaktionen</div><div class="card-sub">Häufig genutzte Funktionen</div></div></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.5rem">
+      <button class="btn btn-ghost" onclick="navigate('registrierung')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-clipboard-check" style="color:var(--orange)"></i>Prüfung eintragen</button>
+      <button class="btn btn-ghost" onclick="navigate('iczeit')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-clock" style="color:#22c55e"></i>IC-Zeit eintragen</button>
+      <button class="btn btn-ghost" onclick="navigate('eow')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-vote-yea" style="color:#facc15"></i>Abstimmen</button>
+      <button class="btn btn-ghost" onclick="navigate('minispiele')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-gamepad" style="color:#f472b6"></i>Minispiele</button>
+      <button class="btn btn-ghost" onclick="navigate('nachrichten')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-envelope" style="color:#60a5fa"></i>Nachrichten</button>
+      <button class="btn btn-ghost" onclick="navigate('marktplatz')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-store" style="color:#4ade80"></i>Marktplatz</button>
+    </div>
+  </div>`;
 
-    <!-- Einheitliche Spiele-Rangliste -->
-    <div id="gameLeaderboardWidget" style="margin-top:1.1rem"></div>
+  W.note = `<div class="card" style="margin:0">
+    <div class="card-head"><div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-sticky-note" style="color:#fbbf24"></i></div><div><div class="card-title">Persönliche Notiz</div><div class="card-sub">Nur für dich sichtbar — wird automatisch gespeichert</div></div></div>
+    <textarea id="dashNoteArea" style="width:100%;min-height:80px;background:var(--input);border:1px solid var(--border);border-radius:var(--r);padding:.6rem .7rem;font-size:.84rem;color:var(--fg);resize:vertical;font-family:inherit;box-sizing:border-box" placeholder="Schreib dir etwas auf…">${esc(noteData?.content||'')}</textarea>
+  </div>`;
 
-    <!-- BATCH 4: Achievement-Feed -->
-    <div id="achievementFeedWidget" style="margin-top:1.1rem"></div>
+  const hist = coinHist || [];
+  const maxAbs = Math.max(1, ...hist.map(h => Math.abs(h.net)));
+  W.coinHistory = `<div class="card" style="margin:0">
+    <div class="card-head"><div class="card-head-icon" style="background:rgba(250,204,21,.15)"><i class="fas fa-coins" style="color:#facc15"></i></div><div><div class="card-title">Coin-Verlauf</div><div class="card-sub">Letzte 7 Tage</div></div></div>
+    <div style="display:flex;align-items:flex-end;gap:3px;height:60px;margin-bottom:.3rem">
+      ${hist.map(h=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%" title="${h.day}: ${h.net>=0?'+':''}${h.net}"><div style="width:100%;background:${h.net>=0?'#22c55e':'#ef4444'};border-radius:2px 2px 0 0;height:${Math.round(Math.abs(h.net)/maxAbs*100)}%;min-height:${h.net!==0?'4px':'1px'};opacity:.85"></div></div>`).join('')}
+    </div>
+    <div style="display:flex;gap:3px">
+      ${hist.map(h=>`<div style="flex:1;font-size:.6rem;color:var(--muted);text-align:center">${new Date(h.day).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}).slice(0,5)}</div>`).join('')}
+    </div>
+    <div style="display:flex;gap:1.2rem;margin-top:.5rem">
+      <span style="font-size:.75rem;color:#22c55e"><i class="fas fa-arrow-up"></i> +${hist.filter(h=>h.net>0).reduce((s,h)=>s+h.net,0)} Einnahmen</span>
+      <span style="font-size:.75rem;color:#ef4444"><i class="fas fa-arrow-down"></i> ${hist.filter(h=>h.net<0).reduce((s,h)=>s+h.net,0)} Ausgaben</span>
+    </div>
+  </div>`;
 
-    <!-- BATCH 6: Geburtstage heute -->
-    <div id="birthdayTodayWidget" style="margin-top:1.1rem"></div>`;
+  // ── Render ───────────────────────────────────────────────────
+  const announcementsHTML = announcements?.length ? announcements.slice(0,3).map(a=>`
+    <div style="display:flex;align-items:flex-start;gap:1rem;padding:1rem 1.1rem;border-radius:var(--r);margin-bottom:.6rem;background:linear-gradient(135deg,rgba(249,115,22,.12),rgba(249,115,22,.04));border:1px solid rgba(249,115,22,.3);border-left:4px solid var(--orange)">
+      <div style="width:36px;height:36px;border-radius:50%;background:rgba(249,115,22,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:.1rem"><i class="fas ${a.is_pinned?'fa-thumbtack':'fa-bullhorn'}" style="color:var(--orange);font-size:.85rem"></i></div>
+      <div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem"><span style="font-weight:700;font-size:.95rem">${esc(a.title)}</span>${a.is_pinned?'<span style="font-size:.68rem;font-weight:700;padding:.1rem .4rem;border-radius:20px;background:rgba(249,115,22,.2);color:var(--orange);text-transform:uppercase;letter-spacing:.05em">Angeheftet</span>':''}<span style="font-size:.72rem;color:var(--muted);margin-left:auto">${esc(a.author)} · ${new Date(a.created_at).toLocaleDateString('de-DE')}</span></div><div style="font-size:.85rem;color:var(--fg);opacity:.85;white-space:pre-wrap;line-height:1.5">${esc(a.content)}</div></div>
+      ${isAdmin()?`<button class="btn btn-ghost btn-sm" onclick="navigate('admin')" style="flex-shrink:0"><i class="fas fa-cog"></i></button>`:''}
+    </div>`).join('') : '';
+
+  const widgetsHTML = order.map(id => W[id] == null ? '' : _dashWidget(id, W[id])).join('');
+
+  $('pageContent').innerHTML = `
+    ${announcementsHTML}
+    <div style="display:flex;justify-content:flex-end;margin-bottom:.6rem">
+      <button class="btn btn-ghost btn-sm" onclick="openDashSettings()" style="font-size:.78rem"><i class="fas fa-sliders-h" style="margin-right:.35rem"></i>Personalisieren</button>
+    </div>
+    <div id="dashWidgets">${widgetsHTML}</div>`;
+
   animateCountUps();
   requestAnimationFrame(() => requestAnimationFrame(animateBadgeRings));
   loadTwitchWidget();
   clearInterval(dashboard._twitchPoll);
-  dashboard._twitchPoll = setInterval(loadTwitchWidget, 2 * 60 * 1000);
-  loadPollWidget('staffPollWidget');
-  loadChallengesWidget('staffChallengesWidget');
-  loadGameLeaderboard('gameLeaderboardWidget');
-  loadAchievementFeed('achievementFeedWidget');
-  loadBirthdayTodayWidget('birthdayTodayWidget');
+  dashboard._twitchPoll = setInterval(loadTwitchWidget, 2*60*1000);
+  if (order.includes('poll'))            loadPollWidget('staffPollWidget');
+  if (order.includes('challenges'))      loadChallengesWidget('staffChallengesWidget');
+  if (order.includes('gameLeaderboard')) loadGameLeaderboard('gameLeaderboardWidget');
+  if (order.includes('achievementFeed')) loadAchievementFeed('achievementFeedWidget');
+  if (order.includes('birthday'))        loadBirthdayTodayWidget('birthdayTodayWidget');
+  if (order.includes('dms'))             _loadDashDMs();
+  if (order.includes('market'))          _loadDashMarket();
+
+  const noteEl = document.getElementById('dashNoteArea');
+  if (noteEl) {
+    let _nt;
+    noteEl.addEventListener('input', () => {
+      clearTimeout(_nt);
+      _nt = setTimeout(() => api('/api/dashboard/note', {method:'POST',body:JSON.stringify({content:noteEl.value}),headers:{'Content-Type':'application/json'}}), 800);
+    });
+  }
+  _initDashDrag();
   connectSSE();
+}
+
+async function _loadDashDMs() {
+  const el = document.getElementById('dashDmsWidget');
+  if (!el) return;
+  const inbox = await api('/api/dm/inbox');
+  if (!inbox?.length) { el.innerHTML = ''; return; }
+  const unread = inbox.filter(m => !m.read_at);
+  el.innerHTML = `<div class="card" style="margin:0">
+    <div class="card-head"><div class="card-head-icon blue"><i class="fas fa-envelope"></i></div><div><div class="card-title">Direktnachrichten</div><div class="card-sub">${unread.length?unread.length+' ungelesen':'Alle gelesen'}</div></div><button class="btn btn-ghost btn-sm" onclick="navigate('nachrichten')" style="margin-left:auto">Alle</button></div>
+    ${inbox.slice(0,3).map(m=>`<div style="display:flex;align-items:center;gap:.6rem;padding:.4rem 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="navigate('nachrichten')"><div style="width:30px;height:30px;flex-shrink:0;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700">${esc((m.sender_name||'?')[0].toUpperCase())}</div><div style="flex:1;min-width:0"><div style="font-weight:${m.read_at?'400':'700'};font-size:.85rem">${esc(m.sender_name||'Unbekannt')}</div><div style="font-size:.75rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((m.content||'').slice(0,50))}</div></div>${!m.read_at?'<span class="badge badge-r" style="font-size:.65rem">NEU</span>':''}</div>`).join('')}
+  </div>`;
+}
+
+async function _loadDashMarket() {
+  const el = document.getElementById('dashMarketWidget');
+  if (!el) return;
+  const listings = await api('/api/market/my');
+  const active = (listings||[]).filter(l => !l.sold_at);
+  if (!active.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="card" style="margin:0">
+    <div class="card-head"><div class="card-head-icon green"><i class="fas fa-store"></i></div><div><div class="card-title">Meine Listings</div><div class="card-sub">${active.length} aktive Angebote</div></div><button class="btn btn-ghost btn-sm" onclick="navigate('marktplatz')" style="margin-left:auto">Alle</button></div>
+    ${active.slice(0,3).map(l=>`<div style="display:flex;align-items:center;gap:.6rem;padding:.4rem 0;border-bottom:1px solid var(--border)"><div style="flex:1;font-size:.85rem;font-weight:600">${esc(l.item_name)}</div><div style="font-size:.84rem;color:#facc15;font-weight:700">${l.price.toLocaleString('de-DE')} <i class="fas fa-coins" style="font-size:.7rem"></i></div></div>`).join('')}
+  </div>`;
 }
 
 // BATCH 4: Achievement-Feed laden

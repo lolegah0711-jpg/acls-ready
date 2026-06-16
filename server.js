@@ -1227,6 +1227,64 @@ app.patch('/api/announcements/:id/pin', requireAdmin, (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════
+//  DASHBOARD PERSONALISIERUNG
+// ════════════════════════════════════════════════════════════════
+app.get('/api/dashboard/prefs', requireAuth, (req, res) => {
+  const u = getUser(req);
+  const row = db.prepare('SELECT layout FROM dashboard_prefs WHERE user_id = ?').get(u.id);
+  res.json({ layout: row ? JSON.parse(row.layout) : [] });
+});
+
+app.post('/api/dashboard/prefs', requireAuth, (req, res) => {
+  const u = getUser(req);
+  const layout = JSON.stringify(req.body.layout || []);
+  db.prepare(`INSERT INTO dashboard_prefs (user_id, layout, updated_at)
+    VALUES (?, ?, datetime('now'))
+    ON CONFLICT(user_id) DO UPDATE SET layout=excluded.layout, updated_at=excluded.updated_at`)
+    .run(u.id, layout);
+  res.json({ ok: true });
+});
+
+app.get('/api/dashboard/note', requireAuth, (req, res) => {
+  const u = getUser(req);
+  const row = db.prepare('SELECT content FROM dashboard_notes WHERE user_id = ?').get(u.id);
+  res.json({ content: row?.content || '' });
+});
+
+app.post('/api/dashboard/note', requireAuth, (req, res) => {
+  const u = getUser(req);
+  const content = (req.body.content || '').slice(0, 2000);
+  db.prepare(`INSERT INTO dashboard_notes (user_id, content, updated_at)
+    VALUES (?, ?, datetime('now'))
+    ON CONFLICT(user_id) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at`)
+    .run(u.id, content);
+  res.json({ ok: true });
+});
+
+app.get('/api/dashboard/streak', requireAuth, (req, res) => {
+  const u = getUser(req);
+  const row = db.prepare('SELECT streak, best_streak, last_daily FROM coin_balances WHERE discord_id = ?').get(u.discord_id);
+  res.json({ streak: row?.streak || 0, best_streak: row?.best_streak || 0, last_daily: row?.last_daily || null });
+});
+
+app.get('/api/dashboard/coin-history', requireAuth, (req, res) => {
+  const u = getUser(req);
+  const rows = db.prepare(`
+    SELECT date(created_at) as day, SUM(amount) as net
+    FROM coin_transactions
+    WHERE discord_id = ? AND created_at >= date('now', '-6 days')
+    GROUP BY date(created_at) ORDER BY day ASC
+  `).all(u.discord_id);
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const key = d.toISOString().split('T')[0];
+    days.push({ day: key, net: rows.find(r => r.day === key)?.net || 0 });
+  }
+  res.json(days);
+});
+
+// ════════════════════════════════════════════════════════════════
 //  RANKS
 // ════════════════════════════════════════════════════════════════
 app.patch('/api/users/:id/rank', requireAdmin, (req, res) => {
