@@ -499,8 +499,7 @@ async function renderVoterScreen() {
           </p>
           <div style="display:flex;flex-direction:column;gap:.6rem;max-width:640px">
           ${(users || []).map(u => {
-            const av = (u.avatar && u.discord_id)
-              ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64` : null;
+            const av = u.avatar_custom || (u.avatar && u.discord_id ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=64` : null);
             const voted    = myVote === u.id;
             const clickable = !myVote || canChange;
             const votes    = tally[u.id] || 0;
@@ -609,8 +608,9 @@ async function loadVoterTeam() {
   function av(u, isL) {
     const sz = isL ? 68 : 56;
     const glow = frameGlow(u.equipped_frame);
-    return (u.avatar && u.discord_id)
-      ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;${glow}${isL?'border:2px solid #c9a227':''}" onerror="this.outerHTML='<div style=&quot;width:${sz}px;height:${sz}px;border-radius:50%;background:${isL?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isL?'1.5':'1.3'}rem;font-weight:700&quot;>${(u.username||'?')[0].toUpperCase()}</div>'">`
+    const src = u.avatar_custom || (u.avatar && u.discord_id ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128` : null);
+    return src
+      ? `<img src="${src}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;${glow}${isL?'border:2px solid #c9a227':''}" onerror="this.outerHTML='<div style=&quot;width:${sz}px;height:${sz}px;border-radius:50%;background:${isL?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isL?'1.5':'1.3'}rem;font-weight:700&quot;>${(u.username||'?')[0].toUpperCase()}</div>'">`
       : `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${isL?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isL?'1.5':'1.3'}rem;font-weight:700;${glow}">${(u.username||'?')[0].toUpperCase()}</div>`;
   }
   function card(u, isL = false) {
@@ -4062,8 +4062,9 @@ async function organigramm() {
 
   function memberCard(u, isLeitung = false) {
     const glow = frameGlow(u.equipped_frame);
-    const av = (u.avatar && u.discord_id)
-      ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;object-fit:cover;${glow}${isLeitung?'border:2px solid #c9a227':''}" onerror="this.outerHTML='<div style=\'width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;background:${isLeitung?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isLeitung?'1.8':'1.5'}rem;font-weight:700\'>${(u.username||'?')[0].toUpperCase()}</div>'">`
+    const _avSrc = u.avatar_custom || (u.avatar && u.discord_id ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128` : null);
+    const av = _avSrc
+      ? `<img src="${_avSrc}" style="width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;object-fit:cover;${glow}${isLeitung?'border:2px solid #c9a227':''}" onerror="this.outerHTML='<div style=\'width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;background:${isLeitung?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isLeitung?'1.8':'1.5'}rem;font-weight:700\'>${(u.username||'?')[0].toUpperCase()}</div>'">`
       : `<div style="width:${isLeitung?80:64}px;height:${isLeitung?80:64}px;border-radius:50%;background:${isLeitung?'#c9a227':'var(--orange)'};display:flex;align-items:center;justify-content:center;font-size:${isLeitung?'1.8':'1.5'}rem;font-weight:700;${glow}">${(u.username||'?')[0].toUpperCase()}</div>`;
     const roleColor = isLeitung ? '#c9a227' : u.role === 'admin' ? '#f97316' : u.role === 'ausbilder' ? '#60a5fa' : 'var(--muted)';
     const roleName  = isLeitung ? 'Rang 12' : u.role === 'admin' ? 'Administration' : u.role === 'ausbilder' ? 'Ausbilder' : 'Mitarbeiter';
@@ -4129,8 +4130,9 @@ window.openSteckbrief = async function(userId) {
   const ROLE_COLOR = { admin:'#f97316', ausbilder:'#60a5fa', member:'var(--muted)' };
   const ROLE_BG    = { admin:'rgba(249,115,22,.15)', ausbilder:'rgba(96,165,250,.12)', member:'rgba(255,255,255,.06)' };
 
-  const av = u.avatar && u.discord_id
-    ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" style="width:72px;height:72px;border-radius:50%;object-fit:cover;flex-shrink:0">`
+  const _steckSrc = u.avatar_custom || (u.avatar && u.discord_id ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128` : null);
+  const av = _steckSrc
+    ? `<img src="${_steckSrc}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none';this.nextSibling.style.display='flex'"><div style="width:72px;height:72px;border-radius:50%;background:var(--surface2);display:none;align-items:center;justify-content:center;font-size:1.6rem;font-weight:800;flex-shrink:0">${esc((u.username||'?').slice(0,2).toUpperCase())}</div>`
     : `<div style="width:72px;height:72px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:800;flex-shrink:0">${esc((u.username||'?').slice(0,2).toUpperCase())}</div>`;
 
   const honoraryTitles = d.honoraryTitles || [];
@@ -8133,7 +8135,7 @@ async function team_vorstellung() {
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem">
       ${data.map(u => {
         const avUrl = u.avatar_custom || (u.avatar && u.discord_id ? `https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128` : null);
-        return `<div class="card" style="text-align:center;padding:1.5rem 1rem">
+        return `<div class="card" style="text-align:center;padding:1.5rem 1rem;cursor:${isMine(u)?'default':'pointer'};transition:transform .12s,box-shadow .12s" ${!isMine(u)?`onclick="openSteckbrief(${u.id})" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(0,0,0,.25)'" onmouseout="this.style.transform='';this.style.boxShadow=''"`:''}>
           <div style="width:80px;height:80px;border-radius:50%;margin:0 auto .75rem;overflow:hidden;border:3px solid ${roleColor[u.role]||'var(--orange)'};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:700;background:var(--surface2)">
             ${avUrl ? `<img src="${avUrl}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">` : (u.username||'?')[0].toUpperCase()}
           </div>
@@ -8142,7 +8144,9 @@ async function team_vorstellung() {
           ${u.specialty ? `<div style="font-size:.78rem;color:var(--muted);margin-bottom:.3rem"><i class="fas fa-tools" style="margin-right:.3rem;color:var(--orange)"></i>${esc(u.specialty)}</div>` : ''}
           ${u.bio ? `<div style="font-size:.8rem;color:var(--muted);line-height:1.5;margin-bottom:.4rem">${esc(u.bio)}</div>` : '<div style="font-size:.78rem;color:var(--surface2);margin-bottom:.4rem">Noch kein Profil ausgefüllt</div>'}
           ${u.fun_fact ? `<div style="font-size:.75rem;padding:.4rem .7rem;background:var(--surface2);border-radius:8px;color:var(--muted);margin-top:.3rem"><i class="fas fa-star" style="color:#fbbf24;margin-right:.3rem"></i>${esc(u.fun_fact)}</div>` : ''}
-          ${isMine(u) ? `<button class="btn btn-ghost btn-sm" style="margin-top:.75rem;width:100%" onclick="editMyProfile()"><i class="fas fa-edit"></i> Profil bearbeiten</button>` : ''}
+          ${isMine(u)
+            ? `<button class="btn btn-ghost btn-sm" style="margin-top:.75rem;width:100%" onclick="editMyProfile()"><i class="fas fa-edit"></i> Profil bearbeiten</button>`
+            : `<div style="margin-top:.75rem;font-size:.72rem;color:var(--muted)"><i class="fas fa-user-circle" style="margin-right:.3rem"></i>Klicken für Steckbrief</div>`}
         </div>`;
       }).join('')}
     </div>`;

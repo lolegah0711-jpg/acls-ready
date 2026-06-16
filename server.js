@@ -470,7 +470,7 @@ app.get('/auth/me', (req, res) => {
 //  USERS
 // ════════════════════════════════════════════════════════════════
 app.get('/api/users', requireAuthOrBot, (req, res) => {
-  res.json(db.prepare('SELECT id, discord_id, username, avatar, role, rank, is_active, created_at FROM users WHERE is_active = 1 ORDER BY username').all());
+  res.json(db.prepare('SELECT id, discord_id, username, avatar, avatar_custom, role, rank, is_active, created_at FROM users WHERE is_active = 1 ORDER BY username').all());
 });
 
 app.post('/api/users', (req, res) => {
@@ -520,17 +520,17 @@ app.get('/api/eow', requireAuth, (req, res) => {
   const user = getUser(req);
 
   const winner = db.prepare(`
-    SELECT w.*, u.username, u.avatar FROM eow_winners w
+    SELECT w.*, u.username, u.avatar, u.avatar_custom, u.discord_id FROM eow_winners w
     JOIN users u ON u.id = w.user_id WHERE w.week = ?
   `).get(wk);
 
   const lastWinner = winner || db.prepare(`
-    SELECT w.*, u.username, u.avatar FROM eow_winners w
+    SELECT w.*, u.username, u.avatar, u.avatar_custom, u.discord_id FROM eow_winners w
     JOIN users u ON u.id = w.user_id ORDER BY w.announced_at DESC LIMIT 1
   `).get();
 
   const standings = db.prepare(`
-    SELECT u.id, u.username, u.avatar, u.discord_id, COUNT(*) as votes
+    SELECT u.id, u.username, u.avatar, u.avatar_custom, u.discord_id, COUNT(*) as votes
     FROM eow_votes v JOIN users u ON u.id = v.nominee_id
     WHERE v.week = ? GROUP BY v.nominee_id ORDER BY votes DESC
   `).all(wk);
@@ -543,7 +543,7 @@ app.get('/api/eow', requireAuth, (req, res) => {
   standings.forEach(s => { s.voters = voterMap[s.id] || []; });
 
   const history = db.prepare(`
-    SELECT w.week, w.vote_count, u.username, u.avatar, u.discord_id FROM eow_winners w
+    SELECT w.week, w.vote_count, u.username, u.avatar, u.avatar_custom, u.discord_id FROM eow_winners w
     JOIN users u ON u.id = w.user_id ORDER BY w.announced_at DESC LIMIT 10
   `).all();
 
@@ -1513,7 +1513,7 @@ function requireAuthOrBot(req, res, next) {
 }
 
 app.get('/api/profile/:id', requireAnySession, (req, res) => {
-  const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank, ic_weekly_goal, created_at FROM users WHERE id = ?').get(req.params.id);
+  const u = db.prepare('SELECT id, discord_id, username, avatar, avatar_custom, role, rank, ic_weekly_goal, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!u) return res.status(404).json({ error: 'Nicht gefunden' });
   const cosm = db.prepare('SELECT equipped_title, equipped_frame, equipped_banner, equipped_namecolor, equipped_deco FROM coin_balances WHERE discord_id = ?').get(u.discord_id);
   u.equipped_title     = cosm?.equipped_title || null;
@@ -2639,7 +2639,7 @@ app.get('/quiz', (req, res) => {
 // ── ORGANIGRAMM (öffentlich) ──────────────────────────────────────
 app.get('/api/organigramm', (req, res) => {
   const staff = db.prepare(`
-    SELECT u.id, u.username, u.avatar, u.discord_id, u.role, u.rank,
+    SELECT u.id, u.username, u.avatar, u.avatar_custom, u.discord_id, u.role, u.rank,
            cb.equipped_title, cb.equipped_frame, cb.equipped_namecolor, cb.equipped_deco
     FROM users u LEFT JOIN coin_balances cb ON cb.discord_id = u.discord_id
     WHERE u.is_active = 1
