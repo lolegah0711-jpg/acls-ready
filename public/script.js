@@ -4496,149 +4496,164 @@ async function admin() {
       <button class="btn btn-ghost btn-sm" onclick="enterCitizenView()"><i class="fas fa-eye" style="margin-right:.35rem"></i>Bürgeransicht</button>
     </div>
 
-    <!-- Alles in einem Container, kein Abstand zwischen Blöcken -->
+    <!-- Ein Container, zwei unabhängige Spalten -->
     <div style="border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;background:var(--card-bg)">
 
-      <!-- Zeile 1: Benutzerverwaltung | Fragenverwaltung -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;${BB}">
-        <div style="${P};${BR}">
-          <div class="card-head" style="margin-bottom:.7rem">
-            <div class="card-head-icon orange"><i class="fas fa-users"></i></div>
-            <div style="flex:1"><div class="card-title">Benutzerverwaltung</div><div class="card-sub">${activeUsers} aktive Nutzer</div></div>
-            <button class="btn btn-primary btn-sm" onclick="openAddUser()"><i class="fas fa-user-plus"></i> Hinzufügen</button>
+      <!-- Spalten-Bereich -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;align-items:start;${BB}">
+
+        <!-- LINKE SPALTE -->
+        <div style="${BR}">
+
+          <!-- Benutzerverwaltung -->
+          <div style="${P};${BB}">
+            <div class="card-head" style="margin-bottom:.7rem">
+              <div class="card-head-icon orange"><i class="fas fa-users"></i></div>
+              <div style="flex:1"><div class="card-title">Benutzerverwaltung</div><div class="card-sub">${activeUsers} aktive Nutzer</div></div>
+              <button class="btn btn-primary btn-sm" onclick="openAddUser()"><i class="fas fa-user-plus"></i> Hinzufügen</button>
+            </div>
+            <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
+              <table class="data-tbl">
+                <thead><tr><th>Name</th><th>Rolle / Rang</th><th colspan="2"></th></tr></thead>
+                <tbody>${users.filter(u=>u.is_active).map(u=>`<tr>
+                  <td><div style="display:flex;align-items:center;gap:.45rem">${avatarEl(u,24)}<span style="font-weight:600;font-size:.82rem">${esc(u.username)}</span></div></td>
+                  <td><div style="display:flex;flex-direction:column;gap:.2rem">
+                    <select class="form-control" style="padding:.15rem .3rem;height:auto;font-size:.77rem;width:auto" onchange="setRole(${u.id},this.value)">
+                      <option value="member"    ${u.role==='member'   ?'selected':''}>Mitarbeiter</option>
+                      <option value="ausbilder" ${u.role==='ausbilder'?'selected':''}>Ausbilder</option>
+                      <option value="admin"     ${u.role==='admin'    ?'selected':''}>Admin</option>
+                      <option value="citizen"   ${u.role==='citizen'  ?'selected':''}>Bürger</option>
+                    </select>
+                    <select class="form-control" style="padding:.15rem .3rem;height:auto;font-size:.77rem;width:auto" onchange="setRank(${u.id},this.value)">
+                      ${['Azubi','Mitarbeiter','Senior','Führungskraft','Rang 12'].map(r=>`<option ${(u.rank||'Mitarbeiter')===r?'selected':''}>${r}</option>`).join('')}
+                    </select>
+                  </div></td>
+                  <td style="white-space:nowrap">
+                    <button class="btn btn-ghost btn-sm" onclick="openProfileModal(${u.id})" title="Statistiken"><i class="fas fa-chart-bar"></i></button>
+                    <button class="btn btn-ghost btn-sm" onclick="openRenameUser(${u.id})" title="Umbenennen"><i class="fas fa-pen"></i></button>
+                  </td>
+                  <td><button class="btn btn-danger btn-sm" onclick="removeUser(${u.id})"><i class="fas fa-trash"></i></button></td>
+                </tr>`).join('')}</tbody>
+              </table>
+            </div>
           </div>
-          <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
-            <table class="data-tbl">
-              <thead><tr><th>Name</th><th>Rolle / Rang</th><th colspan="2"></th></tr></thead>
-              <tbody>${users.filter(u=>u.is_active).map(u=>`<tr>
-                <td><div style="display:flex;align-items:center;gap:.45rem">${avatarEl(u,24)}<span style="font-weight:600;font-size:.82rem">${esc(u.username)}</span></div></td>
-                <td><div style="display:flex;flex-direction:column;gap:.2rem">
-                  <select class="form-control" style="padding:.15rem .3rem;height:auto;font-size:.77rem;width:auto" onchange="setRole(${u.id},this.value)">
-                    <option value="member"    ${u.role==='member'   ?'selected':''}>Mitarbeiter</option>
-                    <option value="ausbilder" ${u.role==='ausbilder'?'selected':''}>Ausbilder</option>
-                    <option value="admin"     ${u.role==='admin'    ?'selected':''}>Admin</option>
-                    <option value="citizen"   ${u.role==='citizen'  ?'selected':''}>Bürger</option>
-                  </select>
-                  <select class="form-control" style="padding:.15rem .3rem;height:auto;font-size:.77rem;width:auto" onchange="setRank(${u.id},this.value)">
-                    ${['Azubi','Mitarbeiter','Senior','Führungskraft','Rang 12'].map(r=>`<option ${(u.rank||'Mitarbeiter')===r?'selected':''}>${r}</option>`).join('')}
-                  </select>
-                </div></td>
-                <td style="white-space:nowrap">
-                  <button class="btn btn-ghost btn-sm" onclick="openProfileModal(${u.id})" title="Statistiken"><i class="fas fa-chart-bar"></i></button>
-                  <button class="btn btn-ghost btn-sm" onclick="openRenameUser(${u.id})" title="Umbenennen"><i class="fas fa-pen"></i></button>
-                </td>
-                <td><button class="btn btn-danger btn-sm" onclick="removeUser(${u.id})"><i class="fas fa-trash"></i></button></td>
+
+          <!-- Beschwerden -->
+          <div style="${P};${BB}">
+            <div class="card-head" style="margin-bottom:.7rem">
+              <div class="card-head-icon" style="background:rgba(239,68,68,.15)"><i class="fas fa-comment-alt" style="color:#ef4444"></i></div>
+              <div><div class="card-title">Beschwerden</div><div class="card-sub">${openComplaints} offen</div></div>
+            </div>
+            ${(complaints||[]).length?`
+            <div class="tbl-wrap" style="max-height:260px;overflow-y:auto"><table class="data-tbl">
+              <thead><tr><th>Bürger</th><th>Betreff</th><th>Datum</th><th>Status</th><th></th></tr></thead>
+              <tbody>${complaints.map(c=>`<tr style="cursor:pointer" onclick="openComplaint(${c.id})">
+                <td style="font-weight:600;font-size:.82rem">${esc(c.citizen_name)}</td>
+                <td style="font-size:.81rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.subject)}</td>
+                <td style="font-size:.75rem;color:var(--muted);white-space:nowrap">${new Date(c.created_at).toLocaleDateString('de-DE')}</td>
+                <td><span style="font-size:.71rem;padding:.1rem .4rem;border-radius:5px;font-weight:700;background:${c.status==='offen'?'rgba(239,68,68,.15)':'rgba(34,197,94,.15)'};color:${c.status==='offen'?'#ef4444':'#22c55e'}">${c.status}</span></td>
+                <td onclick="event.stopPropagation()">${c.status==='offen'
+                  ?`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'erledigt')"><i class="fas fa-check"></i></button>`
+                  :`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'offen')"><i class="fas fa-undo"></i></button>`}</td>
               </tr>`).join('')}</tbody>
-            </table>
+            </table></div>`:'<div class="empty" style="padding:.6rem"><p>Keine Beschwerden</p></div>'}
           </div>
-        </div>
-        <div style="${P}">
-          <div class="card-head" style="margin-bottom:.7rem">
-            <div class="card-head-icon blue"><i class="fas fa-question-circle"></i></div>
-            <div style="flex:1"><div class="card-title">Fragenverwaltung</div><div class="card-sub">${totalQuestions} Fragen total</div></div>
-            <button class="btn btn-primary btn-sm" onclick="openAddQuestion()"><i class="fas fa-plus"></i> Hinzufügen</button>
-          </div>
-          ${(cats||[]).map(cat=>`
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:.4rem .6rem;background:var(--input);border-radius:var(--r);margin-bottom:.3rem">
-              <div style="display:flex;align-items:center;gap:.45rem">
-                <i class="fas ${cat.icon}" style="color:var(--orange);width:13px;text-align:center;font-size:.78rem"></i>
-                <span style="font-size:.84rem;font-weight:600">${cat.name}</span>
-              </div>
-              <div style="display:flex;align-items:center;gap:.35rem">
-                <span class="badge badge-m">${cat.question_count}</span>
-                <button class="btn btn-ghost btn-sm" onclick="manageQuestions(${cat.id},'${cat.name}','${cat.icon}')"><i class="fas fa-cog"></i></button>
-              </div>
-            </div>`).join('')}
-        </div>
-      </div>
 
-      <!-- Zeile 2: Beschwerden | Schwarzes Brett -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;${BB}">
-        <div style="${P};${BR}">
-          <div class="card-head" style="margin-bottom:.7rem">
-            <div class="card-head-icon" style="background:rgba(239,68,68,.15)"><i class="fas fa-comment-alt" style="color:#ef4444"></i></div>
-            <div><div class="card-title">Beschwerden</div><div class="card-sub">${openComplaints} offen</div></div>
-          </div>
-          ${(complaints||[]).length?`
-          <div class="tbl-wrap" style="max-height:260px;overflow-y:auto"><table class="data-tbl">
-            <thead><tr><th>Bürger</th><th>Betreff</th><th>Datum</th><th>Status</th><th></th></tr></thead>
-            <tbody>${complaints.map(c=>`<tr style="cursor:pointer" onclick="openComplaint(${c.id})">
-              <td style="font-weight:600;font-size:.82rem">${esc(c.citizen_name)}</td>
-              <td style="font-size:.81rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.subject)}</td>
-              <td style="font-size:.75rem;color:var(--muted);white-space:nowrap">${new Date(c.created_at).toLocaleDateString('de-DE')}</td>
-              <td><span style="font-size:.71rem;padding:.1rem .4rem;border-radius:5px;font-weight:700;background:${c.status==='offen'?'rgba(239,68,68,.15)':'rgba(34,197,94,.15)'};color:${c.status==='offen'?'#ef4444':'#22c55e'}">${c.status}</span></td>
-              <td onclick="event.stopPropagation()">${c.status==='offen'
-                ?`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'erledigt')"><i class="fas fa-check"></i></button>`
-                :`<button class="btn btn-ghost btn-sm" onclick="resolveComplaint(${c.id},'offen')"><i class="fas fa-undo"></i></button>`}</td>
-            </tr>`).join('')}</tbody>
-          </table></div>`:'<div class="empty" style="padding:.6rem"><p>Keine Beschwerden</p></div>'}
-        </div>
-        <div style="${P}">
-          <div class="card-head" style="margin-bottom:.7rem">
-            <div class="card-head-icon orange"><i class="fas fa-bullhorn"></i></div>
-            <div style="flex:1"><div class="card-title">Schwarzes Brett</div><div class="card-sub">${announcements?.length||0} Ankündigungen</div></div>
-            <button class="btn btn-primary btn-sm" onclick="openAnnouncementModal()"><i class="fas fa-plus"></i> Neu</button>
-          </div>
-          ${(announcements||[]).length?announcements.map(a=>`
-            <div style="padding:.45rem .6rem;background:var(--input);border-radius:var(--r);margin-bottom:.3rem${a.is_pinned?';border-left:3px solid var(--orange)':''}">
-              <div style="display:flex;align-items:center;gap:.35rem">
-                ${a.is_pinned?'<i class="fas fa-thumbtack" style="color:var(--orange);font-size:.68rem"></i>':''}
-                <div style="font-weight:600;font-size:.84rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title)}</div>
-                <button class="btn btn-ghost btn-sm" onclick="pinAnnouncement(${a.id})"><i class="fas fa-thumbtack"></i></button>
-                <button class="btn btn-danger btn-sm" onclick="deleteAnnouncement(${a.id})"><i class="fas fa-trash"></i></button>
+          <!-- Coins verwalten -->
+          <div style="${P}">
+            <div class="card-head" style="margin-bottom:.7rem">
+              <div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-coins" style="color:#fbbf24"></i></div>
+              <div><div class="card-title">Coins verwalten</div><div class="card-sub">Gutschreiben, abziehen oder setzen</div></div>
+            </div>
+            <div style="position:relative">
+              <input class="form-control" id="coinAdminSearch" placeholder="Nutzer suchen…" autocomplete="off" oninput="coinAdminSearch()" onblur="setTimeout(()=>{const b=$('coinAdminResults');if(b)b.style.display='none'},150)">
+              <div id="coinAdminResults" style="position:absolute;z-index:30;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:var(--r);margin-top:.2rem;max-height:200px;overflow:auto;display:none"></div>
+            </div>
+            <div id="coinAdminTarget" style="display:none;margin-top:.65rem;padding:.7rem;background:var(--input);border-radius:var(--r)">
+              <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.55rem;flex-wrap:wrap">
+                <span id="coinAdminTargetName" style="font-weight:700"></span>
+                <span class="badge badge-m" id="coinAdminTargetBal"></span>
               </div>
-              <div style="font-size:.75rem;color:var(--muted);margin-top:.12rem">${esc(a.content.slice(0,90))}${a.content.length>90?'…':''}</div>
-            </div>`).join('')
-          :'<div class="empty" style="padding:.6rem"><p>Keine Ankündigungen</p></div>'}
-        </div>
-      </div>
+              <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
+                <select class="form-control" id="coinAdminMode" style="width:auto;font-size:.81rem">
+                  <option value="add">+ / − Gutschreiben / Abziehen</option>
+                  <option value="set">= Auf Wert setzen</option>
+                </select>
+                <input class="form-control" id="coinAdminAmount" type="number" step="1" placeholder="Betrag" style="width:110px" onkeydown="if(event.key==='Enter')applyCoinAdmin()">
+                <button class="btn btn-primary btn-sm" onclick="applyCoinAdmin()"><i class="fas fa-check"></i> Anwenden</button>
+              </div>
+              <div style="font-size:.69rem;color:var(--muted);margin-top:.4rem">Wird im Audit-Log protokolliert.</div>
+            </div>
+          </div>
 
-      <!-- Zeile 3: Coins | Umfrage -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;${BB}">
-        <div style="${P};${BR}">
-          <div class="card-head" style="margin-bottom:.7rem">
-            <div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-coins" style="color:#fbbf24"></i></div>
-            <div><div class="card-title">Coins verwalten</div><div class="card-sub">Gutschreiben, abziehen oder setzen</div></div>
-          </div>
-          <div style="position:relative">
-            <input class="form-control" id="coinAdminSearch" placeholder="Nutzer suchen…" autocomplete="off" oninput="coinAdminSearch()" onblur="setTimeout(()=>{const b=$('coinAdminResults');if(b)b.style.display='none'},150)">
-            <div id="coinAdminResults" style="position:absolute;z-index:30;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:var(--r);margin-top:.2rem;max-height:200px;overflow:auto;display:none"></div>
-          </div>
-          <div id="coinAdminTarget" style="display:none;margin-top:.65rem;padding:.7rem;background:var(--input);border-radius:var(--r)">
-            <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.55rem;flex-wrap:wrap">
-              <span id="coinAdminTargetName" style="font-weight:700"></span>
-              <span class="badge badge-m" id="coinAdminTargetBal"></span>
+        </div><!-- /LINKE SPALTE -->
+
+        <!-- RECHTE SPALTE -->
+        <div>
+
+          <!-- Fragenverwaltung -->
+          <div style="${P};${BB}">
+            <div class="card-head" style="margin-bottom:.7rem">
+              <div class="card-head-icon blue"><i class="fas fa-question-circle"></i></div>
+              <div style="flex:1"><div class="card-title">Fragenverwaltung</div><div class="card-sub">${totalQuestions} Fragen total</div></div>
+              <button class="btn btn-primary btn-sm" onclick="openAddQuestion()"><i class="fas fa-plus"></i> Hinzufügen</button>
             </div>
-            <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
-              <select class="form-control" id="coinAdminMode" style="width:auto;font-size:.81rem">
-                <option value="add">+ / − Gutschreiben / Abziehen</option>
-                <option value="set">= Auf Wert setzen</option>
-              </select>
-              <input class="form-control" id="coinAdminAmount" type="number" step="1" placeholder="Betrag" style="width:110px" onkeydown="if(event.key==='Enter')applyCoinAdmin()">
-              <button class="btn btn-primary btn-sm" onclick="applyCoinAdmin()"><i class="fas fa-check"></i> Anwenden</button>
+            ${(cats||[]).map(cat=>`
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:.4rem .6rem;background:var(--input);border-radius:var(--r);margin-bottom:.3rem">
+                <div style="display:flex;align-items:center;gap:.45rem">
+                  <i class="fas ${cat.icon}" style="color:var(--orange);width:13px;text-align:center;font-size:.78rem"></i>
+                  <span style="font-size:.84rem;font-weight:600">${cat.name}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:.35rem">
+                  <span class="badge badge-m">${cat.question_count}</span>
+                  <button class="btn btn-ghost btn-sm" onclick="manageQuestions(${cat.id},'${cat.name}','${cat.icon}')"><i class="fas fa-cog"></i></button>
+                </div>
+              </div>`).join('')}
+          </div>
+
+          <!-- Schwarzes Brett -->
+          <div style="${P};${BB}">
+            <div class="card-head" style="margin-bottom:.7rem">
+              <div class="card-head-icon orange"><i class="fas fa-bullhorn"></i></div>
+              <div style="flex:1"><div class="card-title">Schwarzes Brett</div><div class="card-sub">${announcements?.length||0} Ankündigungen</div></div>
+              <button class="btn btn-primary btn-sm" onclick="openAnnouncementModal()"><i class="fas fa-plus"></i> Neu</button>
             </div>
-            <div style="font-size:.69rem;color:var(--muted);margin-top:.4rem">Wird im Audit-Log protokolliert.</div>
+            ${(announcements||[]).length?announcements.map(a=>`
+              <div style="padding:.45rem .6rem;background:var(--input);border-radius:var(--r);margin-bottom:.3rem${a.is_pinned?';border-left:3px solid var(--orange)':''}">
+                <div style="display:flex;align-items:center;gap:.35rem">
+                  ${a.is_pinned?'<i class="fas fa-thumbtack" style="color:var(--orange);font-size:.68rem"></i>':''}
+                  <div style="font-weight:600;font-size:.84rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title)}</div>
+                  <button class="btn btn-ghost btn-sm" onclick="pinAnnouncement(${a.id})"><i class="fas fa-thumbtack"></i></button>
+                  <button class="btn btn-danger btn-sm" onclick="deleteAnnouncement(${a.id})"><i class="fas fa-trash"></i></button>
+                </div>
+                <div style="font-size:.75rem;color:var(--muted);margin-top:.12rem">${esc(a.content.slice(0,90))}${a.content.length>90?'…':''}</div>
+              </div>`).join('')
+            :'<div class="empty" style="padding:.6rem"><p>Keine Ankündigungen</p></div>'}
           </div>
-        </div>
-        <div style="${P}">
-          <div class="card-head" style="margin-bottom:.7rem">
-            <div class="card-head-icon" style="background:rgba(99,102,241,.15)"><i class="fas fa-poll" style="color:#818cf8"></i></div>
-            <div><div class="card-title">Umfrage</div><div class="card-sub">Frage der Woche</div></div>
-          </div>
-          <div id="pollAdminContent" style="margin-bottom:.65rem"><div style="color:var(--muted);font-size:.81rem">Wird geladen…</div></div>
-          <div style="border-top:1px solid var(--border);padding-top:.65rem">
-            <div style="font-weight:600;font-size:.79rem;margin-bottom:.35rem">Neue Umfrage</div>
-            <input class="form-control" id="pollQuestion" placeholder="Frage eingeben…" style="margin-bottom:.28rem">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.28rem;margin-bottom:.28rem">
-              <input class="form-control" id="pollOpt1" placeholder="Option 1">
-              <input class="form-control" id="pollOpt2" placeholder="Option 2">
-              <input class="form-control" id="pollOpt3" placeholder="Option 3 (opt.)">
-              <input class="form-control" id="pollOpt4" placeholder="Option 4 (opt.)">
+
+          <!-- Umfrage -->
+          <div style="${P}">
+            <div class="card-head" style="margin-bottom:.7rem">
+              <div class="card-head-icon" style="background:rgba(99,102,241,.15)"><i class="fas fa-poll" style="color:#818cf8"></i></div>
+              <div><div class="card-title">Umfrage</div><div class="card-sub">Frage der Woche</div></div>
             </div>
-            <button class="btn btn-primary btn-sm" style="width:100%" onclick="submitPollAdmin()"><i class="fas fa-plus"></i> Umfrage starten</button>
+            <div id="pollAdminContent" style="margin-bottom:.65rem"><div style="color:var(--muted);font-size:.81rem">Wird geladen…</div></div>
+            <div style="border-top:1px solid var(--border);padding-top:.65rem">
+              <div style="font-weight:600;font-size:.79rem;margin-bottom:.35rem">Neue Umfrage</div>
+              <input class="form-control" id="pollQuestion" placeholder="Frage eingeben…" style="margin-bottom:.28rem">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:.28rem;margin-bottom:.28rem">
+                <input class="form-control" id="pollOpt1" placeholder="Option 1">
+                <input class="form-control" id="pollOpt2" placeholder="Option 2">
+                <input class="form-control" id="pollOpt3" placeholder="Option 3 (opt.)">
+                <input class="form-control" id="pollOpt4" placeholder="Option 4 (opt.)">
+              </div>
+              <button class="btn btn-primary btn-sm" style="width:100%" onclick="submitPollAdmin()"><i class="fas fa-plus"></i> Umfrage starten</button>
+            </div>
           </div>
-        </div>
-      </div>
+
+        </div><!-- /RECHTE SPALTE -->
+
+      </div><!-- /Spalten-Bereich -->
 
       <!-- Wunsch-Titel: volle Breite, nur wenn ausstehend -->
       <div style="display:none;${BB}" id="customTitleCard">
