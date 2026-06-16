@@ -574,6 +574,7 @@ async function loadVoterTeam() {
       <div style="font-weight:700;font-size:.9rem;${nameColorCss(u.equipped_namecolor)}">${decoEmoji(u.equipped_deco)}${esc(u.username)}</div>
       ${titleLine(u.equipped_title)}
       <span style="font-size:.68rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;background:${rb};color:${rc}">${rn}</span>
+      ${(u.honorary_titles||[]).length?`<div style="display:flex;flex-wrap:wrap;gap:.25rem;justify-content:center">${(u.honorary_titles).map(t=>`<span style="font-size:.6rem;font-weight:600;padding:.1rem .4rem;border-radius:10px;background:${t.color||'#fbbf24'}22;color:${t.color||'#fbbf24'};border:1px solid ${t.color||'#fbbf24'}44">${t.icon||'⭐'} ${esc(t.title)}</span>`).join('')}</div>`:''}
       <span style="font-size:.62rem;color:var(--muted)"><i class="fas fa-id-card" style="margin-right:.25rem"></i>Steckbrief</span>
     </div>`;
   }

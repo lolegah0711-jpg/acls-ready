@@ -1612,7 +1612,7 @@ app.get('/api/profile/:id', requireAnySession, (req, res) => {
   const icGoal = u.ic_weekly_goal || 0;
   const byCategory = db.prepare(`SELECT ec.name as category, COUNT(*) as count FROM registry r JOIN exam_categories ec ON ec.id=r.category_id WHERE r.examiner_id=? GROUP BY r.category_id`).all(u.id);
   const birthday   = db.prepare('SELECT birthday FROM user_birthdays WHERE user_id = ?').get(u.id)?.birthday || null;
-  const honoraryTitles = db.prepare('SELECT id, title, color, granted_by, granted_at FROM honorary_titles WHERE user_id = ? ORDER BY granted_at ASC').all(u.id);
+  const honoraryTitles = db.prepare('SELECT id, title, color, icon, granted_by, granted_at FROM honorary_titles WHERE user_id = ? ORDER BY granted_at ASC').all(u.id);
   res.json({ user: u, stats: { total_exams: examStats.total, passed_exams: examStats.passed, conducted, eow_wins: eowWins, ic_total: +icTotal.toFixed(2), ic_week: +icWeek.toFixed(2), ic_goal: icGoal }, recentExams, badges, byCategory, birthday, honoraryTitles });
 });
 

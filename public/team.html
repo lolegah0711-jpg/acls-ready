@@ -111,12 +111,17 @@
     function card(u) {
       const cls  = u.role === 'admin' ? 'is-admin' : u.role === 'ausbilder' ? 'is-ausbilder' : '';
       const rank = (u.rank && u.rank !== 'Mitarbeiter') ? `<div class="member-rank">${esc(u.rank)}</div>` : '';
+      const titles = (u.honorary_titles || []).map(t =>
+        `<span style="font-size:.6rem;font-weight:600;padding:.1rem .4rem;border-radius:10px;background:${t.color||'#fbbf24'}22;color:${t.color||'#fbbf24'};border:1px solid ${t.color||'#fbbf24'}44">${t.icon||'⭐'} ${esc(t.title)}</span>`
+      ).join('');
+      const titlesHtml = titles ? `<div style="display:flex;flex-wrap:wrap;gap:.25rem;justify-content:center;margin-top:.2rem">${titles}</div>` : '';
       return `<a class="member-card ${cls}" href="/profil/${u.id}" target="_blank" title="Steckbrief von ${esc(u.username)} öffnen">
         <span class="profile-hint"><i class="fas fa-external-link-alt"></i> Steckbrief</span>
         <div class="avatar">${avatar(u)}</div>
         <div class="member-name">${esc(u.username)}</div>
         ${roleBadge(u.role)}
         ${rank}
+        ${titlesHtml}
       </a>`;
     }
     async function load() {
