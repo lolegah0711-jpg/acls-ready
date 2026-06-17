@@ -4834,17 +4834,19 @@ app.post('/api/wheel/spin', requireAuth, (req, res) => {
   db.prepare(`INSERT INTO daily_wheel (discord_id, last_spin_date, total_spins) VALUES (?,?,1)
     ON CONFLICT(discord_id) DO UPDATE SET last_spin_date=?, total_spins=total_spins+1`
   ).run(ident.id, today, today);
-  // +10% Coins wenn ein Freund in den letzten 2h online war
+  // +10% Coins wenn ein Freund in den letzten 2h online war (nur wenn Spalte existiert)
   let wheelCoins = prize.coins;
   let friendBonus = false;
   if (prize.coins > 0) {
-    const myRow = db.prepare('SELECT id FROM users WHERE discord_id = ?').get(ident.id);
-    if (myRow) {
-      const online = db.prepare(
-        "SELECT 1 FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ? AND u.last_seen_at >= datetime('now','-2 hours') LIMIT 1"
-      ).get(myRow.id);
-      if (online) { wheelCoins = Math.round(prize.coins * 1.1); friendBonus = true; }
-    }
+    try {
+      const myRow = db.prepare('SELECT id FROM users WHERE discord_id = ?').get(ident.id);
+      if (myRow) {
+        const online = db.prepare(
+          "SELECT 1 FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ? AND u.last_seen_at >= datetime('now','-2 hours') LIMIT 1"
+        ).get(myRow.id);
+        if (online) { wheelCoins = Math.round(prize.coins * 1.1); friendBonus = true; }
+      }
+    } catch {}
     awardCoins(ident.id, ident.name, wheelCoins, 'wheel');
   }
   if (prize.xp > 0) awardXP(ident.id, ident.name, prize.xp);
