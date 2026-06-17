@@ -22,8 +22,17 @@ module.exports = function({ db, requireLogin, getUser, rateLimit, createNotif, f
     const rows = db.prepare('SELECT friend_id, created_at FROM friends WHERE user_id = ? ORDER BY created_at ASC').all(u.id);
     const friends = rows.map(r => {
       const s = friendStats(r.friend_id);
-      return s ? { ...s, since: r.created_at } : null;
+      if (!s) return null;
+      const dmCount = db.prepare(
+        'SELECT COUNT(*) AS c FROM direct_messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)'
+      ).get(u.discord_id, s.discord_id, s.discord_id, u.discord_id).c;
+      return { ...s, since: r.created_at, dm_count: dmCount };
     }).filter(Boolean);
+    // Bester Freund = meiste DMs; nur vergeben wenn überhaupt DMs existieren
+    if (friends.length > 0) {
+      const maxDm = Math.max(...friends.map(f => f.dm_count));
+      if (maxDm > 0) friends.forEach(f => { f.is_best_friend = f.dm_count === maxDm; });
+    }
     res.json({ me: friendStats(u.id), friends });
   });
 
@@ -37,6 +46,14 @@ module.exports = function({ db, requireLogin, getUser, rateLimit, createNotif, f
     if (count >= 30) return res.status(400).json({ error: 'Maximal 30 Freunde' });
     try { db.prepare('INSERT INTO friends (user_id, friend_id) VALUES (?, ?)').run(u.id, fid); }
     catch { return res.status(400).json({ error: 'Bereits in deiner Liste' }); }
+    // Secret Badge: erster Freund hinzugefügt
+    const fcAfter = db.prepare('SELECT COUNT(*) AS c FROM friends WHERE user_id = ?').get(u.id).c;
+    if (fcAfter === 1) {
+      try {
+        db.prepare('INSERT INTO user_badges (user_id, badge_type) VALUES (?, ?)').run(u.id, 'secret_friend_first');
+        createNotif(u.discord_id, 'badge', { badgeType: 'secret_friend_first' });
+      } catch {}
+    }
     res.json({ ok: true });
   });
 
@@ -59,6 +76,33 @@ module.exports = function({ db, requireLogin, getUser, rateLimit, createNotif, f
       FROM game_scores WHERE user_id IN (?, ?) GROUP BY game ORDER BY game
     `).all(u.id, +req.params.id, u.id, +req.params.id);
     res.json({ me: mine, friend: theirs, games });
+  });
+
+  // ── Freundes-Feed: letzte Aktivitäten der Freunde ─────────────
+  router.get('/api/friends/feed', requireLogin, (req, res) => {
+    const u = getUser(req);
+    const friendIds = db.prepare('SELECT friend_id FROM friends WHERE user_id = ?').all(u.id).map(r => r.friend_id);
+    if (!friendIds.length) return res.json([]);
+    const ph = friendIds.map(() => '?').join(',');
+    const badges = db.prepare(`
+      SELECT ub.user_id, ub.badge_type AS key, ub.earned_at AS ts,
+             u.username, u.avatar, u.discord_id
+      FROM user_badges ub JOIN users u ON u.id = ub.user_id
+      WHERE ub.user_id IN (${ph}) AND ub.earned_at >= datetime('now','-7 days')
+        AND ub.badge_type NOT LIKE 'secret_%'
+      ORDER BY ub.earned_at DESC LIMIT 20
+    `).all(...friendIds).map(r => ({ type: 'badge', ...r }));
+    const scores = db.prepare(`
+      SELECT gs.user_id, gs.game AS key, gs.score, gs.created_at AS ts,
+             u.username, u.avatar, u.discord_id
+      FROM game_scores gs JOIN users u ON u.id = gs.user_id
+      WHERE gs.user_id IN (${ph}) AND gs.created_at >= datetime('now','-3 days')
+      ORDER BY gs.created_at DESC LIMIT 20
+    `).all(...friendIds).map(r => ({ type: 'score', ...r }));
+    const feed = [...badges, ...scores]
+      .sort((a, b) => new Date(b.ts) - new Date(a.ts))
+      .slice(0, 12);
+    res.json(feed);
   });
 
   // ── Gästebuch (Mitarbeiter UND Bürger dürfen schreiben) ────────

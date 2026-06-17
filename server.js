@@ -190,7 +190,18 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // ── Auth helpers ────────────────────────────────────────────────
 function getUser(req) {
   if (!req.session.userId) return null;
-  return db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(req.session.userId) || null;
+  const u = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(req.session.userId) || null;
+  if (u) touchSeen(u.id);
+  return u;
+}
+
+const _seenCache = new Map();
+function touchSeen(id) {
+  const now = Date.now();
+  if (!_seenCache.has(id) || now - _seenCache.get(id) > 60_000) {
+    _seenCache.set(id, now);
+    db.prepare("UPDATE users SET last_seen_at = datetime('now') WHERE id = ?").run(id);
+  }
 }
 
 function requireAuth(req, res, next) {
@@ -454,8 +465,8 @@ app.post('/auth/logout', (req, res) => {
 app.get('/auth/me', (req, res) => {
   const u = getUser(req);
   if (u) {
-    if (u.role === 'citizen') return res.json({ voter: true, id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar });
-    return res.json({ id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, avatar_custom: u.avatar_custom || null, role: u.role, rank: u.rank, bio: u.bio || '', specialty: u.specialty || '', fun_fact: u.fun_fact || '' });
+    if (u.role === 'citizen') return res.json({ voter: true, id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, created_at: u.created_at });
+    return res.json({ id: u.id, discord_id: u.discord_id, username: u.username, avatar: u.avatar, avatar_custom: u.avatar_custom || null, role: u.role, rank: u.rank, bio: u.bio || '', specialty: u.specialty || '', fun_fact: u.fun_fact || '', created_at: u.created_at });
   }
   if (req.session.voterDiscordId) return res.json({
     voter: true,
@@ -1341,7 +1352,9 @@ function checkGameBadges(userId, discordId) {
       const earned = db.prepare('SELECT total_earned FROM coin_balances WHERE discord_id = ?').get(discordId)?.total_earned || 0;
       if (earned >= 1000)  awardBadge(userId, 'coins_1k');
       if (earned >= 10000) awardBadge(userId, 'coins_10k');
+      if (earned >= 50000) awardBadge(userId, 'secret_coins_50k');
     }
+    if (distinct >= 15) awardBadge(userId, 'secret_games_15');
   } catch (e) { console.error('[Badges]', e.message); }
 }
 
@@ -1441,7 +1454,7 @@ function citizenTier(earned) {
 }
 
 function friendStats(userId) {
-  const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank FROM users WHERE id = ? AND is_active = 1').get(userId);
+  const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank, last_seen_at FROM users WHERE id = ? AND is_active = 1').get(userId);
   if (!u) return null;
   const coins = db.prepare('SELECT balance, total_earned, streak, best_streak FROM coin_balances WHERE discord_id = ?').get(u.discord_id);
   const earned  = coins?.total_earned || 0;
@@ -1464,6 +1477,7 @@ function friendStats(userId) {
     eow_wins:      db.prepare('SELECT COUNT(*) AS c FROM eow_winners WHERE user_id = ?').get(u.id).c,
     games_played:  db.prepare('SELECT COUNT(DISTINCT game) AS c FROM game_scores WHERE user_id = ?').get(u.id).c,
     duel_wins:     db.prepare(`SELECT COUNT(*) AS c FROM quiz_duels WHERE winner_did = ? AND status = 'done'`).get(u.discord_id).c,
+    last_seen_at:  u.last_seen_at || null,
   };
 }
 
@@ -2094,6 +2108,7 @@ app.get('/api/car-listings', (req, res) => {
 // Stellt sicher dass image_data-Spalte existiert
 function ensureImageCol() {
   try { db.exec('ALTER TABLE car_listings ADD COLUMN image_data TEXT'); } catch {}
+  try { db.exec('ALTER TABLE users ADD COLUMN last_seen_at TEXT'); } catch {}
 }
 
 // Speichert base64-Bild auf Disk, gibt Pfad zurück (oder null)
@@ -4510,6 +4525,9 @@ app.post('/api/dm/send', requireAuth, (req, res) => {
     .run(sender.discord_id, sender.username, receiver.discord_id, receiver.username, message.trim());
   sseEmit('dm', { from: sender.discord_id, fromName: sender.username, preview: message.trim().slice(0, 60), id: row.lastInsertRowid }, receiver.discord_id);
   createNotif(receiver.discord_id, 'dm', { from: sender.username, preview: message.trim().slice(0, 60) });
+  // Secret Badge: erste DM gesendet
+  const dmSendCount = db.prepare('SELECT COUNT(*) AS c FROM direct_messages WHERE sender_id = ?').get(sender.discord_id).c;
+  if (dmSendCount === 1) awardBadge(req.session.userId, 'secret_dm_first');
   res.json({ ok: true, id: row.lastInsertRowid });
 });
 
@@ -4810,9 +4828,25 @@ app.post('/api/wheel/spin', requireAuth, (req, res) => {
   db.prepare(`INSERT INTO daily_wheel (discord_id, last_spin_date, total_spins) VALUES (?,?,1)
     ON CONFLICT(discord_id) DO UPDATE SET last_spin_date=?, total_spins=total_spins+1`
   ).run(ident.id, today, today);
-  if (prize.coins > 0) awardCoins(ident.id, ident.name, prize.coins, 'wheel');
+  // +10% Coins wenn ein Freund in den letzten 2h online war
+  let wheelCoins = prize.coins;
+  let friendBonus = false;
+  if (prize.coins > 0) {
+    const myRow = db.prepare('SELECT id FROM users WHERE discord_id = ?').get(ident.id);
+    if (myRow) {
+      const online = db.prepare(
+        "SELECT 1 FROM friends f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ? AND u.last_seen_at >= datetime('now','-2 hours') LIMIT 1"
+      ).get(myRow.id);
+      if (online) { wheelCoins = Math.round(prize.coins * 1.1); friendBonus = true; }
+    }
+    awardCoins(ident.id, ident.name, wheelCoins, 'wheel');
+  }
   if (prize.xp > 0) awardXP(ident.id, ident.name, prize.xp);
-  res.json({ prize_idx: idx, prize });
+  // Secret Badge: erstes Wheel-Spin
+  const newRow = db.prepare('SELECT total_spins FROM daily_wheel WHERE discord_id = ?').get(ident.id);
+  const spinUserId = db.prepare('SELECT id FROM users WHERE discord_id = ?').get(ident.id)?.id;
+  if (spinUserId && newRow?.total_spins === 1) awardBadge(spinUserId, 'secret_wheel_first');
+  res.json({ prize_idx: idx, prize, coins: wheelCoins, friend_bonus: friendBonus });
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -4854,6 +4888,7 @@ function ensureChangelog(version, type, title, body, released_at) {
 
 ensureChangelog('2.1.0', 'fix', 'Fix: Beschwerde-System durch Ticket-System ersetzt', 'Das alte Beschwerde-Formular für Bürger wurde durch das einheitliche Support-Ticket-System ersetzt. Bürger können nun direkt Tickets erstellen (Bug, Frage, Beschwerde, Feature-Wunsch) – ohne Login. Admins verwalten alle Tickets zentral in einer Ansicht.', '2026-06-17 00:00:00');
 ensureChangelog('2.2.0', 'feature', 'Navigation-Redesign & Mein ACLS Hub', 'Die Sidebar wurde von 33+ flachen Einträgen auf 6 farbkodierte, einklappbare Sektionen umgebaut (Mein ACLS, Fahrschule, Community, Wirtschaft, Info & Karten, Spiele). Neuer persönlicher Hub "Mein ACLS" mit Profil-Hero, XP-Fortschrittsbalken, Saison-Pass-Status und Schnellzugriff auf alle persönlichen Features.', '2026-06-17 00:00:00');
+ensureChangelog('2.3.0', 'feature', 'Community-Update: Freundes-Feed, Online-Status & Geheime Abzeichen', 'Willkommens-Banner für neue Nutzer (erste 3 Tage) mit direktem Einstieg in Prüfung, Daily Wheel und Community. Neues Freundes-Feed-Widget im Dashboard zeigt aktuelle Aktivitäten (Badges, Highscores) deiner Freunde aus den letzten 7 Tagen. Online-Indikator (grüner Punkt) bei Freunden – aktiv wenn in den letzten 5 Minuten online. Bester-Freund-Badge für den Freund mit den meisten gemeinsamen Direktnachrichten. Daily Wheel Bonus: +10% Coins wenn ein Freund in den letzten 2 Stunden online war. 4 neue geheime Abzeichen die durch besondere Aktionen freigeschaltet werden.', '2026-06-17 00:00:00');
 
 app.get('/api/changelogs', (req, res) => {
   res.json(db.prepare('SELECT * FROM changelogs ORDER BY released_at DESC').all());

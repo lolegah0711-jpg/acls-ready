@@ -42,9 +42,22 @@ const BADGE_DEFS = {
   coins_10k:      { icon: 'fa-coins',          color: '#ffd700', label: 'Krösus',            desc: '10.000 Coins verdient',      progress: s => ({ cur: s.coinsEarned || 0, max: 10000 }) },
   streak_7:       { icon: 'fa-fire',           color: '#fb923c', label: '7-Tage-Serie',      desc: '7 Tage in Folge Tagesbonus abgeholt',  progress: s => ({ cur: s.bestStreak || 0, max: 7  }) },
   streak_30:      { icon: 'fa-fire',           color: '#ffd700', label: '30-Tage-Serie',     desc: '30 Tage in Folge Tagesbonus abgeholt', progress: s => ({ cur: s.bestStreak || 0, max: 30 }) },
+  // Geheime Abzeichen – werden nicht angezeigt bis sie freigeschaltet sind
+  secret_wheel_first:  { icon: 'fa-dharmachakra', color: '#c084fc', label: 'Erstes Drehen',    desc: 'Das Daily Wheel zum ersten Mal gedreht', progress: null, secret: true },
+  secret_dm_first:     { icon: 'fa-paper-plane',  color: '#60a5fa', label: 'Erstes Wort',      desc: 'Die erste Direktnachricht gesendet',     progress: null, secret: true },
+  secret_friend_first: { icon: 'fa-handshake',    color: '#4ade80', label: 'Erste Verbindung', desc: 'Den ersten Freund hinzugefügt',          progress: null, secret: true },
+  secret_coins_50k:    { icon: 'fa-piggy-bank',   color: '#ffd700', label: 'Goldreserve',      desc: '50.000 Coins insgesamt verdient',        progress: null, secret: true },
+  secret_games_15:     { icon: 'fa-dice',         color: '#f472b6', label: 'Vollständig',      desc: '15 verschiedene Minispiele gespielt',    progress: null, secret: true },
 };
 
 function renderBadge(key, b, earned, isNext, date, stats) {
+  // Geheime Badges: vor dem Freischalten nur als Fragezeichen anzeigen
+  if (b.secret && !earned) {
+    return `<div title="Geheimes Abzeichen – durch eine besondere Aktion freischalten" style="display:flex;flex-direction:column;align-items:center;gap:.3rem;width:74px;opacity:.18">
+      <div style="position:relative;width:48px;height:48px"><svg viewBox="0 0 44 44" style="position:absolute;inset:0;width:100%;height:100%"><circle cx="22" cy="22" r="19" fill="none" stroke="var(--border)" stroke-width="2.5"/></svg><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--surface2);border-radius:50%;font-size:1.1rem;color:var(--muted)">?</div></div>
+      <span style="font-size:.65rem;text-align:center;color:var(--muted)">Geheim</span>
+    </div>`;
+  }
   const circ    = 119.38; // 2π × r19
   const pData   = b.progress ? b.progress(stats) : null;
   const pct     = earned ? 1 : pData ? Math.min(pData.cur / pData.max, 1) : (earned ? 1 : 0);
@@ -1387,6 +1400,7 @@ const WIDGET_DEFS = [
   { id: 'twitch',          label: 'Twitch Stream',          icon: 'fa-twitch'          },
   { id: 'onboarding',      label: 'Onboarding',             icon: 'fa-tasks'           },
   { id: 'streak',          label: 'Login-Serie',            icon: 'fa-fire'            },
+  { id: 'friendFeed',      label: 'Freundes-Feed',          icon: 'fa-user-friends'    },
   { id: 'dms',             label: 'Direktnachrichten',      icon: 'fa-envelope'        },
   { id: 'market',          label: 'Meine Listings',         icon: 'fa-store'           },
   { id: 'quickActions',    label: 'Schnellaktionen',        icon: 'fa-bolt'            },
@@ -1578,6 +1592,7 @@ async function dashboard() {
         { label: 'IC-Zeit',   icon: 'fa-clock',           color: '#22c55e', keys: ['ic_10','ic_50','ic_100','ic_250','ic_500'] },
         { label: 'Mitarbeiter der Woche', icon: 'fa-trophy', color: '#facc15', keys: ['eow_1','eow_3','eow_5'] },
         { label: 'Gaming',    icon: 'fa-gamepad',         color: '#f472b6', keys: ['game_3','game_10','duel_5','duel_25','tow_pro','bj_500','coins_1k','coins_10k','streak_7','streak_30'] },
+        { label: 'Geheime Abzeichen', icon: 'fa-lock', color: '#c084fc', keys: ['secret_wheel_first','secret_dm_first','secret_friend_first','secret_coins_50k','secret_games_15'] },
       ].map(group=>{
         const nextGoalIdx=group.keys.findIndex(k=>!earnedSet.has(k));
         return `<div style="margin-bottom:1rem"><div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.65rem;padding-bottom:.4rem;border-bottom:1px solid var(--border)"><i class="fas ${group.icon}" style="color:${group.color};font-size:.8rem"></i><span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">${group.label}</span>${nextGoalIdx===-1?'<span style="margin-left:auto;font-size:.65rem;font-weight:700;color:#22c55e"><i class="fas fa-check-circle"></i> Alle freigeschaltet</span>':''}</div><div style="display:flex;flex-wrap:wrap;gap:.75rem">${group.keys.map((key,i)=>{const b=BADGE_DEFS[key];const earned=earnedSet.has(key);const isNext=i===nextGoalIdx;const date=badgeMap[key]?new Date(badgeMap[key]).toLocaleDateString('de-DE'):null;return renderBadge(key,b,earned,isNext,date,badgeStats);}).join('')}</div></div>`;
@@ -1608,8 +1623,9 @@ async function dashboard() {
     </div>
   </div>`;
 
-  W.dms    = `<div id="dashDmsWidget"></div>`;
-  W.market = `<div id="dashMarketWidget"></div>`;
+  W.dms        = `<div id="dashDmsWidget"></div>`;
+  W.market     = `<div id="dashMarketWidget"></div>`;
+  W.friendFeed = `<div id="dashFriendFeedWidget"></div>`;
 
   W.quickActions = `<div class="card" style="margin:0">
     <div class="card-head"><div class="card-head-icon" style="background:rgba(99,102,241,.15)"><i class="fas fa-bolt" style="color:#818cf8"></i></div><div><div class="card-title">Schnellaktionen</div><div class="card-sub">Häufig genutzte Funktionen</div></div></div>
@@ -1654,7 +1670,29 @@ async function dashboard() {
 
   const widgetsHTML = order.map(id => W[id] == null ? '' : _dashWidget(id, W[id])).join('');
 
+  // Willkommens-Banner: neue Nutzer (< 3 Tage) die es noch nicht weggeklickt haben
+  const welcomeDismissKey = `acls-welcome-dismissed-${currentUser?.id}`;
+  const isNewUser = currentUser?.created_at
+    && (Date.now() - new Date(currentUser.created_at).getTime()) < 3 * 24 * 60 * 60 * 1000;
+  const welcomeHTML = isNewUser && !localStorage.getItem(welcomeDismissKey) ? `
+    <div id="welcomeBanner" style="background:linear-gradient(135deg,rgba(168,85,247,.18),rgba(99,102,241,.12));border:1px solid rgba(168,85,247,.35);border-radius:var(--r);padding:1.1rem 1.3rem;margin-bottom:1rem;position:relative">
+      <button onclick="localStorage.setItem('${welcomeDismissKey}','1');document.getElementById('welcomeBanner').remove()" style="position:absolute;top:.6rem;right:.7rem;background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem" title="Schließen"><i class="fas fa-times"></i></button>
+      <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.8rem">
+        <div style="font-size:1.6rem">👋</div>
+        <div>
+          <div style="font-weight:700;font-size:1rem">Willkommen bei ACLS, ${esc(currentUser.username)}!</div>
+          <div style="font-size:.8rem;color:var(--muted);margin-top:.15rem">Starte jetzt durch – hier sind deine ersten Schritte:</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:.55rem;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="navigate('exams')" style="background:linear-gradient(135deg,#f97316,#fb923c);border:none"><i class="fas fa-play-circle"></i> Prüfung starten</button>
+        <button class="btn btn-primary btn-sm" onclick="navigate('wheel')" style="background:linear-gradient(135deg,#a855f7,#c084fc);border:none"><i class="fas fa-dharmachakra"></i> Daily Wheel drehen</button>
+        <button class="btn btn-primary btn-sm" onclick="navigate('freunde')" style="background:linear-gradient(135deg,#22c55e,#4ade80);border:none;color:#000"><i class="fas fa-user-friends"></i> Community entdecken</button>
+      </div>
+    </div>` : '';
+
   $('pageContent').innerHTML = `
+    ${welcomeHTML}
     ${announcementsHTML}
     <div style="display:flex;justify-content:flex-end;margin-bottom:.6rem">
       <button class="btn btn-ghost btn-sm" onclick="openDashSettings()" style="font-size:.78rem"><i class="fas fa-sliders-h" style="margin-right:.35rem"></i>Personalisieren</button>
@@ -1673,6 +1711,7 @@ async function dashboard() {
   if (order.includes('birthday'))        loadBirthdayTodayWidget('birthdayTodayWidget');
   if (order.includes('dms'))             _loadDashDMs();
   if (order.includes('market'))          _loadDashMarket();
+  if (order.includes('friendFeed'))      _loadDashFriendFeed();
 
   const noteEl = document.getElementById('dashNoteArea');
   if (noteEl) {
@@ -1707,6 +1746,28 @@ async function _loadDashMarket() {
   el.innerHTML = `<div class="card" style="margin:0">
     <div class="card-head"><div class="card-head-icon green"><i class="fas fa-store"></i></div><div><div class="card-title">Meine Listings</div><div class="card-sub">${active.length} aktive Angebote</div></div><button class="btn btn-ghost btn-sm" onclick="navigate('marktplatz')" style="margin-left:auto">Alle</button></div>
     ${active.slice(0,3).map(l=>`<div style="display:flex;align-items:center;gap:.6rem;padding:.4rem 0;border-bottom:1px solid var(--border)"><div style="flex:1;font-size:.85rem;font-weight:600">${esc(l.item_name)}</div><div style="font-size:.84rem;color:#facc15;font-weight:700">${l.price.toLocaleString('de-DE')} <i class="fas fa-coins" style="font-size:.7rem"></i></div></div>`).join('')}
+  </div>`;
+}
+
+async function _loadDashFriendFeed() {
+  const el = document.getElementById('dashFriendFeedWidget');
+  if (!el) return;
+  const feed = await api('/api/friends/feed');
+  if (!feed?.length) { el.innerHTML = ''; return; }
+  const BADGE_ICONS = { ic_10:'fa-clock', ic_50:'fa-hourglass-half', ic_100:'fa-hourglass-end', exams_10:'fa-clipboard-check', eow_1:'fa-trophy', coins_1k:'fa-coins', streak_7:'fa-fire', duel_5:'fa-bolt', game_3:'fa-gamepad' };
+  const GAME_LABELS = { blackjack:'Blackjack', slot:'Mega Spin', plinko:'Plinko', tow:'Abschlepp-Sim', mines:'Minesweeper', rocket:'Rocket', hilo:'Hi-Lo', hangman:'Galgenmännek', roulette:'Roulette' };
+  el.innerHTML = `<div class="card" style="margin:0">
+    <div class="card-head"><div class="card-head-icon" style="background:rgba(168,85,247,.15)"><i class="fas fa-user-friends" style="color:#a855f7"></i></div><div><div class="card-title">Freundes-Feed</div><div class="card-sub">Was deine Freunde zuletzt gemacht haben</div></div><button class="btn btn-ghost btn-sm" onclick="navigate('freunde')" style="margin-left:auto">Freunde</button></div>
+    ${feed.map(f => {
+      const av = avatarEl({ username: f.username, avatar: f.avatar, discord_id: f.discord_id }, 28);
+      const timeStr = ago(f.ts);
+      if (f.type === 'badge') {
+        const bd = BADGE_DEFS[f.key];
+        return `<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px solid var(--border)">${av}<div style="flex:1;min-width:0"><span style="font-weight:600;font-size:.82rem">${esc(f.username)}</span> <span style="font-size:.8rem;color:var(--muted)">hat Abzeichen erhalten:</span> <span style="color:#facc15;font-size:.8rem"><i class="fas ${bd?.icon||'fa-medal'}"></i> ${esc(bd?.label||f.key)}</span></div><span style="font-size:.7rem;color:var(--muted);white-space:nowrap">${timeStr}</span></div>`;
+      } else {
+        return `<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px solid var(--border)">${av}<div style="flex:1;min-width:0"><span style="font-weight:600;font-size:.82rem">${esc(f.username)}</span> <span style="font-size:.8rem;color:var(--muted)">Highscore in</span> <span style="color:#f472b6;font-size:.8rem">${esc(GAME_LABELS[f.key]||f.key)}</span><span style="font-size:.8rem;color:var(--muted)">: ${(+f.score).toLocaleString('de-DE')}</span></div><span style="font-size:.7rem;color:var(--muted);white-space:nowrap">${timeStr}</span></div>`;
+      }
+    }).join('')}
   </div>`;
 }
 
@@ -6529,13 +6590,21 @@ async function freunde() {
 
     ${data.friends.length ? `
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:.8rem">
-      ${data.friends.map(f => `
-      <div class="card" style="padding:1rem 1.1rem">
+      ${data.friends.map(f => {
+        const isOnline = f.last_seen_at && (Date.now() - new Date(f.last_seen_at).getTime()) < 5 * 60 * 1000;
+        const onlineDot = isOnline
+          ? `<span title="Jetzt online" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#22c55e;border:2px solid var(--bg);position:absolute;bottom:1px;right:1px"></span>`
+          : '';
+        const bffBadge = f.is_best_friend
+          ? `<span title="Bester Freund – meiste gemeinsame DMs" style="font-size:.68rem;background:rgba(251,191,36,.15);color:#fbbf24;border:1px solid rgba(251,191,36,.3);border-radius:20px;padding:.1rem .45rem;margin-left:.3rem"><i class="fas fa-star"></i> BFF</span>`
+          : '';
+        return `
+      <div class="card" style="padding:1rem 1.1rem${f.is_best_friend ? ';border-color:rgba(251,191,36,.35)' : ''}">
         <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.7rem">
-          ${avatarEl(f, 40)}
+          <div style="position:relative;flex-shrink:0">${avatarEl(f, 40)}${onlineDot}</div>
           <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.username)}</div>
-            <div style="font-size:.68rem;color:var(--muted)">${rankLine(f)}</div>
+            <div style="font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.username)}${bffBadge}</div>
+            <div style="font-size:.68rem;color:var(--muted)">${rankLine(f)}${isOnline ? ' · <span style="color:#22c55e">Online</span>' : ''}</div>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="removeFriend(${f.id})" title="Entfernen" style="color:var(--muted)"><i class="fas fa-user-minus"></i></button>
         </div>
@@ -6549,7 +6618,7 @@ async function freunde() {
           <button class="btn btn-primary btn-sm" style="flex:1" onclick="compareFriend(${f.id})"><i class="fas fa-balance-scale"></i> Vergleichen</button>
           <a href="/profil/${f.id}" target="_blank" class="btn btn-ghost btn-sm" style="text-decoration:none"><i class="fas fa-user"></i> Profil</a>
         </div>
-      </div>`).join('')}
+      </div>`;}).join('')}
     </div>` : `
     <div class="empty"><i class="fas fa-user-friends"></i><p>Noch keine Freunde hinzugefügt.<br>Wähle oben ein Mitglied aus und starte den Vergleich!</p></div>`}`;
 }
@@ -6607,13 +6676,17 @@ async function loadVoterFriends() {
     </div>
     ${data.friends.length ? `
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:.8rem">
-      ${data.friends.map(f => `
-      <div class="card" style="padding:1rem 1.1rem">
+      ${data.friends.map(f => {
+        const isOnline = f.last_seen_at && (Date.now() - new Date(f.last_seen_at).getTime()) < 5 * 60 * 1000;
+        const onlineDot = isOnline ? `<span title="Jetzt online" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#22c55e;border:2px solid var(--bg);position:absolute;bottom:1px;right:1px"></span>` : '';
+        const bffBadge = f.is_best_friend ? `<span style="font-size:.68rem;background:rgba(251,191,36,.15);color:#fbbf24;border:1px solid rgba(251,191,36,.3);border-radius:20px;padding:.1rem .45rem;margin-left:.3rem"><i class="fas fa-star"></i> BFF</span>` : '';
+        return `
+      <div class="card" style="padding:1rem 1.1rem${f.is_best_friend?';border-color:rgba(251,191,36,.35)':''}">
         <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.7rem">
-          ${avatarEl(f, 40)}
+          <div style="position:relative;flex-shrink:0">${avatarEl(f, 40)}${onlineDot}</div>
           <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.username)}</div>
-            <div style="font-size:.68rem;color:var(--muted)">${rankLine(f)}</div>
+            <div style="font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.username)}${bffBadge}</div>
+            <div style="font-size:.68rem;color:var(--muted)">${rankLine(f)}${isOnline?' · <span style="color:#22c55e">Online</span>':''}</div>
           </div>
           <button class="btn btn-ghost btn-sm" onclick="voterRemoveFriend(${f.id})" title="Entfernen" style="color:var(--muted)"><i class="fas fa-user-minus"></i></button>
         </div>
@@ -6626,7 +6699,7 @@ async function loadVoterFriends() {
           <button class="btn btn-primary btn-sm" style="flex:1" onclick="compareFriend(${f.id})"><i class="fas fa-balance-scale"></i> Vergleichen</button>
           <a href="/profil/${f.id}" target="_blank" class="btn btn-ghost btn-sm" style="text-decoration:none"><i class="fas fa-user"></i> Profil</a>
         </div>
-      </div>`).join('')}
+      </div>`;}).join('')}
     </div>` : `
     <div class="empty"><i class="fas fa-user-friends"></i><p>Noch keine Freunde hinzugefügt.<br>Wähle oben jemanden aus und starte den Vergleich!</p></div>`}`;
 }
@@ -8314,8 +8387,9 @@ window.spinWheel = async () => {
           <div style="font-size:3rem;margin-bottom:.5rem">🎉</div>
           <div style="font-size:1.4rem;font-weight:800;color:${prize.color||'var(--orange)'}">${esc(prize.label)}</div>
           <div style="font-size:.85rem;color:var(--muted);margin-top:.5rem">
-            ${prize.coins>0?`+${prize.coins} Coins `:''} ${prize.xp>0?`+${prize.xp} XP`:''}
+            ${(r.coins||prize.coins)>0?`+${r.coins||prize.coins} Coins`:''} ${prize.xp>0?`+${prize.xp} XP`:''}
           </div>
+          ${r.friend_bonus?`<div style="margin-top:.4rem;font-size:.78rem;color:#22c55e"><i class="fas fa-user-friends"></i> +10% Freundes-Bonus aktiv!</div>`:''}
           <button class="btn btn-primary" style="margin-top:1.25rem" onclick="closeModal();wheel()">Super!</button>
         </div>`);
     }
