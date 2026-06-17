@@ -200,7 +200,7 @@ function touchSeen(id) {
   const now = Date.now();
   if (!_seenCache.has(id) || now - _seenCache.get(id) > 60_000) {
     _seenCache.set(id, now);
-    db.prepare("UPDATE users SET last_seen_at = datetime('now') WHERE id = ?").run(id);
+    try { db.prepare("UPDATE users SET last_seen_at = datetime('now') WHERE id = ?").run(id); } catch {}
   }
 }
 

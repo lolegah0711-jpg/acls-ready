@@ -1670,11 +1670,14 @@ async function dashboard() {
 
   const widgetsHTML = order.map(id => W[id] == null ? '' : _dashWidget(id, W[id])).join('');
 
-  // Willkommens-Banner: neue Nutzer (< 3 Tage) die es noch nicht weggeklickt haben
+  // Willkommens-Banner: 3 Tage ab erstem Sehen, für jeden der es noch nicht weggeklickt hat
   const welcomeDismissKey = `acls-welcome-dismissed-${currentUser?.id}`;
-  const isNewUser = currentUser?.created_at
-    && (Date.now() - new Date(currentUser.created_at).getTime()) < 3 * 24 * 60 * 60 * 1000;
-  const welcomeHTML = isNewUser && !localStorage.getItem(welcomeDismissKey) ? `
+  const welcomeFirstKey   = `acls-welcome-first-${currentUser?.id}`;
+  if (!localStorage.getItem(welcomeFirstKey)) localStorage.setItem(welcomeFirstKey, Date.now());
+  const firstSeen = parseInt(localStorage.getItem(welcomeFirstKey));
+  const showWelcome = !localStorage.getItem(welcomeDismissKey)
+    && (Date.now() - firstSeen) < 3 * 24 * 60 * 60 * 1000;
+  const welcomeHTML = showWelcome ? `
     <div id="welcomeBanner" style="background:linear-gradient(135deg,rgba(168,85,247,.18),rgba(99,102,241,.12));border:1px solid rgba(168,85,247,.35);border-radius:var(--r);padding:1.1rem 1.3rem;margin-bottom:1rem;position:relative">
       <button onclick="localStorage.setItem('${welcomeDismissKey}','1');document.getElementById('welcomeBanner').remove()" style="position:absolute;top:.6rem;right:.7rem;background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem" title="Schließen"><i class="fas fa-times"></i></button>
       <div style="display:flex;align-items:center;gap:.8rem;margin-bottom:.8rem">
