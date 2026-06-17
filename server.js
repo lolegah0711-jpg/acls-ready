@@ -1454,7 +1454,13 @@ function citizenTier(earned) {
 }
 
 function friendStats(userId) {
-  const u = db.prepare('SELECT id, discord_id, username, avatar, role, rank, last_seen_at FROM users WHERE id = ? AND is_active = 1').get(userId);
+  // last_seen_at kann fehlen wenn Spalte noch nicht migriert – Fallback ohne sie
+  let u;
+  try {
+    u = db.prepare('SELECT id, discord_id, username, avatar, role, rank, last_seen_at FROM users WHERE id = ? AND is_active = 1').get(userId);
+  } catch {
+    u = db.prepare('SELECT id, discord_id, username, avatar, role, rank FROM users WHERE id = ? AND is_active = 1').get(userId);
+  }
   if (!u) return null;
   const coins = db.prepare('SELECT balance, total_earned, streak, best_streak FROM coin_balances WHERE discord_id = ?').get(u.discord_id);
   const earned  = coins?.total_earned || 0;
