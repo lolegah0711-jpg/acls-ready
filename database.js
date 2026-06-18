@@ -666,6 +666,101 @@ function initDb() {
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  // ── Anti-Cheat: jeder Season-XP-Gewinn mit Quelle + Zeitstempel ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS xp_log (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id  TEXT NOT NULL,
+      username    TEXT,
+      amount      INTEGER NOT NULL,
+      source      TEXT NOT NULL DEFAULT 'unbekannt',
+      flagged     INTEGER NOT NULL DEFAULT 0,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_xp_log_did ON xp_log(discord_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_xp_log_flag ON xp_log(flagged, created_at DESC);
+  `);
+
+  // ── Clubs / Gilden + Vereinskasse ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS clubs (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT UNIQUE NOT NULL,
+      tag         TEXT UNIQUE NOT NULL,
+      description TEXT DEFAULT '',
+      logo_emoji  TEXT DEFAULT '🏎️',
+      treasury    INTEGER NOT NULL DEFAULT 0,
+      total_xp    INTEGER NOT NULL DEFAULT 0,
+      founder_did TEXT NOT NULL,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS club_members (
+      club_id      INTEGER NOT NULL,
+      discord_id   TEXT NOT NULL,
+      username     TEXT,
+      role         TEXT NOT NULL DEFAULT 'member',
+      contribution INTEGER NOT NULL DEFAULT 0,
+      joined_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (club_id, discord_id)
+    );
+    CREATE TABLE IF NOT EXISTS club_log (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      club_id    INTEGER NOT NULL,
+      discord_id TEXT,
+      username   TEXT,
+      action     TEXT NOT NULL,
+      amount     INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // ── AutoMarkt Pro: eigene Händler-Währung (schützt Coin-Wirtschaft) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS am_state (
+      discord_id   TEXT PRIMARY KEY,
+      username     TEXT,
+      cash         INTEGER NOT NULL DEFAULT 5000,
+      level        INTEGER NOT NULL DEFAULT 1,
+      xp           INTEGER NOT NULL DEFAULT 0,
+      sold_count   INTEGER NOT NULL DEFAULT 0,
+      profit_total INTEGER NOT NULL DEFAULT 0,
+      offer_date   TEXT,
+      offers       TEXT NOT NULL DEFAULT '[]',
+      xp_day       TEXT,
+      xp_today     INTEGER NOT NULL DEFAULT 0,
+      updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS am_garage (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id TEXT NOT NULL,
+      vkey       TEXT NOT NULL,
+      name       TEXT NOT NULL,
+      category   TEXT NOT NULL,
+      rarity     TEXT NOT NULL,
+      base_value INTEGER NOT NULL,
+      condition  INTEGER NOT NULL DEFAULT 50,
+      buy_price  INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // ── Auto Empire: Idle-Imperium mit eigener Währung ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ae_state (
+      discord_id     TEXT PRIMARY KEY,
+      username       TEXT,
+      cash           INTEGER NOT NULL DEFAULT 1000,
+      workshops      INTEGER NOT NULL DEFAULT 1,
+      mechanics      INTEGER NOT NULL DEFAULT 0,
+      level          INTEGER NOT NULL DEFAULT 1,
+      total_produced INTEGER NOT NULL DEFAULT 0,
+      last_collect   DATETIME DEFAULT CURRENT_TIMESTAMP,
+      xp_day         TEXT,
+      xp_today       INTEGER NOT NULL DEFAULT 0,
+      updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   // ── Idle-Werkstatt: Prestige-Punkte (spendbar) + permanente Prestige-Upgrades ──
   try { db.exec('ALTER TABLE idle_saves ADD COLUMN prestige_points INTEGER NOT NULL DEFAULT 0'); } catch {}
   try { db.exec("ALTER TABLE idle_saves ADD COLUMN prestige_upgrades TEXT NOT NULL DEFAULT '{}'"); } catch {}

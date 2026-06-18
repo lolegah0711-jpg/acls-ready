@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoMarkt Pro — ACLS</title>
+<style>
+  :root { --bg:#0b0f17; --card:#151b27; --card2:#1c2433; --line:#26303f; --txt:#e5e9f0; --mut:#8b97a9; --acc:#f97316; --good:#22c55e; --bad:#ef4444; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:system-ui,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width:960px; margin:0 auto; padding:1.2rem; }
+  h1 { font-size:1.5rem; margin:.2rem 0; }
+  .sub { color:var(--mut); margin-bottom:1rem; font-size:.9rem; }
+  a.back { color:var(--acc); text-decoration:none; font-size:.85rem; }
+  .stats { display:flex; gap:.6rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:.6rem .9rem; flex:1; min-width:120px; }
+  .stat b { display:block; font-size:1.2rem; }
+  .stat span { color:var(--mut); font-size:.75rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1rem 1.1rem; margin-bottom:1rem; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:.7rem; margin-top:.7rem; }
+  .veh { background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:.8rem; }
+  .rar { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+  .common{color:#9ca3af}.rare{color:#38bdf8}.epic{color:#a855f7}.legendary{color:#fbbf24}
+  .bar { height:7px; background:#0d1622; border-radius:999px; overflow:hidden; margin:.4rem 0; }
+  .bar > i { display:block; height:100%; background:linear-gradient(90deg,#ef4444,#f59e0b,#22c55e); }
+  button { background:var(--acc); color:#1a0a00; border:0; border-radius:9px; padding:.5rem .8rem; font-weight:700; cursor:pointer; font-size:.84rem; }
+  button:hover{ filter:brightness(1.08); } button.ghost{ background:var(--card); color:var(--txt); border:1px solid var(--line); } button.good{ background:var(--good); color:#04200f; }
+  .muted{ color:var(--mut); font-size:.82rem; } .err{ color:var(--bad); font-size:.85rem; min-height:1rem; } .ok{ color:var(--good); }
+  .lbrow{ display:flex; justify-content:space-between; padding:.35rem .2rem; border-bottom:1px solid var(--line); font-size:.86rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← Zurück zum Portal</a>
+  <h1>🚗 AutoMarkt Pro</h1>
+  <div class="sub">Kaufen · Restaurieren · Verkaufen. Vom Kleinwagen-Händler zum Luxus-Magnaten.</div>
+  <div class="err" id="msg"></div>
+
+  <div class="stats">
+    <div class="stat"><b id="sCash">–</b><span>Guthaben</span></div>
+    <div class="stat"><b id="sLevel">–</b><span>Händler-Level</span></div>
+    <div class="stat"><b id="sSold">–</b><span>Verkäufe</span></div>
+    <div class="stat"><b id="sProfit">–</b><span>Gesamt-Gewinn</span></div>
+  </div>
+
+  <div class="card">
+    <strong>📅 Tagesangebot</strong> <span class="muted">— 3 Fahrzeuge, täglich neu</span>
+    <div class="grid" id="offers"></div>
+  </div>
+
+  <div class="card">
+    <strong>🔧 Deine Garage</strong>
+    <div class="grid" id="garage"></div>
+  </div>
+
+  <div class="card">
+    <strong>🏆 Profit-Rangliste</strong>
+    <div id="lb" style="margin-top:.6rem"><div class="muted">Lädt…</div></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+async function api(path, opts={}) {
+  const r = await fetch(path, { headers:{'Content-Type':'application/json'}, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const d = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(d.error || 'Fehler'); return d;
+}
+function msg(t, ok){ const m=$('msg'); m.textContent=t; m.className=ok?'err ok':'err'; if(t) setTimeout(()=>{ if(m.textContent===t) m.textContent=''; },4000); }
+const fmt = n => (n||0).toLocaleString('de-DE');
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function load() {
+  let d; try { d = await api('/api/automarkt'); } catch(e){ msg(e.message); return; }
+  $('sCash').textContent = fmt(d.cash);
+  $('sLevel').textContent = d.level;
+  $('sSold').textContent = d.sold_count;
+  $('sProfit').textContent = fmt(d.profit_total);
+  $('offers').innerHTML = d.offers.length ? d.offers.map((o,i)=>offerCard(o,i)).join('') : '<div class="muted">Alle Angebote gekauft — morgen gibt es neue!</div>';
+  $('garage').innerHTML = d.garage.length ? d.garage.map(garageCard).join('') : '<div class="muted">Garage leer — kaufe ein Fahrzeug aus dem Tagesangebot.</div>';
+}
+
+function offerCard(o, i) {
+  return `<div class="veh">
+    <div class="rar ${o.rarity}">${o.rarity}</div>
+    <div style="font-weight:700">${esc(o.name)}</div>
+    <div class="muted">${esc(o.category)}</div>
+    <div class="bar"><i style="width:${o.condition}%"></i></div>
+    <div class="muted">Zustand ${o.condition}% · Neuwert ${fmt(o.base)}</div>
+    <div style="margin:.5rem 0;font-weight:700">Preis: ${fmt(o.price)}</div>
+    <button onclick="buy(${i})">Kaufen</button>
+  </div>`;
+}
+function garageCard(g) {
+  return `<div class="veh">
+    <div class="rar ${g.rarity}">${g.rarity}</div>
+    <div style="font-weight:700">${esc(g.name)}</div>
+    <div class="bar"><i style="width:${g.condition}%"></i></div>
+    <div class="muted">Zustand ${g.condition}% · Restkosten ${fmt(g.restore_per_point)}/Pkt</div>
+    <div class="muted">Verkaufswert ~${fmt(g.sell_estimate)} (×Markt)</div>
+    <div style="margin-top:.5rem;display:flex;gap:.4rem;flex-wrap:wrap">
+      <button class="ghost" onclick="restore(${g.id},10)">+10% 🔧</button>
+      <button class="ghost" onclick="restore(${g.id},100)">Max 🔧</button>
+      <button class="good" onclick="sell(${g.id})">Verkaufen</button>
+    </div>
+  </div>`;
+}
+
+async function buy(i){ try{ await api('/api/automarkt/buy/'+i,{method:'POST'}); msg('Gekauft!',true); load(); }catch(e){ msg(e.message); } }
+async function restore(id,pts){ try{ const d=await api('/api/automarkt/restore/'+id,{method:'POST',body:{points:pts}}); msg('Restauriert (−'+fmt(d.cost)+').',true); load(); }catch(e){ msg(e.message); } }
+async function sell(id){ try{ const d=await api('/api/automarkt/sell/'+id,{method:'POST'}); msg(`Verkauft für ${fmt(d.value)} (Markt ×${d.marketFactor}, Gewinn ${fmt(d.profit)})`, d.profit>=0); load(); }catch(e){ msg(e.message); } }
+
+async function loadLb(){ try{ const l=await api('/api/automarkt/leaderboard'); $('lb').innerHTML = l.length ? l.map((x,i)=>`<div class="lbrow"><span>#${i+1} ${esc(x.username||'?')} <span class="muted">Lv.${x.level}</span></span><span>💰 ${fmt(x.profit_total)} · ${x.sold_count}×</span></div>`).join('') : '<div class="muted">Noch keine Verkäufe.</div>'; }catch(e){} }
+load(); loadLb(); setInterval(loadLb, 30000);
+</script>
+</body>
+</html>

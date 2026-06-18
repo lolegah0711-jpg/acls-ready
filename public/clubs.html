@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clubs & Gilden — ACLS</title>
+<style>
+  :root { --bg:#0b0f17; --card:#151b27; --card2:#1c2433; --line:#26303f; --txt:#e5e9f0; --mut:#8b97a9; --acc:#38bdf8; --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:system-ui,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width:920px; margin:0 auto; padding:1.2rem; }
+  h1 { font-size:1.5rem; margin:.2rem 0; }
+  .sub { color:var(--mut); margin-bottom:1rem; font-size:.9rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1rem 1.1rem; margin-bottom:1rem; }
+  .row { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
+  .grow { flex:1; }
+  input, textarea { background:var(--card2); border:1px solid var(--line); color:var(--txt); border-radius:9px; padding:.55rem .7rem; font-size:.9rem; width:100%; }
+  textarea { resize:vertical; min-height:60px; }
+  button { background:var(--acc); color:#04121c; border:0; border-radius:9px; padding:.55rem .9rem; font-weight:700; cursor:pointer; font-size:.88rem; }
+  button:hover { filter:brightness(1.08); }
+  button.ghost { background:var(--card2); color:var(--txt); border:1px solid var(--line); }
+  button.bad { background:var(--bad); color:#fff; }
+  button.good { background:var(--good); color:#04200f; }
+  .muted { color:var(--mut); font-size:.85rem; }
+  .clublist { display:grid; grid-template-columns:1fr; gap:.55rem; }
+  .clubrow { display:flex; gap:.7rem; align-items:center; background:var(--card2); border:1px solid var(--line); border-radius:11px; padding:.6rem .8rem; }
+  .emoji { font-size:1.6rem; }
+  .tag { font-size:.7rem; color:var(--acc); font-weight:700; letter-spacing:.05em; }
+  .pill { background:#0d1622; border:1px solid var(--line); border-radius:999px; padding:.15rem .55rem; font-size:.72rem; color:var(--mut); }
+  .mem { display:flex; justify-content:space-between; padding:.4rem .2rem; border-bottom:1px solid var(--line); font-size:.88rem; }
+  .role { font-size:.7rem; padding:.1rem .45rem; border-radius:999px; }
+  .role.president { background:#3b2a05; color:var(--warn); }
+  .role.member { background:#0d1622; color:var(--mut); }
+  .log { font-size:.8rem; color:var(--mut); padding:.2rem 0; border-bottom:1px dashed var(--line); }
+  a.back { color:var(--acc); text-decoration:none; font-size:.85rem; }
+  .err { color:var(--bad); font-size:.85rem; min-height:1rem; }
+  .ok { color:var(--good); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← Zurück zum Portal</a>
+  <h1>🛡️ Clubs &amp; Gilden</h1>
+  <div class="sub">Gründe einen Club, tritt bei und füllt gemeinsam die Vereinskasse.</div>
+  <div class="err" id="msg"></div>
+
+  <div id="myClub"></div>
+
+  <div class="card" id="createCard" style="display:none">
+    <strong>Neuen Club gründen</strong> <span class="muted">(500 Coins)</span>
+    <div class="row" style="margin-top:.6rem">
+      <input id="cName" placeholder="Club-Name (3–32 Zeichen)" maxlength="32" class="grow">
+      <input id="cTag" placeholder="TAG" maxlength="4" style="max-width:90px;text-transform:uppercase">
+      <input id="cEmoji" placeholder="🏎️" maxlength="8" style="max-width:70px">
+    </div>
+    <textarea id="cDesc" placeholder="Beschreibung (optional)" maxlength="200" style="margin-top:.5rem"></textarea>
+    <div class="row" style="margin-top:.6rem"><button onclick="createClub()">Club gründen</button></div>
+  </div>
+
+  <div class="card">
+    <strong>🏆 Club-Rangliste</strong>
+    <div class="clublist" id="ranking" style="margin-top:.7rem"><div class="muted">Lädt…</div></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+async function api(path, opts={}) {
+  const r = await fetch(path, { headers:{'Content-Type':'application/json'}, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const d = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(d.error || 'Fehler');
+  return d;
+}
+function msg(text, ok) { const m=$('msg'); m.textContent=text; m.className = ok?'err ok':'err'; if(text) setTimeout(()=>{ if(m.textContent===text) m.textContent=''; }, 4000); }
+
+async function load() {
+  let mine = null;
+  try { mine = await api('/api/clubs/mine'); } catch(e) { $('msg').textContent = e.message; }
+  renderMine(mine);
+  $('createCard').style.display = mine ? 'none' : 'block';
+  try {
+    const list = await api('/api/clubs');
+    $('ranking').innerHTML = list.length ? list.map((c,i)=>clubRow(c,i,mine)).join('') : '<div class="muted">Noch keine Clubs — sei der Erste!</div>';
+  } catch(e) { $('ranking').innerHTML = '<div class="muted">'+e.message+'</div>'; }
+}
+
+function clubRow(c, i, mine) {
+  const joinBtn = (!mine) ? `<button class="ghost" onclick="joinClub(${c.id})">Beitreten</button>` : '';
+  return `<div class="clubrow">
+    <div class="emoji">${esc(c.logo_emoji)}</div>
+    <div class="grow">
+      <div><strong>#${i+1} ${esc(c.name)}</strong> <span class="tag">[${esc(c.tag)}]</span></div>
+      <div class="muted">${esc(c.description||'—')}</div>
+    </div>
+    <span class="pill">👥 ${c.member_count}</span>
+    <span class="pill">⭐ ${fmt(c.total_xp)}</span>
+    <span class="pill">💰 ${fmt(c.treasury)}</span>
+    ${joinBtn}
+  </div>`;
+}
+
+function renderMine(c) {
+  const el = $('myClub');
+  if (!c) { el.innerHTML=''; return; }
+  const isPrez = c.my_role === 'president';
+  el.innerHTML = `<div class="card">
+    <div class="row">
+      <div class="emoji" style="font-size:2.2rem">${esc(c.logo_emoji)}</div>
+      <div class="grow">
+        <div style="font-size:1.2rem;font-weight:700">${esc(c.name)} <span class="tag">[${esc(c.tag)}]</span></div>
+        <div class="muted">${esc(c.description||'—')}</div>
+      </div>
+      <span class="pill">⭐ ${fmt(c.total_xp)} XP</span>
+    </div>
+    <div class="card" style="background:var(--card2);margin-top:.8rem">
+      <div class="row"><strong class="grow">💰 Vereinskasse: ${fmt(c.treasury)} Coins</strong></div>
+      <div class="row" style="margin-top:.5rem">
+        <input id="donAmt" type="number" min="1" placeholder="Betrag" class="grow">
+        <button class="good" onclick="donate()">Einzahlen</button>
+        ${isPrez ? `<button class="ghost" onclick="withdraw()">Auszahlen</button>` : ''}
+      </div>
+    </div>
+    <div style="margin-top:.8rem"><strong>👥 Mitglieder (${c.member_count}/50)</strong>
+      ${c.members.map(m=>memberRow(m, c, isPrez)).join('')}
+    </div>
+    <div style="margin-top:.8rem"><strong>📜 Protokoll</strong>
+      ${(c.log||[]).map(l=>`<div class="log">${esc(l.username||'?')} ${esc(l.action)} ${l.amount?('· '+fmt(l.amount)):''} <span style="float:right">${tdate(l.created_at)}</span></div>`).join('') || '<div class="muted">—</div>'}
+    </div>
+    <div class="row" style="margin-top:.8rem"><button class="bad" onclick="leave()">Club verlassen</button></div>
+  </div>`;
+}
+
+function memberRow(m, c, isPrez) {
+  const ctrl = (isPrez && m.role!=='president')
+    ? `<button class="ghost" style="padding:.2rem .5rem;font-size:.72rem" onclick="transfer('${m.discord_id}')">👑</button>
+       <button class="bad" style="padding:.2rem .5rem;font-size:.72rem" onclick="kick('${m.discord_id}')">Kick</button>` : '';
+  return `<div class="mem"><span>${esc(m.username||'?')} <span class="role ${m.role}">${m.role==='president'?'Präsident':'Mitglied'}</span></span>
+    <span class="muted">💰 ${fmt(m.contribution)} ${ctrl}</span></div>`;
+}
+
+async function createClub() {
+  try { await api('/api/clubs/create', { method:'POST', body:{ name:$('cName').value, tag:$('cTag').value, description:$('cDesc').value, logo_emoji:$('cEmoji').value } });
+    msg('Club gegründet!', true); load();
+  } catch(e){ msg(e.message); }
+}
+async function joinClub(id){ try{ await api('/api/clubs/'+id+'/join',{method:'POST'}); load(); }catch(e){ msg(e.message); } }
+async function leave(){ if(!confirm('Club wirklich verlassen?')) return; try{ const d=await api('/api/clubs/leave',{method:'POST'}); msg(d.dissolved?'Club aufgelöst.':'Verlassen.',true); load(); }catch(e){ msg(e.message); } }
+async function donate(){ const a=+$('donAmt').value; try{ await api('/api/clubs/donate',{method:'POST',body:{amount:a}}); msg('Eingezahlt!',true); load(); }catch(e){ msg(e.message); } }
+async function withdraw(){ const a=prompt('Betrag auszahlen:'); if(!a) return; try{ await api('/api/clubs/withdraw',{method:'POST',body:{amount:+a}}); msg('Ausgezahlt!',true); load(); }catch(e){ msg(e.message); } }
+async function kick(did){ if(!confirm('Mitglied entfernen?')) return; try{ await api('/api/clubs/kick/'+did,{method:'POST'}); load(); }catch(e){ msg(e.message); } }
+async function transfer(did){ if(!confirm('Präsidentschaft übergeben?')) return; try{ await api('/api/clubs/transfer/'+did,{method:'POST'}); load(); }catch(e){ msg(e.message); } }
+
+const fmt = n => (n||0).toLocaleString('de-DE');
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const tdate = s => { try { return new Date(s+'Z').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch { return ''; } };
+load();
+</script>
+</body>
+</html>

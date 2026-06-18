@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auto Empire — ACLS</title>
+<style>
+  :root { --bg:#0b0f17; --card:#151b27; --card2:#1c2433; --line:#26303f; --txt:#e5e9f0; --mut:#8b97a9; --acc:#f97316; --good:#22c55e; --bad:#ef4444; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:system-ui,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width:880px; margin:0 auto; padding:1.2rem; }
+  h1 { font-size:1.5rem; margin:.2rem 0; }
+  .sub { color:var(--mut); margin-bottom:1rem; font-size:.9rem; }
+  a.back { color:var(--acc); text-decoration:none; font-size:.85rem; }
+  .stats { display:flex; gap:.6rem; flex-wrap:wrap; margin-bottom:1rem; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:.6rem .9rem; flex:1; min-width:110px; }
+  .stat b { display:block; font-size:1.2rem; } .stat span { color:var(--mut); font-size:.75rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1.1rem; margin-bottom:1rem; }
+  .collect { text-align:center; }
+  .pending { font-size:2.2rem; font-weight:800; color:var(--good); }
+  .bar { height:10px; background:#0d1622; border-radius:999px; overflow:hidden; margin:.6rem 0; }
+  .bar > i { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#22c55e); transition:width .3s; }
+  button { background:var(--acc); color:#1a0a00; border:0; border-radius:9px; padding:.6rem 1rem; font-weight:700; cursor:pointer; font-size:.9rem; }
+  button:hover{ filter:brightness(1.08); } button:disabled{ opacity:.5; cursor:default; }
+  button.big{ font-size:1.1rem; padding:.8rem 1.6rem; } button.good{ background:var(--good); color:#04200f; } button.ghost{ background:var(--card2); color:var(--txt); border:1px solid var(--line); }
+  .up { display:flex; gap:.7rem; flex-wrap:wrap; margin-top:.6rem; }
+  .upcard { flex:1; min-width:200px; background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:.9rem; }
+  .muted{ color:var(--mut); font-size:.82rem; } .err{ color:var(--bad); font-size:.85rem; min-height:1rem; } .ok{ color:var(--good); }
+  .lbrow{ display:flex; justify-content:space-between; padding:.35rem .2rem; border-bottom:1px solid var(--line); font-size:.86rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← Zurück zum Portal</a>
+  <h1>🏭 Auto Empire</h1>
+  <div class="sub">Werkstätten bauen, Mechaniker einstellen, Imperium ausbauen — produziert auch offline (bis 8h).</div>
+  <div class="err" id="msg"></div>
+
+  <div class="stats">
+    <div class="stat"><b id="sCash">–</b><span>Guthaben</span></div>
+    <div class="stat"><b id="sLevel">–</b><span>Imperium-Level</span></div>
+    <div class="stat"><b id="sRate">–</b><span>Produktion/Std</span></div>
+    <div class="stat"><b id="sTotal">–</b><span>Gesamt produziert</span></div>
+  </div>
+
+  <div class="card collect">
+    <div class="muted">Bereit zum Einsammeln</div>
+    <div class="pending" id="pending">0</div>
+    <div class="bar"><i id="capbar" style="width:0%"></i></div>
+    <div class="muted" id="capnote"></div>
+    <div style="margin-top:.8rem"><button class="big good" id="collectBtn" onclick="collect()">Einsammeln</button></div>
+  </div>
+
+  <div class="card">
+    <strong>🏗️ Ausbau</strong>
+    <div class="up">
+      <div class="upcard">
+        <div style="font-weight:700">🏭 Werkstatt bauen</div>
+        <div class="muted">Aktuell: <span id="wsCount">–</span> · Mehr Werkstätten = mehr Produktion</div>
+        <div style="margin-top:.6rem"><button onclick="build()">Bauen — <span id="wsCost">–</span></button></div>
+      </div>
+      <div class="upcard">
+        <div style="font-weight:700">🔧 Mechaniker einstellen</div>
+        <div class="muted">Aktuell: <span id="mCount">–</span> · Jeder Mechaniker +50% Produktion</div>
+        <div style="margin-top:.6rem"><button onclick="hire()">Einstellen — <span id="mCost">–</span></button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <strong>🏆 Imperium-Rangliste</strong>
+    <div id="lb" style="margin-top:.6rem"><div class="muted">Lädt…</div></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+async function api(path, opts={}) {
+  const r = await fetch(path, { headers:{'Content-Type':'application/json'}, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const d = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(d.error || 'Fehler'); return d;
+}
+function msg(t, ok){ const m=$('msg'); m.textContent=t; m.className=ok?'err ok':'err'; if(t) setTimeout(()=>{ if(m.textContent===t) m.textContent=''; },4000); }
+const fmt = n => (n||0).toLocaleString('de-DE');
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let st = null;
+function render(d){
+  st = d;
+  $('sCash').textContent = fmt(d.cash);
+  $('sLevel').textContent = d.level;
+  $('sRate').textContent = fmt(d.rate_per_hour);
+  $('sTotal').textContent = fmt(d.total_produced);
+  $('pending').textContent = fmt(d.pending);
+  $('wsCount').textContent = d.workshops;
+  $('mCount').textContent = d.mechanics;
+  $('wsCost').textContent = fmt(d.next_workshop_cost);
+  $('mCost').textContent = fmt(d.next_mechanic_cost);
+  const capMax = d.rate_per_hour * d.offline_cap_h;
+  const pct = capMax > 0 ? Math.min(100, d.pending / capMax * 100) : 0;
+  $('capbar').style.width = pct + '%';
+  $('capnote').textContent = `Offline-Lager: ${fmt(d.pending)} / ${fmt(capMax)} (max ${d.offline_cap_h}h)`;
+  $('collectBtn').disabled = d.pending <= 0;
+}
+
+async function load(){ try{ render(await api('/api/empire')); }catch(e){ msg(e.message); } }
+async function collect(){ try{ const d=await api('/api/empire/collect',{method:'POST'}); msg('+'+fmt(d.collected)+' eingesammelt!',true); render(d); }catch(e){ msg(e.message); } }
+async function build(){ try{ const d=await api('/api/empire/build',{method:'POST'}); msg('Werkstatt gebaut!',true); render(d); }catch(e){ msg(e.message); } }
+async function hire(){ try{ const d=await api('/api/empire/hire',{method:'POST'}); msg('Mechaniker eingestellt!',true); render(d); }catch(e){ msg(e.message); } }
+async function loadLb(){ try{ const l=await api('/api/empire/leaderboard'); $('lb').innerHTML = l.length ? l.map((x,i)=>`<div class="lbrow"><span>#${i+1} ${esc(x.username||'?')} <span class="muted">Lv.${x.level}</span></span><span>🏭 ${x.workshops} · 🔧 ${x.mechanics} · ${fmt(x.total_produced)}</span></div>`).join('') : '<div class="muted">Noch keine Produktion.</div>'; }catch(e){} }
+
+load(); loadLb();
+// Pending lokal hochzählen, damit es lebendig wirkt; echte Zahl kommt vom Server beim Collect
+setInterval(()=>{ if(st){ const capMax=st.rate_per_hour*st.offline_cap_h; st.pending=Math.min(capMax, st.pending + st.rate_per_hour/3600); render(st); } }, 1000);
+setInterval(load, 60000);
+setInterval(loadLb, 30000);
+</script>
+</body>
+</html>

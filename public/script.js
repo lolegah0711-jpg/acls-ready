@@ -1156,6 +1156,7 @@ function bootApp() {
   renderUserWidget();
   $('adminNavItem').style.display        = isAdmin()     ? '' : 'none';
   $('auditlogNavItem').style.display     = isAdmin()     ? '' : 'none';
+  { const x=$('xpwatchNavItem'); if(x) x.style.display = isAdmin() ? '' : 'none'; }
   $('ausbildungNavItem').style.display   = isAusbilder() ? '' : 'none';
   $('applicationsNavItem').style.display = isAdmin()     ? '' : 'none';
   $('frageneditorNavItem').style.display = isAdmin()     ? '' : 'none';

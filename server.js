@@ -2393,7 +2393,7 @@ app.post('/api/game-scores/:game', (req, res) => {
     seasonIncQuest(cDid, 'games', 1);
     if (coinsEarned > 0) {
       seasonIncQuest(cDid, 'game_coins', coinsEarned);
-      addSeasonXp(cDid, cName, coinsEarned); // XP wächst mit verdienten Coins
+      addSeasonXp(cDid, cName, coinsEarned, 'minispiel'); // XP wächst mit verdienten Coins
     }
   } catch (e) { console.error('[Season]', e.message); }
 
@@ -2533,7 +2533,7 @@ app.post('/api/idle-save', (req, res) => {
   const prestigeDelta = Math.max(0, (prestige || 0) - (row?.prestige || 0));
   if (prestigeDelta > 0) {
     seasonIncQuest(user.discord_id, 'prestige', 1);
-    addSeasonXp(user.discord_id, user.username, 60);
+    addSeasonXp(user.discord_id, user.username, 60, 'prestige');
   }
 
   db.prepare(`
@@ -3370,7 +3370,22 @@ const PREMIUM_PASS_COST = 500;
 
 function seasonLevel(xp) { return Math.min(SEASON_MAX_LEVEL, Math.floor(xp / SEASON_XP_PER_LEVEL)); }
 
-function addSeasonXp(discordId, username, amount) {
+// Anti-Cheat: jeden XP-Gewinn mit Quelle + Zeitstempel protokollieren.
+// Anomalie: > 5000 XP in der letzten Stunde → Zeile wird geflaggt (Admin-Dashboard).
+const XP_HOURLY_LIMIT = 5000;
+function logXpGain(discordId, username, amount, source) {
+  try {
+    const hourSum = db.prepare(
+      "SELECT COALESCE(SUM(amount),0) AS s FROM xp_log WHERE discord_id = ? AND created_at > datetime('now','-1 hour')"
+    ).get(discordId).s;
+    const flagged = (hourSum + amount) > XP_HOURLY_LIMIT ? 1 : 0;
+    db.prepare('INSERT INTO xp_log (discord_id, username, amount, source, flagged) VALUES (?,?,?,?,?)')
+      .run(discordId, username || null, amount, source || 'unbekannt', flagged);
+    if (flagged) console.warn(`[Anti-Cheat] XP-Anomalie: ${username || discordId} +${amount} (${source}) → ${hourSum + amount} XP/Std`);
+  } catch {}
+}
+
+function addSeasonXp(discordId, username, amount, source = 'spiel') {
   amount = Math.floor(amount);
   if (!discordId || amount <= 0) return;
   const s = seasonKey();
@@ -3378,6 +3393,7 @@ function addSeasonXp(discordId, username, amount) {
     ON CONFLICT(season, discord_id) DO UPDATE SET
       xp = xp + excluded.xp, username = COALESCE(excluded.username, username), updated_at = CURRENT_TIMESTAMP`)
     .run(s, discordId, username || null, amount);
+  logXpGain(discordId, username, amount, source);
   sseEmit('season', { discord_id: discordId }, discordId);
 }
 
@@ -3450,7 +3466,7 @@ app.post('/api/season/claim-quest', (req, res) => {
   if (!row || row.progress < q.goal) return res.status(400).json({ error: 'Quest noch nicht abgeschlossen' });
   if (row.claimed) return res.status(400).json({ error: 'Bereits eingelöst' });
   db.prepare('UPDATE season_quest_progress SET claimed = 1 WHERE week = ? AND discord_id = ? AND quest_id = ?').run(wk, ident.id, q.id);
-  addSeasonXp(ident.id, ident.name, q.xp);
+  addSeasonXp(ident.id, ident.name, q.xp, 'quest');
   res.json({ ok: true, xpGained: q.xp });
 });
 
@@ -3544,7 +3560,7 @@ app.post('/api/coins/daily', (req, res) => {
     if (streak >= 30) awardBadge(ident.user.id, 'streak_30');
   }
   // Saison-Pass: XP + Wochen-Quest „Tagesbonus"
-  try { seasonIncQuest(ident.id, 'daily', 1); addSeasonXp(ident.id, ident.name, 50); } catch {}
+  try { seasonIncQuest(ident.id, 'daily', 1); addSeasonXp(ident.id, ident.name, 50, 'daily'); } catch {}
   // Level-XP + Milestone-Checks
   try {
     awardXP(ident.id, ident.name, 25);
@@ -3991,7 +4007,7 @@ function finishDuel(d) {
       addCoins(winnerDid, winName,  DUEL_COINS_WIN,  'duel:win',  { code: d.code });
       addCoins(loserDid,  loseName, DUEL_COINS_LOSS, 'duel:loss', { code: d.code });
       // Saison-Pass: Quest „Duell gewinnen" + XP für den Sieger
-      try { seasonIncQuest(winnerDid, 'duel_win', 1); addSeasonXp(winnerDid, winName, 30); } catch {}
+      try { seasonIncQuest(winnerDid, 'duel_win', 1); addSeasonXp(winnerDid, winName, 30, 'duell'); } catch {}
     }
     // Gaming-Achievements für beide Teilnehmer (sofern Mitarbeiter)
     for (const did of [d.host_did, d.guest_did]) {
@@ -4433,7 +4449,7 @@ app.get('/api/game-leaderboard', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  NEUE FEATURE-ROUTES (modular)
 // ════════════════════════════════════════════════════════════════
-const sharedDeps = { db, requireAdmin, requireAuth, requireLogin, getUser, coinIdent, addCoins, rateLimit, queueNotification, createNotif, sseEmit, auditLog, friendStats, checkGameBadges, seasonIncQuest, SHOP_ITEMS, makeGameToken, ALL_GAMES };
+const sharedDeps = { db, requireAdmin, requireAuth, requireLogin, getUser, coinIdent, addCoins, addSeasonXp, rateLimit, queueNotification, createNotif, sseEmit, auditLog, friendStats, checkGameBadges, seasonIncQuest, SHOP_ITEMS, makeGameToken, ALL_GAMES };
 app.use(require('./routes/blackmarket')({ ...sharedDeps }));
 app.use(require('./routes/feedback')({ ...sharedDeps }));
 app.use(require('./routes/roulette')({ ...sharedDeps }));
@@ -4448,6 +4464,10 @@ app.use(require('./routes/community')({ ...sharedDeps }));
 app.use(require('./routes/casino')({ ...sharedDeps }));
 app.use(require('./routes/tracks')({ ...sharedDeps }));
 app.use(require('./routes/admin-games')({ ...sharedDeps }));
+app.use(require('./routes/anticheat')({ ...sharedDeps }));
+app.use(require('./routes/clubs')({ ...sharedDeps }));
+app.use(require('./routes/automarkt')({ ...sharedDeps }));
+app.use(require('./routes/auto-empire')({ ...sharedDeps }));
 
 app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
@@ -4897,6 +4917,11 @@ function ensureChangelog(version, type, title, body, released_at) {
 ensureChangelog('2.1.0', 'fix', 'Fix: Beschwerde-System durch Ticket-System ersetzt', 'Das alte Beschwerde-Formular für Bürger wurde durch das einheitliche Support-Ticket-System ersetzt. Bürger können nun direkt Tickets erstellen (Bug, Frage, Beschwerde, Feature-Wunsch) – ohne Login. Admins verwalten alle Tickets zentral in einer Ansicht.', '2026-06-17 00:00:00');
 ensureChangelog('2.2.0', 'feature', 'Navigation-Redesign & Mein ACLS Hub', 'Die Sidebar wurde von 33+ flachen Einträgen auf 6 farbkodierte, einklappbare Sektionen umgebaut (Mein ACLS, Fahrschule, Community, Wirtschaft, Info & Karten, Spiele). Neuer persönlicher Hub "Mein ACLS" mit Profil-Hero, XP-Fortschrittsbalken, Saison-Pass-Status und Schnellzugriff auf alle persönlichen Features.', '2026-06-17 00:00:00');
 ensureChangelog('2.3.0', 'feature', 'Community-Update: Freundes-Feed, Online-Status & Geheime Abzeichen', 'Willkommens-Banner für neue Nutzer (erste 3 Tage) mit direktem Einstieg in Prüfung, Daily Wheel und Community. Neues Freundes-Feed-Widget im Dashboard zeigt aktuelle Aktivitäten (Badges, Highscores) deiner Freunde aus den letzten 7 Tagen. Online-Indikator (grüner Punkt) bei Freunden – aktiv wenn in den letzten 5 Minuten online. Bester-Freund-Badge für den Freund mit den meisten gemeinsamen Direktnachrichten. Daily Wheel Bonus: +10% Coins wenn ein Freund in den letzten 2 Stunden online war. 4 neue geheime Abzeichen die durch besondere Aktionen freigeschaltet werden.', '2026-06-17 00:00:00');
+ensureChangelog('2.3.1', 'fix', 'Fix: Online-Status & Daily-Wheel Stabilität', 'Letzte-Aktivität-Tracking (last_seen_at) abgesichert, sodass Freundes-Statistiken und der Daily-Wheel-Freundesbonus auch vor der Datenbank-Migration nicht mehr abstürzen. Willkommens-Banner erscheint nun zuverlässig beim ersten Besuch (statt am Account-Alter festgemacht).', '2026-06-17 12:00:00');
+ensureChangelog('2.4.0', 'feature', 'Clubs & Vereinskasse', 'Gründe deinen eigenen Club (500 Coins) mit Name, Tag, Emoji-Logo und Beschreibung. Tritt Clubs bei (bis zu 50 Mitglieder), zahle in die gemeinsame Vereinskasse ein und steige in der Club-Rangliste auf. Präsidenten verwalten Mitglieder (kicken, Präsidentschaft übergeben) und zahlen aus der Kasse aus. Jede Aktion wird im Club-Protokoll festgehalten.', '2026-06-18 00:00:00');
+ensureChangelog('2.5.0', 'feature', 'AutoMarkt Pro – Fahrzeughandel-Simulator', 'Vom Kleinwagen-Händler zum Luxus-Magnaten: Kaufe Fahrzeuge aus dem täglichen 3er-Angebot, restauriere ihren Zustand und verkaufe mit Gewinn in einen schwankenden Markt. 11 Fahrzeuge von Common bis Legendär, Händler-Level, Profit-Rangliste und gedeckelte Saison-XP. Eigene Händler-Währung schützt die Coin-Wirtschaft.', '2026-06-18 00:00:00');
+ensureChangelog('2.6.0', 'feature', 'Auto Empire – Fahrzeug-Imperium', 'Baue dein Werkstatt-Imperium auf: Werkstätten bauen, Mechaniker einstellen und Produktion einsammeln – auch offline (bis 8 Stunden). Eskalierende Ausbaukosten, Imperium-Level, Produktions-Rangliste und gedeckelte Saison-XP. Eigene Imperium-Währung schützt die Coin-Wirtschaft.', '2026-06-18 00:00:00');
+ensureChangelog('2.7.0', 'feature', 'Anti-Cheat: XP-Überwachung', 'Jeder Saison-XP-Gewinn wird mit Quelle und Zeitstempel protokolliert. Verdächtige Spitzen (> 5.000 XP/Stunde) werden automatisch markiert. Neues Admin-Dashboard zeigt den XP-Verlauf pro Nutzer, Aufschlüsselung nach Quelle und alle geflaggten Anomalien.', '2026-06-18 00:00:00');
 
 app.get('/api/changelogs', (req, res) => {
   res.json(db.prepare('SELECT * FROM changelogs ORDER BY released_at DESC').all());
