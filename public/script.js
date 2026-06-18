@@ -8565,6 +8565,10 @@ const FEATURES_LIST = [
       { name: 'Big Bass Bonanza', desc: 'Angel-Slot im Fisch-Thema. Freispiele, Wilds und gestaffelte Multiplikatoren.' },
       { name: 'Mines', desc: 'Minesweeper-Prinzip mit Coin-Einsatz: mehr aufgedeckte Felder = höherer Multiplikator.' },
       { name: 'Rocket', desc: 'Crash-Game: Rakete steigt, Multiplikator wächst – auszahlen bevor sie crasht.' },
+      { name: 'Book of Ra', desc: 'Ägypten-Slot mit Freispielen und expandierendem Bonus-Symbol. Klassisches 5-Walzen-Slot-Feeling.' },
+      { name: 'Roulette', desc: 'Europäisches Roulette: auf Zahlen, Farben, Gerade/Ungerade oder Bereiche setzen. Animiertes Rad mit gestaffelten Auszahlungen.' },
+      { name: 'Hi-Lo', desc: 'Karten-Ratespiel: Ist die nächste Karte höher oder niedriger? Serien erhöhen den Multiplikator – auszahlen oder weiterzocken.' },
+      { name: 'Hangman', desc: 'Galgenmännchen mit Coin-Einsatz: Begriffe aus der ACLS-Welt Buchstabe für Buchstabe erraten, bevor die Versuche ausgehen.' },
     ]
   },
 ];
