@@ -8474,7 +8474,7 @@ const FEATURES_LIST = [
   {
     cat: 'Coins & Wirtschaft', icon: 'fa-coins', color: '#fbbf24', items: [
       { name: 'ACLS-Coin-System', desc: 'Interne Währung für alle Aktivitäten. Täglicher Bonus mit Streak-Multiplikator (bis 5×), wöchentliches Cap.' },
-      { name: 'Daily Bonus Wheel', desc: 'Täglich einmal drehen: animiertes 8-Segment-Rad mit Coins- & XP-Preisen.' },
+      { name: 'Daily Bonus Wheel', desc: 'Täglich einmal drehen: animiertes 8-Segment-Rad mit Coins- & XP-Preisen. Freundes-Bonus: +10% Coins, wenn ein Freund in den letzten 2 Stunden online war.' },
       { name: 'Coin-Shop', desc: 'Shop für Kosmetika: Titel, Profilrahmen, Namensfarben, Dekorationen, Trucks, Decks, VIP-Rolle, XP-Booster, Lotterietickets.' },
       { name: 'Coin-Transfers', desc: 'Coins an andere Mitarbeiter senden (max. 200/Tag, timing-sicher).' },
       { name: 'Marktplatz', desc: 'Spieler-zu-Spieler Kosmetika-Handel. Listings mit Bild und Direktkauf.' },
@@ -8490,16 +8490,24 @@ const FEATURES_LIST = [
       { name: 'Saison-Pass (Battle Pass)', desc: '30 Tiers pro Saison (monatlich). Gratis-Track + Premium-Track (500 Coins). Wochen-Quests für XP.' },
       { name: 'Meilenstein-System', desc: '14 permanente Lebensziele (Exams, IC-Zeit, Streak, Coins, Level). Automatische Coin-Belohnung bei Abschluss.' },
       { name: 'Badge-System', desc: '25+ Errungenschaften für besondere Leistungen. Badges mit SVG-Animationen auf dem Profil.' },
+      { name: 'Geheime Abzeichen', desc: 'Versteckte Erfolge, die nur durch besondere Aktionen freigeschaltet werden (z.B. ersten Freund hinzufügen, erste DM, erste Wheel-Drehung). Erscheinen erst nach Entdeckung.' },
       { name: 'Profilrahmen-Animationen', desc: 'Kosmetische Rahmen mit CSS-Animationen: Rainbow, Neon (Cyan-Glow), Gold-Puls, Prestige-Farbwechsel.' },
       { name: 'Titel-System 2.0', desc: 'Über 20 Titel im Shop + Custom-Titel (Admin-genehmigt) + Ehrentiitel. Werden neben dem Namen angezeigt.' },
       { name: 'Profilbild-Upload', desc: 'Eigenes Bild hochladen (max 300 KB, auto-komprimiert auf 256px). Ersetzt das Discord-Avatar.' },
       { name: 'Mein Profil', desc: 'Persönliche Seite für Bio, Spezialgebiet, Fun Fact und Profilbild-Verwaltung.' },
+      { name: 'Mein ACLS Hub', desc: 'Persönlicher Startpunkt mit Profil-Hero, XP-Fortschrittsbalken, Saison-Pass-Status und Schnellzugriff auf alle persönlichen Features.' },
       { name: 'Freundesliste', desc: 'Freundschaftsanfragen senden, Statistik-Vergleich, Gästebuch-Einträge.' },
     ]
   },
   {
     cat: 'Soziales & Community', icon: 'fa-users', color: '#38bdf8', items: [
+      { name: 'Clubs & Gilden', desc: 'Gründe einen eigenen Club (500 Coins) mit Name, Tag, Emoji-Logo und Beschreibung. Bis zu 50 Mitglieder, Club-Rangliste nach XP & Kasse, Präsidenten verwalten Mitglieder und können die Präsidentschaft übergeben.' },
+      { name: 'Vereinskasse (Treasury)', desc: 'Gemeinsame Club-Kasse: Mitglieder zahlen Coins ein (steigert Club-XP & persönlichen Beitrag), Präsidenten zahlen aus. Jede Aktion landet im Club-Protokoll. Beim Auflösen geht die Restkasse zurück.' },
       { name: 'Direktnachrichten', desc: 'Private 1:1 Nachrichten zwischen Mitarbeitern. Ungelesen-Badge, Posteingang und Verlauf.' },
+      { name: 'Freundes-Feed', desc: 'Dashboard-Widget mit den aktuellen Aktivitäten deiner Freunde (neue Badges & Highscores) aus den letzten 7 Tagen.' },
+      { name: 'Online-Status', desc: 'Grüner Punkt bei Freunden, die in den letzten 5 Minuten aktiv waren – basiert auf Letzte-Aktivität-Tracking.' },
+      { name: 'Bester-Freund-Badge', desc: 'Automatische Auszeichnung für den Freund mit den meisten gemeinsamen Direktnachrichten.' },
+      { name: 'Willkommens-Banner', desc: 'Onboarding-Banner für neue Nutzer beim ersten Besuch mit direktem Einstieg in Prüfung, Daily Wheel und Community.' },
       { name: 'Feedback & Ideen', desc: 'Community-Vorschläge einreichen und abstimmen (👍/👎). Kommentarfunktion.' },
       { name: 'Benachrichtigungs-Center', desc: 'Echtzeit-Benachrichtigungen via SSE für Coins, Badges, Duelle, Turniere und Tickets.' },
       { name: 'Aktive Sperren', desc: 'Übersicht aller aktiven Hausverbote mit automatischem Ablauf nach 24h.' },
@@ -8514,6 +8522,7 @@ const FEATURES_LIST = [
       { name: 'Beschwerde-Kanban', desc: 'Eingehende Beschwerden als Kanban-Board verwalten (Offen / In Bearbeitung / Gelöst).' },
       { name: 'Ranglisten-Verwaltung', desc: 'Spieler aus Minispiel-Highscore-Listen entfernen ohne andere Einträge zu beeinflussen.' },
       { name: 'Changelog-Verwaltung', desc: 'Neue Changelog-Einträge erstellen und bestehende löschen.' },
+      { name: 'Anti-Cheat: XP-Überwachung', desc: 'Jeder Saison-XP-Gewinn wird mit Quelle & Zeitstempel protokolliert. Spitzen über 5.000 XP/Stunde werden automatisch geflaggt. Dashboard zeigt Anomalien, 24h-Top-Verdiener und den XP-Verlauf pro Nutzer.' },
     ]
   },
   {
@@ -8540,6 +8549,12 @@ const FEATURES_LIST = [
       { name: 'Abschlepp-Simulator', desc: 'Fahre Abschleppwagen, befestige Fahrzeuge mit physikalischer Simulation, liefere zum Hof.' },
       { name: 'Memory', desc: 'Kartenpaare aufdecken. ACLS-Motive, Zeitangriff-Modus.' },
       { name: 'Reaktionstest', desc: 'Reflexe testen: Reagiere so schnell wie möglich auf visuelle Reize. Ranking der schnellsten Mitarbeiter.' },
+    ]
+  },
+  {
+    cat: 'Wirtschafts-Simulationen', icon: 'fa-industry', color: '#f97316', items: [
+      { name: 'AutoMarkt Pro', desc: 'Fahrzeughandel-Simulator: Kaufe Autos aus dem täglichen 3er-Angebot, restauriere ihren Zustand und verkaufe mit Gewinn in einen schwankenden Markt. 11 Fahrzeuge von Common bis Legendär, Händler-Level und Profit-Rangliste. Eigene Händler-Währung schützt die Coin-Wirtschaft.' },
+      { name: 'Auto Empire', desc: 'Idle-Imperium: Werkstätten bauen, Mechaniker einstellen und Produktion einsammeln – auch offline (bis 8 Stunden). Eskalierende Ausbaukosten, Imperium-Level und Produktions-Rangliste. Eigene Imperium-Währung schützt die Coin-Wirtschaft.' },
     ]
   },
   {
