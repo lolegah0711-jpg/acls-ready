@@ -2328,10 +2328,89 @@ app.get('/api/game-token/:game', (req, res) => {
   res.json({ token, ts });
 });
 
+// ── Game Session System (Anti-Cheat Heartbeat) ────────────────────
+// Registriert Spielstarts + empfängt Heartbeats für Server-seitige Plausi-Prüfung
+// Alte Sessions (> 24h) werden periodisch bereinigt
+db.exec(`CREATE TABLE IF NOT EXISTS game_sessions (
+  id          TEXT PRIMARY KEY,
+  discord_id  TEXT NOT NULL,
+  username    TEXT,
+  game        TEXT NOT NULL,
+  started_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_beat   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  status      TEXT DEFAULT 'active',
+  final_score INTEGER DEFAULT 0,
+  peak_kills  INTEGER DEFAULT 0,
+  max_wave    INTEGER DEFAULT 0,
+  peak_waves  INTEGER DEFAULT 0,
+  best_time   REAL DEFAULT 0
+)`);
+
+function makeSessionId() {
+  return crypto.randomBytes(8).toString('hex');
+}
+
+app.post('/api/game-session/start', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const { game } = req.body;
+  if (!game || typeof game !== 'string' || game.length > 50)
+    return res.status(400).json({ error: 'Ungültiges Spiel' });
+  if (rateLimit(`g-sess:${ident.id}`, 60, 60_000))
+    return res.status(429).json({ error: 'Zu viele Anfragen' });
+  
+  // Alte aktive Sessions des Spielers schließen
+  db.prepare("UPDATE game_sessions SET status='abandoned' WHERE discord_id = ? AND game = ? AND status = 'active'")
+    .run(ident.id, game);
+  
+  const sessionId = makeSessionId();
+  db.prepare('INSERT INTO game_sessions (id, discord_id, username, game) VALUES (?, ?, ?, ?)')
+    .run(sessionId, ident.id, ident.name, game);
+  
+  res.json({ sessionId });
+});
+
+app.post('/api/game-session/heartbeat', (req, res) => {
+  const ident = coinIdent(req);
+  if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
+  const { sessionId, game, kills, waves, maxWave, score, timeElapsed } = req.body;
+  if (!sessionId || !game) return res.status(400).json({ error: 'Fehlende Felder' });
+  if (rateLimit(`g-beat:${ident.id}`, 120, 60_000))
+    return res.status(429).json({ error: 'Zu viele Anfragen' });
+  
+  const session = db.prepare('SELECT * FROM game_sessions WHERE id = ? AND discord_id = ? AND status = ?').get(sessionId, ident.id, 'active');
+  if (!session) {
+    // Session bereits abgeschlossen oder unbekannt – silent ignore
+    return res.json({ ok: true });
+  }
+  
+  const fields = ["last_beat = datetime('now')"];
+  const vals = [];
+  if (typeof kills === 'number') { fields.push('peak_kills = MAX(COALESCE(peak_kills,0), ?)'); vals.push(kills); }
+  if (typeof maxWave === 'number') { fields.push('max_wave = MAX(COALESCE(max_wave,0), ?)'); vals.push(maxWave); }
+  if (typeof waves === 'number') { fields.push('peak_waves = MAX(COALESCE(peak_waves,0), ?)'); vals.push(waves); }
+  if (typeof timeElapsed === 'number') { fields.push('best_time = MAX(COALESCE(best_time,0), ?)'); vals.push(timeElapsed); }
+  if (typeof score === 'number') { fields.push('final_score = MAX(COALESCE(final_score,0), ?)'); vals.push(score); }
+  
+  if (vals.length > 0) {
+    db.prepare(`UPDATE game_sessions SET ${fields.join(', ')} WHERE id = ?`).run(...vals, sessionId);
+  }
+  
+  res.json({ ok: true });
+});
+
+// Alte Sessions bereinigen (stündlich)
+setInterval(() => {
+  try {
+    db.prepare("DELETE FROM game_sessions WHERE started_at < datetime('now', '-24 hours')").run();
+  } catch {}
+}, 3600_000);
+
+// ── Verbesserte Score-Validierung mit Session-Check ───────────────
 app.post('/api/game-scores/:game', (req, res) => {
   const ip = req.ip || req.socket.remoteAddress;
   if (rateLimit(`score:${ip}`, 20, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
-  const { score, token, ts } = req.body;
+  const { score, token, ts, sessionId, _st } = req.body;
   if (typeof score !== 'number' || score < 0 || !isFinite(score))
     return res.status(400).json({ error: 'Ungültiger Score' });
 

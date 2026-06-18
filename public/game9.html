@@ -473,6 +473,13 @@ function update(dt) {
   moveBullets(dt);
   updateParticles(dt);
   checkWaveEnd();
+  // Stats für Anti-Cheat regelmäßig aktualisieren
+  GameAuth.setStats({ kills, waves: wave, maxWave: wave, timeElapsed: lastTs ? (performance.now()/1000 - lastTs/1000) : 0, score });
+  // Heartbeat alle ~2 Sekunden (wird von setStats getriggert)
+  if (Math.floor(performance.now() / 2000) !== (update._hbTick || 0)) {
+    update._hbTick = Math.floor(performance.now() / 2000);
+    GameAuth.heartbeat();
+  }
 }
 
 // ── SPAWNING ──────────────────────────────────────────────────────
