@@ -1530,3 +1530,99 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   .last-exam-arrow { transform: rotate(90deg); align-self: center; }
   .form-row { grid-template-columns: 1fr; }
 }
+
+/* ══ Landing / Login-Schaufenster ═══════════════════════════════ */
+.login-screen { overflow-y: auto; padding: 2rem 1.25rem; }
+.landing {
+  display: grid; grid-template-columns: 1.35fr 1fr; gap: 3rem;
+  align-items: center; width: 100%; max-width: 1060px; margin: auto;
+}
+.landing-hero { min-width: 0; }
+.landing-brand { display: flex; align-items: center; gap: .9rem; margin-bottom: 1.75rem; }
+.landing-brand .login-logo { margin: 0; width: 48px; height: 48px; font-size: 1.15rem; }
+.landing-brand-name { font-weight: 800; font-size: 1.05rem; }
+.landing-brand-sub  { font-size: .74rem; color: var(--muted); margin-top: .1rem; }
+.landing-title {
+  font-size: clamp(1.9rem, 4vw, 2.7rem); font-weight: 800; line-height: 1.12;
+  margin-bottom: .7rem; letter-spacing: -.02em;
+}
+.landing-sub { font-size: .95rem; color: var(--muted); line-height: 1.6; margin-bottom: 1.1rem; max-width: 460px; }
+.landing-services { display: flex; flex-direction: column; gap: .65rem; margin: 1.25rem 0 1.35rem; }
+.landing-svc {
+  display: flex; align-items: center; gap: .85rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: .7rem .9rem;
+}
+.landing-svc-ico {
+  width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: .95rem;
+}
+.landing-svc-name { font-weight: 700; font-size: .9rem; }
+.landing-svc-desc { font-size: .76rem; color: var(--muted); margin-top: .1rem; }
+.landing-contact { display: flex; flex-direction: column; gap: .45rem; margin-bottom: 1.2rem; }
+.landing-contact-item { display: flex; align-items: center; gap: .6rem; font-size: .82rem; color: var(--muted); }
+.landing-contact-item i { width: 16px; text-align: center; font-size: .8rem; }
+.landing-links { display: flex; flex-wrap: wrap; gap: .5rem; }
+.landing .login-card { max-width: 380px; justify-self: center; }
+
+/* Live-Dienst-Status */
+.duty-chip {
+  display: inline-flex; align-items: center; gap: .5rem;
+  border-radius: 999px; padding: .35rem .85rem;
+  font-size: .8rem; font-weight: 700;
+  border: 1px solid var(--border); background: var(--surface);
+}
+.duty-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.duty-open   { border-color: rgba(34,197,94,.4);  color: #22c55e; }
+.duty-open   .duty-dot { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,.7); animation: dutyPulse 1.6s infinite; }
+.duty-closed { border-color: rgba(239,68,68,.35); color: #f87171; }
+.duty-closed .duty-dot { background: #ef4444; }
+.duty-unknown { color: var(--muted); }
+@keyframes dutyPulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+
+@media (max-width: 900px) {
+  .landing { grid-template-columns: 1fr; gap: 2rem; }
+  .landing .login-card { justify-self: stretch; max-width: none; }
+}
+
+/* ══ Arcade ═════════════════════════════════════════════════════ */
+.arcade-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: .8rem;
+}
+.arcade-tile {
+  position: relative; display: flex; flex-direction: column; gap: .55rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 1rem .9rem;
+  text-decoration: none; color: var(--text);
+  transition: border-color .15s, transform .12s, box-shadow .15s;
+}
+.arcade-tile:hover { border-color: var(--orange); transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+.arcade-ico {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; font-size: 1rem;
+}
+.arcade-name { font-weight: 700; font-size: .88rem; }
+.arcade-desc { font-size: .72rem; color: var(--muted); line-height: 1.45; }
+.arcade-badge {
+  position: absolute; top: .6rem; right: .6rem;
+  font-size: .62rem; font-weight: 800; letter-spacing: .04em;
+  background: rgba(250,204,21,.15); color: #facc15;
+  border: 1px solid rgba(250,204,21,.35); border-radius: 99px; padding: .12rem .5rem;
+}
+.arcade-section-label {
+  font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--muted); margin: 1.4rem 0 .7rem;
+}
+
+/* ══ Werkstatt-Seite ════════════════════════════════════════════ */
+.svc-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: .8rem;
+}
+.svc-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 1rem;
+  display: flex; gap: .85rem; align-items: flex-start;
+}
+.svc-card .landing-svc-ico { margin-top: .1rem; }

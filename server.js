@@ -177,6 +177,24 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// ── HTML mit absoluter Basis-URL ausliefern (Open-Graph/SEO) ──────────────
+// Ersetzt den __BASE_URL__-Platzhalter in HTML-Dateien durch die echte URL,
+// damit Discord-Link-Vorschauen funktionieren (og:image braucht absolute URLs).
+function siteBaseUrl(req) {
+  const env = (process.env.SERVER_URL || '').trim().replace(/\/$/, '');
+  if (env && !env.includes('DEINE-')) return env;
+  return `${req.protocol}://${req.get('host')}`;
+}
+function sendHtmlWithBase(req, res, file, transform) {
+  let html = fs.readFileSync(path.join(__dirname, 'public', file), 'utf8')
+    .replace(/__BASE_URL__/g, siteBaseUrl(req));
+  if (transform) html = transform(html);
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+}
+app.get('/', (req, res) => sendHtmlWithBase(req, res, 'index.html'));
+
 app.use('/uploads', express.static(UPLOADS_DIR));
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
@@ -1159,6 +1177,26 @@ app.get('/api/active-sessions', requireAuthOrBot, (req, res) => {
     return { discord_id: s.discord_id, username: user?.username || s.username, channelName: s.channel_name, joinedAt: s.joined_at, minutesSince };
   });
   res.json(result);
+});
+
+// ── Öffentlicher Live-Status (Login-Screen & Bürger-Bereich) ────────────────
+// Zeigt ohne Login, wie viele Mitarbeiter gerade IC im Dienst sind – bewusst
+// nur die Anzahl (keine Namen), plus Kontaktdaten aus der Konfiguration.
+app.get('/api/public/status', (req, res) => {
+  if (rateLimit(`pubstatus:${req.ip}`, 30, 60_000)) return res.status(429).json({ error: 'Zu viele Anfragen' });
+  const onDuty = db.prepare(`
+    SELECT COUNT(*) AS n FROM active_bot_sessions s
+    WHERE EXISTS (SELECT 1 FROM users u WHERE u.discord_id = s.discord_id AND u.is_active = 1)
+  `).get().n;
+  res.setHeader('Cache-Control', 'public, max-age=30');
+  res.json({
+    onDuty,
+    open: onDuty > 0,
+    icPhone:       process.env.ACLS_IC_PHONE       || 'Im LS-Telefonbuch unter „ACLS“',
+    hqText:        process.env.ACLS_HQ_TEXT        || 'ACLS Hauptquartier, Los Santos',
+    dienstzeiten:  process.env.ACLS_DIENSTZEITEN   || 'Immer wenn Mitarbeiter IC im Dienst sind – Status oben live',
+    discordInvite: process.env.DISCORD_INVITE_URL  || '',
+  });
 });
 
 // Called by bot.js to store auto-tracked voice sessions
@@ -2700,7 +2738,7 @@ app.get('/api/audit-log', requireAdmin, (req, res) => {
   res.json({ rows, total, page: +page, pages: Math.ceil(total / limit) });
 });
 
-app.get('/preise', (req, res) => res.sendFile(path.join(__dirname, 'public', 'preise.html')));
+app.get('/preise', (req, res) => sendHtmlWithBase(req, res, 'preise.html'));
 app.get('/game',  (req, res) => res.sendFile(path.join(__dirname, 'public', 'game.html')));
 app.get('/game2', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game2.html')));
 app.get('/game3', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game3.html')));
@@ -2729,12 +2767,8 @@ app.get('/game25', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ga
 app.get('/spielbank', (req, res) => res.sendFile(path.join(__dirname, 'public', 'spielbank.html')));
 app.get('/quiz', (req, res) => {
   const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
-  const fs = require('fs');
-  const html = fs.readFileSync(path.join(__dirname, 'public', 'quiz.html'), 'utf8');
-  const injected = html.replace('</head>', '<script>window.__CATS__=' + JSON.stringify(cats) + ';</script></head>');
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(injected);
+  sendHtmlWithBase(req, res, 'quiz.html', html =>
+    html.replace('</head>', '<script>window.__CATS__=' + JSON.stringify(cats) + ';</script></head>'));
 });
 // ── ORGANIGRAMM (öffentlich) ──────────────────────────────────────
 app.get('/api/organigramm', (req, res) => {
@@ -4750,7 +4784,7 @@ app.get('/api/milestones', requireAuth, (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  TICKETSYSTEM (H4)
 // ════════════════════════════════════════════════════════════════
-const TICKET_CATS = ['Bug', 'Frage', 'Beschwerde', 'Feature-Wunsch', 'Sonstiges'];
+const TICKET_CATS = ['Werkstatt-Auftrag', 'Abschleppdienst', 'Bug', 'Frage', 'Beschwerde', 'Feature-Wunsch', 'Sonstiges'];
 
 app.get('/api/tickets', requireAuth, (req, res) => {
   const user = getUser(req);
@@ -4779,6 +4813,7 @@ app.post('/api/tickets/public', (req, res) => {
   if (!name?.trim() || !title?.trim() || !body?.trim()) return res.status(400).json({ error: 'Name, Titel und Beschreibung erforderlich' });
   if (!TICKET_CATS.includes(category)) return res.status(400).json({ error: 'Ungültige Kategorie' });
   const creatorDid = discord_id?.trim() || req.session?.voterDiscordId || null;
+  if (!creatorDid) return res.status(401).json({ error: 'Bitte melde dich zuerst mit Discord an' });
   const r = db.prepare(`INSERT INTO tickets (creator_did, creator_name, category, title, body) VALUES (?,?,?,?,?)`)
     .run(creatorDid, name.trim().slice(0, 100), category, title.trim().slice(0, 200), body.trim().slice(0, 2000));
   res.json({ id: r.lastInsertRowid });
@@ -5123,13 +5158,44 @@ app.post('/api/trivia/rooms/:code/answer', requireAuth, (req, res) => {
   res.json({ correct });
 });
 
-app.get('/team', (req, res) => {
-  res.setHeader('Cache-Control', 'no-cache');
-  res.sendFile(path.join(__dirname, 'public', 'team.html'));
+app.get('/team', (req, res) => sendHtmlWithBase(req, res, 'team.html'));
+
+// ── SEO: robots.txt + sitemap.xml ──────────────────────────────────────────
+// Nur die öffentlichen Seiten sind für Suchmaschinen gedacht; API, Spiele
+// und Admin-Seiten bleiben außen vor.
+app.get('/robots.txt', (req, res) => {
+  const base = siteBaseUrl(req);
+  res.type('text/plain').send([
+    'User-agent: *',
+    'Allow: /$',
+    'Allow: /quiz',
+    'Allow: /preise',
+    'Allow: /team',
+    'Disallow: /api/',
+    'Disallow: /uploads/',
+    'Disallow: /admin-xp.html',
+    'Disallow: /game',
+    'Disallow: /spielbank',
+    '',
+    `Sitemap: ${base}/sitemap.xml`,
+  ].join('\n'));
 });
-app.get('*', (req, res) => {
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+app.get('/sitemap.xml', (req, res) => {
+  const base = siteBaseUrl(req);
+  const pages = [
+    { url: '/',       prio: '1.0' },
+    { url: '/quiz',   prio: '0.8' },
+    { url: '/preise', prio: '0.8' },
+    { url: '/team',   prio: '0.6' },
+  ];
+  res.type('application/xml').send(
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+    pages.map(p => `  <url><loc>${base}${p.url}</loc><priority>${p.prio}</priority></url>`).join('\n') +
+    `\n</urlset>`
+  );
 });
+
+app.get('*', (req, res) => sendHtmlWithBase(req, res, 'index.html'));
 
 app.listen(PORT, () => console.log(`[ACLS] Server läuft auf http://localhost:${PORT}`));

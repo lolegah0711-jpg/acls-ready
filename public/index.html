@@ -3,7 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ACLS - ColdRP</title>
+  <title>ACLS – Werkstatt &amp; Fahrschule | Los Santos (ColdRP)</title>
+  <meta name="description" content="ACLS Automobil-Club Los Santos: Fahrzeugwerkstatt, Tuning & Abschleppdienst plus Führerscheine aller Klassen auf ColdRP. Live-Status, Preisliste und Auftragsanfrage." />
+  <link rel="canonical" href="__BASE_URL__/" />
+
+  <!-- Open Graph / Discord-Link-Vorschau -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="ACLS Automobil-Club Los Santos" />
+  <meta property="og:title" content="ACLS – Werkstatt & Fahrschule | Los Santos (ColdRP)" />
+  <meta property="og:description" content="Fahrzeugwerkstatt, Tuning & Abschleppdienst plus Führerscheine aller Klassen. Jetzt Live-Status ansehen und Auftrag anfragen." />
+  <meta property="og:url" content="__BASE_URL__/" />
+  <meta property="og:image" content="__BASE_URL__/icon-512.png" />
+  <meta name="twitter:card" content="summary" />
+
   <link rel="icon" type="image/png" href="/logo.png" />
 
   <!-- PWA: installierbar als App -->
@@ -26,16 +38,67 @@
 </head>
 <body>
 
-  <!-- ===== LOGIN SCREEN ===== -->
+  <!-- ===== LOGIN SCREEN / SCHAUFENSTER ===== -->
   <div id="loginScreen" class="login-screen hidden">
-    <div class="login-card">
-      <div class="login-logo">AC</div>
-      <h2>ACLS Automobil-Club</h2>
-      <p id="loginMsg">Melde dich mit deinem Discord-Konto an.<br>Mitarbeiter erhalten Zugriff auf alle Funktionen. Alle anderen können für den Mitarbeiter der Woche abstimmen.</p>
-      <a href="/auth/discord" class="btn btn-discord">
-        <i class="fab fa-discord"></i> Mit Discord anmelden
-      </a>
-      <div id="loginError" class="login-error hidden"></div>
+    <div class="landing">
+
+      <!-- Linke Seite: Schaufenster -->
+      <div class="landing-hero">
+        <div class="landing-brand">
+          <div class="login-logo">AC</div>
+          <div>
+            <div class="landing-brand-name">ACLS Automobil-Club</div>
+            <div class="landing-brand-sub">Los Santos · ColdRP</div>
+          </div>
+        </div>
+
+        <h1 class="landing-title">Deine Werkstatt<br>in Los Santos</h1>
+        <p class="landing-sub">Reparatur, Tuning &amp; Abschleppdienst – und auf Wunsch gleich den passenden Führerschein dazu.</p>
+
+        <div id="landingStatus" class="duty-chip duty-unknown">
+          <span class="duty-dot"></span><span id="landingStatusText">Dienst-Status wird geladen…</span>
+        </div>
+
+        <div class="landing-services">
+          <div class="landing-svc">
+            <div class="landing-svc-ico" style="background:rgba(249,115,22,.14);color:#f97316"><i class="fas fa-wrench"></i></div>
+            <div><div class="landing-svc-name">Werkstatt &amp; Tuning</div><div class="landing-svc-desc">Reparatur, Wartung, Performance &amp; Optik</div></div>
+          </div>
+          <div class="landing-svc">
+            <div class="landing-svc-ico" style="background:rgba(251,191,36,.14);color:#fbbf24"><i class="fas fa-truck-pickup"></i></div>
+            <div><div class="landing-svc-name">Abschleppdienst</div><div class="landing-svc-desc">Bergung &amp; Transport in ganz Los Santos</div></div>
+          </div>
+          <div class="landing-svc">
+            <div class="landing-svc-ico" style="background:rgba(34,197,94,.14);color:#22c55e"><i class="fas fa-graduation-cap"></i></div>
+            <div><div class="landing-svc-name">Führerscheine</div><div class="landing-svc-desc">Theorie &amp; Praxis – alle Klassen, inkl. Prüfungsvorbereitung</div></div>
+          </div>
+        </div>
+
+        <div class="landing-contact">
+          <div class="landing-contact-item"><i class="fas fa-map-marker-alt" style="color:#f97316"></i><span id="landingHq">ACLS Hauptquartier, Los Santos</span></div>
+          <div class="landing-contact-item"><i class="fas fa-phone" style="color:#22c55e"></i><span id="landingPhone">Im LS-Telefonbuch unter „ACLS“</span></div>
+          <div class="landing-contact-item"><i class="fas fa-clock" style="color:#38bdf8"></i><span id="landingHours">Dienstzeiten: siehe Live-Status</span></div>
+        </div>
+
+        <div class="landing-links">
+          <a href="/preise" class="btn btn-ghost btn-sm"><i class="fas fa-tags"></i> Preisliste</a>
+          <a href="/quiz" class="btn btn-ghost btn-sm"><i class="fas fa-graduation-cap"></i> Prüfungs-Quiz</a>
+          <a href="/team" class="btn btn-ghost btn-sm"><i class="fas fa-users"></i> Unser Team</a>
+          <a id="landingDiscord" href="#" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="display:none"><i class="fab fa-discord"></i> Discord</a>
+        </div>
+      </div>
+
+      <!-- Rechte Seite: Login -->
+      <div class="login-card">
+        <div class="login-logo">AC</div>
+        <h2>Willkommen beim ACLS</h2>
+        <p id="loginMsg">Melde dich mit Discord an, um Aufträge anzufragen, Prüfungen zu üben und abzustimmen.<br>Mitarbeiter erhalten Zugriff auf alle internen Funktionen.</p>
+        <a href="/auth/discord" class="btn btn-discord">
+          <i class="fab fa-discord"></i> Mit Discord anmelden
+        </a>
+        <div id="loginError" class="login-error hidden"></div>
+      </div>
+
     </div>
   </div>
 
@@ -49,7 +112,10 @@
     <aside class="sidebar">
       <div class="sidebar-header">
         <span class="sidebar-label">Navigation</span>
-        <button class="sidebar-toggle" onclick="toggleSidebar()" title="Sidebar ein-/ausklappen">
+        <button class="sidebar-toggle" onclick="openNavSettings()" title="Sidebar anpassen" aria-label="Sidebar anpassen" style="margin-right:.2rem">
+          <i class="fas fa-sliders-h"></i>
+        </button>
+        <button class="sidebar-toggle" onclick="toggleSidebar()" title="Sidebar ein-/ausklappen" aria-label="Sidebar ein-/ausklappen">
           <i class="fas fa-bars"></i>
         </button>
       </div>
@@ -57,6 +123,20 @@
 
         <!-- Dashboard – immer oben sichtbar -->
         <a class="nav-item active" data-page="dashboard"><i class="fas fa-th-large"></i><span>Dashboard</span></a>
+
+        <!-- ── WERKSTATT (Kerngeschäft) ───────────────── -->
+        <div class="nav-group" data-group="werkstatt">
+          <div class="nav-group-header" onclick="toggleNavGroup('werkstatt')">
+            <span class="nav-group-dot" style="background:#f97316"></span>
+            <span>Werkstatt</span>
+            <i class="fas fa-chevron-down nav-group-chev"></i>
+          </div>
+          <div class="nav-group-items">
+            <a class="nav-item" data-page="werkstatt"><i class="fas fa-wrench" style="color:#f97316"></i><span>Werkstatt-Hub</span></a>
+            <a class="nav-item" data-page="prices"><i class="fas fa-tags" style="color:#f97316"></i><span>Preisliste</span></a>
+            <a class="nav-item" data-page="map"><i class="fas fa-map-marked-alt" style="color:#f97316"></i><span>Abschlepphöfe</span></a>
+          </div>
+        </div>
 
         <!-- ── MEIN ACLS ───────────────────────────────── -->
         <div class="nav-group" data-group="mein-acls">
@@ -141,38 +221,22 @@
             <i class="fas fa-chevron-down nav-group-chev"></i>
           </div>
           <div class="nav-group-items">
-            <a class="nav-item" data-page="map"><i class="fas fa-map-marked-alt" style="color:#6b7280"></i><span>Abschlepphöfe</span></a>
             <a class="nav-item" data-page="factions"><i class="fas fa-palette" style="color:#6b7280"></i><span>Fraktionsfarben</span></a>
-            <a class="nav-item" data-page="prices"><i class="fas fa-tags" style="color:#6b7280"></i><span>Preisliste</span></a>
           </div>
         </div>
 
-        <!-- ── SPIELE ─────────────────────────────────── -->
-        <div class="nav-group" data-group="spiele">
-          <div class="nav-group-header" onclick="toggleNavGroup('spiele')">
-            <span class="nav-group-dot" style="background:#f97316"></span>
-            <span>Spiele</span>
+        <!-- ── FREIZEIT ───────────────────────────────── -->
+        <div class="nav-group" data-group="freizeit">
+          <div class="nav-group-header" onclick="toggleNavGroup('freizeit')">
+            <span class="nav-group-dot" style="background:#ec4899"></span>
+            <span>Freizeit</span>
             <i class="fas fa-chevron-down nav-group-chev"></i>
           </div>
           <div class="nav-group-items">
-            <a class="nav-item" href="/game"  target="_blank"><i class="fas fa-car" style="color:#f97316"></i><span>Autorennen</span></a>
-            <a class="nav-item" href="/game2" target="_blank"><i class="fas fa-th-large" style="color:#f97316"></i><span>Brick Breaker</span></a>
-            <a class="nav-item" href="/game3" target="_blank"><i class="fas fa-biohazard" style="color:#f97316"></i><span>Dead Zone</span></a>
-            <a class="nav-item" href="/game4" target="_blank"><i class="fas fa-snake" style="color:#f97316"></i><span>Snake</span></a>
-            <a class="nav-item" href="/game5" target="_blank"><i class="fas fa-th-large" style="color:#f97316"></i><span>Tetris</span></a>
-            <a class="nav-item" href="/game7" target="_blank"><i class="fas fa-helicopter" style="color:#f97316"></i><span>Sky Cop</span></a>
-            <a class="nav-item" href="/game8" target="_blank"><i class="fas fa-frog" style="color:#f97316"></i><span>Doodle Jump</span></a>
-            <a class="nav-item" href="/game9" target="_blank"><i class="fas fa-shield-alt" style="color:#f97316"></i><span>Tower Defense</span></a>
-            <a class="nav-item" href="/game10" target="_blank"><i class="fas fa-th" style="color:#f97316"></i><span>2048</span></a>
-            <a class="nav-item" href="/game11" target="_blank"><i class="fas fa-brain" style="color:#f97316"></i><span>Quiz Survival</span></a>
-            <a class="nav-item" href="/game12" target="_blank"><i class="fas fa-wrench" style="color:#f97316"></i><span>ACLS Werkstatt</span></a>
-            <a class="nav-item" href="/game13" target="_blank"><i class="fas fa-dungeon" style="color:#f97316"></i><span>Dungeon RPG</span></a>
-            <a class="nav-item" href="/game14" target="_blank"><i class="fas fa-truck-pickup" style="color:#f97316"></i><span>Abschlepp-Simulator</span></a>
-            <a class="nav-item" href="/game16" target="_blank"><i class="fas fa-clone" style="color:#f97316"></i><span>Memory</span></a>
-            <a class="nav-item" href="/game24" target="_blank"><i class="fas fa-bolt" style="color:#f97316"></i><span>Reaktionstest</span></a>
-            <a class="nav-item" href="/automarkt.html" target="_blank"><i class="fas fa-car-side" style="color:#f97316"></i><span>AutoMarkt Pro</span></a>
-            <a class="nav-item" href="/empire.html" target="_blank"><i class="fas fa-industry" style="color:#f97316"></i><span>Auto Empire</span></a>
-            <a class="nav-item" href="/spielbank" target="_blank"><i class="fas fa-dice" style="color:#fbbf24"></i><span style="color:#fbbf24">🎰 Spielbank</span></a>
+            <a class="nav-item" data-page="arcade"><i class="fas fa-gamepad" style="color:#ec4899"></i><span>Arcade</span></a>
+            <a class="nav-item" href="/spielbank" target="_blank"><i class="fas fa-dice" style="color:#ec4899"></i><span>Spielbank</span></a>
+            <a class="nav-item" href="/automarkt.html" target="_blank"><i class="fas fa-car-side" style="color:#ec4899"></i><span>AutoMarkt Pro</span></a>
+            <a class="nav-item" href="/empire.html" target="_blank"><i class="fas fa-industry" style="color:#ec4899"></i><span>Auto Empire</span></a>
           </div>
         </div>
 

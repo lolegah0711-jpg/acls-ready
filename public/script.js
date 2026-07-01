@@ -137,7 +137,7 @@ window.toggleNavGroup = function(name) {
 };
 
 function initNavGroups() {
-  const defaults = { 'mein-acls': true, fahrschule: true, community: true, wirtschaft: false, info: false, spiele: false };
+  const defaults = { werkstatt: true, 'mein-acls': true, fahrschule: true, community: true, wirtschaft: false, info: false, freizeit: false };
   document.querySelectorAll('.nav-group').forEach(grp => {
     const name  = grp.dataset.group;
     const saved = localStorage.getItem(`nav-grp-${name}`);
@@ -149,6 +149,74 @@ function initNavGroups() {
     if (!open) grp.classList.add('collapsed');
   });
 }
+
+// ── Sidebar anpassen: Einträge ein-/ausblenden ───────────────────
+// Jeder Nav-Eintrag bekommt einen stabilen Schlüssel (data-page oder href).
+// Versteckte Schlüssel liegen in localStorage – rein clientseitig.
+function _navKey(el) {
+  return el.dataset.page ? `page:${el.dataset.page}` : (el.getAttribute('href') ? `href:${el.getAttribute('href')}` : null);
+}
+function _navHiddenSet() {
+  try { return new Set(JSON.parse(localStorage.getItem('acls-nav-hidden') || '[]')); }
+  catch { return new Set(); }
+}
+function applyNavPrefs() {
+  const hidden = _navHiddenSet();
+  document.querySelectorAll('#sidebarNav .nav-item').forEach(el => {
+    const key = _navKey(el);
+    if (!key || key === 'page:dashboard') return;           // Dashboard ist fix
+    el.style.display = hidden.has(key) ? 'none' : '';
+  });
+  // Gruppen ausblenden, wenn alle Einträge darin versteckt sind
+  document.querySelectorAll('#sidebarNav .nav-group').forEach(grp => {
+    const items = [...grp.querySelectorAll('.nav-item')];
+    const allHidden = items.length && items.every(el => el.style.display === 'none');
+    grp.style.display = allHidden ? 'none' : '';
+  });
+}
+window.openNavSettings = function() {
+  const hidden = _navHiddenSet();
+  const groups = [...document.querySelectorAll('#sidebarNav .nav-group')].map(grp => ({
+    name: grp.querySelector('.nav-group-header span:nth-child(2)')?.textContent || '',
+    items: [...grp.querySelectorAll('.nav-item')].map(el => ({
+      key: _navKey(el),
+      label: el.querySelector('span')?.textContent?.trim() || '',
+      icon: el.querySelector('i')?.className || 'fas fa-circle',
+    })).filter(i => i.key),
+  }));
+  openModal(`
+    <div class="modal-head"><div class="modal-title"><i class="fas fa-sliders-h" style="color:var(--orange);margin-right:.45rem"></i>Sidebar anpassen</div>
+    <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button></div>
+    <div style="font-size:.78rem;color:var(--muted);margin-bottom:.9rem">Wähle, welche Einträge in deiner Navigation sichtbar sind. Das Dashboard bleibt immer sichtbar.</div>
+    <div style="max-height:55vh;overflow-y:auto;padding-right:.3rem">
+      ${groups.map(g => `
+        <div style="margin-bottom:.9rem">
+          <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.4rem">${esc(g.name)}</div>
+          ${g.items.map(i => `
+            <label style="display:flex;align-items:center;gap:.65rem;padding:.4rem .2rem;border-bottom:1px solid var(--border);cursor:pointer">
+              <i class="${esc(i.icon)}" style="width:15px;text-align:center;font-size:.78rem;color:var(--muted)"></i>
+              <span style="flex:1;font-size:.84rem">${esc(i.label)}</span>
+              <input type="checkbox" ${hidden.has(i.key) ? '' : 'checked'} onchange="toggleNavItem('${i.key.replace(/'/g, "\\'")}', this.checked)" style="accent-color:var(--orange)">
+            </label>`).join('')}
+        </div>`).join('')}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="resetNavPrefs()"><i class="fas fa-undo"></i> Zurücksetzen</button>
+      <button class="btn btn-primary btn-sm" onclick="closeModal()">Fertig</button>
+    </div>`);
+};
+window.toggleNavItem = function(key, visible) {
+  const hidden = _navHiddenSet();
+  if (visible) hidden.delete(key); else hidden.add(key);
+  localStorage.setItem('acls-nav-hidden', JSON.stringify([...hidden]));
+  applyNavPrefs();
+};
+window.resetNavPrefs = function() {
+  localStorage.removeItem('acls-nav-hidden');
+  applyNavPrefs();
+  closeModal();
+  toast('Sidebar zurückgesetzt', 'ok');
+};
 
 // ── Mobile sidebar ───────────────────────────────────────────────
 window.toggleMobileMenu = () => {
@@ -175,6 +243,8 @@ let activeQuiz  = null;
 const $ = id => document.getElementById(id);
 const PAGES = {
   dashboard:    { title: 'Dashboard',              sub: 'Willkommen zurück' },
+  werkstatt:    { title: 'Werkstatt-Hub',          sub: 'Leistungen, Standort, Dienst-Status & Aufträge' },
+  arcade:       { title: 'Arcade',                 sub: 'Alle Minispiele an einem Ort · Spiel der Woche' },
   activity:     { title: 'Aktivität',              sub: 'Letzte Ereignisse' },
   eow:          { title: 'Mitarbeiter der Woche',  sub: 'Wöchentliche Abstimmung' },
   exams:        { title: 'Prüfung starten',        sub: 'Theorie & Praxis' },
@@ -361,6 +431,30 @@ function showLogin(errMsg = '') {
     el.textContent = errMsg;
     el.classList.remove('hidden');
   }
+  loadLandingStatus();
+}
+
+// Live-Status + Kontaktdaten für das Login-Schaufenster (öffentlich, ohne Auth)
+async function loadLandingStatus() {
+  try {
+    const s = await fetch('/api/public/status').then(r => r.json());
+    const chip = $('landingStatus'), txt = $('landingStatusText');
+    if (chip && txt) {
+      chip.classList.remove('duty-unknown', 'duty-open', 'duty-closed');
+      if (s.onDuty > 0) {
+        chip.classList.add('duty-open');
+        txt.textContent = `Jetzt geöffnet · ${s.onDuty} Mitarbeiter im Dienst`;
+      } else {
+        chip.classList.add('duty-closed');
+        txt.textContent = 'Gerade niemand im Dienst – Anfragen jederzeit möglich';
+      }
+    }
+    if ($('landingHq')    && s.hqText)       $('landingHq').textContent    = s.hqText;
+    if ($('landingPhone') && s.icPhone)      $('landingPhone').textContent = s.icPhone;
+    if ($('landingHours') && s.dienstzeiten) $('landingHours').textContent = 'Dienstzeiten: ' + s.dienstzeiten;
+    const d = $('landingDiscord');
+    if (d && s.discordInvite) { d.href = s.discordInvite; d.style.display = ''; }
+  } catch { /* Schaufenster funktioniert auch ohne Status */ }
 }
 
 async function bootVoterApp() {
@@ -371,6 +465,7 @@ async function bootVoterApp() {
 }
 
 const _voterPageMeta = {
+  werkstatt: { title: 'Werkstatt',        sub: 'Reparatur, Tuning & Abschleppdienst – Auftrag anfragen' },
   price:     { title: 'Preisliste',       sub: 'Aktuelle Fahrschul- & Servicepreise' },
   vote:      { title: 'MdW-Abstimmung',   sub: 'Mitarbeiter der Woche wählen' },
   ticketpub: { title: 'Support-Ticket',   sub: 'Fragen, Bugs & Beschwerden einreichen' },
@@ -381,6 +476,7 @@ const _voterPageMeta = {
   duel:      { title: 'Quiz-Duell',       sub: '1-gegen-1 live · Sieger bekommt 150 Coins' },
   friends:   { title: 'Freunde',          sub: 'Deine Freunde, Rang & Vergleich' },
   saison:    { title: 'Saison-Pass',      sub: 'Wochen-Quests, XP & Belohnungen' },
+  arcade:    { title: 'Arcade',           sub: 'Alle Minispiele an einem Ort · Spiel der Woche' },
 };
 
 async function renderVoterScreen() {
@@ -407,7 +503,8 @@ async function renderVoterScreen() {
         <span class="sidebar-label">Navigation</span>
       </div>
       <nav class="sidebar-nav">
-        <a class="nav-item active" id="vnPrice"     onclick="voterTab('price')"    style="cursor:pointer"><i class="fas fa-tags"></i><span>Preisliste</span></a>
+        <a class="nav-item active" id="vnWerkstatt" onclick="voterTab('werkstatt')" style="cursor:pointer"><i class="fas fa-wrench" style="color:#f97316"></i><span>Werkstatt</span></a>
+        <a class="nav-item"        id="vnPrice"     onclick="voterTab('price')"    style="cursor:pointer"><i class="fas fa-tags"></i><span>Preisliste</span></a>
         <a class="nav-item"        id="vnVote"      onclick="voterTab('vote')"     style="cursor:pointer"><i class="fas fa-trophy"></i><span>MdW-Abstimmung</span></a>
         <a class="nav-item"        id="vnTicketPub" onclick="voterTab('ticketpub')" style="cursor:pointer"><i class="fas fa-ticket-alt"></i><span>Support-Ticket</span></a>
         <a class="nav-item"        id="vnMarket"    onclick="voterTab('market')"   style="cursor:pointer"><i class="fas fa-car-side" style="color:#f97316"></i><span>Fahrzeugmarkt</span></a>
@@ -420,27 +517,10 @@ async function renderVoterScreen() {
         ${currentUser.id ? `<a class="nav-item" id="vnFriends" onclick="voterTab('friends')" style="cursor:pointer"><i class="fas fa-user-friends" style="color:#fbbf24"></i><span style="color:#fbbf24">Freunde</span></a>` : ''}
         <a class="nav-item" onclick="openQuestionSuggestModal()" style="cursor:pointer"><i class="fas fa-lightbulb" style="color:#fbbf24"></i><span style="color:#fbbf24">Frage vorschlagen</span></a>
 
-        <!-- Minispiele -->
-        <div id="vGamesToggle" onclick="(function(){var l=document.getElementById('vGamesList'),o=l.style.maxHeight!=='0px';l.style.maxHeight=o?'0px':'900px';document.getElementById('vGamesChev').style.transform=o?'rotate(-90deg)':'';})()" style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
-          <span>Minispiele</span>
-          <i id="vGamesChev" class="fas fa-chevron-down" style="font-size:.55rem;transition:transform .2s"></i>
-        </div>
-        <div id="vGamesList" style="overflow:hidden;transition:max-height .22s ease;max-height:900px">
-          <a class="nav-item" href="/game"   target="_blank"><i class="fas fa-car"></i><span>Autorennen</span></a>
-          <a class="nav-item" href="/game2"  target="_blank"><i class="fas fa-th-large"></i><span>Brick Breaker</span></a>
-          <a class="nav-item" href="/game3"  target="_blank" style="color:#ef4444"><i class="fas fa-biohazard" style="color:#ef4444"></i><span>Dead Zone</span></a>
-          <a class="nav-item" href="/game4"  target="_blank"><i class="fas fa-snake"></i><span>Snake</span></a>
-          <a class="nav-item" href="/game5"  target="_blank"><i class="fas fa-th-large"></i><span>Tetris</span></a>
-          <a class="nav-item" href="/game7"  target="_blank" style="color:#60a5fa"><i class="fas fa-helicopter" style="color:#60a5fa"></i><span>Sky Cop</span></a>
-          <a class="nav-item" href="/game8"  target="_blank" style="color:#4ade80"><i class="fas fa-frog" style="color:#4ade80"></i><span>Doodle Jump</span></a>
-          <a class="nav-item" href="/game9"  target="_blank" style="color:#f97316"><i class="fas fa-shield-alt" style="color:#f97316"></i><span>Tower Defense</span></a>
-          <a class="nav-item" href="/game10" target="_blank" style="color:#f59e0b"><i class="fas fa-th" style="color:#f59e0b"></i><span>2048</span></a>
-          <a class="nav-item" href="/game11" target="_blank" style="color:#a855f7"><i class="fas fa-brain" style="color:#a855f7"></i><span>Quiz Survival</span></a>
-          <a class="nav-item" href="/game12" target="_blank" style="color:#f97316"><i class="fas fa-wrench" style="color:#f97316"></i><span>ACLS Werkstatt</span></a>
-          <a class="nav-item" href="/game13" target="_blank" style="color:#60a5fa"><i class="fas fa-dungeon" style="color:#60a5fa"></i><span>Dungeon RPG</span></a>
-          <a class="nav-item" href="/game14" target="_blank" style="color:#fb923c"><i class="fas fa-truck-pickup" style="color:#fb923c"></i><span>Abschlepp-Simulator</span></a>
-          <a class="nav-item" href="/spielbank" target="_blank" style="color:#fbbf24"><i class="fas fa-dice" style="color:#fbbf24"></i><span>🎰 Spielbank</span></a>
-        </div>
+        <!-- Freizeit -->
+        <div style="margin:.6rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;user-select:none">Freizeit</div>
+        <a class="nav-item" id="vnArcade" onclick="voterTab('arcade')" style="cursor:pointer"><i class="fas fa-gamepad" style="color:#ec4899"></i><span>Arcade</span></a>
+        <a class="nav-item" href="/spielbank" target="_blank"><i class="fas fa-dice" style="color:#ec4899"></i><span>Spielbank</span></a>
       </nav>
       <div class="sidebar-bottom">
         <a class="nav-item" onclick="voterLogout()" style="cursor:pointer"><i class="fas fa-sign-out-alt"></i><span>Abmelden</span></a>
@@ -474,8 +554,8 @@ async function renderVoterScreen() {
     <div class="main-wrapper">
       <header class="topbar">
         <div>
-          <h1 id="vPageTitle">Preisliste</h1>
-          <p id="vPageSubtitle">Aktuelle Fahrschul- & Servicepreise</p>
+          <h1 id="vPageTitle">Werkstatt</h1>
+          <p id="vPageSubtitle">Reparatur, Tuning & Abschleppdienst – Auftrag anfragen</p>
         </div>
         <div class="user-widget">
           ${avUrl
@@ -493,8 +573,13 @@ async function renderVoterScreen() {
 
       <main id="voterPageContent">
 
+        <!-- Werkstatt (Kerngeschäft – Standard-Tab) -->
+        <div id="werkstattSection">
+          <div id="voterWerkstatt"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
+        </div>
+
         <!-- Preisliste -->
-        <div id="priceSection">
+        <div id="priceSection" style="display:none">
           <div style="margin-bottom:1.25rem">
             <div id="vPollWidget"></div>
           </div>
@@ -548,6 +633,8 @@ async function renderVoterScreen() {
                 <div class="form-group"><label>Kategorie</label>
                   <select class="form-control" id="ptCategory" required>
                     <option value="">— Bitte wählen —</option>
+                    <option value="Werkstatt-Auftrag">Werkstatt-Auftrag</option>
+                    <option value="Abschleppdienst">Abschleppdienst</option>
                     <option value="Bug">Bug / Fehler</option>
                     <option value="Frage">Frage</option>
                     <option value="Beschwerde">Beschwerde</option>
@@ -603,16 +690,137 @@ async function renderVoterScreen() {
         <!-- Saison-Pass -->
         <div id="saisonSection" style="display:none"></div>
 
+        <!-- Arcade -->
+        <div id="arcadeSection" style="display:none">
+          <div id="voterArcade"><div style="text-align:center;padding:2rem;color:var(--muted)">Wird geladen…</div></div>
+        </div>
+
       </main>
     </div><!-- /main-wrapper -->
   </div>`;
 
+  loadVoterWerkstatt();
   loadVoterPrices();
   loadTwitchWidget();
   loadVoterTeam();
   loadVoterApply();
   loadPollWidget('vPollWidget');
   connectSSE();
+}
+
+// ── Bürger: Werkstatt-Tab (Leistungen, Live-Status, Auftrag anfragen) ──
+async function loadVoterWerkstatt() {
+  const el = document.getElementById('voterWerkstatt');
+  if (!el || el.dataset.loaded) return;   // nicht neu rendern – sonst gehen Formulareingaben verloren
+  el.dataset.loaded = '1';
+  const pub = await fetch('/api/public/status').then(r => r.json()).catch(() => null);
+  const dutyChip = pub && pub.onDuty > 0
+    ? `<span class="duty-chip duty-open"><span class="duty-dot"></span>Jetzt geöffnet · ${pub.onDuty} Mitarbeiter im Dienst</span>`
+    : `<span class="duty-chip duty-closed"><span class="duty-dot"></span>Gerade niemand im Dienst – Anfragen jederzeit möglich</span>`;
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:1rem">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div style="width:46px;height:46px;border-radius:12px;background:rgba(249,115,22,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fas fa-wrench" style="color:#f97316;font-size:1.1rem"></i>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:800;font-size:1.1rem">Deine Werkstatt in Los Santos</div>
+          <div style="font-size:.8rem;color:var(--muted);margin-top:.15rem">Reparatur, Tuning &amp; Abschleppdienst – Anfrage stellen, wir melden uns IC.</div>
+        </div>
+        ${dutyChip}
+      </div>
+    </div>
+
+    <div class="svc-grid" style="margin-bottom:1.2rem">
+      ${WERKSTATT_SERVICES.map(s => `
+        <div class="svc-card">
+          <div class="landing-svc-ico" style="background:${s.color}1f;color:${s.color}"><i class="fas ${s.icon}"></i></div>
+          <div><div class="landing-svc-name">${s.name}</div><div class="landing-svc-desc">${s.desc}</div></div>
+        </div>`).join('')}
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem;align-items:start">
+      <div class="card" style="margin:0">
+        <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-paper-plane"></i></div>
+          <div><div class="card-title">Auftrag anfragen</div><div class="card-sub">Wir melden uns schnellstmöglich IC bei dir</div></div>
+        </div>
+        <form onsubmit="submitWerkstattRequest(event)">
+          <div class="form-group"><label>Dein Name (IC)</label><input class="form-control" id="wrName" value="${esc(currentUser?.username || '')}" required maxlength="100"></div>
+          <div class="form-group"><label>Fahrzeug</label><input class="form-control" id="wrVehicle" placeholder="z. B. Sultan RS, Kennzeichen LS-1234" required maxlength="100"></div>
+          <div class="form-group"><label>Leistung</label>
+            <select class="form-control" id="wrService" required>
+              <option value="">— Bitte wählen —</option>
+              <option>Reparatur & Wartung</option>
+              <option>Tuning & Performance</option>
+              <option>Lackierung & Optik</option>
+              <option>Abschleppdienst</option>
+              <option>Inspektion & Check</option>
+              <option>Sonstiges</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Beschreibung</label><textarea class="form-control" id="wrDesc" rows="4" placeholder="Was ist zu tun? Was ist passiert?" required style="resize:vertical" maxlength="1500"></textarea></div>
+          <div class="form-group"><label>IC-Erreichbarkeit</label><input class="form-control" id="wrContact" placeholder="z. B. Handy 555-0123 oder heute ab 20 Uhr online" maxlength="200"></div>
+          <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-paper-plane"></i> Anfrage absenden</button>
+        </form>
+      </div>
+
+      <div class="card" style="margin:0">
+        <div class="card-head"><div class="card-head-icon" style="background:rgba(201,162,39,.15)"><i class="fas fa-map-marker-alt" style="color:#c9a227"></i></div>
+          <div><div class="card-title">Standort &amp; Kontakt</div><div class="card-sub">So erreichst du uns IC</div></div>
+        </div>
+        <div class="landing-contact">
+          <div class="landing-contact-item"><i class="fas fa-map-marker-alt" style="color:#f97316"></i><span>${esc(pub?.hqText || 'ACLS Hauptquartier, Los Santos')}</span></div>
+          <div class="landing-contact-item"><i class="fas fa-phone" style="color:#22c55e"></i><span>${esc(pub?.icPhone || 'Im LS-Telefonbuch unter „ACLS“')}</span></div>
+          <div class="landing-contact-item"><i class="fas fa-clock" style="color:#38bdf8"></i><span>${esc(pub?.dienstzeiten || 'Dienstzeiten: siehe Live-Status')}</span></div>
+          ${pub?.discordInvite ? `<div class="landing-contact-item"><i class="fab fa-discord" style="color:#5865f2"></i><a href="${esc(pub.discordInvite)}" target="_blank" rel="noopener" style="color:var(--orange)">Discord-Server beitreten</a></div>` : ''}
+        </div>
+        <div style="font-size:.76rem;color:var(--muted);margin-top:.9rem;padding-top:.9rem;border-top:1px solid var(--border)">
+          <i class="fas fa-graduation-cap" style="color:#22c55e;margin-right:.35rem"></i>
+          Übrigens: Führerscheine (Theorie &amp; Praxis) gibt&rsquo;s auch bei uns –
+          <a href="/quiz" target="_blank" style="color:var(--orange)">hier kostenlos für die Prüfung üben</a>.
+        </div>
+      </div>
+    </div>`;
+}
+
+window.submitWerkstattRequest = async e => {
+  e.preventDefault();
+  const service = $('wrService').value;
+  const contact = $('wrContact').value.trim();
+  const body = [
+    `Fahrzeug: ${$('wrVehicle').value.trim()}`,
+    `Leistung: ${service}`,
+    '',
+    $('wrDesc').value.trim(),
+    contact ? `\nIC-Erreichbarkeit: ${contact}` : '',
+  ].join('\n');
+  const res = await fetch('/api/tickets/public', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: $('wrName').value.trim(),
+      category: service === 'Abschleppdienst' ? 'Abschleppdienst' : 'Werkstatt-Auftrag',
+      title: `${service}: ${$('wrVehicle').value.trim()}`,
+      body,
+    }),
+  }).then(r => r.json()).catch(() => null);
+  if (res?.id) {
+    toast('Anfrage eingegangen! Wir melden uns IC bei dir.', 'ok');
+    e.target.reset();
+    if ($('wrName')) $('wrName').value = currentUser?.username || '';
+  } else {
+    toast(res?.error || 'Fehler beim Senden', 'err');
+  }
+};
+
+// ── Bürger: Arcade-Tab ──────────────────────────────────────────
+async function loadVoterArcade() {
+  const el = document.getElementById('voterArcade');
+  if (!el || el.dataset.loaded) return;
+  el.dataset.loaded = '1';
+  const t = await fetch('/api/tournament').then(r => r.ok ? r.json() : null).catch(() => null);
+  renderArcadeInto(el, { voter: true, tournament: t });
 }
 
 async function loadVoterTeam() {
@@ -953,7 +1161,7 @@ async function loadChallengesWidget(containerId) {
 }
 
 window.voterTab = tab => {
-  ['price','vote','ticketpub','market','team','apply','faq','duel','friends','saison'].forEach(t => {
+  ['werkstatt','price','vote','ticketpub','market','team','apply','faq','duel','friends','saison','arcade'].forEach(t => {
     const sec = document.getElementById(t + 'Section');
     if (sec) sec.style.display = t === tab ? '' : 'none';
     const nav = document.getElementById('vn' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -970,12 +1178,14 @@ window.voterTab = tab => {
   window._duelActive = tab === 'duel';
   if (tab !== 'duel' && window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
   if (tab === 'duel') { window._duelContainer = 'duelSection'; duell(); }
+  if (tab === 'werkstatt') loadVoterWerkstatt();
   if (tab === 'market')    loadVoterMarket();
   if (tab === 'price')     { loadVoterPrices(); loadPollWidget('vPollWidget'); }
   if (tab === 'ticketpub') loadMyPublicTickets();
   if (tab === 'faq')       loadVoterFaq();
   if (tab === 'friends')   loadVoterFriends();
   if (tab === 'saison')    saison();
+  if (tab === 'arcade')    loadVoterArcade();
 };
 
 async function loadVoterFaq() {
@@ -1006,8 +1216,9 @@ async function loadVoterPrices() {
   if (!rows.length) { el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--muted)">Keine Preise hinterlegt.</div>'; return; }
 
   const CAT_META = {
-    'Fahrschule':   { icon: 'fa-graduation-cap', col: '#f97316', sub: 'Automatischer Kontoabzug' },
-    'Kundenpreise': { icon: 'fa-hand-holding-usd', col: '#22c55e', sub: 'Bar auf Hand' },
+    'Werkstatt':    { icon: 'fa-wrench', col: '#f97316', sub: 'Reparatur, Tuning & Abschleppdienst' },
+    'Fahrschule':   { icon: 'fa-graduation-cap', col: '#22c55e', sub: 'Automatischer Kontoabzug' },
+    'Kundenpreise': { icon: 'fa-hand-holding-usd', col: '#38bdf8', sub: 'Bar auf Hand' },
   };
   const cats = {};
   rows.forEach(r => { if (!cats[r.category]) cats[r.category] = []; cats[r.category].push(r); });
@@ -1113,7 +1324,7 @@ async function loadMyPublicTickets() {
     if (!data.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.85rem">Noch keine Tickets eingereicht.</div>'; return; }
     const statusColor = s => s === 'offen' ? '#f59e0b' : s === 'in_bearbeitung' ? '#3b82f6' : s === 'geschlossen' ? '#22c55e' : '#f59e0b';
     const statusLabel = s => s === 'offen' ? 'Offen' : s === 'in_bearbeitung' ? 'In Bearbeitung' : s === 'geschlossen' ? 'Geschlossen' : s;
-    const catColor = { Bug: '#ef4444', Frage: '#3b82f6', Beschwerde: '#f97316', 'Feature-Wunsch': '#a855f7', Sonstiges: '#6b7280' };
+    const catColor = { 'Werkstatt-Auftrag': '#f97316', 'Abschleppdienst': '#fbbf24', Bug: '#ef4444', Frage: '#3b82f6', Beschwerde: '#f97316', 'Feature-Wunsch': '#a855f7', Sonstiges: '#6b7280' };
     el.innerHTML = data.map(t => `
       <div style="border:1px solid var(--border);border-radius:var(--r);padding:.75rem 1rem;margin-bottom:.5rem">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;margin-bottom:.25rem">
@@ -1153,6 +1364,7 @@ function bootApp() {
   $('loginScreen').classList.add('hidden');
   $('app').classList.remove('hidden');
   initSidebar();
+  applyNavPrefs();
   renderUserWidget();
   $('adminNavItem').style.display        = isAdmin()     ? '' : 'none';
   $('auditlogNavItem').style.display     = isAdmin()     ? '' : 'none';
@@ -1328,7 +1540,7 @@ function navigate(page) {
   $('pageContent').innerHTML    = loading();
 
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
-  const renders = { dashboard, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz, wetten, tickets, statistiken, team_vorstellung, level, wheel, milestones, changelog, trivia, onboarding, profil, meinacls };
+  const renders = { dashboard, werkstatt, arcade, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz, wetten, tickets, statistiken, team_vorstellung, level, wheel, milestones, changelog, trivia, onboarding, profil, meinacls };
   (renders[page] || dashboard)();
 }
 
@@ -1386,8 +1598,236 @@ async function loadTwitchWidget() {
   }
 }
 
+// ══ ARCADE ══════════════════════════════════════════════════════
+// Zentraler Spiele-Katalog – IDs entsprechen den Server-Game-Keys,
+// damit das Wochenturnier-Spiel („Spiel der Woche“) markiert werden kann.
+const GAME_CATALOG = [
+  { id: 'race',         name: 'Autorennen',          url: '/game',   icon: 'fa-car',          color: '#f97316', desc: 'Rasante Rennen – auch auf eigenen Strecken', voter: true },
+  { id: 'brick',        name: 'Brick Breaker',       url: '/game2',  icon: 'fa-th-large',     color: '#38bdf8', desc: 'Klassischer Blockbrecher mit Power-Ups',     voter: true },
+  { id: 'deadzone',     name: 'Dead Zone',           url: '/game3',  icon: 'fa-biohazard',    color: '#ef4444', desc: 'Überlebe die Zombie-Wellen',                 voter: true },
+  { id: 'snake',        name: 'Snake',               url: '/game4',  icon: 'fa-worm',         color: '#4ade80', desc: 'Der Klassiker – wie lang wird deine Schlange?', voter: true },
+  { id: 'tetris',       name: 'Tetris',              url: '/game5',  icon: 'fa-cubes',        color: '#a855f7', desc: 'Stapeln, drehen, Reihen räumen',             voter: true },
+  { id: 'skycop',       name: 'Sky Cop',             url: '/game7',  icon: 'fa-helicopter',   color: '#60a5fa', desc: 'Helikopter-Einsatz über Los Santos',         voter: true },
+  { id: 'doodlejump',   name: 'Doodle Jump',         url: '/game8',  icon: 'fa-frog',         color: '#22c55e', desc: 'Springe so hoch wie möglich',                voter: true },
+  { id: 'towerdefense', name: 'Tower Defense',       url: '/game9',  icon: 'fa-shield-alt',   color: '#f97316', desc: 'Verteidige den Abschlepphof',                voter: true },
+  { id: '2048',         name: '2048',                url: '/game10', icon: 'fa-th',           color: '#f59e0b', desc: 'Zahlen schieben bis 2048',                   voter: true },
+  { id: 'quiz',         name: 'Quiz Survival',       url: '/game11', icon: 'fa-brain',        color: '#c084fc', desc: 'Wie viele Fragen überlebst du?',             voter: true },
+  { id: 'idle',         name: 'Werkstatt-Tycoon',    url: '/game12', icon: 'fa-wrench',       color: '#fb923c', desc: 'Mechaniker einstellen, forschen, aufsteigen', voter: true },
+  { id: 'rpg',          name: 'Dungeon RPG',         url: '/game13', icon: 'fa-dungeon',      color: '#818cf8', desc: 'Loot, Level & Bosskämpfe',                   voter: true },
+  { id: 'tow',          name: 'Abschlepp-Simulator', url: '/game14', icon: 'fa-truck-pickup', color: '#fbbf24', desc: 'Fahrzeuge bergen wie ein Profi',             voter: true },
+  { id: 'memory',       name: 'Memory',              url: '/game16', icon: 'fa-clone',        color: '#22d3ee', desc: 'Kartenpaare finden auf Zeit',                voter: false },
+  { id: 'reaction',     name: 'Reaktionstest',       url: '/game24', icon: 'fa-bolt',         color: '#facc15', desc: 'Wie schnell sind deine Reflexe?',            voter: false },
+];
+const FREIZEIT_CATALOG = [
+  { id: 'spielbank', name: 'Spielbank',    url: '/spielbank',      icon: 'fa-dice',     color: '#fbbf24', desc: 'Slots, Blackjack, Roulette, Mines & mehr', voter: true },
+  { id: 'automarkt', name: 'AutoMarkt Pro', url: '/automarkt.html', icon: 'fa-car-side', color: '#f97316', desc: 'Handeln, verhandeln, Sammlung aufbauen',   voter: false },
+  { id: 'empire',    name: 'Auto Empire',   url: '/empire.html',    icon: 'fa-industry', color: '#94a3b8', desc: 'Baue dein Werkstatt-Imperium auf',         voter: false },
+];
+
+function arcadeTile(g, isTournament) {
+  return `<a class="arcade-tile" href="${g.url}" target="_blank" rel="noopener">
+    ${isTournament ? '<span class="arcade-badge"><i class="fas fa-crown"></i> Spiel der Woche</span>' : ''}
+    <div class="arcade-ico" style="background:${g.color}22;color:${g.color}"><i class="fas ${g.icon}"></i></div>
+    <div class="arcade-name">${esc(g.name)}</div>
+    <div class="arcade-desc">${esc(g.desc)}</div>
+  </a>`;
+}
+
+// Gemeinsamer Renderer für Mitarbeiter-Seite und Bürger-Tab
+function renderArcadeInto(el, { voter = false, tournament = null } = {}) {
+  if (!el) return;
+  const games    = GAME_CATALOG.filter(g => !voter || g.voter);
+  const freizeit = FREIZEIT_CATALOG.filter(g => !voter || g.voter);
+  const t = tournament && !tournament.error ? tournament : null;
+
+  const heroHTML = t ? `
+    <div class="card" style="border-color:rgba(250,204,21,.35);margin-bottom:1.2rem">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div style="width:46px;height:46px;border-radius:12px;background:rgba(250,204,21,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fas fa-crown" style="color:#facc15;font-size:1.1rem"></i>
+        </div>
+        <div style="flex:1;min-width:180px">
+          <div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#facc15">Spiel der Woche · Wochenturnier</div>
+          <div style="font-weight:800;font-size:1.15rem;margin-top:.1rem">${esc(t.gameName)}</div>
+          <div style="font-size:.76rem;color:var(--muted);margin-top:.15rem">Top 3 gewinnen ${ (t.prizes||[]).join(' / ') } Coins · Auswertung Sonntag${t.myScore != null ? ` · Dein Bestwert: <strong style="color:var(--text)">${t.myScore.toLocaleString('de-DE')}</strong>` : ''}</div>
+        </div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          ${(t.leaderboard || []).slice(0, 3).map((r, i) => `
+            <div style="display:flex;align-items:center;gap:.45rem;background:var(--input);border:1px solid var(--border);border-radius:99px;padding:.25rem .7rem .25rem .35rem">
+              <div class="rank-badge${i === 0 ? '' : i === 1 ? ' r2' : ' r3'}" style="width:20px;height:20px;font-size:.62rem">${i + 1}</div>
+              <span style="font-size:.75rem;font-weight:600">${esc(r.username)}</span>
+              <span style="font-size:.72rem;color:var(--muted)">${(+r.score).toLocaleString('de-DE')}</span>
+            </div>`).join('') || '<span style="font-size:.78rem;color:var(--muted)">Noch keine Scores – sei der Erste!</span>'}
+        </div>
+        <a class="btn btn-primary" href="${t.gameUrl}" target="_blank" rel="noopener" style="flex-shrink:0"><i class="fas fa-play"></i> Jetzt mitspielen</a>
+      </div>
+    </div>` : '';
+
+  el.innerHTML = `
+    ${heroHTML}
+    <div class="arcade-section-label" style="margin-top:0"><i class="fas fa-gamepad" style="margin-right:.4rem"></i>Minispiele</div>
+    <div class="arcade-grid">${games.map(g => arcadeTile(g, t && t.game === g.id)).join('')}</div>
+    ${freizeit.length ? `
+      <div class="arcade-section-label"><i class="fas fa-dice" style="margin-right:.4rem"></i>Spielbank &amp; Wirtschaft</div>
+      <div class="arcade-grid">${freizeit.map(g => arcadeTile(g, false)).join('')}</div>` : ''}`;
+}
+
+async function arcade() {
+  $('pageContent').innerHTML = '<div class="loader-wrap"><div class="loader"></div></div>';
+  const t = await api('/api/tournament');
+  $('pageContent').innerHTML = '<div id="arcadeWrap"></div>';
+  renderArcadeInto($('arcadeWrap'), { voter: false, tournament: t });
+}
+
+// ══ WERKSTATT-HUB ═══════════════════════════════════════════════
+const WERKSTATT_SERVICES = [
+  { icon: 'fa-wrench',       color: '#f97316', name: 'Reparatur & Wartung',   desc: 'Motor, Bremsen, Karosserie – wir bringen jedes Fahrzeug wieder auf die Straße.' },
+  { icon: 'fa-gauge-high',   color: '#ef4444', name: 'Tuning & Performance',  desc: 'Leistungssteigerung, Fahrwerk & Individualisierung nach Wunsch.' },
+  { icon: 'fa-spray-can',    color: '#a855f7', name: 'Lackierung & Optik',    desc: 'Lack, Folierung und Felgen – dein Auto, dein Stil.' },
+  { icon: 'fa-truck-pickup', color: '#fbbf24', name: 'Abschleppdienst',       desc: 'Bergung & Transport in ganz Los Santos – schnell vor Ort.' },
+  { icon: 'fa-graduation-cap', color: '#22c55e', name: 'Führerscheine',       desc: 'Theorie & Praxis für alle Klassen – inklusive Prüfungsvorbereitung.' },
+  { icon: 'fa-clipboard-check', color: '#38bdf8', name: 'Inspektion & Check', desc: 'Durchsicht vor dem Kauf oder nach dem Crash – ehrliche Einschätzung.' },
+];
+
+async function werkstatt() {
+  const [pub, sessions, tickets, spots] = await Promise.all([
+    fetch('/api/public/status').then(r => r.json()).catch(() => null),
+    api('/api/active-sessions'),
+    api('/api/tickets'),
+    api('/api/map-spots'),
+  ]);
+
+  const onDuty  = Array.isArray(sessions) ? sessions : [];
+  const orders  = (Array.isArray(tickets) ? tickets : []).filter(t =>
+    ['Werkstatt-Auftrag', 'Abschleppdienst'].includes(t.category) && t.status === 'open');
+  const hqSpots = (Array.isArray(spots) ? spots : []).filter(s => s.spot_type === 'hq');
+
+  const dutyChip = onDuty.length
+    ? `<span class="duty-chip duty-open"><span class="duty-dot"></span>Jetzt geöffnet · ${onDuty.length} im Dienst</span>`
+    : `<span class="duty-chip duty-closed"><span class="duty-dot"></span>Gerade niemand im Dienst</span>`;
+
+  $('pageContent').innerHTML = `
+    <div class="card" style="margin-bottom:1rem">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <div style="width:46px;height:46px;border-radius:12px;background:rgba(249,115,22,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fas fa-wrench" style="color:#f97316;font-size:1.1rem"></i>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:800;font-size:1.15rem">ACLS Werkstatt – unser Kerngeschäft</div>
+          <div style="font-size:.8rem;color:var(--muted);margin-top:.15rem">Reparatur, Tuning &amp; Abschleppdienst in Los Santos. Führerscheine gibt&rsquo;s gleich dazu.</div>
+        </div>
+        ${dutyChip}
+      </div>
+      ${onDuty.length ? `
+        <div style="display:flex;flex-wrap:wrap;gap:.45rem;margin-top:.85rem;padding-top:.85rem;border-top:1px solid var(--border)">
+          ${onDuty.map(s => `<span style="display:inline-flex;align-items:center;gap:.4rem;background:var(--input);border:1px solid var(--border);border-radius:99px;padding:.22rem .65rem;font-size:.74rem">
+            <i class="fas fa-headset" style="color:#22c55e;font-size:.68rem"></i>${esc(s.username)}
+            <span style="color:var(--muted)">· ${esc(s.channelName || 'Dienst')} · ${s.minutesSince} Min</span>
+          </span>`).join('')}
+        </div>` : ''}
+    </div>
+
+    <div class="arcade-section-label" style="margin-top:0">Unsere Leistungen</div>
+    <div class="svc-grid" style="margin-bottom:1.2rem">
+      ${WERKSTATT_SERVICES.map(s => `
+        <div class="svc-card">
+          <div class="landing-svc-ico" style="background:${s.color}1f;color:${s.color}"><i class="fas ${s.icon}"></i></div>
+          <div><div class="landing-svc-name">${s.name}</div><div class="landing-svc-desc">${s.desc}</div></div>
+        </div>`).join('')}
+    </div>
+    <div style="display:flex;gap:.55rem;flex-wrap:wrap;margin-bottom:1.4rem">
+      <button class="btn btn-primary" onclick="navigate('prices')"><i class="fas fa-tags"></i> Preisliste ansehen</button>
+      <button class="btn btn-ghost" onclick="navigate('tickets')"><i class="fas fa-ticket-alt"></i> Aufträge &amp; Tickets</button>
+      <button class="btn btn-ghost" onclick="navigate('map')"><i class="fas fa-map-marked-alt"></i> Abschlepphöfe</button>
+    </div>
+
+    <div class="dash-bottom">
+      <div class="card">
+        <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-clipboard-list"></i></div>
+          <div><div class="card-title">Offene Werkstatt-Aufträge</div><div class="card-sub">${orders.length} offen (Kategorien Werkstatt-Auftrag &amp; Abschleppdienst)</div></div>
+          <button class="btn btn-ghost btn-sm" onclick="navigate('tickets')" style="margin-left:auto">Alle anzeigen</button>
+        </div>
+        ${orders.length ? orders.slice(0, 6).map(t => `
+          <div class="re-item">
+            <div class="re-ico" style="background:rgba(249,115,22,.12);color:#f97316"><i class="fas ${t.category === 'Abschleppdienst' ? 'fa-truck-pickup' : 'fa-wrench'}"></i></div>
+            <div class="re-info">
+              <div class="re-name">${esc(t.title)}</div>
+              <div class="re-meta">${esc(t.creator_name)}<span class="sep"></span>${esc(t.category)}</div>
+            </div>
+            <div class="re-time">${ago(t.created_at)}</div>
+          </div>`).join('') : '<div class="empty"><i class="fas fa-check-circle"></i><p>Keine offenen Aufträge – alles abgearbeitet!</p></div>'}
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-head-icon" style="background:rgba(201,162,39,.15)"><i class="fas fa-map-marker-alt" style="color:#c9a227"></i></div>
+          <div><div class="card-title">Standort &amp; Kontakt</div><div class="card-sub">So erreichst du uns IC</div></div>
+        </div>
+        <div id="werkstattMap" style="height:260px;border-radius:var(--r);overflow:hidden;margin-bottom:.9rem;${hqSpots.length ? '' : 'display:none'}"></div>
+        ${hqSpots.length ? '' : `<div style="font-size:.78rem;color:var(--muted);margin-bottom:.9rem;padding:.7rem;background:var(--input);border-radius:var(--r)"><i class="fas fa-info-circle" style="margin-right:.35rem"></i>Noch kein HQ-Pin gesetzt${isAdmin() ? ' – lege ihn unter „Abschlepphöfe“ mit Typ <strong>hq</strong> an.' : '.'}</div>`}
+        <div class="landing-contact">
+          <div class="landing-contact-item"><i class="fas fa-map-marker-alt" style="color:#f97316"></i><span>${esc(pub?.hqText || 'ACLS Hauptquartier, Los Santos')}</span></div>
+          <div class="landing-contact-item"><i class="fas fa-phone" style="color:#22c55e"></i><span>${esc(pub?.icPhone || 'Im LS-Telefonbuch unter „ACLS“')}</span></div>
+          <div class="landing-contact-item"><i class="fas fa-clock" style="color:#38bdf8"></i><span>${esc(pub?.dienstzeiten || 'Dienstzeiten: siehe Live-Status')}</span></div>
+          ${pub?.discordInvite ? `<div class="landing-contact-item"><i class="fab fa-discord" style="color:#5865f2"></i><a href="${esc(pub.discordInvite)}" target="_blank" rel="noopener" style="color:var(--orange)">Discord-Server beitreten</a></div>` : ''}
+        </div>
+      </div>
+    </div>`;
+
+  if (hqSpots.length) initWerkstattMap(hqSpots);
+}
+
+// Kleine, schreibgeschützte Karte nur mit HQ-Pins
+function initWerkstattMap(hqSpots) {
+  const el = document.getElementById('werkstattMap');
+  if (!el || typeof L === 'undefined') return;
+  const m = L.map(el, { crs: L.CRS.Simple, minZoom: -2, maxZoom: 2, attributionControl: false, zoomSnap: 0.1 });
+  const bounds = [[0, 0], [GTA_SIZE, GTA_SIZE]];
+  L.imageOverlay('/gta-map.png', bounds, { opacity: 1 }).addTo(m);
+  const pin = L.divIcon({ className: '', html: '<div style="width:16px;height:16px;background:#c9a227;border:2px solid #fff;border-radius:50%;box-shadow:0 0 10px #c9a227cc"></div>', iconSize: [16, 16], iconAnchor: [8, 8], popupAnchor: [0, -10] });
+  const markers = hqSpots.map(s => {
+    const [lat, lng] = pctToLatLng(s.x_pos, s.y_pos);
+    return L.marker([lat, lng], { icon: pin }).addTo(m)
+      .bindPopup(`<div style="font-family:Inter,sans-serif"><strong>${esc(s.name)}</strong>${s.description ? `<div style="font-size:.8rem;color:#888">${esc(s.description)}</div>` : ''}</div>`, { closeButton: false });
+  });
+  if (markers.length === 1) { m.setView(markers[0].getLatLng(), 0.4); }
+  else m.fitBounds(bounds, { padding: [4, 4] });
+}
+
+// Dashboard-Widget: Werkstatt-Status
+async function loadWerkstattWidget(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const [sessions, tickets] = await Promise.all([api('/api/active-sessions'), api('/api/tickets')]);
+  const onDuty = Array.isArray(sessions) ? sessions : [];
+  const orders = (Array.isArray(tickets) ? tickets : []).filter(t =>
+    ['Werkstatt-Auftrag', 'Abschleppdienst'].includes(t.category) && t.status === 'open');
+  el.innerHTML = `
+    <div class="card" style="margin:0">
+      <div class="card-head">
+        <div class="card-head-icon orange"><i class="fas fa-wrench"></i></div>
+        <div><div class="card-title">Werkstatt</div><div class="card-sub">Live-Status &amp; Aufträge</div></div>
+        <button class="btn btn-ghost btn-sm" onclick="navigate('werkstatt')" style="margin-left:auto">Zum Hub</button>
+      </div>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+        ${onDuty.length
+          ? `<span class="duty-chip duty-open"><span class="duty-dot"></span>${onDuty.length} im Dienst</span>`
+          : '<span class="duty-chip duty-closed"><span class="duty-dot"></span>Niemand im Dienst</span>'}
+        <div style="display:flex;align-items:center;gap:.5rem;font-size:.84rem">
+          <i class="fas fa-clipboard-list" style="color:#f97316"></i>
+          <strong>${orders.length}</strong> offene Werkstatt-Aufträge
+        </div>
+        ${orders.length ? `<button class="btn btn-primary btn-sm" onclick="navigate('tickets')" style="margin-left:auto"><i class="fas fa-arrow-right"></i> Abarbeiten</button>` : ''}
+      </div>
+      ${onDuty.length ? `<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.75rem">
+        ${onDuty.slice(0, 6).map(s => `<span style="font-size:.72rem;background:var(--input);border:1px solid var(--border);border-radius:99px;padding:.18rem .6rem">${esc(s.username)}</span>`).join('')}
+        ${onDuty.length > 6 ? `<span style="font-size:.72rem;color:var(--muted)">+${onDuty.length - 6} weitere</span>` : ''}
+      </div>` : ''}
+    </div>`;
+}
+
 const WIDGET_DEFS = [
   { id: 'eow',             label: 'Mitarbeiter der Woche',  icon: 'fa-trophy'          },
+  { id: 'werkstatt',       label: 'Werkstatt-Status',       icon: 'fa-wrench'          },
   { id: 'stats',           label: 'Prüfungs-Statistiken',   icon: 'fa-chart-bar'       },
   { id: 'exams',           label: 'Zuletzt Prüfungen',      icon: 'fa-clipboard-check' },
   { id: 'rankings',        label: 'Top 5 & Rangliste',      icon: 'fa-medal'           },
@@ -1551,6 +1991,8 @@ async function dashboard() {
     : `<div class="eow-banner" style="flex:1"><div class="eow-av" style="background:var(--surface2);color:var(--muted);font-size:1.4rem"><i class="fas fa-vote-yea"></i></div><div class="eow-info"><div class="eow-label"><i class="fas fa-vote-yea" style="margin-right:.3rem"></i>${voteLabel} · ${curWk}</div><div class="eow-name" style="color:var(--muted)">Noch keine Stimmen</div><div style="font-size:.73rem;color:var(--muted);margin-top:.1rem">Auszählung: Sonntag 18:00 Uhr</div></div><div class="eow-ml"><button class="btn btn-primary btn-sm" onclick="navigate('eow')"><i class="fas fa-vote-yea"></i> Jetzt abstimmen</button></div></div>`;
   W.eow = `<div style="display:flex;gap:1rem;flex-wrap:wrap">${winnerCard}${voteCard}</div>`;
 
+  W.werkstatt = `<div id="dashWerkstattWidget"></div>`;
+
   W.onboarding = myOnb?.show ? `<div class="card" style="border-color:rgba(74,222,128,.3);margin:0"><div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap"><div style="width:36px;height:36px;border-radius:50%;background:rgba(74,222,128,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-tasks" style="color:#4ade80;font-size:.85rem"></i></div><div style="flex:1;min-width:200px"><div style="font-weight:700;font-size:.92rem">Dein Onboarding · ${myOnb.done}/${myOnb.total} erledigt</div><div style="height:6px;background:var(--input);border-radius:3px;overflow:hidden;margin-top:.35rem;max-width:340px"><div style="height:100%;width:${Math.round(myOnb.done/myOnb.total*100)}%;background:#4ade80"></div></div></div><div style="font-size:.74rem;color:var(--muted);max-width:320px">Noch offen: ${myOnb.items.filter(i=>!i.done).slice(0,3).map(i=>i.label).join(' · ')}${myOnb.items.filter(i=>!i.done).length>3?' …':''}</div></div></div>` : null;
 
   W.poll   = `<div id="staffPollWidget"></div>`;
@@ -1634,7 +2076,8 @@ async function dashboard() {
       <button class="btn btn-ghost" onclick="navigate('registrierung')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-clipboard-check" style="color:var(--orange)"></i>Prüfung eintragen</button>
       <button class="btn btn-ghost" onclick="navigate('iczeit')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-clock" style="color:#22c55e"></i>IC-Zeit eintragen</button>
       <button class="btn btn-ghost" onclick="navigate('eow')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-vote-yea" style="color:#facc15"></i>Abstimmen</button>
-      <button class="btn btn-ghost" onclick="navigate('minispiele')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-gamepad" style="color:#f472b6"></i>Minispiele</button>
+      <button class="btn btn-ghost" onclick="navigate('werkstatt')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-wrench" style="color:#f97316"></i>Werkstatt-Hub</button>
+      <button class="btn btn-ghost" onclick="navigate('arcade')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-gamepad" style="color:#f472b6"></i>Arcade</button>
       <button class="btn btn-ghost" onclick="navigate('nachrichten')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-envelope" style="color:#60a5fa"></i>Nachrichten</button>
       <button class="btn btn-ghost" onclick="navigate('marktplatz')" style="justify-content:flex-start;gap:.5rem;font-size:.82rem"><i class="fas fa-store" style="color:#4ade80"></i>Marktplatz</button>
     </div>
@@ -1708,6 +2151,7 @@ async function dashboard() {
   loadTwitchWidget();
   clearInterval(dashboard._twitchPoll);
   dashboard._twitchPoll = setInterval(loadTwitchWidget, 2*60*1000);
+  if (order.includes('werkstatt'))       loadWerkstattWidget('dashWerkstattWidget');
   if (order.includes('poll'))            loadPollWidget('staffPollWidget');
   if (order.includes('challenges'))      loadChallengesWidget('staffChallengesWidget');
   if (order.includes('gameLeaderboard')) loadGameLeaderboard('gameLeaderboardWidget');
@@ -3140,7 +3584,7 @@ async function map() {
       </div>
       <div class="card" style="min-width:140px;padding:.9rem">
         <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">Legende</div>
-        ${[['tow','#f97316','Abschlepphof'],['exam','#22c55e','Prüfungsort'],['Felder','#3b82f6','Felder'],['Hotspot','#ec4899','Hotspot'],['Gangs/Familien','#eab308','Gangs/Familien'],['other','#6b7280','Sonstiges']].map(([type,color,label])=>`
+        ${[['hq','#c9a227','ACLS HQ'],['tow','#f97316','Abschlepphof'],['exam','#22c55e','Prüfungsort'],['Felder','#3b82f6','Felder'],['Hotspot','#ec4899','Hotspot'],['Gangs/Familien','#eab308','Gangs/Familien'],['other','#6b7280','Sonstiges']].map(([type,color,label])=>`
         <div style="display:flex;align-items:center;gap:.55rem;margin-bottom:.55rem">
           <div style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 6px ${color}88;flex-shrink:0"></div>
           <span style="font-size:.82rem">${label}</span>
@@ -3157,7 +3601,7 @@ async function map() {
             ${spots.map(s => `<tr>
               <td style="font-weight:600;color:var(--text)">${esc(s.name)}</td>
               <td>${esc(s.description || '—')}</td>
-              <td><span style="font-size:.75rem;padding:.15rem .55rem;border-radius:6px;font-weight:600;background:${({'tow':'#f9731622','exam':'#22c55e22','Felder':'#3b82f622','Hotspot':'#ec4b9922','Gangs/Familien':'#eab30822'}[s.spot_type]||'#6b728022')};color:${({'tow':'#f97316','exam':'#22c55e','Felder':'#3b82f6','Hotspot':'#ec4899','Gangs/Familien':'#eab308'}[s.spot_type]||'#6b7280')}">${esc(s.spot_type)}</span></td>
+              <td><span style="font-size:.75rem;padding:.15rem .55rem;border-radius:6px;font-weight:600;background:${({'hq':'#c9a22722','tow':'#f9731622','exam':'#22c55e22','Felder':'#3b82f622','Hotspot':'#ec4b9922','Gangs/Familien':'#eab30822'}[s.spot_type]||'#6b728022')};color:${({'hq':'#c9a227','tow':'#f97316','exam':'#22c55e','Felder':'#3b82f6','Hotspot':'#ec4899','Gangs/Familien':'#eab308'}[s.spot_type]||'#6b7280')}">${esc(s.spot_type)}</span></td>
               <td>${s.created_by_name || '—'}</td>
               <td>${isAdmin() ? `<button class="btn btn-danger btn-sm" onclick="deleteSpot(${s.id})"><i class="fas fa-trash"></i></button>` : ''}</td>
             </tr>`).join('')}
@@ -3208,7 +3652,7 @@ function initLeafletMap(spots) {
 
   leafletMap.fitBounds(bounds, { padding: [4, 4] });
 
-  const spotColor = t => ({ tow:'#f97316', exam:'#22c55e', Felder:'#3b82f6', Hotspot:'#ec4899', 'Gangs/Familien':'#eab308' }[t] || '#6b7280');
+  const spotColor = t => ({ hq:'#c9a227', tow:'#f97316', exam:'#22c55e', Felder:'#3b82f6', Hotspot:'#ec4899', 'Gangs/Familien':'#eab308' }[t] || '#6b7280');
 
   const makePin = color => L.divIcon({
     className: '',
@@ -3247,7 +3691,7 @@ function openAddSpotModal(x, y) {
       <div class="form-group"><label>Name</label><input class="form-control" id="spName" placeholder="z. B. ACLS Hauptgarage" required></div>
       <div class="form-group"><label>Beschreibung</label><input class="form-control" id="spDesc" placeholder="Kurze Beschreibung"></div>
       <div class="form-group"><label>Typ</label>
-        <select class="form-control" id="spType"><option>tow</option><option>exam</option><option>Felder</option><option>Hotspot</option><option>Gangs/Familien</option><option>other</option></select>
+        <select class="form-control" id="spType"><option>tow</option><option>exam</option><option>hq</option><option>Felder</option><option>Hotspot</option><option>Gangs/Familien</option><option>other</option></select>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
@@ -3652,8 +4096,9 @@ async function prices() {
   rows.forEach(r => { if (!cats[r.category]) cats[r.category] = []; cats[r.category].push(r); });
 
   const CAT_META = {
-    'Fahrschule':   { icon: 'fa-graduation-cap', col: '#f97316', sub: 'Rechnungspreis – wird automatisch vom Konto abgezogen' },
-    'Kundenpreise': { icon: 'fa-hand-holding-usd', col: '#22c55e', sub: 'Bar auf Hand' },
+    'Werkstatt':    { icon: 'fa-wrench', col: '#f97316', sub: 'Reparatur, Tuning & Abschleppdienst' },
+    'Fahrschule':   { icon: 'fa-graduation-cap', col: '#22c55e', sub: 'Rechnungspreis – wird automatisch vom Konto abgezogen' },
+    'Kundenpreise': { icon: 'fa-hand-holding-usd', col: '#38bdf8', sub: 'Bar auf Hand' },
   };
 
   const canEdit = isAdmin() || currentUser?.role === 'member' || currentUser?.role === 'ausbilder';
@@ -4041,6 +4486,7 @@ window.openAddPrice = () => {
       <div class="form-row">
         <div class="form-group"><label>Kategorie</label>
           <select class="form-control" id="pCat">
+            <option>Werkstatt</option>
             <option>Fahrschule</option>
             <option>Kundenpreise</option>
             <option value="__custom__">Neue Kategorie…</option>
@@ -8085,7 +8531,7 @@ async function tickets() {
   const data = await api('/api/tickets');
   if (!data) return;
   const statusBadge = s => s === 'open' ? '<span class="badge badge-r">Offen</span>' : s === 'in_progress' ? '<span class="badge badge-o" style="background:rgba(251,191,36,.15);color:#fbbf24;border-color:rgba(251,191,36,.3)">In Bearbeitung</span>' : '<span class="badge badge-g">Geschlossen</span>';
-  const catColor = { Bug:'#ef4444', Frage:'#38bdf8', Beschwerde:'#f97316', 'Feature-Wunsch':'#a855f7', Sonstiges:'#9ca3af' };
+  const catColor = { 'Werkstatt-Auftrag':'#f97316', 'Abschleppdienst':'#fbbf24', Bug:'#ef4444', Frage:'#38bdf8', Beschwerde:'#f97316', 'Feature-Wunsch':'#a855f7', Sonstiges:'#9ca3af' };
   $('pageContent').innerHTML = `
     <div style="display:flex;justify-content:flex-end;margin-bottom:1rem">
       <button class="btn btn-primary" onclick="openTicketForm()"><i class="fas fa-plus"></i> Neues Ticket</button>
@@ -8114,7 +8560,7 @@ window.openTicketForm = () => {
     <div class="modal-body">
       <div class="form-group"><label class="form-label">Kategorie</label>
         <select id="tCat" class="form-control">
-          ${['Bug','Frage','Beschwerde','Feature-Wunsch','Sonstiges'].map(c => `<option>${c}</option>`).join('')}
+          ${['Werkstatt-Auftrag','Abschleppdienst','Bug','Frage','Beschwerde','Feature-Wunsch','Sonstiges'].map(c => `<option>${c}</option>`).join('')}
         </select>
       </div>
       <div class="form-group"><label class="form-label">Titel</label><input id="tTitle" class="form-control" maxlength="200" placeholder="Kurze Zusammenfassung"></div>
