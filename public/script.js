@@ -306,6 +306,36 @@ async function api(url, options = {}) {
   }
 }
 
+// ── Lazy-Loader für externe Bibliotheken ────────────────────────
+// index.html lädt Leaflet/Chart.js/jsPDF nicht mehr beim Start –
+// diese Funktion lädt sie erst, wenn eine Seite sie wirklich braucht.
+const _libPromises = {};
+const LIBS = {
+  leaflet: { js: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', css: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', ready: () => window.L },
+  chart:   { js: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js', ready: () => window.Chart },
+  jspdf:   { js: 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',    ready: () => window.jspdf },
+};
+function loadLib(name) {
+  const lib = LIBS[name];
+  if (!lib) return Promise.reject(new Error('Unbekannte Bibliothek: ' + name));
+  if (lib.ready()) return Promise.resolve();
+  if (_libPromises[name]) return _libPromises[name];
+  _libPromises[name] = new Promise((resolve, reject) => {
+    if (lib.css && !document.querySelector(`link[href="${lib.css}"]`)) {
+      const l = document.createElement('link');
+      l.rel = 'stylesheet';
+      l.href = lib.css;
+      document.head.appendChild(l);
+    }
+    const s = document.createElement('script');
+    s.src = lib.js;
+    s.onload  = () => resolve();
+    s.onerror = () => { delete _libPromises[name]; reject(new Error(name + ' konnte nicht geladen werden')); };
+    document.head.appendChild(s);
+  });
+  return _libPromises[name];
+}
+
 // ── Toast ────────────────────────────────────────────────────────
 function toast(msg, type = '') {
   const t = document.createElement('div');
@@ -1794,8 +1824,12 @@ async function werkstatt() {
 }
 
 // Kleine, schreibgeschützte Karte nur mit HQ-Pins
-function initWerkstattMap(hqSpots) {
-  const el = document.getElementById('werkstattMap');
+async function initWerkstattMap(hqSpots) {
+  let el = document.getElementById('werkstattMap');
+  if (!el) return;
+  try { await loadLib('leaflet'); } catch { return; }
+  // Nutzer könnte während des Ladens weiternavigiert haben
+  el = document.getElementById('werkstattMap');
   if (!el || typeof L === 'undefined') return;
   const m = L.map(el, { crs: L.CRS.Simple, minZoom: -2, maxZoom: 2, attributionControl: false, zoomSnap: 0.1 });
   const bounds = [[0, 0], [GTA_SIZE, GTA_SIZE]];
@@ -3722,7 +3756,11 @@ window.deleteFaction = async id => {
 //  MAP — echte GTA V Karte mit Leaflet
 // ════════════════════════════════════════════════════════════════
 async function map() {
-  const spots = await api('/api/map-spots');
+  let leafletOk = true;
+  const [spots] = await Promise.all([
+    api('/api/map-spots'),
+    loadLib('leaflet').catch(() => { leafletOk = false; }),
+  ]);
   if (!spots) return;
 
   $('pageContent').innerHTML = `
@@ -3765,7 +3803,15 @@ async function map() {
       </div>
     </div>`;
 
-  initLeafletMap(spots);
+  if (leafletOk && window.L) {
+    initLeafletMap(spots);
+  } else {
+    $('mapContainer').innerHTML = `<div class="empty" style="height:100%">
+      <i class="fas fa-map-marked-alt"></i>
+      <p>Karte konnte nicht geladen werden (CDN nicht erreichbar).</p>
+      <button class="btn btn-ghost btn-sm" onclick="navigate('map')"><i class="fas fa-redo"></i> Erneut versuchen</button>
+    </div>`;
+  }
 }
 
 window._addingSpot = false;
@@ -4368,9 +4414,10 @@ window.rechUpdateTotal = () => {
   if (el) el.textContent = allParseable ? `${total.toLocaleString('de-DE')} $` : `${total.toLocaleString('de-DE')} $ (+)`;
 };
 
-window.generateRechnung = () => {
+window.generateRechnung = async () => {
   const checked = document.querySelectorAll('.rech-check:checked');
   if (!checked.length) { toast('Bitte mindestens eine Leistung auswählen', 'err'); return; }
+  try { await loadLib('jspdf'); } catch { toast('PDF-Modul konnte nicht geladen werden', 'err'); return; }
 
   const kunde  = document.getElementById('rechKunde')?.value.trim() || 'Barzahler';
   const datum  = new Date().toLocaleDateString('de-DE');
@@ -5696,6 +5743,7 @@ async function loadAdminAnalytics() {
     </div>`;
 
   const ctx = document.getElementById('coinFlowChart');
+  if (ctx && d.coinFlow.length) { try { await loadLib('chart'); } catch {} }
   if (ctx && window.Chart && d.coinFlow.length) {
     new Chart(ctx, {
       type: 'bar',
@@ -5898,7 +5946,8 @@ async function loadAdminStats() {
       y: { beginAtZero: true, ticks: { color: tick, font: { size: 10 } }, grid: { color: grid } },
     },
   };
-  const mk = (id, cfg) => { const el = $(id); if (el) _adminCharts.push(new Chart(el, cfg)); };
+  try { await loadLib('chart'); } catch {}
+  const mk = (id, cfg) => { const el = $(id); if (el && window.Chart) _adminCharts.push(new Chart(el, cfg)); };
 
   mk('chartExams', {
     type: 'bar',
@@ -8787,7 +8836,9 @@ async function statistiken() {
         ${d.topExaminers.map((e,i) => `<div style="display:flex;align-items:center;gap:.75rem;padding:.5rem 0;border-bottom:1px solid var(--border)"><div class="rank-badge${i<3?['',' r2',' r3'][i]:''}">${i+1}</div><div style="flex:1;font-weight:600;font-size:.85rem">${esc(e.examiner_name)}</div><span style="font-size:.8rem;color:var(--orange);font-weight:700">${e.c} Prüfungen</span></div>`).join('')||'<div class="empty"><p>Keine Daten</p></div>'}
       </div>
     </div>`;
+  try { await loadLib('chart'); } catch { toast('Diagramm-Modul konnte nicht geladen werden', 'err'); return; }
   requestAnimationFrame(() => {
+    if (!window.Chart) return;
     const chartOpts = (labels, datasets, y_label) => ({
       type:'line', data:{ labels: labels.map(fmt_wk), datasets },
       options:{ responsive:true, plugins:{ legend:{ labels:{ color:'#9ca3af', font:{ size:11 } } } }, scales:{ x:{ ticks:{ color:'#6b7280', font:{size:10} }, grid:{color:'rgba(255,255,255,.05)' }}, y:{ ticks:{ color:'#6b7280', font:{size:10} }, grid:{color:'rgba(255,255,255,.05)' }, title:{ display:!!y_label, text:y_label||'', color:'#9ca3af' } } } }
