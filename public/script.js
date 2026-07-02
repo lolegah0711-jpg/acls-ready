@@ -259,7 +259,7 @@ const PAGES = {
   admin:        { title: 'Admin-Panel',            sub: 'Verwaltung & Kontrolle' },
   ausbildung:   { title: 'Ausbildung',             sub: 'Gesellen- & Meisterprüfungen' },
   bans:         { title: 'Aktive Sperren',         sub: 'Hausverbot-Verwaltung' },
-  search:       { title: 'Globale Suche',          sub: 'Sperren, Mitarbeiter & Register durchsuchen' },
+  search:       { title: 'Globale Suche',          sub: 'Seiten, Sperren, Mitarbeiter & Register durchsuchen' },
   faq:          { title: 'FAQ',                    sub: 'Häufig gestellte Fragen verwalten' },
   auditlog:     { title: 'Audit-Log',             sub: 'Wer hat was wann geändert' },
   turnier:      { title: 'Wochenturnier',         sub: 'Jede Woche ein anderes Spiel – Coins für die Top 3' },
@@ -284,7 +284,8 @@ const PAGES = {
   trivia:       { title: 'Trivia-Team',           sub: 'Team-Quiz in Echtzeit · 2 Teams gegeneinander' },
   onboarding:   { title: 'Onboarding-Wizard',     sub: 'Deine Einarbeitungs-Checkliste' },
   profil:       { title: 'Mein Profil',           sub: 'Profilbild, Bio & Kosmetika' },
-  meinacls:     { title: 'Mein ACLS',             sub: 'Dein persönlicher Hub – Profil, Coins, Level & mehr' },
+  meinacls:     { title: 'Mein ACLS',             sub: 'Dein persönlicher Hub – Fortschritt, Aufgaben & mehr' },
+  finanzen:     { title: 'Meine Finanzen',        sub: 'Kontostand, Einnahmen & Ausgaben im Überblick' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -1525,12 +1526,28 @@ async function logout() {
 }
 
 // ── Router ────────────────────────────────────────────────────────
+// Tages-Aufgaben: Seitenbesuche client-seitig merken (Checkliste im Mein-Hub)
+function _todayKey() { return new Date().toISOString().slice(0, 10); }
+function trackPageVisit(page) {
+  try {
+    const key = 'acls-visits-' + _todayKey();
+    // alte Besuchs-Keys aufräumen
+    Object.keys(localStorage).forEach(k => { if (k.startsWith('acls-visits-') && k !== key) localStorage.removeItem(k); });
+    const v = JSON.parse(localStorage.getItem(key) || '[]');
+    if (!v.includes(page)) { v.push(page); localStorage.setItem(key, JSON.stringify(v)); }
+  } catch {}
+}
+function getTodayVisits() {
+  try { return JSON.parse(localStorage.getItem('acls-visits-' + _todayKey()) || '[]'); } catch { return []; }
+}
+
 function navigate(page) {
   if (page === 'admin'     && !isAdmin())     { toast('Kein Zugriff', 'err'); return; }
   if (page === 'ausbildung' && !isAusbilder()) { toast('Kein Zugriff', 'err'); return; }
   closeModal();
   closeMobileMenu();
   _activePage = page;
+  trackPageVisit(page);
   if (leafletMap && page !== 'map') { leafletMap.remove(); leafletMap = null; }
 
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
@@ -1540,7 +1557,7 @@ function navigate(page) {
   $('pageContent').innerHTML    = loading();
 
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
-  const renders = { dashboard, werkstatt, arcade, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz, wetten, tickets, statistiken, team_vorstellung, level, wheel, milestones, changelog, trivia, onboarding, profil, meinacls };
+  const renders = { dashboard, werkstatt, arcade, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz, wetten, tickets, statistiken, team_vorstellung, level, wheel, milestones, changelog, trivia, onboarding, profil, meinacls, finanzen };
   (renders[page] || dashboard)();
 }
 
@@ -2504,24 +2521,150 @@ window.openNotif = function(i) {
 // ════════════════════════════════════════════════════════════════
 //  GLOBALE SUCHE
 // ════════════════════════════════════════════════════════════════
+
+// Seiten-Index: alle Bereiche der Website inkl. Synonyme (Command-Palette)
+const SEARCH_PAGES = [
+  { page: 'dashboard',    label: 'Dashboard',               icon: 'fa-th-large',       kw: 'übersicht start home' },
+  { page: 'werkstatt',    label: 'Werkstatt-Hub',           icon: 'fa-wrench',         kw: 'reparatur tuning service aufträge auftrag' },
+  { page: 'prices',       label: 'Preisliste',              icon: 'fa-tags',           kw: 'preise kosten tarife' },
+  { page: 'map',          label: 'Abschlepphöfe',           icon: 'fa-map-marked-alt', kw: 'karte map abschleppen bergung standorte' },
+  { page: 'meinacls',     label: 'Mein Hub',                icon: 'fa-home',           kw: 'mein acls persönlich' },
+  { page: 'profil',       label: 'Mein Profil',             icon: 'fa-user-circle',    kw: 'steckbrief account konto einstellungen avatar' },
+  { page: 'nachrichten',  label: 'Nachrichten',             icon: 'fa-envelope',       kw: 'dm direktnachricht chat post' },
+  { page: 'level',        label: 'Level & Prestige',        icon: 'fa-star',           kw: 'xp erfahrung rang aufstieg prestige' },
+  { page: 'milestones',   label: 'Meilensteine',            icon: 'fa-flag-checkered', kw: 'achievements erfolge abzeichen' },
+  { page: 'wheel',        label: 'Daily Wheel',             icon: 'fa-dharmachakra',   kw: 'glücksrad täglich belohnung reward drehen' },
+  { page: 'saison',       label: 'Saison-Pass',             icon: 'fa-medal',          kw: 'battle pass season belohnungen' },
+  { page: 'freunde',      label: 'Freunde',                 icon: 'fa-user-friends',   kw: 'freundschaft social kontakte' },
+  { page: 'activity',     label: 'Aktivitäts-Log',          icon: 'fa-chart-line',     kw: 'verlauf historie aktionen log' },
+  { page: 'exams',        label: 'Prüfung starten',         icon: 'fa-play-circle',    kw: 'fahrprüfung führerschein theorie praxis test' },
+  { page: 'registry',     label: 'Bürgerregister',          icon: 'fa-id-card',        kw: 'bürger register personen einwohner' },
+  { page: 'iczeit',       label: 'IC-Zeit',                 icon: 'fa-clock',          kw: 'ingame zeit uhrzeit ic' },
+  { page: 'statistiken',  label: 'Statistiken',             icon: 'fa-chart-bar',      kw: 'stats zahlen diagramme auswertung' },
+  { page: 'onboarding',   label: 'Onboarding',              icon: 'fa-tasks',          kw: 'einführung neu start checkliste tutorial' },
+  { page: 'eow',          label: 'Mitarbeiter der Woche',   icon: 'fa-trophy',         kw: 'voting abstimmung wahl eow gewinner' },
+  { page: 'organigramm',  label: 'Unser Team',              icon: 'fa-users',          kw: 'organigramm mitarbeiter struktur hierarchie' },
+  { page: 'team_vorstellung', label: 'Mitarbeiter-Vorstellung', icon: 'fa-id-badge',   kw: 'vorstellung steckbriefe team' },
+  { page: 'tickets',      label: 'Support-Tickets',         icon: 'fa-ticket-alt',     kw: 'hilfe support beschwerde anliegen' },
+  { page: 'feedback',     label: 'Feedback & Ideen',        icon: 'fa-lightbulb',      kw: 'vorschläge ideen wünsche verbesserung' },
+  { page: 'faq',          label: 'FAQ',                     icon: 'fa-question-circle',kw: 'fragen antworten hilfe howto' },
+  { page: 'changelog',    label: 'Changelog',               icon: 'fa-code-branch',    kw: 'updates neuigkeiten versionen news' },
+  { page: 'turnier',      label: 'Wochenturnier',           icon: 'fa-crown',          kw: 'turnier wettbewerb competition' },
+  { page: 'duell',        label: 'Quiz-Duell',              icon: 'fa-bolt',           kw: 'duell pvp herausforderung quiz' },
+  { page: 'trivia',       label: 'Trivia-Team',             icon: 'fa-users-cog',      kw: 'trivia team quiz gruppe' },
+  { page: 'shop',         label: 'Coin-Shop',               icon: 'fa-coins',          kw: 'shop kaufen coins münzen items' },
+  { page: 'finanzen',     label: 'Meine Finanzen',          icon: 'fa-wallet',         kw: 'geld coins kontostand einnahmen ausgaben bilanz cashflow transaktionen' },
+  { page: 'marktplatz',   label: 'Marktplatz',              icon: 'fa-exchange-alt',   kw: 'handel trading verkaufen inserate' },
+  { page: 'wetten',       label: 'Coin-Wetten',             icon: 'fa-handshake',      kw: 'wette gambling einsatz' },
+  { page: 'schwarzmarkt', label: 'Schwarzmarkt',            icon: 'fa-store-slash',    kw: 'illegal markt geheim untergrund' },
+  { page: 'carmarket',    label: 'Fahrzeugmarkt',           icon: 'fa-car-side',       kw: 'autos fahrzeuge kaufen verkaufen automarkt' },
+  { page: 'factions',     label: 'Fraktionsfarben',         icon: 'fa-palette',        kw: 'farben fraktionen gangs codes' },
+  { page: 'arcade',       label: 'Arcade',                  icon: 'fa-gamepad',        kw: 'spiele games minigames zocken' },
+  { href: '/quiz',           label: 'Prüfungsvorbereitung (Quiz)', icon: 'fa-graduation-cap', kw: 'üben lernen theorie quiz vorbereitung' },
+  { href: '/spielbank',      label: 'Spielbank',            icon: 'fa-dice',           kw: 'casino blackjack roulette poker slots' },
+  { href: '/clubs.html',     label: 'Clubs & Gilden',       icon: 'fa-shield-alt',     kw: 'club gilde verein gruppe kasse' },
+  { href: '/automarkt.html', label: 'AutoMarkt Pro',        icon: 'fa-car-side',       kw: 'automarkt handel fahrzeuge' },
+  { href: '/empire.html',    label: 'Auto Empire',          icon: 'fa-industry',       kw: 'empire tycoon firma imperium' },
+];
+
+function searchPages(q) {
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const nq = norm(q);
+  return SEARCH_PAGES
+    .map(p => {
+      const label = norm(p.label), kw = norm(p.kw || '');
+      let score = 0;
+      if (label.startsWith(nq)) score = 3;
+      else if (label.includes(nq)) score = 2;
+      else if (kw.includes(nq)) score = 1;
+      return { ...p, score };
+    })
+    .filter(p => p.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6);
+}
+
+const RECENT_SEARCHES_KEY = 'acls-recent-searches';
+function getRecentSearches() {
+  try { return JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]'); } catch { return []; }
+}
+function addRecentSearch(q) {
+  const list = getRecentSearches().filter(x => x !== q);
+  list.unshift(q);
+  localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(list.slice(0, 6)));
+}
+
+function searchEmptyState() {
+  const recent = getRecentSearches();
+  const recentHtml = recent.length ? `
+    <div style="margin-top:1.25rem">
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.5rem">
+        <i class="fas fa-history" style="margin-right:.4rem"></i>Letzte Suchen
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:.4rem">
+        ${recent.map(r => `<button class="btn btn-ghost btn-sm" onclick="$('search-input').value=this.textContent;runSearch(this.textContent)">${esc(r)}</button>`).join('')}
+      </div>
+    </div>` : '';
+  return `
+    <div style="color:var(--muted);font-size:.9rem;padding:.5rem 0">
+      Mindestens 2 Zeichen eingeben – durchsucht Seiten, Sperren, Mitarbeiter &amp; Prüfungsregister.
+      <span style="display:inline-block;margin-top:.35rem;font-size:.78rem">Tipp: <kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:.1rem .35rem;font-size:.72rem">Strg</kbd>+<kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:.1rem .35rem;font-size:.72rem">K</kbd> öffnet die Suche von überall.</span>
+    </div>${recentHtml}`;
+}
+
 async function search() {
   $('pageContent').innerHTML = `
-    <div class="pg-header"><div class="pg-header-left"><h2>Globale Suche</h2><p>Durchsuche Sperren, Mitarbeiter und Prüfungsregister</p></div></div>
+    <div class="pg-header"><div class="pg-header-left"><h2>Globale Suche</h2><p>Seiten, Sperren, Mitarbeiter &amp; Prüfungsregister</p></div></div>
     <div style="display:flex;gap:.75rem;margin-bottom:1.5rem">
-      <input class="form-control" id="search-input" placeholder="Name, Discord-ID, Sperrgrund…" style="max-width:480px;flex:1" oninput="runSearch(this.value)">
+      <div class="search-bar" style="max-width:480px;flex:1">
+        <i class="fas fa-search"></i>
+        <input id="search-input" placeholder="Seite, Name, Discord-ID, Sperrgrund…" style="width:100%"
+          oninput="runSearch(this.value)"
+          onkeydown="if(event.key==='Enter'){const f=document.querySelector('#search-results [data-search-first]');if(f)f.click();}else if(event.key==='Escape'){this.value='';runSearch('');}">
+      </div>
     </div>
-    <div id="search-results"><div style="color:var(--muted);font-size:.9rem;padding:1rem 0">Mindestens 2 Zeichen eingeben…</div></div>`;
+    <div id="search-results">${searchEmptyState()}</div>`;
   setTimeout(() => $('search-input')?.focus(), 50);
 }
 
 let _searchTimer = null;
+let _searchSeq = 0;
 window.runSearch = q => {
   clearTimeout(_searchTimer);
-  if (q.length < 2) { $('search-results').innerHTML = '<div style="color:var(--muted);font-size:.9rem;padding:1rem 0">Mindestens 2 Zeichen eingeben…</div>'; return; }
-  $('search-results').innerHTML = '<div style="color:var(--muted);font-size:.9rem;padding:1rem 0"><i class="fas fa-spinner fa-spin"></i> Suche läuft…</div>';
+  q = q.trim();
+  if (q.length < 2) { $('search-results').innerHTML = searchEmptyState(); return; }
+
+  // Seiten-Treffer sofort anzeigen (kein API-Roundtrip nötig)
+  const pages = searchPages(q);
+  const pagesHtml = pages.length ? `<div style="margin-bottom:1.25rem">
+    <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">
+      <i class="fas fa-compass" style="color:var(--orange);margin-right:.4rem"></i>Seiten (${pages.length})
+    </div>
+    ${pages.map((p, i) => `
+    <div ${i === 0 ? 'data-search-first' : ''} style="display:flex;align-items:center;gap:.75rem;padding:.55rem .9rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:.4rem;cursor:pointer"
+      onclick="${p.page ? `navigate('${p.page}')` : `window.open('${p.href}','_blank')`}">
+      <i class="fas ${p.icon}" style="color:var(--orange);width:18px;text-align:center"></i>
+      <div style="flex:1;font-weight:600;font-size:.9rem">${esc(p.label)}</div>
+      <i class="fas ${p.page ? 'fa-arrow-right' : 'fa-external-link-alt'}" style="color:var(--muted);font-size:.75rem"></i>
+    </div>`).join('')}
+  </div>` : '';
+
+  $('search-results').innerHTML = pagesHtml + '<div id="search-api-results"><div style="color:var(--muted);font-size:.9rem;padding:1rem 0"><i class="fas fa-spinner fa-spin"></i> Suche läuft…</div></div>';
+
+  const seq = ++_searchSeq;
   _searchTimer = setTimeout(async () => {
     const data = await api(`/api/search?q=${encodeURIComponent(q)}`);
-    if (!data) return;
+    if (seq !== _searchSeq) return; // veraltete Antwort verwerfen
+    const box = $('search-api-results');
+    if (!box) return;
+    if (!data) {
+      box.innerHTML = `<div style="display:flex;align-items:center;gap:.6rem;color:var(--red);font-size:.88rem;padding:1rem;background:var(--red-dim);border:1px solid rgba(239,68,68,.3);border-radius:8px">
+        <i class="fas fa-exclamation-triangle"></i> Suche fehlgeschlagen – bitte erneut versuchen.
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="runSearch($('search-input').value)">Erneut</button>
+      </div>`;
+      return;
+    }
+    addRecentSearch(q);
     const banColor = b => b.is_active ? '#ef4444' : '#6b7280';
     let html = '';
 
@@ -2537,7 +2680,7 @@ window.runSearch = q => {
             <div style="font-size:.78rem;color:var(--muted);margin-top:.15rem">${esc(b.reason)}</div>
           </div>
           <span class="badge ${b.is_active ? 'badge-r' : ''}" style="${!b.is_active ? 'background:var(--surface2);color:var(--muted)' : ''}">${b.is_active ? 'Aktiv' : 'Aufgehoben'}</span>
-          <span style="font-size:.75rem;color:var(--muted);white-space:nowrap">von ${b.issued_by_name}</span>
+          <span style="font-size:.75rem;color:var(--muted);white-space:nowrap">von ${esc(b.issued_by_name)}</span>
         </div>`).join('')}
       </div>`;
     }
@@ -2550,7 +2693,7 @@ window.runSearch = q => {
         ${data.users.map(u => `
         <div style="display:flex;align-items:center;gap:.75rem;padding:.55rem .9rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:.4rem;cursor:pointer" onclick="window.open('/profil/${u.id}','_blank')">
           ${avatarEl(u, 28)}
-          <div style="flex:1"><div style="font-weight:600;font-size:.9rem">${esc(u.username)}</div><div style="font-size:.75rem;color:var(--muted)">${u.role} · ${u.rank || '—'}</div></div>
+          <div style="flex:1"><div style="font-weight:600;font-size:.9rem">${esc(u.username)}</div><div style="font-size:.75rem;color:var(--muted)">${esc(u.role)} · ${esc(u.rank || '—')}</div></div>
           <i class="fas fa-external-link-alt" style="color:var(--muted);font-size:.75rem"></i>
         </div>`).join('')}
       </div>`;
@@ -2574,11 +2717,23 @@ window.runSearch = q => {
     }
 
     if (!data.bans.length && !data.users.length && !data.registry.length) {
-      html = '<div style="color:var(--muted);font-size:.9rem;padding:1rem 0">Keine Ergebnisse gefunden.</div>';
+      html = `<div style="color:var(--muted);font-size:.9rem;padding:1rem 0">${pages.length ? 'Keine weiteren Treffer in Sperren, Mitarbeitern oder Register.' : 'Keine Ergebnisse gefunden.'}</div>`;
     }
-    $('search-results').innerHTML = html;
+    box.innerHTML = html;
   }, 300);
 };
+
+// Globaler Shortcut: Strg+K (oder Cmd+K) öffnet die Suche von überall
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    const app = $('app');
+    if (app && !app.classList.contains('hidden')) {
+      e.preventDefault();
+      if (_activePage === 'search') { $('search-input')?.focus(); }
+      else navigate('search');
+    }
+  }
+});
 
 // ════════════════════════════════════════════════════════════════
 //  ACTIVITY
@@ -9303,14 +9458,29 @@ async function onboarding() {
 // ════════════════════════════════════════════════════════════════
 //  MEIN ACLS – Persönlicher Hub
 // ════════════════════════════════════════════════════════════════
+// ── Tägliche Aufgaben + Streak (client-seitig) ──────────────────
+function evalDailyStreak(allDone) {
+  let st = { last: '', streak: 0 };
+  try { st = JSON.parse(localStorage.getItem('acls-daily-streak') || '{"last":"","streak":0}'); } catch {}
+  const today = _todayKey();
+  if (allDone && st.last !== today) {
+    const yest = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    st.streak = st.last === yest ? st.streak + 1 : 1;
+    st.last = today;
+    localStorage.setItem('acls-daily-streak', JSON.stringify(st));
+  }
+  return st;
+}
+
 async function meinacls() {
   const u = currentUser;
   if (!u) { navigate('dashboard'); return; }
-  const [lvl, wheel, season, badges] = await Promise.all([
+  const [lvl, wheel, season, badges, coins] = await Promise.all([
     api('/api/levels/me'),
     api('/api/wheel/status'),
     api('/api/season'),
     api('/api/my-badges'),
+    api('/api/coins/me'),
   ]);
 
   const url     = avatarUrl(u);
@@ -9326,15 +9496,46 @@ async function meinacls() {
   const earnedB = badges ? Object.values(badges).filter(b => b.earned).length : 0;
   const totalB  = badges ? Object.keys(BADGE_DEFS).length : 0;
 
-  const hub = [
-    { icon: 'fa-dharmachakra', label: 'Daily Wheel',     page: 'wheel',      c: '#c084fc', pulse: wheelOk, note: wheelOk ? 'Jetzt drehen!' : 'Bereits gedreht' },
-    { icon: 'fa-medal',        label: 'Saison-Pass',     page: 'saison',     c: '#a855f7', note: `Level ${sLvl}/30` },
-    { icon: 'fa-envelope',     label: 'Nachrichten',     page: 'nachrichten',c: '#a855f7', note: 'Posteingang' },
-    { icon: 'fa-user-friends', label: 'Freunde',         page: 'freunde',    c: '#a855f7', note: 'Netzwerk' },
-    { icon: 'fa-flag-checkered',label:'Meilensteine',    page: 'milestones', c: '#a855f7', note: 'Lebensziele' },
-    { icon: 'fa-star',         label: 'Level & Prestige',page: 'level',      c: '#a855f7', note: `Level ${level}` },
-    { icon: 'fa-chart-line',   label: 'Aktivitäts-Log', page: 'activity',   c: '#a855f7', note: 'Verlauf' },
-    { icon: 'fa-user-circle',  label: 'Mein Profil',    page: 'profil',     c: '#a855f7', note: 'Bio & Avatar' },
+  // ── Tägliche Aufgaben: aus Server-Daten + Seitenbesuchen ──────
+  const visits = getTodayVisits();
+  const today = _todayKey();
+  const dailyBonusDone = !!(coins?.transactions || []).find(t => t.reason === 'daily' && String(t.created_at).slice(0, 10) === today);
+  const tasks = [
+    { label: 'Daily Wheel drehen',      done: wheel ? !!wheel.spun_today : false, page: 'wheel',  icon: 'fa-dharmachakra' },
+    { label: 'Tagesbonus abholen',      done: dailyBonusDone,                     page: 'shop',   icon: 'fa-coins' },
+    { label: 'Saison-Quests ansehen',   done: visits.includes('saison'),          page: 'saison', icon: 'fa-medal' },
+    { label: 'Arcade besuchen',         done: visits.includes('arcade'),          page: 'arcade', icon: 'fa-gamepad' },
+    { label: 'Marktplatz durchstöbern', done: visits.includes('marktplatz'),      page: 'marktplatz', icon: 'fa-exchange-alt' },
+  ];
+  const doneCount = tasks.filter(t => t.done).length;
+  const streak = evalDailyStreak(doneCount === tasks.length);
+
+  // ── 4 Säulen: Progression · Engagement · Belohnungen · Social ─
+  const pillars = [
+    { label: 'Progression', color: '#a855f7', icon: 'fa-arrow-trend-up', items: [
+      { icon: 'fa-star',          label: 'Level & Prestige', page: 'level',      note: `Level ${level}${prestige > 0 ? ` · P${prestige}` : ''}` },
+      { icon: 'fa-medal',         label: 'Saison-Pass',      page: 'saison',     note: `Level ${sLvl}/30` },
+      { icon: 'fa-flag-checkered',label: 'Meilensteine',     page: 'milestones', note: 'Lebensziele' },
+      { icon: 'fa-chart-line',    label: 'Aktivitäts-Log',   page: 'activity',   note: 'Verlauf' },
+    ]},
+    { label: 'Engagement', color: '#ec4899', icon: 'fa-fire', items: [
+      { icon: 'fa-dharmachakra', label: 'Daily Wheel',   page: 'wheel',   note: wheelOk ? 'Jetzt drehen!' : 'Bereits gedreht', pulse: wheelOk },
+      { icon: 'fa-crown',        label: 'Wochenturnier', page: 'turnier', note: 'Top 3 gewinnen' },
+      { icon: 'fa-bolt',         label: 'Quiz-Duell',    page: 'duell',   note: '1 gegen 1' },
+      { icon: 'fa-users-cog',    label: 'Trivia-Team',   page: 'trivia',  note: 'Team-Quiz' },
+    ]},
+    { label: 'Belohnungen', color: '#fbbf24', icon: 'fa-gift', items: [
+      { icon: 'fa-coins',       label: 'Coin-Shop',    page: 'shop',         note: coins ? `${(coins.balance ?? 0).toLocaleString('de-DE')} 🪙` : 'Coins ausgeben' },
+      { icon: 'fa-store-slash', label: 'Schwarzmarkt', page: 'schwarzmarkt', note: 'Nur 24h!' },
+      { icon: 'fa-exchange-alt',label: 'Marktplatz',   page: 'marktplatz',   note: 'Handel' },
+      { icon: 'fa-wallet',      label: 'Meine Finanzen', page: 'finanzen',   note: 'Einnahmen & Ausgaben' },
+    ]},
+    { label: 'Social', color: '#38bdf8', icon: 'fa-users', items: [
+      { icon: 'fa-user-friends', label: 'Freunde',      page: 'freunde',     note: 'Netzwerk' },
+      { icon: 'fa-envelope',     label: 'Nachrichten',  page: 'nachrichten', note: 'Posteingang' },
+      { icon: 'fa-trophy',       label: 'Mitarbeiter d. Woche', page: 'eow', note: 'Abstimmen' },
+      { icon: 'fa-user-circle',  label: 'Mein Profil',  page: 'profil',      note: 'Bio & Avatar' },
+    ]},
   ];
 
   $('pageContent').innerHTML = `
@@ -9385,16 +9586,170 @@ async function meinacls() {
       </div>
     </div>
 
-    <!-- Quick-Access Grid -->
-    <div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:.6rem">Schnellzugriff</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.6rem;margin-bottom:1rem">
-      ${hub.map(h => `
-        <button onclick="navigate('${h.page}')" style="display:flex;flex-direction:column;align-items:center;gap:.4rem;padding:.9rem .5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);cursor:pointer;transition:border-color .15s,background .15s,transform .1s;font-family:inherit;position:relative" onmouseover="this.style.borderColor='${h.c}';this.style.background='${h.c}12';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)';this.style.transform=''">
+    <!-- Tägliche Aufgaben + Streak -->
+    <div class="card" style="margin-bottom:1rem;padding:1rem 1.2rem;border-color:rgba(236,72,153,.25)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem;flex-wrap:wrap;gap:.5rem">
+        <div style="font-size:.82rem;font-weight:800"><i class="fas fa-list-check" style="color:#ec4899;margin-right:.45rem"></i>Tägliche Aufgaben <span style="color:var(--muted);font-weight:600">· ${doneCount}/${tasks.length}</span></div>
+        <div style="display:flex;align-items:center;gap:.4rem;font-size:.75rem;font-weight:800;color:${streak.streak > 0 ? '#f97316' : 'var(--muted)'}">
+          <i class="fas fa-fire"></i> ${streak.streak > 0 ? `${streak.streak} Tage-Streak` : 'Noch kein Streak'}
+        </div>
+      </div>
+      <div style="height:6px;background:var(--input);border-radius:3px;overflow:hidden;margin-bottom:.75rem">
+        <div style="height:100%;width:${(doneCount / tasks.length * 100).toFixed(0)}%;background:linear-gradient(90deg,#ec4899,#f97316);border-radius:3px;transition:width .5s ease"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.45rem">
+        ${tasks.map(t => `
+        <button onclick="navigate('${t.page}')" style="display:flex;align-items:center;gap:.6rem;padding:.55rem .7rem;background:${t.done ? 'rgba(34,197,94,.07)' : 'var(--surface)'};border:1px solid ${t.done ? 'rgba(34,197,94,.3)' : 'var(--border)'};border-radius:var(--r);cursor:pointer;font-family:inherit;text-align:left;transition:border-color .15s">
+          <i class="fas ${t.done ? 'fa-check-circle' : t.icon}" style="color:${t.done ? '#22c55e' : 'var(--muted)'};width:16px;text-align:center"></i>
+          <span style="font-size:.78rem;font-weight:600;color:${t.done ? '#22c55e' : 'var(--text)'};${t.done ? 'text-decoration:line-through;opacity:.75' : ''}">${t.label}</span>
+        </button>`).join('')}
+      </div>
+      ${doneCount === tasks.length ? '<div style="margin-top:.6rem;font-size:.75rem;color:#22c55e;font-weight:700"><i class="fas fa-trophy"></i> Alle Aufgaben erledigt – stark! Komm morgen wieder für deinen Streak. 🔥</div>' : ''}
+    </div>
+
+    <!-- 4 Säulen: Progression · Engagement · Belohnungen · Social -->
+    ${pillars.map(p => `
+      <div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:${p.color};margin:1rem 0 .55rem"><i class="fas ${p.icon}" style="margin-right:.4rem"></i>${p.label}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.6rem">
+        ${p.items.map(h => `
+        <button onclick="navigate('${h.page}')" style="display:flex;flex-direction:column;align-items:center;gap:.4rem;padding:.9rem .5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);cursor:pointer;transition:border-color .15s,background .15s,transform .1s;font-family:inherit;position:relative" onmouseover="this.style.borderColor='${p.color}';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform=''">
           ${h.pulse ? `<span style="position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#22c55e;animation:pulse 1.5s ease-in-out infinite"></span>` : ''}
-          <i class="fas ${h.icon}" style="color:${h.c};font-size:1.15rem"></i>
+          <i class="fas ${h.icon}" style="color:${p.color};font-size:1.15rem"></i>
           <span style="font-size:.73rem;font-weight:700;color:var(--text);text-align:center;line-height:1.2">${h.label}</span>
           <span style="font-size:.63rem;color:var(--muted);text-align:center">${h.note}</span>
         </button>`).join('')}
+      </div>`).join('')}`;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MEINE FINANZEN – Einnahmen, Ausgaben & Cashflow (aus Coin-Transaktionen)
+// ════════════════════════════════════════════════════════════════
+function txCategory(reason) {
+  if (reason === 'daily') return 'Boni';
+  if (reason.startsWith('game:')) return 'Arcade-Spiele';
+  if (reason.startsWith('blackjack:') || reason.startsWith('slot:') || reason.startsWith('lottery:')) return 'Casino & Lotterie';
+  if (reason.startsWith('shop:') || reason.startsWith('mystery:')) return 'Shop';
+  if (reason.startsWith('transfer:')) return 'Transfers';
+  if (reason.startsWith('exam:')) return 'Prüfungen';
+  if (reason.startsWith('duel:') || reason.startsWith('bracket:') || reason.startsWith('tournament:')) return 'Turniere & Duelle';
+  if (reason.startsWith('market:')) return 'Marktplatz';
+  if (reason.startsWith('bet:')) return 'Wetten';
+  return 'Sonstiges';
+}
+
+async function finanzen() {
+  const me = await api('/api/coins/me');
+  if (!me) {
+    $('pageContent').innerHTML = '<div class="empty"><i class="fas fa-wallet"></i><p>Finanzdaten konnten nicht geladen werden.</p></div>';
+    return;
+  }
+  const txs = me.transactions || [];
+  const fmtC = n => (n ?? 0).toLocaleString('de-DE');
+
+  // Einnahmen / Ausgaben gesamt (aus den verfügbaren Transaktionen)
+  let incomeTotal = 0, expenseTotal = 0;
+  const byCat = {};
+  const byDay = {};
+  txs.forEach(t => {
+    const cat = txCategory(t.reason);
+    if (!byCat[cat]) byCat[cat] = { in: 0, out: 0 };
+    if (t.amount >= 0) { incomeTotal += t.amount; byCat[cat].in += t.amount; }
+    else               { expenseTotal += -t.amount; byCat[cat].out += -t.amount; }
+    const day = String(t.created_at).slice(0, 10);
+    byDay[day] = (byDay[day] || 0) + t.amount;
+  });
+  const net = incomeTotal - expenseTotal;
+
+  // Kategorien sortiert nach Volumen
+  const cats = Object.entries(byCat)
+    .map(([name, v]) => ({ name, ...v, vol: v.in + v.out }))
+    .sort((a, b) => b.vol - a.vol);
+  const maxVol = Math.max(...cats.map(c => c.vol), 1);
+
+  // Cashflow der letzten 7 Tage
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 864e5).toISOString().slice(0, 10);
+    days.push({ day: d, label: new Date(d).toLocaleDateString('de-DE', { weekday: 'short' }), sum: byDay[d] || 0 });
+  }
+  const maxAbs = Math.max(...days.map(d => Math.abs(d.sum)), 1);
+
+  $('pageContent').innerHTML = `
+    <!-- Kontostand + Kennzahlen -->
+    <div class="stats-row" style="margin-bottom:1rem">
+      <div class="stat-card">
+        <div class="stat-info"><div class="stat-lbl">Kontostand</div><div class="stat-val o">${fmtC(me.balance)} 🪙</div></div>
+        <div class="stat-ico o"><i class="fas fa-wallet"></i></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info"><div class="stat-lbl">Einnahmen</div><div class="stat-val g">+${fmtC(incomeTotal)}</div></div>
+        <div class="stat-ico g"><i class="fas fa-arrow-down"></i></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info"><div class="stat-lbl">Ausgaben</div><div class="stat-val r">−${fmtC(expenseTotal)}</div></div>
+        <div class="stat-ico r"><i class="fas fa-arrow-up"></i></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info"><div class="stat-lbl">Bilanz</div><div class="stat-val ${net >= 0 ? 'g' : 'r'}">${net >= 0 ? '+' : ''}${fmtC(net)}</div></div>
+        <div class="stat-ico b"><i class="fas fa-scale-balanced"></i></div>
+      </div>
+    </div>
+    <div style="font-size:.7rem;color:var(--muted);margin:-.4rem 0 1rem">Basierend auf deinen letzten ${txs.length} Transaktionen.</div>
+
+    <div class="dash-bottom">
+      <!-- Cashflow 7 Tage -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-icon blue"><i class="fas fa-chart-column"></i></div>
+          <div><div class="card-title">Cashflow – letzte 7 Tage</div><div class="card-sub">Netto-Coins pro Tag</div></div>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:.5rem;height:120px;padding:0 .25rem">
+          ${days.map(d => {
+            const h = Math.max(Math.round(Math.abs(d.sum) / maxAbs * 100), d.sum !== 0 ? 8 : 3);
+            const col = d.sum > 0 ? 'var(--green)' : d.sum < 0 ? 'var(--red)' : 'var(--border)';
+            return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:.3rem;height:100%;justify-content:flex-end">
+              <span style="font-size:.62rem;font-weight:700;color:${col}">${d.sum !== 0 ? (d.sum > 0 ? '+' : '') + fmtC(d.sum) : ''}</span>
+              <div style="width:100%;max-width:34px;height:${h}%;background:${col};border-radius:4px 4px 0 0;opacity:.85"></div>
+              <span style="font-size:.62rem;color:var(--muted)">${d.label}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Kategorien -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-icon orange"><i class="fas fa-layer-group"></i></div>
+          <div><div class="card-title">Einnahmen & Ausgaben nach Kategorie</div><div class="card-sub">Wo kommen deine Coins her – und wo gehen sie hin?</div></div>
+        </div>
+        ${cats.length ? cats.map(c => `
+        <div style="margin-bottom:.7rem">
+          <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:.25rem">
+            <span style="font-weight:600">${esc(c.name)}</span>
+            <span><span style="color:var(--green);font-weight:700">+${fmtC(c.in)}</span> · <span style="color:var(--red);font-weight:700">−${fmtC(c.out)}</span></span>
+          </div>
+          <div style="display:flex;height:7px;border-radius:4px;overflow:hidden;background:var(--input)">
+            <div style="width:${(c.in / maxVol * 100).toFixed(1)}%;background:var(--green)"></div>
+            <div style="width:${(c.out / maxVol * 100).toFixed(1)}%;background:var(--red)"></div>
+          </div>
+        </div>`).join('') : '<div class="empty"><i class="fas fa-coins"></i><p>Noch keine Transaktionen – spiel ein Minispiel oder hol dir den Tagesbonus!</p></div>'}
+      </div>
+    </div>
+
+    <!-- Letzte Transaktionen -->
+    <div class="card" style="margin-top:1rem;padding:.4rem 1rem">
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:.7rem 0 .3rem">Letzte Transaktionen</div>
+      ${txs.length ? txs.slice(0, 15).map(t => `
+        <div style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px solid var(--border);font-size:.8rem">
+          <span style="flex:1">${txLabel(t.reason)}</span>
+          <span class="badge badge-m" style="font-size:.62rem">${esc(txCategory(t.reason))}</span>
+          <span style="font-weight:700;color:${t.amount >= 0 ? '#4ade80' : '#ef4444'};min-width:60px;text-align:right">${t.amount >= 0 ? '+' : ''}${fmtC(t.amount)}</span>
+          <span style="color:var(--muted);font-size:.7rem;white-space:nowrap">${ago(t.created_at)}</span>
+        </div>`).join('') : '<div style="padding:.8rem 0;color:var(--muted);font-size:.8rem">Noch keine Transaktionen.</div>'}
+      <div style="padding:.6rem 0">
+        <button class="btn btn-ghost btn-sm" onclick="navigate('shop')"><i class="fas fa-coins"></i> Zum Coin-Shop</button>
+        <button class="btn btn-ghost btn-sm" onclick="navigate('marktplatz')"><i class="fas fa-exchange-alt"></i> Zum Marktplatz</button>
+      </div>
     </div>`;
 }
 

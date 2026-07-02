@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ACLS – Werkstatt &amp; Fahrschule | Los Santos (ColdRP)</title>
   <meta name="description" content="ACLS Automobil-Club Los Santos: Fahrzeugwerkstatt, Tuning & Abschleppdienst plus Führerscheine aller Klassen auf ColdRP. Live-Status, Preisliste und Auftragsanfrage." />
+  <meta name="keywords" content="ACLS, Werkstatt Los Santos, KFZ Werkstatt GTA RP, Tuning Los Santos, Abschleppdienst ColdRP, Fahrschule Los Santos, Führerschein GTA V, FiveM Werkstatt, ColdRP Fraktion, Auto Reparatur Roleplay, GTA 5 RP Werkstatt, Fahrzeug Tuning FiveM" />
+  <meta name="author" content="ACLS Automobil-Club Los Santos" />
+  <meta name="robots" content="index, follow" />
   <link rel="canonical" href="__BASE_URL__/" />
 
   <!-- Open Graph / Discord-Link-Vorschau -->
@@ -16,6 +19,50 @@
   <meta property="og:image" content="__BASE_URL__/icon-512.png" />
   <meta name="twitter:card" content="summary" />
 
+  <!-- Schema.org: strukturierte Daten für Suchmaschinen (AutoRepair + DrivingSchool) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "AutoRepair",
+        "@id": "__BASE_URL__/#werkstatt",
+        "name": "ACLS Automobil-Club Los Santos",
+        "alternateName": "ACLS Werkstatt",
+        "description": "Fahrzeugwerkstatt, Tuning & Abschleppdienst in Los Santos (ColdRP): Reparatur, Wartung, Performance- und Optik-Tuning sowie Bergung und Transport.",
+        "url": "__BASE_URL__/",
+        "image": "__BASE_URL__/icon-512.png",
+        "logo": "__BASE_URL__/logo.png",
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": "ACLS Hauptquartier",
+          "addressLocality": "Los Santos"
+        },
+        "priceRange": "$$",
+        "makesOffer": [
+          { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Fahrzeug-Reparatur & Wartung" } },
+          { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Performance- & Optik-Tuning" } },
+          { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Abschleppdienst & Bergung" } }
+        ]
+      },
+      {
+        "@type": "DrivingSchool",
+        "@id": "__BASE_URL__/#fahrschule",
+        "name": "ACLS Fahrschule Los Santos",
+        "description": "Führerscheine aller Klassen in Los Santos: Theorie- und Praxisprüfungen inklusive Prüfungsvorbereitung per Online-Quiz.",
+        "url": "__BASE_URL__/quiz",
+        "parentOrganization": { "@id": "__BASE_URL__/#werkstatt" }
+      },
+      {
+        "@type": "WebSite",
+        "url": "__BASE_URL__/",
+        "name": "ACLS – Werkstatt & Fahrschule Los Santos",
+        "inLanguage": "de"
+      }
+    ]
+  }
+  </script>
+
   <link rel="icon" type="image/png" href="/logo.png" />
 
   <!-- PWA: installierbar als App -->
@@ -26,17 +73,19 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="ACLS" />
 
-  <!-- Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet, Chart.js & jsPDF werden bei Bedarf nachgeladen (script.js) -->
 
   <!-- Icons + Font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <link rel="stylesheet" href="styles.css?v=4" />
+  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="preload" as="image" href="/landingpage.png" />
 </head>
 <body>
+  <a class="skip-link" href="#pageContent">Zum Inhalt springen</a>
 
   <!-- ===== LOGIN SCREEN / SCHAUFENSTER ===== -->
   <div id="loginScreen" class="login-screen hidden">
@@ -109,7 +158,7 @@
   <div id="app" class="app hidden">
 
     <!-- Sidebar -->
-    <aside class="sidebar">
+    <aside class="sidebar" aria-label="Hauptnavigation">
       <div class="sidebar-header">
         <span class="sidebar-label">Navigation</span>
         <button class="sidebar-toggle" onclick="openNavSettings()" title="Sidebar anpassen" aria-label="Sidebar anpassen" style="margin-right:.2rem">
@@ -119,7 +168,7 @@
           <i class="fas fa-bars"></i>
         </button>
       </div>
-      <nav class="sidebar-nav" id="sidebarNav">
+      <nav class="sidebar-nav" id="sidebarNav" role="navigation" aria-label="Seiten">
 
         <!-- Dashboard – immer oben sichtbar -->
         <a class="nav-item active" data-page="dashboard"><i class="fas fa-th-large"></i><span>Dashboard</span></a>
@@ -206,6 +255,7 @@
           </div>
           <div class="nav-group-items">
             <a class="nav-item" data-page="shop"><i class="fas fa-coins" style="color:#fbbf24"></i><span>Coin-Shop</span></a>
+            <a class="nav-item" data-page="finanzen"><i class="fas fa-wallet" style="color:#fbbf24"></i><span>Meine Finanzen</span></a>
             <a class="nav-item" data-page="marktplatz"><i class="fas fa-exchange-alt" style="color:#fbbf24"></i><span>Marktplatz</span></a>
             <a class="nav-item" data-page="wetten"><i class="fas fa-handshake" style="color:#fbbf24"></i><span>Coin-Wetten</span></a>
             <a class="nav-item" data-page="schwarzmarkt"><i class="fas fa-store-slash" style="color:#fbbf24"></i><span>Schwarzmarkt</span></a>
@@ -242,7 +292,7 @@
 
       </nav>
       <div class="sidebar-bottom">
-        <div id="admin-toggle" onclick="toggleAdminNav()" style="display:none;margin:.3rem .8rem .15rem;font-size:.6rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
+        <div id="admin-toggle" onclick="toggleAdminNav()" style="display:none;margin:.3rem .8rem .15rem;font-size:.68rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.08em;cursor:pointer;align-items:center;justify-content:space-between;padding-right:.4rem;user-select:none">
           <span>Verwaltung</span>
           <i id="admin-chevron" class="fas fa-chevron-down" style="font-size:.55rem;transition:transform .2s"></i>
         </div>
@@ -300,20 +350,20 @@
           <p id="pageSubtitle">Willkommen zurück</p>
         </div>
         <div style="display:flex;align-items:center;gap:.6rem">
-          <button id="mobileMenuBtn" onclick="toggleMobileMenu()" title="Menü" style="display:none;background:none;border:1px solid var(--border);color:var(--muted);width:36px;height:36px;border-radius:8px;cursor:pointer;align-items:center;justify-content:center;transition:color .15s,border-color .15s;flex-shrink:0">
-            <i class="fas fa-bars" style="font-size:.85rem"></i>
+          <button id="mobileMenuBtn" onclick="toggleMobileMenu()" title="Menü" aria-label="Menü öffnen" style="display:none;background:none;border:1px solid var(--border);color:var(--muted);width:36px;height:36px;border-radius:8px;cursor:pointer;align-items:center;justify-content:center;transition:color .15s,border-color .15s;flex-shrink:0">
+            <i class="fas fa-bars" style="font-size:.85rem" aria-hidden="true"></i>
           </button>
-          <button onclick="navigate('search')" title="Suche" style="background:none;border:1px solid var(--border);color:var(--muted);width:36px;height:36px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .15s,border-color .15s;flex-shrink:0" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--orange)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
-            <i class="fas fa-search" style="font-size:.85rem"></i>
+          <button onclick="navigate('search')" title="Suche" aria-label="Suche öffnen" style="background:none;border:1px solid var(--border);color:var(--muted);width:36px;height:36px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .15s,border-color .15s;flex-shrink:0" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--orange)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
+            <i class="fas fa-search" style="font-size:.85rem" aria-hidden="true"></i>
           </button>
-          <button id="notifBell" onclick="toggleNotifPanel()" title="Benachrichtigungen" style="position:relative;background:none;border:1px solid var(--border);color:var(--muted);width:36px;height:36px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .15s,border-color .15s;flex-shrink:0" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--orange)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
-            <i class="fas fa-bell" style="font-size:.85rem"></i>
+          <button id="notifBell" onclick="toggleNotifPanel()" title="Benachrichtigungen" aria-label="Benachrichtigungen öffnen" style="position:relative;background:none;border:1px solid var(--border);color:var(--muted);width:36px;height:36px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .15s,border-color .15s;flex-shrink:0" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--orange)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
+            <i class="fas fa-bell" style="font-size:.85rem" aria-hidden="true"></i>
             <span id="notifBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;font-size:.5rem;font-weight:800;border-radius:999px;padding:0 3px;min-width:14px;height:14px;line-height:14px;text-align:center;pointer-events:none"></span>
           </button>
           <div class="user-widget" id="userWidget"></div>
         </div>
       </header>
-      <main id="pageContent"><div class="loader-wrap"><div class="loader"></div></div></main>
+      <main id="pageContent" tabindex="-1"><div class="loader-wrap"><div class="loader"></div></div></main>
     </div>
   </div>
 
@@ -322,45 +372,45 @@
 
   <!-- Modal overlay -->
   <div id="modalOverlay" class="modal-overlay hidden">
-    <div id="modalBox" class="modal-box"></div>
+    <div id="modalBox" class="modal-box" role="dialog" aria-modal="true"></div>
   </div>
 
   <!-- Toast container -->
-  <div id="toastContainer" class="toast-container"></div>
+  <div id="toastContainer" class="toast-container" role="status" aria-live="polite"></div>
 
   <!-- Theme Switcher (floating, bottom-right) -->
-  <div class="theme-switcher-float">
+  <div class="theme-switcher-float" role="group" aria-label="Design wählen">
     <span class="theme-switcher-label">Design</span>
     <div class="theme-dots">
-      <button class="theme-dot" id="tdunkel" onclick="setTheme('dunkel')" title="Dunkel"
+      <button class="theme-dot" id="tdunkel" onclick="setTheme('dunkel')" title="Dunkel" aria-label="Design: Dunkel"
         style="background:#0f0f0f;border-color:#2a2a2a"></button>
-      <button class="theme-dot" id="thell"   onclick="setTheme('hell')"   title="Hell"
+      <button class="theme-dot" id="thell"   onclick="setTheme('hell')"   title="Hell" aria-label="Design: Hell"
         style="background:#f0f4f8;border-color:#d1d9e2"></button>
-      <button class="theme-dot" id="tmodern" onclick="setTheme('modern')" title="Modern (Blau)"
+      <button class="theme-dot" id="tmodern" onclick="setTheme('modern')" title="Modern (Blau)" aria-label="Design: Modern (Blau)"
         style="background:#050a14;border-color:#163055"></button>
-      <button class="theme-dot" id="talt"    onclick="setTheme('alt')"    title="Alt (Warm)"
+      <button class="theme-dot" id="talt"    onclick="setTheme('alt')"    title="Alt (Warm)" aria-label="Design: Alt (Warm)"
         style="background:#180e04;border-color:#3d2910"></button>
-      <button class="theme-dot" id="tgruen"  onclick="setTheme('gruen')"  title="Grün (Forest)"
+      <button class="theme-dot" id="tgruen"  onclick="setTheme('gruen')"  title="Grün (Forest)" aria-label="Design: Grün (Forest)"
         style="background:#040d06;border-color:#163d1e"></button>
-      <button class="theme-dot" id="tlila"   onclick="setTheme('lila')"   title="Lila (Twilight)"
+      <button class="theme-dot" id="tlila"   onclick="setTheme('lila')"   title="Lila (Twilight)" aria-label="Design: Lila (Twilight)"
         style="background:#0d0815;border-color:#2e1854"></button>
-      <button class="theme-dot" id="tneon"      onclick="setTheme('neon')"      title="Neon (Cyber)"
+      <button class="theme-dot" id="tneon"      onclick="setTheme('neon')"      title="Neon (Cyber)" aria-label="Design: Neon (Cyber)"
         style="background:#06060f;border-color:#00f5ff;box-shadow:0 0 6px rgba(0,245,255,.5)"></button>
-      <button class="theme-dot" id="tlosantos" onclick="setTheme('losantos')" title="Los Santos (Nacht)"
+      <button class="theme-dot" id="tlosantos" onclick="setTheme('losantos')" title="Los Santos (Nacht)" aria-label="Design: Los Santos (Nacht)"
         style="background:#06050a;border-color:#f97316;box-shadow:0 0 6px rgba(249,115,22,.5)"></button>
-      <button class="theme-dot" id="trot"      onclick="setTheme('rot')"      title="Rot (Blood)"
+      <button class="theme-dot" id="trot"      onclick="setTheme('rot')"      title="Rot (Blood)" aria-label="Design: Rot (Blood)"
         style="background:#0a0505;border-color:#ef4444;box-shadow:0 0 6px rgba(239,68,68,.5)"></button>
-      <button class="theme-dot" id="tfendt"    onclick="setTheme('fendt')"    title="Fendt"
+      <button class="theme-dot" id="tfendt"    onclick="setTheme('fendt')"    title="Fendt" aria-label="Design: Fendt"
         style="background:#020a04;border-color:#4ade80;box-shadow:0 0 6px rgba(74,222,128,.5)"></button>
-      <button class="theme-dot" id="tcarbon"   onclick="setTheme('carbon')"   title="Carbon (Audi RS6)"
+      <button class="theme-dot" id="tcarbon"   onclick="setTheme('carbon')"   title="Carbon (Audi RS6)" aria-label="Design: Carbon (Audi RS6)"
         style="background:#0a0602;border-color:#ea580c;box-shadow:0 0 6px rgba(234,88,12,.6)"></button>
-      <button class="theme-dot" id="tasphalt"  onclick="setTheme('asphalt')"  title="Asphalt (Gelb)"
+      <button class="theme-dot" id="tasphalt"  onclick="setTheme('asphalt')"  title="Asphalt (Gelb)" aria-label="Design: Asphalt (Gelb)"
         style="background:#0c0c0c;border-color:#fbbf24;box-shadow:0 0 6px rgba(251,191,36,.4)"></button>
-      <button class="theme-dot" id="tsunset"   onclick="setTheme('sunset')"   title="Sonnenuntergang"
+      <button class="theme-dot" id="tsunset"   onclick="setTheme('sunset')"   title="Sonnenuntergang" aria-label="Design: Sonnenuntergang"
         style="background:#100818;border-color:#f97316;box-shadow:0 0 6px rgba(249,115,22,.5)"></button>
-      <button class="theme-dot" id="tpolareis" onclick="setTheme('polareis')" title="Polareis (Cyan)"
+      <button class="theme-dot" id="tpolareis" onclick="setTheme('polareis')" title="Polareis (Cyan)" aria-label="Design: Polareis (Cyan)"
         style="background:#04101e;border-color:#38bdf8;box-shadow:0 0 6px rgba(56,189,248,.5)"></button>
-      <button class="theme-dot" id="tkatzen"   onclick="setTheme('katzen')"   title="Katzen 🐱"
+      <button class="theme-dot" id="tkatzen"   onclick="setTheme('katzen')"   title="Katzen 🐱" aria-label="Design: Katzen 🐱"
         style="background:#12080f;border-color:#e879f9;box-shadow:0 0 6px rgba(232,121,249,.5)"></button>
     </div>
   </div>
@@ -371,10 +421,7 @@
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
   </script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-  <script src="script.js?v=7"></script>
+  <script src="script.js?v=9"></script>
   <script src="/js/social.js?v=1"></script>
   <script>init();</script>
 </body>

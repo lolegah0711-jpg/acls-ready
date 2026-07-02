@@ -81,9 +81,10 @@ async function load() {
   }
   const d = await res.json();
   const u = d.user, s = d.stats;
+  const _ini = ((u.username||'?').slice(0,2).toUpperCase().replace(/[^A-Z0-9ÄÖÜ]/g,'')||'?');
   const av = u.avatar && u.discord_id
-    ? `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png" onerror="this.parentElement.textContent='${u.username.slice(0,2).toUpperCase()}'>`
-    : u.username.slice(0,2).toUpperCase();
+    ? `<img src="https://cdn.discordapp.com/avatars/${encodeURIComponent(u.discord_id)}/${encodeURIComponent(u.avatar)}.png" onerror="this.parentElement.textContent='${_ini}'">`
+    : _ini;
   const roleClass = {admin:'role-admin', ausbilder:'role-ausbilder', member:'role-member'}[u.role] || 'role-member';
   const roleLabel = {admin:'Admin', ausbilder:'Ausbilder', member:'Mitarbeiter'}[u.role] || u.role;
   const passRate = s.conducted > 0 ? Math.round((s.passed_exams / s.total_exams) * 100) : 0;

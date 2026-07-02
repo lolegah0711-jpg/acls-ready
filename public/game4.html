@@ -186,7 +186,7 @@ async function openLb(){
     el.innerHTML=data.map((row,i)=>{
       const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
       const me=currentUser&&row.discord_id===currentUser.discord_id;
-      const av=row.avatar?`<img src="https://cdn.discordapp.com/avatars/${row.discord_id}/${row.avatar}.png" onerror="this.parentElement.textContent='${(row.username||'?').slice(0,2).toUpperCase()}'">`:(row.username||'?').slice(0,2).toUpperCase();
+      const _ini=((row.username||'?').slice(0,2).toUpperCase().replace(/[^A-Z0-9ÄÖÜ]/g,'')||'?');const av=row.avatar?`<img src="https://cdn.discordapp.com/avatars/${encodeURIComponent(row.discord_id)}/${encodeURIComponent(row.avatar)}.png" onerror="this.parentElement.textContent='${_ini}'">`:_ini;
       return`<div class="lb-row" style="${me?'background:#0a1a0a;border-radius:5px;':''}">
         <div class="lb-rank">${medal}</div><div class="lb-av">${av}</div>
         <div class="lb-name">${esc(row.username||'Unbekannt')}</div>

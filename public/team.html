@@ -106,10 +106,11 @@
   <script>
     const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     function avatar(u) {
+      const ini = ((u.username||'?')[0].toUpperCase().replace(/[^A-Z0-9ÄÖÜ]/g,'')||'?');
       if (u.avatar && u.discord_id) {
-        return `<img src="https://cdn.discordapp.com/avatars/${u.discord_id}/${u.avatar}.png?size=128" onerror="this.parentNode.innerHTML='${(u.username||'?')[0].toUpperCase()}'" alt="">`;
+        return `<img src="https://cdn.discordapp.com/avatars/${encodeURIComponent(u.discord_id)}/${encodeURIComponent(u.avatar)}.png?size=128" onerror="this.parentNode.textContent='${ini}'" alt="">`;
       }
-      return (u.username || '?')[0].toUpperCase();
+      return ini;
     }
     function roleBadge(role) {
       if (role === 'admin')     return '<span class="member-role role-admin"><i class="fas fa-shield-alt" style="margin-right:.3rem"></i>Administration</span>';
