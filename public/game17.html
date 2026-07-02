@@ -63,6 +63,15 @@
     .bigwin.hidden{display:none;}
     .bigwin .inner{font-weight:900;font-size:40px;text-align:center;color:#fde047;text-shadow:0 0 30px rgba(253,224,71,.8);animation:bw .5s ease;}
     @keyframes bw{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
+    .jackpot{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 auto 10px;padding:7px 18px;max-width:340px;
+      background:linear-gradient(135deg,rgba(253,224,71,.14),rgba(249,115,22,.08));border:1px solid rgba(253,224,71,.4);border-radius:999px;
+      font-weight:900;letter-spacing:.04em;color:#fde047;text-shadow:0 0 12px rgba(253,224,71,.55);animation:jp-pulse 2.4s ease-in-out infinite;}
+    .jackpot .val{font-size:18px;}
+    .jackpot .lbl{font-size:11px;color:#c9b458;letter-spacing:.12em;}
+    @keyframes jp-pulse{0%,100%{box-shadow:0 0 6px rgba(253,224,71,.25)}50%{box-shadow:0 0 18px rgba(253,224,71,.55)}}
+    .btn-free{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:1px solid rgba(74,222,128,.5);
+      box-shadow:0 0 12px rgba(74,222,128,.3);animation:jp-pulse 2s ease-in-out infinite;}
+    .btn-free:disabled{opacity:.5;animation:none;}
   </style>
 </head>
 <body>
@@ -77,6 +86,10 @@
 </div>
 
 <div class="stage">
+  <div class="jackpot" title="Progressiver Jackpot – jeder Einsatz zahlt ein, jeder Spin kann ihn knacken!">
+    <span>💰</span>
+    <div><div class="lbl">JACKPOT</div><div class="val"><span id="jackpotVal">–</span> 🪙</div></div>
+  </div>
   <div class="banner" id="banner"></div>
   <div class="winbox">
     <div class="lbl">Gewinn</div>
@@ -95,6 +108,7 @@
       <button class="betbtn" onclick="changeBet(1)">+</button>
     </div>
     <button class="btn btn-spin" id="spinBtn" onclick="spin()">DREHEN</button>
+    <button class="btn btn-free" id="freeBtn" onclick="freeSpin()" style="display:none">🎁 Tägliches Freispiel (25 🪙 aufs Haus)</button>
     <button class="btn btn-feat" id="featBtn" onclick="buyFeature()">⚡ Freispiele kaufen (<span id="featCost">1000</span> 🪙)</button>
     <div class="loss-bar" id="lossBarWrap" style="display:none">
       <div style="font-size:10px;color:rgba(255,255,255,.4);text-align:center;margin-bottom:3px">Tages-Verlustlimit (Spielerschutz)</div>
@@ -269,20 +283,32 @@ async function post(url,body){
   return d;
 }
 
-async function doSpin(buyFeature){
+function setJackpot(v){ if(v!=null) $('jackpotVal').textContent=(v||0).toLocaleString('de-DE'); }
+
+async function doSpin(buyFeature,useFreeSpin){
   if(busy)return;
   const bet=curBet();
-  const cost=buyFeature?bet*limits.featureCostMult:bet;
+  const cost=useFreeSpin?0:(buyFeature?bet*limits.featureCostMult:bet);
   if(cost>balance){setBanner('Nicht genug Coins','#ef4444');return;}
-  busy=true; $('spinBtn').disabled=true; $('featBtn').disabled=true; setBanner('');
+  busy=true; $('spinBtn').disabled=true; $('featBtn').disabled=true; $('freeBtn').disabled=true; setBanner('');
   try{
-    const res=await post('/api/slot/spin',{bet,buyFeature});
+    const res=await post('/api/slot/spin',useFreeSpin?{freeSpin:true}:{bet,buyFeature});
+    if(useFreeSpin) $('freeBtn').style.display='none';
     await animate(res);
+    setJackpot(res.jackpot);
+    if(res.jackpotWin>0){
+      setBanner(`💰 JACKPOT GEKNACKT: +${res.jackpotWin.toLocaleString('de-DE')} 🪙 💰`,'#fde047');
+      $('bigwinText').textContent=`💰 JACKPOT +${res.jackpotWin.toLocaleString('de-DE')} 🪙`;
+      $('bigwin').classList.remove('hidden');
+      await sleep(3200);
+      $('bigwin').classList.add('hidden');
+    }
   }catch(e){ setBanner(esc(e.message),'#ef4444'); }
-  busy=false; $('spinBtn').disabled=false; refreshBet();
+  busy=false; $('spinBtn').disabled=false; $('freeBtn').disabled=false; refreshBet();
 }
 const spin=()=>doSpin(false);
 const buyFeature=()=>doSpin(true);
+const freeSpin=()=>doSpin(false,true);
 
 function openOv(id){$(id).classList.remove('hidden');}
 function closeOv(id){$(id).classList.add('hidden');}
@@ -326,6 +352,9 @@ async function init(){
     limits={featureCostMult:d.featureCostMult,featureMaxBet:d.featureMaxBet,dailyLossLimit:d.dailyLossLimit};
     setBalance(d.balance);
     updateLossBar(d.dailyNet);
+    setJackpot(d.jackpot);
+    if(d.freeSpinAvailable) $('freeBtn').style.display='';
+    if(d.lastJackpot) $('banner').innerHTML=`<span style="color:#c9b458;font-size:11px">Letzter Jackpot: ${esc(d.lastJackpot.winner)} · +${(d.lastJackpot.amount||0).toLocaleString('de-DE')} 🪙</span>`;
   }catch{$('ov-login').classList.remove('hidden');}
 }
 init();

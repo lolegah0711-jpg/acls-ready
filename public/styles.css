@@ -1780,6 +1780,79 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 }
 .skip-link:focus { left: 0; }
 
+/* ══ Onboarding-Tour (Spotlight) ═════════════════════════════════ */
+#tourOverlay { position: fixed; inset: 0; z-index: 14000; }
+#tourSpot {
+  position: fixed;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.72), 0 0 0 2px var(--orange);
+  transition: all .3s ease;
+  pointer-events: none;
+}
+#tourCard {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--rl);
+  padding: 1rem 1.1rem;
+  width: 290px; max-width: calc(100vw - 20px);
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  transition: top .3s ease, left .3s ease;
+}
+.tour-step-num { font-size: .65rem; font-weight: 800; color: var(--orange); letter-spacing: .08em; margin-bottom: .3rem; }
+.tour-title    { font-size: .95rem; font-weight: 800; margin-bottom: .3rem; }
+.tour-text     { font-size: .8rem; color: var(--muted); line-height: 1.55; margin-bottom: .8rem; }
+.tour-btns     { display: flex; justify-content: space-between; gap: .5rem; }
+
+/* ══ Favoriten in der Sidebar ════════════════════════════════════ */
+.fav-toggle {
+  margin-left: auto;
+  font-size: .68rem !important;
+  width: auto !important;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity .15s, color .15s;
+  padding: .2rem;
+}
+.nav-item:hover .fav-toggle { opacity: .55; }
+.fav-toggle:hover  { opacity: 1 !important; color: #fbbf24; }
+.fav-toggle.active { opacity: .9; color: #fbbf24; }
+.sidebar.collapsed .fav-toggle { display: none; }
+@media (max-width: 640px) {
+  .fav-toggle { opacity: .35; } /* kein Hover auf Touch – Stern dezent sichtbar */
+}
+#favNav .nav-item { padding-top: .5rem; padding-bottom: .5rem; }
+
+/* ══ Update-Banner (neue Version verfügbar) ══════════════════════ */
+#updateBanner {
+  position: fixed;
+  top: .9rem; left: 50%; transform: translateX(-50%);
+  z-index: 15000;
+  display: flex; align-items: center; gap: .7rem;
+  background: var(--surface);
+  border: 1px solid rgba(74,222,128,.45);
+  border-radius: 999px;
+  padding: .55rem 1.1rem;
+  font-size: .85rem; font-weight: 600;
+  box-shadow: 0 6px 24px rgba(0,0,0,.45), 0 0 12px rgba(74,222,128,.15);
+  animation: toast-in .25s ease;
+  max-width: calc(100vw - 20px);
+}
+#updateBanner button {
+  background: #16a34a; color: #fff;
+  border: none; border-radius: 999px;
+  padding: .35rem .9rem;
+  font-size: .78rem; font-weight: 700; font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#updateBanner button:hover { background: #15803d; }
+#updateBanner button.dismiss {
+  background: transparent; color: var(--muted);
+  padding: .25rem .4rem; font-size: .8rem;
+}
+#updateBanner button.dismiss:hover { color: var(--text); background: var(--surface2); }
+
 /* Animationen respektieren Systemeinstellung */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

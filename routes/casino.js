@@ -288,6 +288,46 @@ module.exports = function({ db, coinIdent, addCoins, rateLimit, checkGameBadges,
   const SLOT_FEATURE_MAX_BET  = 50;       // Feature-Kauf = 100× Einsatz → max 5000 Coins
   const SLOT_DAILY_LOSS_LIMIT = 15000;     // Spielerschutz: max Netto-Verlust pro Tag
   const SLOT_ABS_MAX_WIN      = 250000;   // harte Obergrenze pro Spin (Coin-Wirtschaft)
+  const SLOT_FREE_SPIN_BET    = 25;       // Tägliches Freispiel: Einsatz geht aufs Haus
+
+  // ── Progressiver Jackpot ──────────────────────────────────────
+  // Jeder bezahlte Einsatz füttert den Pool (3 %). Jeder bezahlte Spin
+  // kann ihn knacken – Chance proportional zum Einsatz (250er ≈ 1:8000).
+  const JACKPOT_SEED        = 1000;       // Startwert nach jedem Gewinn
+  const JACKPOT_FEED_RATE   = 0.03;
+  const JACKPOT_WIN_DIVISOR = 2_000_000;  // P(win) = bet / 2 Mio
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS slot_jackpot (
+      id              INTEGER PRIMARY KEY CHECK (id = 1),
+      pool            INTEGER NOT NULL DEFAULT ${JACKPOT_SEED},
+      last_winner     TEXT,
+      last_win_amount INTEGER,
+      last_win_at     TEXT
+    );
+    CREATE TABLE IF NOT EXISTS slot_free_spins (
+      discord_id TEXT NOT NULL,
+      day        TEXT NOT NULL,
+      PRIMARY KEY (discord_id, day)
+    );
+  `);
+  db.prepare('INSERT OR IGNORE INTO slot_jackpot (id, pool) VALUES (1, ?)').run(JACKPOT_SEED);
+
+  const jackpotRow  = () => db.prepare('SELECT * FROM slot_jackpot WHERE id = 1').get();
+  const jackpotFeed = cost => db.prepare('UPDATE slot_jackpot SET pool = pool + ? WHERE id = 1')
+    .run(Math.max(1, Math.round(cost * JACKPOT_FEED_RATE)));
+  function jackpotTryWin(ident, bet) {
+    if (crypto.randomInt(JACKPOT_WIN_DIVISOR) >= bet) return null;
+    const pool = jackpotRow()?.pool ?? JACKPOT_SEED;
+    if (pool <= 0) return null;
+    db.prepare(`UPDATE slot_jackpot SET pool = ?, last_winner = ?, last_win_amount = ?, last_win_at = CURRENT_TIMESTAMP WHERE id = 1`)
+      .run(JACKPOT_SEED, ident.name, pool);
+    const balance = addCoins(ident.id, ident.name, pool, 'slot:jackpot', { pool });
+    return { amount: pool, balance };
+  }
+
+  const freeSpinUsed = did =>
+    !!db.prepare(`SELECT 1 FROM slot_free_spins WHERE discord_id = ? AND day = date('now')`).get(did);
 
   function slotDailyNet(did) {
     return db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM coin_transactions
@@ -299,12 +339,17 @@ module.exports = function({ db, coinIdent, addCoins, rateLimit, checkGameBadges,
     if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
     const bal = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
     const net = slotDailyNet(ident.id);
+    const jp  = jackpotRow();
     res.json({
       balance: bal, username: ident.name,
       minBet: SLOT_MIN_BET, maxBet: SLOT_MAX_BET,
       featureCostMult: slotEngine.FEATURE_BUY_COST, featureMaxBet: SLOT_FEATURE_MAX_BET,
       dailyNet: net, dailyLossLimit: SLOT_DAILY_LOSS_LIMIT,
       lossLeft: Math.max(0, SLOT_DAILY_LOSS_LIMIT + Math.min(0, net)),
+      jackpot: jp?.pool ?? JACKPOT_SEED,
+      lastJackpot: jp?.last_winner ? { winner: jp.last_winner, amount: jp.last_win_amount, at: jp.last_win_at } : null,
+      freeSpinAvailable: !freeSpinUsed(ident.id),
+      freeSpinBet: SLOT_FREE_SPIN_BET,
     });
   });
 
@@ -314,25 +359,43 @@ module.exports = function({ db, coinIdent, addCoins, rateLimit, checkGameBadges,
     if (rateLimit(`slot:${ident.id}`, 90, 60_000)) return res.status(429).json({ error: 'Zu schnell – kurz durchatmen' });
 
     const buyFeature = !!req.body.buyFeature;
-    const bet    = Math.floor(+req.body.bet || 0);
+    const freeSpin   = !!req.body.freeSpin;
+
+    // Tägliches Freispiel: Einsatz zahlt das Haus, 1× pro Tag
+    if (freeSpin) {
+      if (buyFeature) return res.status(400).json({ error: 'Freispiel nicht mit Feature-Kauf kombinierbar' });
+      if (freeSpinUsed(ident.id)) return res.status(400).json({ error: 'Tägliches Freispiel bereits genutzt – morgen wieder!' });
+      db.prepare(`INSERT INTO slot_free_spins (discord_id, day) VALUES (?, date('now'))`).run(ident.id);
+    }
+
+    const bet    = freeSpin ? SLOT_FREE_SPIN_BET : Math.floor(+req.body.bet || 0);
     const maxBet = buyFeature ? SLOT_FEATURE_MAX_BET : SLOT_MAX_BET;
     if (!Number.isInteger(bet) || bet < SLOT_MIN_BET || bet > maxBet)
       return res.status(400).json({ error: `Einsatz: ${SLOT_MIN_BET}–${maxBet} Coins${buyFeature ? ' (Feature-Kauf)' : ''}` });
 
-    // Spielerschutz: Tages-Verlustlimit (Netto-Verlust heute)
-    const netBefore = slotDailyNet(ident.id);
-    if (netBefore <= -SLOT_DAILY_LOSS_LIMIT)
-      return res.status(400).json({ error: `Tages-Verlustlimit erreicht (${SLOT_DAILY_LOSS_LIMIT} Coins). Spielerschutz – morgen geht's weiter.` });
+    let balance;
+    const cost = freeSpin ? 0 : (buyFeature ? bet * slotEngine.FEATURE_BUY_COST : bet);
+    if (freeSpin) {
+      balance = db.prepare('SELECT balance FROM coin_balances WHERE discord_id = ?').get(ident.id)?.balance ?? 0;
+    } else {
+      // Spielerschutz: Tages-Verlustlimit (Netto-Verlust heute)
+      const netBefore = slotDailyNet(ident.id);
+      if (netBefore <= -SLOT_DAILY_LOSS_LIMIT)
+        return res.status(400).json({ error: `Tages-Verlustlimit erreicht (${SLOT_DAILY_LOSS_LIMIT} Coins). Spielerschutz – morgen geht's weiter.` });
 
-    const cost = buyFeature ? bet * slotEngine.FEATURE_BUY_COST : bet;
-    const balAfterBet = addCoins(ident.id, ident.name, -cost, 'slot:bet', { bet, feature: buyFeature });
-    if (balAfterBet === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+      balance = addCoins(ident.id, ident.name, -cost, 'slot:bet', { bet, feature: buyFeature });
+      if (balance === null) return res.status(400).json({ error: 'Nicht genug Coins' });
+      jackpotFeed(cost);
+    }
 
     const result = slotEngine.spin({ bet, freeBuy: buyFeature, rng: (n) => crypto.randomInt(n) });
     const win = Math.min(result.totalWin, SLOT_ABS_MAX_WIN);
-    let balance = balAfterBet;
     if (win > 0)
-      balance = addCoins(ident.id, ident.name, win, 'slot:win', { bet, x: +(win / bet).toFixed(2), feature: buyFeature });
+      balance = addCoins(ident.id, ident.name, win, 'slot:win', { bet, x: +(win / bet).toFixed(2), feature: buyFeature, freeSpin });
+
+    // Jackpot nur bei bezahlten Spins knackbar (Freispiel zahlt nicht ein)
+    const jw = freeSpin ? null : jackpotTryWin(ident, bet);
+    if (jw) balance = jw.balance;
 
     // Highscore = größter Netto-Gewinn; Spiel-Badges
     const netWin = win - cost;
@@ -354,11 +417,13 @@ module.exports = function({ db, coinIdent, addCoins, rateLimit, checkGameBadges,
     try { seasonIncQuest(ident.id, 'games', 1); } catch {}
 
     res.json({
-      ok: true, bet, cost, buyFeature,
+      ok: true, bet, cost, buyFeature, freeSpin,
       rounds: result.rounds, totalWin: win,
       capped: result.capped || win < result.totalWin,
       freeSpinsAwarded: result.freeSpinsAwarded, baseScatters: result.baseScatters,
       balance, dailyNet: slotDailyNet(ident.id),
+      jackpot: jackpotRow()?.pool ?? JACKPOT_SEED,
+      jackpotWin: jw?.amount || 0,
     });
   });
 

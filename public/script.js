@@ -336,6 +336,170 @@ function loadLib(name) {
   return _libPromises[name];
 }
 
+// ── Update-Check ────────────────────────────────────────────────
+// version.json wird beim Start gemerkt und periodisch verglichen.
+// Steigt die Version (neuer Deploy), erscheint ein Reload-Hinweis.
+let _appVersion = null;
+let _updateShown = false;
+async function checkAppVersion() {
+  try {
+    const v = (await (await fetch('/version.json', { cache: 'no-store' })).json()).version;
+    if (_appVersion === null) { _appVersion = v; return; }
+    if (v !== _appVersion && !_updateShown) showUpdateBanner();
+  } catch {}
+}
+function showUpdateBanner() {
+  _updateShown = true;
+  const el = document.createElement('div');
+  el.id = 'updateBanner';
+  el.innerHTML = `
+    <i class="fas fa-arrow-rotate-right" style="color:#4ade80"></i>
+    <span>Neue Version verfügbar!</span>
+    <button onclick="location.reload()">Jetzt neu laden</button>
+    <button class="dismiss" onclick="this.parentElement.remove()" title="Später" aria-label="Später">✕</button>`;
+  document.body.appendChild(el);
+}
+setInterval(checkAppVersion, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkAppVersion(); });
+checkAppVersion();
+
+// ════════════════════════════════════════════════════════════════
+//  ONBOARDING-TOUR — Spotlight-Rundgang beim ersten Login
+// ════════════════════════════════════════════════════════════════
+const TOUR_STEPS = [
+  { sel: '#sidebarNav',                      title: 'Navigation',         text: 'Alle Bereiche der Website, thematisch gruppiert. Gruppen lassen sich per Klick ein- und ausklappen.' },
+  { sel: '.nav-item[data-page="meinacls"]',  title: 'Mein Hub',           text: 'Dein persönlicher Startpunkt: Level, tägliche Aufgaben, Streak und dein Fortschritt.' },
+  { sel: '.nav-item[data-page="werkstatt"]', title: 'Werkstatt-Hub',      text: 'Leistungen, Standort und Live-Dienststatus der Werkstatt – das Kerngeschäft.' },
+  { sel: '.nav-item[data-page="arcade"]',    title: 'Arcade',             text: 'Alle Minispiele an einem Ort – hier verdienst du Coins und XP.' },
+  { sel: '#searchBtn',                       title: 'Globale Suche',      text: 'Findet Seiten, Mitarbeiter, Sperren und mehr. Tipp: Strg+K funktioniert von überall.' },
+  { sel: '#notifBell',                       title: 'Benachrichtigungen', text: 'Neuigkeiten und Hinweise landen hier – der rote Punkt zeigt Ungelesenes.' },
+  { sel: '.theme-switcher-float',            title: 'Design',             text: '15 Themes zur Auswahl – von „Los Santos bei Nacht" bis „Katzen". Probier dich aus!' },
+];
+let _tourIdx = 0;
+
+window.startTour = function() {
+  if ($('tourOverlay')) return;
+  _tourIdx = 0;
+  const ov = document.createElement('div');
+  ov.id = 'tourOverlay';
+  ov.innerHTML = '<div id="tourSpot"></div><div id="tourCard"></div>';
+  document.body.appendChild(ov);
+  showTourStep();
+};
+
+window.endTour = function() {
+  localStorage.setItem('acls-tour-done', '1');
+  $('tourOverlay')?.remove();
+  if (window.innerWidth <= 640) closeMobileMenu();
+};
+
+function showTourStep() {
+  while (_tourIdx < TOUR_STEPS.length && !document.querySelector(TOUR_STEPS[_tourIdx].sel)) _tourIdx++;
+  if (_tourIdx >= TOUR_STEPS.length) { endTour(); return; }
+  const step   = TOUR_STEPS[_tourIdx];
+  const target = document.querySelector(step.sel);
+
+  // Mobile: Sidebar für Sidebar-Schritte öffnen, sonst schließen (Animation abwarten)
+  let delay = 0;
+  if (window.innerWidth <= 640) {
+    const sb = document.querySelector('.sidebar');
+    const needsSidebar = !!target.closest('.sidebar');
+    if (needsSidebar !== sb.classList.contains('mobile-open')) {
+      sb.classList.toggle('mobile-open', needsSidebar);
+      delay = 300;
+    }
+  }
+
+  setTimeout(() => {
+    target.scrollIntoView({ block: 'nearest' });
+    const r = target.getBoundingClientRect();
+    const pad = 6;
+    const spot = $('tourSpot');
+    if (!spot) return;
+    spot.style.top    = (r.top - pad) + 'px';
+    spot.style.left   = (r.left - pad) + 'px';
+    spot.style.width  = (r.width + pad * 2) + 'px';
+    spot.style.height = (r.height + pad * 2) + 'px';
+
+    const card = $('tourCard');
+    card.innerHTML = `
+      <div class="tour-step-num">${_tourIdx + 1} / ${TOUR_STEPS.length}</div>
+      <div class="tour-title">${step.title}</div>
+      <div class="tour-text">${step.text}</div>
+      <div class="tour-btns">
+        <button class="btn btn-ghost btn-sm" onclick="endTour()">Überspringen</button>
+        <button class="btn btn-primary btn-sm" onclick="nextTourStep()">${_tourIdx === TOUR_STEPS.length - 1 ? 'Fertig ✓' : 'Weiter →'}</button>
+      </div>`;
+    requestAnimationFrame(() => {
+      const cw = card.offsetWidth, ch = card.offsetHeight;
+      let top = r.bottom + 14;
+      if (top + ch > innerHeight - 10) top = Math.max(10, r.top - ch - 14);
+      const left = Math.min(Math.max(10, r.left), innerWidth - cw - 10);
+      card.style.top  = top + 'px';
+      card.style.left = left + 'px';
+    });
+  }, delay);
+}
+window.nextTourStep = () => { _tourIdx++; showTourStep(); };
+
+// ════════════════════════════════════════════════════════════════
+//  FAVORITEN — Seiten anpinnen, erscheinen oben in der Sidebar
+// ════════════════════════════════════════════════════════════════
+function getFavPages() {
+  try { return JSON.parse(localStorage.getItem('acls-fav-pages') || '[]'); } catch { return []; }
+}
+window.toggleFavPage = function(page) {
+  let favs = getFavPages();
+  if (favs.includes(page)) favs = favs.filter(p => p !== page);
+  else {
+    if (favs.length >= 8) { toast('Maximal 8 Favoriten', 'err'); return; }
+    favs.push(page);
+  }
+  localStorage.setItem('acls-fav-pages', JSON.stringify(favs));
+  renderFavorites();
+};
+
+function initFavToggles() {
+  document.querySelectorAll('#sidebarNav .nav-group-items .nav-item[data-page]').forEach(el => {
+    if (el.querySelector('.fav-toggle')) return;
+    const btn = document.createElement('i');
+    btn.className = 'fas fa-star fav-toggle';
+    btn.title = 'Als Favorit anpinnen';
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      e.preventDefault();
+      toggleFavPage(el.dataset.page);
+    });
+    el.appendChild(btn);
+  });
+  renderFavorites();
+}
+
+function renderFavorites() {
+  const favs = getFavPages();
+  document.querySelectorAll('#sidebarNav .fav-toggle').forEach(b => {
+    b.classList.toggle('active', favs.includes(b.parentElement.dataset.page));
+    b.title = favs.includes(b.parentElement.dataset.page) ? 'Favorit entfernen' : 'Als Favorit anpinnen';
+  });
+  let box = $('favNav');
+  if (!favs.length) { box?.remove(); return; }
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'favNav';
+    const dash = document.querySelector('#sidebarNav > .nav-item[data-page="dashboard"]');
+    (dash || $('sidebarNav').firstElementChild).after(box);
+  }
+  box.innerHTML = `<div class="nav-group-header" style="cursor:default"><span class="nav-group-dot" style="background:#fbbf24"></span><span>Favoriten</span></div>` +
+    favs.map(p => {
+      const src   = document.querySelector(`#sidebarNav .nav-group-items .nav-item[data-page="${p}"]`);
+      const icon  = src?.querySelector('i')?.className.replace(' fav-toggle', '') || 'fas fa-star';
+      const label = src?.querySelector('span')?.childNodes[0]?.textContent?.trim() || p;
+      return `<a class="nav-item" data-page="${esc(p)}"><i class="${esc(icon)}" style="color:#fbbf24"></i><span>${esc(label)}</span></a>`;
+    }).join('');
+  box.querySelectorAll('.nav-item').forEach(el =>
+    el.addEventListener('click', e => { e.preventDefault(); navigate(el.dataset.page); }));
+}
+
 // ── Toast ────────────────────────────────────────────────────────
 function toast(msg, type = '') {
   const t = document.createElement('div');
@@ -1407,11 +1571,14 @@ function bootApp() {
   if (isAdmin() || isAusbilder()) $('admin-toggle').style.display = 'flex';
   document.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', e => {
-      if (el.getAttribute('href') && !el.dataset.page) return; // external links open normally
+      if (!el.dataset.page) return; // externe Links & Buttons (z. B. Tour) unverändert lassen
       e.preventDefault();
       navigate(el.dataset.page);
     });
   });
+  initFavToggles();
+  // Onboarding-Tour beim allerersten Login automatisch starten
+  if (!localStorage.getItem('acls-tour-done')) setTimeout(startTour, 900);
   // PWA-Shortcuts (/?page=shop etc.) direkt auf die gewünschte Seite springen
   const startPage = new URLSearchParams(location.search).get('page');
   navigate(startPage && PAGES[startPage] ? startPage : 'dashboard');
@@ -6973,6 +7140,7 @@ function txLabel(reason) {
     'blackjack:push': '🃏 Blackjack-Push', 'blackjack:double': '🃏 Blackjack verdoppelt',
     'blackjack:refund': '🃏 Blackjack erstattet (Neustart)',
     'slot:bet': '🎰 Mega Spin Einsatz', 'slot:win': '🎰 Mega Spin Gewinn',
+    'slot:jackpot': '💰 JACKPOT geknackt!',
     'exam:blitz': '📋 Blitz-Prüfung abgehalten', 'exam:standard': '📋 Prüfung abgehalten',
     'exam:praxis': '📋 Praxisprüfung abgehalten',
     'lottery:ticket': '🎟️ Lotterie-Lose gekauft', 'lottery:win': '🎟️ Lotterie-Jackpot!',
