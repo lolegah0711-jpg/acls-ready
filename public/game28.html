@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verkehrszeichen-Quiz – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#0a0a0a;font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px 16px 40px;user-select:none;-webkit-tap-highlight-color:transparent}
+    .topbar{width:100%;max-width:560px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+    .nav-btn{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7);padding:7px 14px;border-radius:9px;font-size:12px;font-weight:700;text-decoration:none}
+    h1{font-size:clamp(22px,6vw,32px);font-weight:900;margin-bottom:4px;text-align:center}
+    .sub{font-size:13px;color:#666;margin-bottom:16px;text-align:center;max-width:420px}
+    .hud{display:flex;gap:1.4rem;margin-bottom:14px;flex-wrap:wrap;justify-content:center}
+    .hud div{text-align:center}
+    .hud .v{font-size:1.3rem;font-weight:900;color:#4ade80;font-variant-numeric:tabular-nums}
+    .hud .l{font-size:.62rem;color:#555;text-transform:uppercase;letter-spacing:.08em}
+    .signbox{background:#131313;border:1px solid #232323;border-radius:18px;padding:1.6rem;display:flex;align-items:center;justify-content:center;margin-bottom:6px;min-height:220px;box-shadow:0 0 40px rgba(74,222,128,.04)}
+    .signbox svg{width:170px;height:170px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.5))}
+    .timerbar{height:6px;width:100%;max-width:560px;background:#161616;border-radius:99px;overflow:hidden;margin-bottom:14px}
+    .timerbar i{display:block;height:100%;background:linear-gradient(90deg,#4ade80,#16a34a);border-radius:99px;transition:width .1s linear}
+    .answers{display:grid;grid-template-columns:1fr 1fr;gap:.55rem;max-width:560px;width:100%}
+    .ans{background:#111;border:1px solid #2a2a2a;border-radius:12px;padding:.9rem .8rem;font-size:.85rem;font-weight:700;cursor:pointer;text-align:center;transition:border-color .15s;color:#ddd;font-family:inherit}
+    .ans:hover{border-color:#4ade80}
+    .ans.right{background:#14532d;border-color:#4ade80;color:#4ade80}
+    .ans.wrong{background:#7f1d1d;border-color:#ef4444;color:#fff}
+    .btn-start{background:linear-gradient(135deg,#4ade80,#16a34a);color:#000;font-weight:900;font-size:1rem;padding:13px 36px;border-radius:12px;border:none;cursor:pointer;font-family:inherit}
+    .result-card{background:#111;border:1px solid #222;border-radius:14px;padding:1.4rem 1.8rem;max-width:400px;width:100%;text-align:center;margin-top:8px}
+    .coins-earned{font-size:1.5rem;font-weight:900;color:#fbbf24;margin:.6rem 0}
+    .result-row{display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px solid #1a1a1a;font-size:.84rem}
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:.6rem 1.4rem;font-size:.85rem;font-weight:700;transition:.3s;opacity:0;z-index:99}
+    .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+    .toast.ok{border-color:#22c55e;color:#22c55e}.toast.err{border-color:#ef4444;color:#ef4444}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.92);z-index:100}
+    .ov.hidden{display:none}
+    .ov-card{background:#111;border:1px solid #222;border-radius:18px;padding:36px;max-width:400px;width:100%;text-align:center}
+    .ov-card p{color:#666;font-size:.88rem;margin:.5rem 0 1.5rem;line-height:1.55}
+    .btn-portal{background:#fff;color:#000;font-weight:900;padding:12px 28px;border-radius:12px;text-decoration:none;display:inline-block}
+    @media(max-width:480px){.answers{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <a href="/" class="nav-btn">← Portal</a>
+  <div style="font-size:.8rem;color:#555;font-weight:600">Verkehrszeichen · 15 Schilder</div>
+</div>
+<h1>🚦 Verkehrszeichen-Quiz</h1>
+<p class="sub">Erkenne das Schild, bevor die Zeit abläuft. Serien bringen Bonus-Punkte – ideal zur Prüfungsvorbereitung!</p>
+
+<div class="hud">
+  <div><div class="v" id="hudScore">0</div><div class="l">Punkte</div></div>
+  <div><div class="v" id="hudRound">–</div><div class="l">Schild</div></div>
+  <div><div class="v" id="hudStreak">0</div><div class="l">Serie</div></div>
+</div>
+
+<div class="signbox" id="signbox"><div style="color:#444;font-size:.9rem">Drücke Start!</div></div>
+<div class="timerbar"><i id="tbar" style="width:100%"></i></div>
+<div class="answers" id="answers">
+  <button class="btn-start" style="grid-column:1/-1" onclick="startGame()">▶ Quiz starten</button>
+</div>
+<div id="resultArea"></div>
+
+<div class="ov hidden" id="ovLogin"><div class="ov-card">
+  <div style="font-size:3rem;margin-bottom:6px">🔒</div><h2>Anmeldung nötig</h2>
+  <p>Melde dich im Portal an, um deinen Score zu speichern.</p><a href="/" class="btn-portal">Zum Portal</a>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const ROUNDS = 15, TIME_MS = 8000;
+
+// SVG-Bausteine für die Schilder
+const svgWrap = inner => `<svg viewBox="0 0 100 100">${inner}</svg>`;
+const redCircle = inner => svgWrap(`<circle cx="50" cy="50" r="46" fill="#fff" stroke="#c1121f" stroke-width="8"/>${inner}`);
+const blueCircle = inner => svgWrap(`<circle cx="50" cy="50" r="46" fill="#1b5fab"/>${inner}`);
+const speedSign = n => redCircle(`<text x="50" y="66" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="42" fill="#111">${n}</text>`);
+
+const SIGNS = [
+  { n: 'Stopp – Halt! Vorfahrt gewähren', svg: svgWrap(`<polygon points="30,4 70,4 96,30 96,70 70,96 30,96 4,70 4,30" fill="#c1121f" stroke="#fff" stroke-width="4"/><text x="50" y="62" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="26" fill="#fff">STOP</text>`) },
+  { n: 'Vorfahrt gewähren', svg: svgWrap(`<polygon points="50,94 4,10 96,10" fill="#fff" stroke="#c1121f" stroke-width="9"/>`) },
+  { n: 'Vorfahrtstraße', svg: svgWrap(`<rect x="18" y="18" width="64" height="64" rx="8" transform="rotate(45 50 50)" fill="#f6c500" stroke="#fff" stroke-width="7"/><rect x="34" y="34" width="32" height="32" rx="4" transform="rotate(45 50 50)" fill="#f6c500" stroke="#b58900" stroke-width="2"/>`) },
+  { n: 'Zulässige Höchstgeschwindigkeit 30', svg: speedSign(30) },
+  { n: 'Zulässige Höchstgeschwindigkeit 50', svg: speedSign(50) },
+  { n: 'Zulässige Höchstgeschwindigkeit 80', svg: speedSign(80) },
+  { n: 'Zulässige Höchstgeschwindigkeit 100', svg: redCircle(`<text x="50" y="64" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="34" fill="#111">100</text>`) },
+  { n: 'Verbot der Einfahrt', svg: svgWrap(`<circle cx="50" cy="50" r="46" fill="#c1121f"/><rect x="16" y="42" width="68" height="16" rx="3" fill="#fff"/>`) },
+  { n: 'Überholverbot', svg: redCircle(`<rect x="22" y="38" width="24" height="14" rx="4" fill="#c1121f"/><circle cx="27" cy="55" r="4" fill="#c1121f"/><circle cx="41" cy="55" r="4" fill="#c1121f"/><rect x="54" y="38" width="24" height="14" rx="4" fill="#111"/><circle cx="59" cy="55" r="4" fill="#111"/><circle cx="73" cy="55" r="4" fill="#111"/>`) },
+  { n: 'Einbahnstraße', svg: svgWrap(`<rect x="4" y="32" width="92" height="36" rx="5" fill="#1b5fab" stroke="#fff" stroke-width="3"/><path d="M20 50 h44 v-9 l20 9 -20 9 v-9 z" fill="#fff"/>`) },
+  { n: 'Absolutes Halteverbot', svg: svgWrap(`<circle cx="50" cy="50" r="46" fill="#1b5fab" stroke="#c1121f" stroke-width="8"/><line x1="18" y1="18" x2="82" y2="82" stroke="#c1121f" stroke-width="8"/><line x1="82" y1="18" x2="18" y2="82" stroke="#c1121f" stroke-width="8"/>`) },
+  { n: 'Eingeschränktes Halteverbot', svg: svgWrap(`<circle cx="50" cy="50" r="46" fill="#1b5fab" stroke="#c1121f" stroke-width="8"/><line x1="18" y1="18" x2="82" y2="82" stroke="#c1121f" stroke-width="8"/>`) },
+  { n: 'Parken erlaubt', svg: svgWrap(`<rect x="8" y="8" width="84" height="84" rx="8" fill="#1b5fab" stroke="#fff" stroke-width="4"/><text x="50" y="72" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="58" fill="#fff">P</text>`) },
+  { n: 'Vorgeschriebene Fahrtrichtung: rechts', svg: blueCircle(`<path d="M26 56 h30 v12 l24 -18 -24 -18 v12 h-30 z" fill="#fff"/>`) },
+  { n: 'Vorgeschriebene Fahrtrichtung: geradeaus', svg: blueCircle(`<path d="M44 78 v-34 h-12 l18 -26 18 26 h-12 v34 z" fill="#fff"/>`) },
+  { n: 'Kreisverkehr', svg: blueCircle(`<circle cx="50" cy="50" r="20" fill="none" stroke="#fff" stroke-width="8"/><path d="M50 18 l10 14 h-20 z" fill="#fff"/>`) },
+  { n: 'Andreaskreuz (Bahnübergang)', svg: svgWrap(`<g transform="rotate(45 50 50)"><rect x="8" y="40" width="84" height="20" rx="3" fill="#fff" stroke="#c1121f" stroke-width="5"/><rect x="40" y="8" width="20" height="84" rx="3" fill="#fff" stroke="#c1121f" stroke-width="5"/></g>`) },
+  { n: 'Gefahrstelle (Achtung)', svg: svgWrap(`<polygon points="50,6 96,90 4,90" fill="#fff" stroke="#c1121f" stroke-width="8"/><rect x="46" y="34" width="8" height="30" rx="3" fill="#111"/><circle cx="50" cy="76" r="5" fill="#111"/>`) },
+  { n: 'Ende aller Streckenverbote', svg: svgWrap(`<circle cx="50" cy="50" r="46" fill="#fff" stroke="#8a8a8a" stroke-width="5"/><line x1="22" y1="78" x2="78" y2="22" stroke="#555" stroke-width="6"/><line x1="30" y1="84" x2="86" y2="28" stroke="#999" stroke-width="4"/>`) },
+  { n: 'Umweltzone', svg: svgWrap(`<circle cx="50" cy="50" r="46" fill="#fff" stroke="#1a7f37" stroke-width="8"/><text x="50" y="60" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="20" fill="#1a7f37">UMWELT</text>`) },
+];
+
+let token=null, gameTs=null;
+let round=0, score=0, streak=0, best=0, qStart=0, timer=null, current=null, answered=false, order=[];
+
+function showToast(m,t='ok'){ const e=$('toast'); e.textContent=m; e.className='toast show '+t; clearTimeout(showToast._t); showToast._t=setTimeout(()=>e.className='toast',1600); }
+async function getToken(){
+  try{
+    const r = await fetch('/api/game-token/signs');
+    if (r.status===401){ $('ovLogin').classList.remove('hidden'); return false; }
+    const d = await r.json(); token=d.token; gameTs=d.ts; return true;
+  }catch{ return false; }
+}
+const shuffle = a => { for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+
+async function startGame(){
+  if (!await getToken()) return;
+  round=0; score=0; streak=0; best=0;
+  order = shuffle([...SIGNS.keys()]).slice(0, ROUNDS);
+  $('resultArea').innerHTML='';
+  next();
+}
+
+function next(){
+  answered=false;
+  current = SIGNS[order[round]];
+  $('hudRound').textContent = (round+1)+'/'+ROUNDS;
+  $('signbox').innerHTML = current.svg;
+  // 3 falsche Namen aus dem Pool
+  const wrong = shuffle(SIGNS.filter(s=>s.n!==current.n)).slice(0,3).map(s=>s.n);
+  const opts = shuffle([current.n, ...wrong]);
+  $('answers').innerHTML = opts.map(o=>`<button class="ans" onclick="answer(this)">${o}</button>`).join('');
+  qStart = Date.now();
+  clearInterval(timer);
+  timer = setInterval(()=>{
+    const left = Math.max(0, TIME_MS-(Date.now()-qStart));
+    $('tbar').style.width = (left/TIME_MS*100)+'%';
+    if (left<=0){ clearInterval(timer); miss(); }
+  }, 90);
+}
+
+function answer(btn){
+  if (answered) return;
+  answered=true; clearInterval(timer);
+  const correct = btn.textContent === current.n;
+  [...document.querySelectorAll('.ans')].forEach(b=>{
+    if (b.textContent===current.n) b.classList.add('right');
+    else if (b===btn) b.classList.add('wrong');
+    b.style.pointerEvents='none';
+  });
+  if (correct){
+    const ms = Date.now()-qStart;
+    streak++; best=Math.max(best,streak);
+    const pts = Math.max(200, 1000 - Math.floor(ms/10)) + streak*60;
+    score += pts;
+  } else streak=0;
+  updateHud();
+  setTimeout(()=>{ round++; round>=ROUNDS ? finish() : next(); }, correct?650:1400);
+}
+
+function miss(){
+  if (answered) return;
+  answered=true; streak=0;
+  [...document.querySelectorAll('.ans')].forEach(b=>{
+    if (b.textContent===current.n) b.classList.add('right');
+    b.style.pointerEvents='none';
+  });
+  updateHud();
+  setTimeout(()=>{ round++; round>=ROUNDS ? finish() : next(); }, 1300);
+}
+
+function updateHud(){
+  $('hudScore').textContent = score.toLocaleString('de-DE');
+  $('hudStreak').textContent = streak;
+}
+
+async function finish(){
+  clearInterval(timer);
+  $('signbox').innerHTML = '<div style="font-size:3rem">🏁</div>';
+  $('answers').innerHTML='';
+  let coinsEarned=0;
+  try{
+    const r = await fetch('/api/game-scores/signs', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ score, token, ts: gameTs }),
+    });
+    const d = await r.json();
+    if (r.ok) coinsEarned = d.coinsEarned||0;
+  }catch{}
+  $('resultArea').innerHTML = `
+    <div class="result-card">
+      <h2>🚦 Ergebnis</h2>
+      <div style="margin:.6rem 0">
+        <div class="result-row"><span style="color:#666">Score</span><b style="color:#4ade80">${score.toLocaleString('de-DE')}</b></div>
+        <div class="result-row"><span style="color:#666">Beste Serie</span><b>${best}</b></div>
+      </div>
+      ${coinsEarned>0?`<div class="coins-earned">+${coinsEarned} 🪙</div>`:''}
+      ${score>=8000?'<div style="font-size:.8rem;color:#fbbf24;margin-bottom:.5rem">🏅 Zertifikat „Verkehrs-Experte" erreicht!</div>':'<div style="font-size:.75rem;color:#555;margin-bottom:.5rem">Ab 8.000 Punkten: Zertifikat „Verkehrs-Experte"</div>'}
+      <button class="btn-start" style="width:100%" onclick="startGame()">Nochmal spielen</button>
+    </div>`;
+  if (coinsEarned>0) showToast(`+${coinsEarned} 🪙 Coins!`, 'ok');
+}
+</script>
+</body>
+</html>

@@ -41,6 +41,19 @@
 
     .footer{max-width:720px;margin:28px auto 0;text-align:center;font-size:12px;color:#374151;}
 
+    /* ── Kostenrechner ── */
+    .add-btn{width:26px;height:26px;border-radius:7px;border:1px solid #1e2a3a;background:#131c2b;color:#9ca3af;font-weight:800;cursor:pointer;flex-shrink:0;font-size:.9rem;line-height:1;transition:.15s}
+    .add-btn:hover{border-color:#f97316;color:#f97316}
+    .add-btn.on{background:rgba(249,115,22,.18);border-color:#f97316;color:#f97316}
+    .calcbar{position:fixed;left:0;right:0;bottom:0;background:rgba(10,14,22,.96);backdrop-filter:blur(8px);border-top:1px solid #1e2a3a;padding:12px 16px;display:none;z-index:50}
+    .calcbar.show{display:block}
+    .calcbar-inner{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+    .calc-sum{font-size:1.15rem;font-weight:800;color:#f97316;font-variant-numeric:tabular-nums}
+    .calc-count{font-size:.75rem;color:#6b7280}
+    .calc-btn{background:#f97316;color:#0a0a0a;font-weight:800;border:none;border-radius:9px;padding:9px 16px;cursor:pointer;font-size:.82rem;font-family:inherit}
+    .calc-btn.ghost{background:transparent;color:#9ca3af;border:1px solid #1e2a3a}
+    .hint{max-width:720px;margin:10px auto 0;text-align:center;font-size:12px;color:#4b5563}
+
     @media(max-width:480px){.grid{grid-template-columns:1fr;}}
   </style>
 </head>
@@ -56,10 +69,59 @@
   <div class="empty">Laden…</div>
 </div>
 
+<div class="hint">💡 Tipp: Klicke auf <b>＋</b> neben einer Leistung, um dir unten deine Kosten zusammenzurechnen.</div>
 <div class="footer">Alle Preise in GTA$ · Stand: täglich aktuell</div>
+
+<div class="calcbar" id="calcbar">
+  <div class="calcbar-inner">
+    <div>
+      <div class="calc-sum" id="calcSum">0 $</div>
+      <div class="calc-count" id="calcCount">0 Leistungen gewählt</div>
+    </div>
+    <div style="flex:1"></div>
+    <button class="calc-btn ghost" onclick="clearCalc()">Leeren</button>
+    <button class="calc-btn" onclick="copyCalc()">📋 Anfrage kopieren</button>
+  </div>
+</div>
 
 <script>
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+// ── Kostenrechner ──────────────────────────────────────────────
+// Preis-Text → Zahl ("1.500 $" → 1500). Nicht parsebare Preise sind nicht wählbar.
+const priceNum = t => {
+  const m = String(t).replace(/\./g,'').replace(/,/g,'.').match(/(\d+(?:\.\d+)?)/);
+  return m ? parseFloat(m[1]) : null;
+};
+let cart = []; // { name, price }
+
+function toggleCalc(btn, name, price){
+  const i = cart.findIndex(c => c.name === name);
+  if (i >= 0) { cart.splice(i, 1); btn.classList.remove('on'); btn.textContent = '＋'; }
+  else        { cart.push({ name, price }); btn.classList.add('on'); btn.textContent = '✓'; }
+  renderCalc();
+}
+function renderCalc(){
+  const bar = document.getElementById('calcbar');
+  if (!cart.length) { bar.classList.remove('show'); return; }
+  bar.classList.add('show');
+  const sum = cart.reduce((s, c) => s + c.price, 0);
+  document.getElementById('calcSum').textContent = sum.toLocaleString('de-DE') + ' $';
+  document.getElementById('calcCount').textContent = cart.length + ' Leistung' + (cart.length > 1 ? 'en' : '') + ' gewählt';
+}
+function clearCalc(){
+  cart = [];
+  document.querySelectorAll('.add-btn.on').forEach(b => { b.classList.remove('on'); b.textContent = '＋'; });
+  renderCalc();
+}
+async function copyCalc(){
+  const sum = cart.reduce((s, c) => s + c.price, 0);
+  const txt = 'Anfrage an den ACLS:\n' +
+    cart.map(c => `• ${c.name} – ${c.price.toLocaleString('de-DE')} $`).join('\n') +
+    `\nGesamt (ca.): ${sum.toLocaleString('de-DE')} $`;
+  try { await navigator.clipboard.writeText(txt); alert('Anfrage kopiert! Füge sie im Discord oder IC ein.'); }
+  catch { prompt('Kopiere deine Anfrage:', txt); }
+}
 const CAT_META = {
   'Werkstatt':    { icon:'🔧', bg:'rgba(249,115,22,.15)', col:'#f97316', sub:'Reparatur, Tuning & Abschleppdienst' },
   'Fahrschule':   { icon:'🎓', bg:'rgba(34,197,94,.12)',  col:'#22c55e', sub:'Rechnungspreis – automatischer Kontoabzug' },
@@ -87,14 +149,17 @@ async function load() {
           </div>
         </div>
         <div class="items">
-          ${items.map(item => `
+          ${items.map(item => {
+            const num = priceNum(item.price);
+            return `
           <div class="item">
             <div style="flex:1;min-width:0">
               <div class="item-name">${esc(item.name)}</div>
               ${item.notes ? `<div class="item-note">${esc(item.notes)}</div>` : ''}
             </div>
             <div class="item-price" style="color:${m.col}">${esc(item.price)}</div>
-          </div>`).join('')}
+            ${num !== null ? `<button class="add-btn" title="Zum Rechner hinzufügen" onclick="toggleCalc(this, ${JSON.stringify(esc(item.name))}, ${num})">＋</button>` : ''}
+          </div>`;}).join('')}
         </div>
       </div>`;
     }).join('');

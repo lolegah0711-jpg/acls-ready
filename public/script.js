@@ -137,7 +137,8 @@ window.toggleNavGroup = function(name) {
 };
 
 function initNavGroups() {
-  const defaults = { werkstatt: true, 'mein-acls': true, fahrschule: true, community: true, wirtschaft: false, info: false, freizeit: false };
+  // Kerngeschäft offen, Rest eingeklappt – weniger kognitive Last für neue Nutzer
+  const defaults = { werkstatt: true, 'mein-acls': true, fahrschule: true, community: false, wirtschaft: false, info: false, freizeit: false };
   document.querySelectorAll('.nav-group').forEach(grp => {
     const name  = grp.dataset.group;
     const saved = localStorage.getItem(`nav-grp-${name}`);
@@ -286,6 +287,9 @@ const PAGES = {
   profil:       { title: 'Mein Profil',           sub: 'Profilbild, Bio & Kosmetika' },
   meinacls:     { title: 'Mein ACLS',             sub: 'Dein persönlicher Hub – Fortschritt, Aufgaben & mehr' },
   finanzen:     { title: 'Meine Finanzen',        sub: 'Kontostand, Einnahmen & Ausgaben im Überblick' },
+  dokumente:    { title: 'Dokumente',             sub: 'Werkstattaufträge, Rechnungen, TÜV-Berichte & Zertifikate' },
+  fahrzeugakte: { title: 'Fahrzeugakten',         sub: 'Fahrzeug-Historie, Wartungsheft & Dokumente pro Kennzeichen' },
+  karriere:     { title: 'Karriere',              sub: 'Werkstatt-Rang, Zertifikate, Tagesaufgaben & Gutscheine' },
 };
 
 // ── API helper ──────────────────────────────────────────────────
@@ -528,6 +532,21 @@ const isAusbilder  = () => currentUser?.role === 'ausbilder' || currentUser?.rol
 const initials = n => ((n || '?').split(/[_\s]/).map(p => p[0]).join('').replace(/[^\p{L}\p{N}]/gu, '').toUpperCase().slice(0, 2) || '?');
 // XSS-Schutz: alle DB-Werte vor innerHTML-Einbettung escapen
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+// Tagged-Template mit Auto-Escaping: html`<b>${userInput}</b>` escapt automatisch.
+// Bereits sicheres HTML mit html.raw(x) einfügen. Arrays werden gejoint.
+function html(strings, ...vals) {
+  let out = strings[0];
+  for (let i = 0; i < vals.length; i++) {
+    const v = vals[i];
+    if (v && v.__rawHtml !== undefined) out += v.__rawHtml;
+    else if (Array.isArray(v)) out += v.map(x => (x && x.__rawHtml !== undefined) ? x.__rawHtml : esc(x)).join('');
+    else out += esc(v);
+    out += strings[i + 1];
+  }
+  return out;
+}
+html.raw = s => ({ __rawHtml: String(s ?? '') });
 const fmt = dt => new Date(dt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 const fmtTime = dt => new Date(dt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 const ago = dt => {
@@ -597,7 +616,23 @@ function avatarEl(u, size = 36, cls = '') {
   if (url) return `<img src="${url}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover${cls?';'+cls:''}" onerror="this.style.display='none';this.nextSibling.style.display='flex'"><div style="width:${size}px;height:${size}px;border-radius:50%;background:var(--orange);display:none;align-items:center;justify-content:center;font-weight:700;font-size:${size*0.35}px;flex-shrink:0">${initials(u.username)}</div>`;
   return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:${size*0.35}px;flex-shrink:0">${initials(u.username)}</div>`;
 }
-const loading = () => '<div class="loader-wrap"><div class="loader"></div></div>';
+// Skeleton-Loader: wirkt deutlich schneller als ein Spinner
+const loading = () => `<div class="skel-page">
+  <div class="skel skel-header"></div>
+  <div class="skel-grid">
+    <div class="skel skel-card"></div><div class="skel skel-card"></div><div class="skel skel-card"></div>
+  </div>
+  <div class="skel skel-block"></div>
+  <div class="skel skel-line"></div><div class="skel skel-line" style="width:82%"></div><div class="skel skel-line" style="width:65%"></div>
+</div>`;
+
+// ── Export für Zusatz-Module (js/acls-plus.js etc.) ──────────────
+// const/let-Helper sind nicht automatisch auf window – hier gebündelt freigeben.
+window.ACLSCore = {
+  $, esc, fmt, loading,
+  get user() { return currentUser; },
+  isAdmin: () => currentUser?.role === 'admin',
+};
 
 // ── Init ─────────────────────────────────────────────────────────
 async function init() {
@@ -1755,6 +1790,8 @@ function navigate(page) {
 
   if (window._duelTimer) { clearInterval(window._duelTimer); window._duelTimer = null; }
   const renders = { dashboard, werkstatt, arcade, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz, wetten, tickets, statistiken, team_vorstellung, level, wheel, milestones, changelog, trivia, onboarding, profil, meinacls, finanzen };
+  // Zusatz-Module (js/acls-plus.js) registrieren ihre Seiten hier
+  if (window.ACLSPlusPages) Object.assign(renders, window.ACLSPlusPages);
   (renders[page] || dashboard)();
 }
 
@@ -1766,20 +1803,20 @@ async function loadTwitchWidget() {
     const t = await (await fetch('/api/twitch-status')).json();
     const el = document.getElementById('twitch-widget');
     if (!el) return;
-    const channelUrl = `https://www.twitch.tv/${t.channel}`;
+    const channelUrl = `https://www.twitch.tv/${encodeURIComponent(t.channel || '')}`;
     el.style.display = t.live ? '' : 'none';
     if (t.live) {
       el.innerHTML = `<div class="twitch-card">
         <div class="twitch-live-dot"></div>
-        ${t.thumbnail ? `<img class="twitch-thumb" src="${t.thumbnail}" alt="Stream">` : ''}
+        ${t.thumbnail ? `<img class="twitch-thumb" src="${esc(t.thumbnail)}" alt="Stream">` : ''}
         <div class="twitch-info">
           <div style="margin-bottom:.25rem">
             <span class="twitch-badge-live">LIVE</span>
-            <span style="font-weight:700;font-size:.95rem;color:#c084fc">${t.channel}</span>
+            <span style="font-weight:700;font-size:.95rem;color:#c084fc">${esc(t.channel)}</span>
           </div>
-          <div style="font-size:.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px" title="${t.title}">${t.title || ''}</div>
+          <div style="font-size:.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px" title="${esc(t.title)}">${esc(t.title || '')}</div>
           <div style="font-size:.75rem;color:#9ca3af;margin-top:.2rem">
-            ${t.game ? `<i class="fas fa-gamepad" style="margin-right:.3rem"></i>${t.game} &nbsp;·&nbsp; ` : ''}
+            ${t.game ? `<i class="fas fa-gamepad" style="margin-right:.3rem"></i>${esc(t.game)} &nbsp;·&nbsp; ` : ''}
             <i class="fas fa-eye" style="margin-right:.3rem"></i>${t.viewers?.toLocaleString('de-DE')} Zuschauer
           </div>
         </div>
@@ -1795,7 +1832,7 @@ async function loadTwitchWidget() {
         <div class="twitch-info">
           <div style="margin-bottom:.2rem">
             <span class="twitch-badge-off">OFFLINE</span>
-            <span style="font-weight:700;font-size:.9rem;color:#9ca3af">${t.channel}</span>
+            <span style="font-weight:700;font-size:.9rem;color:#9ca3af">${esc(t.channel)}</span>
           </div>
           <div style="font-size:.78rem;color:#6b7280">Derzeit nicht live</div>
         </div>
@@ -1831,6 +1868,12 @@ const GAME_CATALOG = [
   { id: 'tow',          name: 'Abschlepp-Simulator', url: '/game14', icon: 'fa-truck-pickup', color: '#fbbf24', desc: 'Fahrzeuge bergen wie ein Profi',             voter: true },
   { id: 'memory',       name: 'Memory',              url: '/game16', icon: 'fa-clone',        color: '#22d3ee', desc: 'Kartenpaare finden auf Zeit',                voter: false },
   { id: 'reaction',     name: 'Reaktionstest',       url: '/game24', icon: 'fa-bolt',         color: '#facc15', desc: 'Wie schnell sind deine Reflexe?',            voter: false },
+  // ── Themen-Spiele: Werkstatt & Fahrschule ──
+  { id: 'tirechange',   name: 'Reifenwechsel',       url: '/game26', icon: 'fa-circle-notch', color: '#f97316', desc: 'Muttern im Sternmuster – gegen die Uhr',     voter: true },
+  { id: 'obd',          name: 'Fehlerdiagnose',      url: '/game27', icon: 'fa-microchip',    color: '#38bdf8', desc: 'Symptome lesen, Fehler finden',              voter: true },
+  { id: 'signs',        name: 'Verkehrszeichen',     url: '/game28', icon: 'fa-traffic-light',color: '#22c55e', desc: 'Schilder erkennen – prüfungsrelevant!',      voter: true },
+  { id: 'parking',      name: 'Einpark-Challenge',   url: '/game29', icon: 'fa-parking',      color: '#a855f7', desc: 'Rangiere in die Lücke ohne Blechschaden',    voter: true },
+  { id: 'assembly',     name: 'Fließband-Montage',   url: '/game30', icon: 'fa-industry',     color: '#fbbf24', desc: 'Teile montieren, bevor das Band sie holt',   voter: true },
 ];
 const FREIZEIT_CATALOG = [
   { id: 'spielbank', name: 'Spielbank',    url: '/spielbank',      icon: 'fa-dice',     color: '#fbbf24', desc: 'Slots, Blackjack, Roulette, Mines & mehr', voter: true },
@@ -2000,7 +2043,7 @@ async function initWerkstattMap(hqSpots) {
   if (!el || typeof L === 'undefined') return;
   const m = L.map(el, { crs: L.CRS.Simple, minZoom: -2, maxZoom: 2, attributionControl: false, zoomSnap: 0.1 });
   const bounds = [[0, 0], [GTA_SIZE, GTA_SIZE]];
-  L.imageOverlay('/gta-map.png', bounds, { opacity: 1 }).addTo(m);
+  L.imageOverlay('/gta-map.webp', bounds, { opacity: 1 }).addTo(m);
   const pin = L.divIcon({ className: '', html: '<div style="width:16px;height:16px;background:#c9a227;border:2px solid #fff;border-radius:50%;box-shadow:0 0 10px #c9a227cc"></div>', iconSize: [16, 16], iconAnchor: [8, 8], popupAnchor: [0, -10] });
   const markers = hqSpots.map(s => {
     const [lat, lng] = pctToLatLng(s.x_pos, s.y_pos);
@@ -3421,7 +3464,7 @@ window.submitExam = async () => {
 
 function openPraktischeExam(theorieResult, cat) {
   const citizenName = activeQuiz.citizenName;
-  const ROUTE_IMGS = { PKW: '/pkw-route.png', LKW: '/lkw-route.png', Motorrad: '/bike-route.png', Flugschein: '/heli-route.png' };
+  const ROUTE_IMGS = { PKW: '/pkw-route.webp', LKW: '/lkw-route.webp', Motorrad: '/bike-route.webp', Flugschein: '/heli-route.webp' };
   const routeSrc  = ROUTE_IMGS[cat?.name];
   const routeImg  = routeSrc
     ? `<div style="margin-bottom:1rem">
@@ -4016,7 +4059,7 @@ function initLeafletMap(spots) {
 
   // GTA V Karte als Image-Overlay
   const bounds = [[0, 0], [GTA_SIZE, GTA_SIZE]];
-  L.imageOverlay('/gta-map.png', bounds, { opacity: 1, zIndex: 1, className: 'gta-map-img' }).addTo(leafletMap);
+  L.imageOverlay('/gta-map.webp', bounds, { opacity: 1, zIndex: 1, className: 'gta-map-img' }).addTo(leafletMap);
 
   leafletMap.fitBounds(bounds, { padding: [4, 4] });
 

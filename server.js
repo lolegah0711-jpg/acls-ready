@@ -36,33 +36,8 @@ const BOT_API_SECRET = process.env.BOT_API_SECRET || (process.env.NODE_ENV === '
   : 'acls-bot-secret-dev');
 
 
-const GAME_LIMITS = {
-  race:         { minSec: 25,  maxScore: 999999  },
-  brick:        { minSec: 25,  maxScore: 999999  },
-  deadzone:     { minSec: 15,  maxScore: 9999999 },
-  tetris:       { minSec: 20,  maxScore: 9999999 },
-  snake:        { minSec: 10,  maxScore: 100000  },
-  skycop:       { minSec: 15,  maxScore: 9999999 },
-  doodlejump:   { minSec: 15,  maxScore: 9999999 },
-  '2048':       { minSec: 30,  maxScore: 5000000 },
-  bookofra:     { minSec: 20,  maxScore: 99999999},
-  towerdefense: { minSec: 45,  maxScore: 999999  },
-  quiz:         { minSec: 30,  maxScore: 15000   },
-  idle:         { minSec: 60,  maxScore: 1e15    },
-  rpg:          { minSec: 60,  maxScore: 1e9     },
-  tow:          { minSec: 20,  maxScore: 200000  },
-  memory:       { minSec: 15,  maxScore: 200000  },
-  reaction:     { minSec: 15,  maxScore: 30000   },
-};
-
-// ── ACLS-Coins: Umrechnung pro Spiel (score / divisor = Coins) ──
-const GAME_COIN_DIV = {
-  race: 2000, brick: 1200, deadzone: 30000, tetris: 20000, snake: 50,
-  skycop: 20000, doodlejump: 15000, '2048': 30000, bookofra: 500000,
-  towerdefense: 800, quiz: 150, idle: 1e12, rpg: 5e6, tow: 60, memory: 150, reaction: 600,
-};
-const COINS_MAX_PER_SUBMIT = 60;   // max Coins pro Spielrunde
-const COINS_DAILY_GAME_CAP = 150;  // max Coins pro Spiel pro Tag
+// Spiel-Limits & Coin-Umrechnung: zentral in lib/game-config.js
+const { GAME_LIMITS, GAME_COIN_DIV, COINS_MAX_PER_SUBMIT, COINS_DAILY_GAME_CAP, ALL_GAMES } = require('./lib/game-config');
 
 function makeGameToken(uid, game, ts) {
   return crypto.createHmac('sha256', GAME_SECRET)
@@ -196,23 +171,24 @@ function sendHtmlWithBase(req, res, file, transform) {
 app.get('/', (req, res) => sendHtmlWithBase(req, res, 'index.html'));
 
 app.use('/uploads', express.static(UPLOADS_DIR));
+// Caching-Strategie:
+//  - HTML: nie cachen (Einstiegspunkte, referenzieren versionierte Assets)
+//  - JS/CSS: 1h — Versions-Bump (?v=N) erzwingt sofortiges Update bei Deploys
+//  - Bilder/Fonts: 7 Tage, immutable — ändern sich praktisch nie
 app.use(express.static(path.join(__dirname, 'public'), {
-  etag: false,
+  etag: true,
   setHeaders(res, filePath) {
-    if (filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.html')) {
+    if (filePath.endsWith('.html')) {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+    } else if (/\.(png|jpe?g|webp|gif|svg|ico|woff2?|ttf|otf)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
     }
   },
 }));
 
-// ── Auth helpers ────────────────────────────────────────────────
-function getUser(req) {
-  if (!req.session.userId) return null;
-  const u = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(req.session.userId) || null;
-  if (u) touchSeen(u.id);
-  return u;
-}
-
+// ── Auth helpers (einzige Quelle: lib/auth.js) ──────────────────
 const _seenCache = new Map();
 function touchSeen(id) {
   const now = Date.now();
@@ -221,33 +197,11 @@ function touchSeen(id) {
     try { db.prepare("UPDATE users SET last_seen_at = datetime('now') WHERE id = ?").run(id); } catch {}
   }
 }
-
-function requireAuth(req, res, next) {
-  const u = getUser(req);
-  if (!u) return res.status(401).json({ error: 'Nicht angemeldet' });
-  if (u.role === 'citizen') return res.status(403).json({ error: 'Kein Zugriff' });
-  next();
-}
-
-// Wie requireAuth, aber Citizens sind auch erlaubt (für Minispiele)
-function requireLogin(req, res, next) {
-  const u = getUser(req);
-  if (u) return next();
-  // Voter session: check if this Discord user exists in the DB (e.g. citizen role)
-  if (req.session.voterDiscordId) {
-    const vu = db.prepare('SELECT * FROM users WHERE discord_id = ? AND is_active = 1').get(req.session.voterDiscordId);
-    if (vu) { req.session.userId = vu.id; return next(); }
-  }
-  return res.status(401).json({ error: 'Nicht angemeldet' });
-}
-
-function requireAdmin(req, res, next) {
-  const u = getUser(req);
-  if (!u) return res.status(401).json({ error: 'Nicht angemeldet' });
-  if (u.role !== 'admin') return res.status(403).json({ error: 'Kein Zugriff' });
-  req.adminUser = u;
-  next();
-}
+const { getUser, requireAuth, requireLogin, requireAdmin, requireAusbilder, requireAnySession, requireAuthOrBot } =
+  require('./lib/auth')(db, {
+    touchSeen,
+    isBot: req => secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET),
+  });
 
 // ── Audit Log ────────────────────────────────────────────────────
 function auditLog(req, action, details = '') {
@@ -259,23 +213,25 @@ function auditLog(req, action, details = '') {
     .run(userId, username, action, details, ip);
 }
 
-// ── Rate Limiter (SQLite-backed, überlebt Neustarts) ────────────
+// ── Rate Limiter (in-Memory) ─────────────────────────────────────
+// Vorher SQLite-backed: 2 DB-Operationen pro API-Call auf ~200 Endpunkten.
+// Eine Map im RAM reicht völlig — nach Neustart beginnen Fenster neu (unkritisch).
+const _rateMap = new Map(); // key → { count, reset }
 function rateLimit(key, maxPerWindow, windowMs) {
   const now = Date.now();
-  const newReset = now + windowMs;
-  db.prepare(`
-    INSERT INTO rate_limits (key, count, reset) VALUES (?, 1, ?)
-    ON CONFLICT(key) DO UPDATE SET
-      count = CASE WHEN rate_limits.reset < ? THEN 1 ELSE rate_limits.count + 1 END,
-      reset = CASE WHEN rate_limits.reset < ? THEN ? ELSE rate_limits.reset END
-  `).run(key, newReset, now, now, newReset);
-  const row = db.prepare('SELECT count FROM rate_limits WHERE key = ?').get(key);
-  return row.count > maxPerWindow;
+  const e = _rateMap.get(key);
+  if (!e || e.reset < now) {
+    _rateMap.set(key, { count: 1, reset: now + windowMs });
+    return false;
+  }
+  e.count++;
+  return e.count > maxPerWindow;
 }
-// Alte Einträge täglich bereinigen
+// Abgelaufene Einträge regelmäßig räumen (Speicherhygiene)
 setInterval(() => {
-  try { db.prepare('DELETE FROM rate_limits WHERE reset < ?').run(Date.now()); } catch {}
-}, 24 * 60 * 60 * 1000);
+  const now = Date.now();
+  for (const [k, e] of _rateMap) if (e.reset < now) _rateMap.delete(k);
+}, 10 * 60 * 1000).unref?.();
 
 // ── Helpers ─────────────────────────────────────────────────────
 // Hilfsfunktion: Berliner Datumsteile auslesen
@@ -1563,12 +1519,7 @@ app.patch('/api/complaints/:id', requireAdmin, (req, res) => {
 // ════════════════════════════════════════════════════════════════
 //  PROFILE
 // ════════════════════════════════════════════════════════════════
-function requireAuthOrBot(req, res, next) {
-  if (secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return next();
-  const u = getUser(req);
-  if (!u) return res.status(401).json({ error: 'Nicht angemeldet' });
-  next();
-}
+// requireAuthOrBot kommt aus lib/auth.js
 
 app.get('/api/profile/:id', requireAnySession, (req, res) => {
   const u = db.prepare('SELECT id, discord_id, username, avatar, avatar_custom, role, rank, ic_weekly_goal, created_at FROM users WHERE id = ?').get(req.params.id);
@@ -1639,10 +1590,7 @@ function sseEmit(event, data, onlyDiscordId = null) {
 }
 
 // Auch Bürger (Voter-Session) dürfen Live-Events empfangen (z. B. Quiz-Duell)
-function requireAnySession(req, res, next) {
-  if (getUser(req) || req.session?.voterDiscordId) return next();
-  return res.status(401).json({ error: 'Nicht angemeldet' });
-}
+// requireAnySession kommt aus lib/auth.js
 
 app.get('/api/sse', requireAnySession, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -1699,12 +1647,7 @@ cron.schedule('30 3 * * *', () => {
 // ════════════════════════════════════════════════════════════════
 //  AUSBILDER – RANK EXAM SYSTEM
 // ════════════════════════════════════════════════════════════════
-function requireAusbilder(req, res, next) {
-  const user = getUser(req);
-  if (!user || (user.role !== 'ausbilder' && user.role !== 'admin')) return res.status(403).json({ error: 'Kein Zugriff' });
-  req.ausbilderUser = user;
-  next();
-}
+// requireAusbilder kommt aus lib/auth.js
 
 app.get('/api/rank-questions', requireAusbilder, (req, res) => {
   const { type } = req.query;
@@ -2764,6 +2707,11 @@ app.get('/game22', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ga
 app.get('/game23', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game23.html')));
 app.get('/game24', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game24.html')));
 app.get('/game25', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game25.html')));
+app.get('/game26', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game26.html')));
+app.get('/game27', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game27.html')));
+app.get('/game28', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game28.html')));
+app.get('/game29', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game29.html')));
+app.get('/game30', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game30.html')));
 app.get('/spielbank', (req, res) => res.sendFile(path.join(__dirname, 'public', 'spielbank.html')));
 app.get('/quiz', (req, res) => {
   const cats = db.prepare(`SELECT ec.id, ec.name, ec.icon, (SELECT COUNT(*) FROM exam_questions WHERE category_id = ec.id AND is_active = 1) as question_count FROM exam_categories ec`).all();
@@ -4513,26 +4461,7 @@ cron.schedule('* * * * *', () => {
 // ════════════════════════════════════════════════════════════════
 //  UNIFIED GAME LEADERBOARD — alle Spiele, Top 3 je Spiel
 // ════════════════════════════════════════════════════════════════
-const ALL_GAMES = [
-  { key: 'race',        label: 'Autorennen' },
-  { key: 'brick',       label: 'Brick Breaker' },
-  { key: 'deadzone',    label: 'Dead Zone' },
-  { key: 'snake',       label: 'Snake' },
-  { key: 'tetris',      label: 'Tetris' },
-  { key: 'skycop',      label: 'Sky Cop' },
-  { key: 'doodlejump',  label: 'Doodle Jump' },
-  { key: '2048',        label: '2048' },
-  { key: 'bookofra',    label: 'Book of Ra' },
-  { key: 'towerdefense',label: 'Tower Defense' },
-  { key: 'quiz',        label: 'Quiz Survival' },
-  { key: 'tow',         label: 'Abschlepp-Sim' },
-  { key: 'memory',      label: 'Memory' },
-  { key: 'blackjack',   label: 'Blackjack' },
-  { key: 'idle',        label: 'Idle Werkstatt' },
-  { key: 'rpg',         label: 'Dungeon RPG' },
-  { key: 'reaction',    label: 'Reaktionstest' },
-  { key: 'hangman',    label: 'Hangman' },
-];
+// ALL_GAMES kommt aus lib/game-config.js
 
 app.get('/api/game-leaderboard', (req, res) => {
   const result = ALL_GAMES.map(g => {
@@ -4581,6 +4510,8 @@ app.use(require('./routes/anticheat')({ ...sharedDeps }));
 app.use(require('./routes/clubs')({ ...sharedDeps }));
 app.use(require('./routes/automarkt')({ ...sharedDeps }));
 app.use(require('./routes/auto-empire')({ ...sharedDeps }));
+app.use(require('./routes/papierkram')({ ...sharedDeps }));
+app.use(require('./routes/karriere')({ ...sharedDeps }));
 
 app.get('/profil/:id', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
@@ -5039,6 +4970,8 @@ ensureChangelog('2.7.0', 'feature', 'Anti-Cheat: XP-Überwachung', 'Jeder Saison
 ensureChangelog('2.8.0', 'feature', 'Website-Upgrade: Suche 2.0, Mein Hub 2.0 & Meine Finanzen', 'Die globale Suche findet jetzt auch alle Seiten der Website (mit Strg+K von überall erreichbar, merkt sich die letzten Suchen und zeigt Fehler sauber an). Der Mein-Hub wurde in vier Bereiche gegliedert – Progression, Engagement, Belohnungen und Social – und bekommt tägliche Aufgaben mit Tage-Streak. Neue Seite „Meine Finanzen": Kontostand, 7-Tage-Cashflow und Einnahmen/Ausgaben nach Kategorie. Dazu: neues Landingpage-Design mit Werkstatt-Foto, bessere Mobile-Bedienung (größere Touch-Ziele, iOS-Fixes), Suchmaschinen-Optimierung und geschlossene Sicherheitslücken.', '2026-07-03 00:00:00');
 ensureChangelog('2.8.1', 'fix', 'Fix: Abschlepphöfe-Karte & Diagramme laden wieder', 'Leaflet (Karte), Chart.js (Diagramme) und jsPDF (Rechnungs-PDF) werden jetzt automatisch nachgeladen, sobald eine Seite sie braucht. Damit funktionieren die Abschlepphöfe-Karte, die Werkstatt-Minikarte, alle Statistik-Diagramme und der PDF-Export wieder – und die Startseite lädt schneller, weil die Bibliotheken nicht mehr beim Start mitgeladen werden.', '2026-07-03 00:30:00');
 ensureChangelog('2.9.0', 'feature', 'Casino-Update: Progressiver Jackpot & Tägliches Freispiel', 'ACLS Mega Spin hat jetzt einen progressiven Jackpot: Jeder Einsatz zahlt 3 % in den gemeinsamen Pool ein und jeder bezahlte Spin kann ihn knacken – die Chance steigt mit dem Einsatz. Zusätzlich gibt es täglich ein Gratis-Freispiel aufs Haus (25 Coins Einsatz, Gewinne gehören dir). Außerdem neu auf der Website: Onboarding-Tour beim ersten Login (jederzeit über „Website-Tour" wiederholbar), anpinnbare Favoriten-Seiten per Stern in der Sidebar und ein Update-Hinweis, sobald eine neue Website-Version verfügbar ist.', '2026-07-03 01:00:00');
+ensureChangelog('3.0.0', 'feature', 'ACLS 3.0 – Papierkram-Suite, Akten & Karriere', 'Das große RP-Update! Neue Seite „Dokumente": Werkstattaufträge, Kostenvoranschläge, Rechnungen, TÜV-Berichte mit 11-Punkte-Checkliste, Prüfungs-Zertifikate, Schadensgutachten, Wartungsheft-Einträge und druckbare Führerschein-Karten – alle mit amtlicher Dokumentnummer und Druck/PDF-Ausgabe im Briefkopf-Design. Neue Seite „Fahrzeugakten": eine Akte pro Kennzeichen mit kompletter Dokument-Historie (entsteht automatisch). Die Bürgerakte bündelt jetzt Prüfungen, interne Notizen, Sperren, Dokumente und das neue Punkte-Register (Flensburg-Style, mit Bußgeld und automatischem Verfall) in einer Timeline. Neue Seite „Karriere": Werkstatt-Ränge vom Azubi bis zur Legende aus echten Aktionen (Prüfungen, Dokumente, IC-Zeit), RP-Tagesaufgaben mit Coin-Belohnung, Prüfer-Bestenliste, Absolventen-Wall – und Rabatt-Gutscheine: Tausche Coins gegen echte Werkstatt-Vorteile, Mitarbeiter lösen die Codes an der Kasse ein. Auf der öffentlichen Preisliste gibt es jetzt einen Kostenrechner zum Zusammenklicken deiner Anfrage.', '2026-07-04 00:00:00');
+ensureChangelog('3.1.0', 'feature', '5 neue Werkstatt-Minispiele & Turbo-Performance', 'Fünf brandneue Themen-Minispiele rund um Werkstatt & Fahrschule: Reifenwechsel (Muttern über Kreuz im Sternmuster – gegen die Uhr!), OBD-Fehlerdiagnose (finde das defekte Bauteil anhand echter Symptome und Messwerte), Verkehrszeichen-Quiz (prüfungsrelevant!), Einpark-Challenge (3 Level Rangieren mit echter Fahrphysik) und Fließband-Montage (schnapp dir das richtige Teil, bevor es vorbeirauscht). Alle mit Coins, Ranglisten und freischaltbaren Fach-Zertifikaten auf der Karriere-Seite. Außerdem: Die Website lädt jetzt deutlich schneller – Bilder um über 90 % verkleinert (WebP), Browser-Caching aktiviert und Skeleton-Ladeanimationen statt Spinner.', '2026-07-04 00:30:00');
 
 app.get('/api/changelogs', (req, res) => {
   res.json(db.prepare('SELECT * FROM changelogs ORDER BY released_at DESC').all());

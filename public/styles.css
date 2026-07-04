@@ -1633,7 +1633,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 #loginScreen.login-screen {
   background:
     linear-gradient(rgba(8,6,10,.68), rgba(8,6,10,.84)),
-    url('/landingpage.png') center / cover no-repeat fixed;
+    url('/landingpage.webp') center / cover no-repeat fixed;
 }
 /* Karten auf dem Foto: halbtransparent + Blur, damit das Bild durchscheint */
 #loginScreen .landing-svc,
@@ -1861,4 +1861,56 @@ textarea.form-control { resize: vertical; min-height: 80px; }
     transition-duration: .01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ACLS PLUS: Skeleton-Loader, Dokumente-UI, Print, mobile Tabellen
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Skeleton-Loader (statt Spinner) ─────────────────────────── */
+.skel-page { padding: .2rem 0; }
+.skel {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--input) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.3s infinite;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+}
+.skel-header { height: 54px; margin-bottom: 1rem; width: min(420px, 80%); }
+.skel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .8rem; margin-bottom: 1rem; }
+.skel-card { height: 96px; }
+.skel-block { height: 180px; margin-bottom: 1rem; }
+.skel-line { height: 14px; margin-bottom: .55rem; width: 100%; }
+@keyframes skel-shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none } }
+
+/* ── Dokumente-Formulare ─────────────────────────────────────── */
+.doc-lbl {
+  display: block; font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); margin-bottom: .25rem;
+}
+
+/* ── Mobile: Tabellen als Karten (generisch über data-l) ─────── */
+@media (max-width: 640px) {
+  .doc-tbl thead { display: none; }
+  .doc-tbl tbody tr {
+    display: block; border-bottom: 1px solid var(--border); padding: .6rem .8rem;
+  }
+  .doc-tbl tbody td {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: .8rem; border: none !important; padding: .2rem 0 !important;
+  }
+  .doc-tbl tbody td[data-l]::before {
+    content: attr(data-l); font-size: .66rem; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .05em; flex-shrink: 0;
+  }
+}
+
+/* ── Print: App-Chrome ausblenden, Inhalt freistellen ────────── */
+@media print {
+  .sidebar, .topbar, .theme-switcher-float, .toast-container,
+  #mobileOverlay, #notifBell, #searchBtn, #mobileMenuBtn { display: none !important; }
+  .main-wrapper { margin: 0 !important; }
+  body, .app { background: #fff !important; color: #111 !important; }
+  .card { border: 1px solid #ccc !important; box-shadow: none !important; background: #fff !important; }
 }

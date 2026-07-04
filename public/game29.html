@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Einpark-Challenge – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#0a0a0a;font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px 16px 30px;user-select:none;-webkit-tap-highlight-color:transparent}
+    .topbar{width:100%;max-width:640px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .nav-btn{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7);padding:7px 14px;border-radius:9px;font-size:12px;font-weight:700;text-decoration:none}
+    h1{font-size:clamp(20px,5vw,28px);font-weight:900;margin-bottom:2px;text-align:center}
+    .sub{font-size:12px;color:#666;margin-bottom:10px;text-align:center;max-width:460px}
+    .hud{display:flex;gap:1.2rem;margin-bottom:10px;flex-wrap:wrap;justify-content:center}
+    .hud div{text-align:center}
+    .hud .v{font-size:1.15rem;font-weight:900;color:#c084fc;font-variant-numeric:tabular-nums}
+    .hud .l{font-size:.6rem;color:#555;text-transform:uppercase;letter-spacing:.08em}
+    canvas{background:#2b2b2b;border-radius:14px;border:1px solid #333;max-width:100%;touch-action:none}
+    .msg{min-height:26px;font-size:.9rem;font-weight:800;margin:8px 0;text-align:center}
+    .controls{display:flex;gap:.5rem;margin-top:4px}
+    .ctl{width:64px;height:56px;background:#161616;border:1px solid #333;border-radius:12px;color:#ccc;font-size:1.3rem;display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .ctl:active{background:#2a2a2a;border-color:#c084fc}
+    .btn-start{background:linear-gradient(135deg,#c084fc,#9333ea);color:#fff;font-weight:900;font-size:1rem;padding:13px 36px;border-radius:12px;border:none;cursor:pointer;font-family:inherit}
+    .result-card{background:#111;border:1px solid #222;border-radius:14px;padding:1.4rem 1.8rem;max-width:400px;width:100%;text-align:center;margin-top:8px}
+    .coins-earned{font-size:1.5rem;font-weight:900;color:#fbbf24;margin:.6rem 0}
+    .result-row{display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px solid #1a1a1a;font-size:.84rem}
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:.6rem 1.4rem;font-size:.85rem;font-weight:700;transition:.3s;opacity:0;z-index:99}
+    .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+    .toast.ok{border-color:#22c55e;color:#22c55e}.toast.err{border-color:#ef4444;color:#ef4444}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.92);z-index:100}
+    .ov.hidden{display:none}
+    .ov-card{background:#111;border:1px solid #222;border-radius:18px;padding:36px;max-width:400px;width:100%;text-align:center}
+    .ov-card p{color:#666;font-size:.88rem;margin:.5rem 0 1.5rem;line-height:1.55}
+    .btn-portal{background:#fff;color:#000;font-weight:900;padding:12px 28px;border-radius:12px;text-decoration:none;display:inline-block}
+    @media(min-width:700px){.controls{display:none}}
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <a href="/" class="nav-btn">← Portal</a>
+  <div style="font-size:.8rem;color:#555;font-weight:600">Einparken · 3 Level</div>
+</div>
+<h1>🅿️ Einpark-Challenge</h1>
+<p class="sub">Steuere mit <b>Pfeiltasten / WASD</b> (mobil: Buttons). Parke vollständig in der grünen Lücke – ohne Blechschaden!</p>
+
+<div class="hud">
+  <div><div class="v" id="hudScore">0</div><div class="l">Punkte</div></div>
+  <div><div class="v" id="hudLevel">–</div><div class="l">Level</div></div>
+  <div><div class="v" id="hudTime">0.0s</div><div class="l">Zeit</div></div>
+  <div><div class="v" id="hudCrash">0</div><div class="l">Crashes</div></div>
+</div>
+
+<canvas id="cv" width="640" height="420"></canvas>
+<div class="msg" id="msg"></div>
+<div class="controls">
+  <div class="ctl" data-k="left">⟲</div>
+  <div class="ctl" data-k="up">▲</div>
+  <div class="ctl" data-k="down">▼</div>
+  <div class="ctl" data-k="right">⟳</div>
+</div>
+<div id="startArea" style="margin-top:10px"><button class="btn-start" onclick="startGame()">▶ Start</button></div>
+<div id="resultArea"></div>
+
+<div class="ov hidden" id="ovLogin"><div class="ov-card">
+  <div style="font-size:3rem;margin-bottom:6px">🔒</div><h2>Anmeldung nötig</h2>
+  <p>Melde dich im Portal an, um deinen Score zu speichern.</p><a href="/" class="btn-portal">Zum Portal</a>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const CAR_W = 76, CAR_H = 38;
+
+let token=null, gameTs=null;
+let running=false, level=0, score=0, crashes=0, levelStart=0, totalScore=0, raf=null, parkTimer=0;
+let car, keys={};
+
+// Level: Startposition, Parklücke, Hindernisse (parkende Autos/Wände)
+const LEVELS = [
+  { // 1: Vorwärts einparken, viel Platz
+    start:{x:90,y:340,a:0},
+    bay:{x:410,y:60,w:110,h:60},
+    obs:[ {x:250,y:52,w:100,h:52,car:1}, {x:560,y:52,w:70,h:52,car:1} ],
+  },
+  { // 2: Parallel-Parken rechts
+    start:{x:70,y:120,a:0},
+    bay:{x:350,y:308,w:130,h:56},
+    obs:[ {x:180,y:305,w:110,h:52,car:1}, {x:530,y:305,w:110,h:52,car:1}, {x:0,y:380,w:640,h:40} ],
+  },
+  { // 3: Enge Lücke rückwärts zwischen zwei Autos
+    start:{x:540,y:90,a:Math.PI},
+    bay:{x:250,y:310,w:104,h:52},
+    obs:[ {x:120,y:306,w:110,h:52,car:1}, {x:380,y:306,w:110,h:52,car:1}, {x:0,y:378,w:640,h:42}, {x:0,y:0,w:14,h:420}, {x:626,y:0,w:14,h:420} ],
+  },
+];
+
+function showToast(m,t='ok'){ const e=$('toast'); e.textContent=m; e.className='toast show '+t; clearTimeout(showToast._t); showToast._t=setTimeout(()=>e.className='toast',1800); }
+async function getToken(){
+  try{
+    const r = await fetch('/api/game-token/parking');
+    if (r.status===401){ $('ovLogin').classList.remove('hidden'); return false; }
+    const d = await r.json(); token=d.token; gameTs=d.ts; return true;
+  }catch{ return false; }
+}
+
+// Auto-Eckpunkte (gedrehtes Rechteck)
+function carCorners(c){
+  const cos=Math.cos(c.a), sin=Math.sin(c.a);
+  const hw=CAR_W/2, hh=CAR_H/2;
+  return [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([px,py])=>[c.x+px*cos-py*sin, c.y+px*sin+py*cos]);
+}
+function cornersInRect(corners, r){ return corners.every(([x,y])=> x>=r.x && x<=r.x+r.w && y>=r.y && y<=r.y+r.h); }
+function cornerHitsRect(corners, r){ return corners.some(([x,y])=> x>r.x && x<r.x+r.w && y>r.y && y<r.y+r.h); }
+
+function setupLevel(){
+  const L = LEVELS[level];
+  car = { x:L.start.x, y:L.start.y, a:L.start.a, v:0 };
+  levelStart = Date.now(); parkTimer = 0;
+  $('hudLevel').textContent = (level+1)+'/'+LEVELS.length;
+  $('msg').textContent = 'Level '+(level+1)+': Ab in die grüne Lücke!';
+  $('msg').style.color = '#c084fc';
+}
+
+function step(){
+  if (!running) return;
+  const L = LEVELS[level];
+
+  // Steuerung (einfaches Fahrrad-Modell)
+  const accel = 0.14, maxV = 3.2, friction = 0.94, steer = 0.045;
+  if (keys.up)   car.v = Math.min(maxV, car.v + accel);
+  if (keys.down) car.v = Math.max(-maxV*0.7, car.v - accel);
+  car.v *= friction;
+  if (Math.abs(car.v) > 0.05){
+    const dir = car.v >= 0 ? 1 : -1;
+    if (keys.left)  car.a -= steer * dir * Math.min(1, Math.abs(car.v)/1.4);
+    if (keys.right) car.a += steer * dir * Math.min(1, Math.abs(car.v)/1.4);
+  }
+  car.x += Math.cos(car.a)*car.v;
+  car.y += Math.sin(car.a)*car.v;
+
+  const corners = carCorners(car);
+
+  // Kollision: Ränder + Hindernisse
+  let crashed = corners.some(([x,y])=> x<0||x>cv.width||y<0||y>cv.height);
+  if (!crashed) crashed = L.obs.some(o=>cornerHitsRect(corners,o));
+  if (crashed){
+    crashes++; $('hudCrash').textContent = crashes;
+    showToast('💥 Crash! Zurück zum Start', 'err');
+    totalScore = Math.max(0, totalScore-800);
+    if (crashes >= 5) return endGame(false);
+    car = { x:L.start.x, y:L.start.y, a:L.start.a, v:0 };
+  }
+
+  // Geparkt? Alle 4 Ecken in der Bucht + langsam
+  if (cornersInRect(corners, L.bay) && Math.abs(car.v) < 0.15){
+    parkTimer += 16;
+    if (parkTimer > 700){ // 0.7s ruhig stehen
+      const sec = (Date.now()-levelStart)/1000;
+      // Präzision: Abstand Fahrzeugmitte ↔ Buchtmitte
+      const dx = car.x-(L.bay.x+L.bay.w/2), dy = car.y-(L.bay.y+L.bay.h/2);
+      const precision = Math.max(0, 3000 - Math.round(Math.hypot(dx,dy)*60));
+      const timeBonus = Math.max(0, Math.round((60-sec)*150));
+      const lvlScore = 5000 + precision + timeBonus;
+      totalScore += lvlScore;
+      updateHud();
+      showToast(`✓ Geparkt! +${lvlScore.toLocaleString('de-DE')}`, 'ok');
+      level++;
+      if (level >= LEVELS.length) return endGame(true);
+      setupLevel();
+    }
+  } else parkTimer = 0;
+
+  updateHud();
+  draw(L, corners);
+  raf = requestAnimationFrame(step);
+}
+
+function updateHud(){
+  $('hudScore').textContent = totalScore.toLocaleString('de-DE');
+  $('hudTime').textContent = running ? ((Date.now()-levelStart)/1000).toFixed(1)+'s' : '0.0s';
+}
+
+function drawCarRect(x,y,w,h,color){
+  ctx.fillStyle=color;
+  ctx.beginPath(); ctx.roundRect(x,y,w,h,7); ctx.fill();
+  ctx.fillStyle='rgba(180,220,255,.28)';
+  ctx.beginPath(); ctx.roundRect(x+w*0.62,y+5,w*0.2,h-10,3); ctx.fill();
+}
+
+function draw(L, corners){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  // Asphalt-Textur (Linien)
+  ctx.strokeStyle='rgba(255,255,255,.045)';
+  for(let i=0;i<8;i++){ ctx.beginPath(); ctx.moveTo(0,i*60); ctx.lineTo(640,i*60); ctx.stroke(); }
+
+  // Parkbucht
+  ctx.strokeStyle='#4ade80'; ctx.lineWidth=3; ctx.setLineDash([9,7]);
+  ctx.strokeRect(L.bay.x, L.bay.y, L.bay.w, L.bay.h);
+  ctx.setLineDash([]);
+  ctx.fillStyle='rgba(74,222,128,.08)';
+  ctx.fillRect(L.bay.x, L.bay.y, L.bay.w, L.bay.h);
+  ctx.fillStyle='rgba(74,222,128,.55)'; ctx.font='bold 20px Inter';
+  ctx.fillText('P', L.bay.x+L.bay.w/2-7, L.bay.y+L.bay.h/2+7);
+
+  // Hindernisse
+  L.obs.forEach(o=>{
+    if (o.car) drawCarRect(o.x,o.y,o.w,o.h,'#6b7280');
+    else { ctx.fillStyle='#3f3f46'; ctx.fillRect(o.x,o.y,o.w,o.h); }
+  });
+
+  // Spielerauto (gedreht) — vor Spielstart noch nicht vorhanden
+  if (car){
+    ctx.save();
+    ctx.translate(car.x,car.y); ctx.rotate(car.a);
+    drawCarRect(-CAR_W/2,-CAR_H/2,CAR_W,CAR_H,'#c084fc');
+    // Front-Markierung
+    ctx.fillStyle='#fff'; ctx.fillRect(CAR_W/2-8,-4,6,8);
+    ctx.restore();
+  }
+
+  // Park-Fortschritt
+  if (parkTimer>0){
+    ctx.fillStyle='#4ade80';
+    ctx.fillRect(L.bay.x, L.bay.y-10, L.bay.w*Math.min(1,parkTimer/700), 5);
+  }
+}
+
+async function startGame(){
+  if (!await getToken()) return;
+  $('startArea').innerHTML=''; $('resultArea').innerHTML='';
+  running=true; level=0; totalScore=0; crashes=0;
+  $('hudCrash').textContent='0';
+  setupLevel();
+  cancelAnimationFrame(raf);
+  step();
+}
+
+async function endGame(success){
+  running=false; cancelAnimationFrame(raf);
+  score = totalScore;
+  $('msg').textContent = success ? '🏁 Alle Level geschafft!' : '💥 Zu viele Crashes!';
+  $('msg').style.color = success ? '#4ade80' : '#ef4444';
+
+  let coinsEarned=0;
+  try{
+    const r = await fetch('/api/game-scores/parking', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ score, token, ts: gameTs }),
+    });
+    const d = await r.json();
+    if (r.ok) coinsEarned = d.coinsEarned||0;
+  }catch{}
+
+  $('resultArea').innerHTML = `
+    <div class="result-card">
+      <h2>${success?'🏆':'💥'} ${success?'Park-Profi!':'Werkstatt lässt grüßen…'}</h2>
+      <div style="margin:.6rem 0">
+        <div class="result-row"><span style="color:#666">Level geschafft</span><b>${level}/${LEVELS.length}</b></div>
+        <div class="result-row"><span style="color:#666">Crashes</span><b style="color:${crashes?'#ef4444':'#4ade80'}">${crashes}</b></div>
+        <div class="result-row"><span style="color:#666">Score</span><b style="color:#c084fc">${score.toLocaleString('de-DE')}</b></div>
+      </div>
+      ${coinsEarned>0?`<div class="coins-earned">+${coinsEarned} 🪙</div>`:''}
+      ${score>=20000?'<div style="font-size:.8rem;color:#fbbf24;margin-bottom:.5rem">🏅 Zertifikat „Rangier-Profi" erreicht!</div>':'<div style="font-size:.75rem;color:#555;margin-bottom:.5rem">Ab 20.000 Punkten: Zertifikat „Rangier-Profi"</div>'}
+      <button class="btn-start" style="width:100%" onclick="startGame()">Nochmal spielen</button>
+    </div>`;
+  if (coinsEarned>0) showToast(`+${coinsEarned} 🪙 Coins!`, 'ok');
+}
+
+// Tastatur
+const KEYMAP = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right', w:'up', s:'down', a:'left', d:'right' };
+addEventListener('keydown', e=>{ const k=KEYMAP[e.key]; if(k){ keys[k]=true; e.preventDefault(); } });
+addEventListener('keyup',   e=>{ const k=KEYMAP[e.key]; if(k){ keys[k]=false; e.preventDefault(); } });
+// Touch-Buttons
+document.querySelectorAll('.ctl').forEach(b=>{
+  const k=b.dataset.k;
+  const on = e=>{ e.preventDefault(); keys[k]=true; };
+  const off= e=>{ e.preventDefault(); keys[k]=false; };
+  b.addEventListener('touchstart',on,{passive:false}); b.addEventListener('touchend',off);
+  b.addEventListener('mousedown',on); b.addEventListener('mouseup',off); b.addEventListener('mouseleave',off);
+});
+// Canvas responsive skalieren
+function fitCanvas(){
+  const w = Math.min(640, document.body.clientWidth-32);
+  cv.style.width = w+'px'; cv.style.height = (w*420/640)+'px';
+}
+addEventListener('resize', fitCanvas); fitCanvas();
+draw(LEVELS[0], []);
+</script>
+</body>
+</html>

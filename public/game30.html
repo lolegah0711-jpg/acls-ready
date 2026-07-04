@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fließband-Montage – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#0a0a0a;font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px 16px 40px;user-select:none;-webkit-tap-highlight-color:transparent}
+    .topbar{width:100%;max-width:640px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+    .nav-btn{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7);padding:7px 14px;border-radius:9px;font-size:12px;font-weight:700;text-decoration:none}
+    h1{font-size:clamp(20px,5vw,30px);font-weight:900;margin-bottom:2px;text-align:center}
+    .sub{font-size:12px;color:#666;margin-bottom:12px;text-align:center;max-width:460px}
+    .hud{display:flex;gap:1.3rem;margin-bottom:12px;flex-wrap:wrap;justify-content:center}
+    .hud div{text-align:center}
+    .hud .v{font-size:1.2rem;font-weight:900;color:#fbbf24;font-variant-numeric:tabular-nums}
+    .hud .l{font-size:.6rem;color:#555;text-transform:uppercase;letter-spacing:.08em}
+    .lives{color:#ef4444;font-size:1.05rem;letter-spacing:.15em}
+    /* Ziel-Anzeige */
+    .target{display:flex;align-items:center;gap:.8rem;background:#131313;border:1px solid #232323;border-radius:14px;padding:.7rem 1.2rem;margin-bottom:12px}
+    .target .want{font-size:2.2rem}
+    .target .txt{font-size:.8rem;color:#888}
+    .target .txt b{color:#fff;display:block;font-size:.92rem}
+    /* Fließband */
+    .belt{position:relative;width:100%;max-width:640px;height:130px;background:repeating-linear-gradient(90deg,#1c1c1c 0 34px,#161616 34px 68px);border:1px solid #2c2c2c;border-radius:14px;overflow:hidden;margin-bottom:10px}
+    .belt::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.03),transparent 30%,transparent 70%,rgba(0,0,0,.4))}
+    .part{position:absolute;top:50%;transform:translateY(-50%);font-size:2.6rem;cursor:pointer;transition:transform .1s;z-index:3;filter:drop-shadow(0 4px 8px rgba(0,0,0,.5))}
+    .part:active{transform:translateY(-50%) scale(.88)}
+    .part.grabbed{animation:pop .3s forwards}
+    .part.badflash{animation:shake .3s}
+    @keyframes pop{to{transform:translateY(-80%) scale(1.5);opacity:0}}
+    @keyframes shake{25%{transform:translateY(-50%) translateX(-6px)}75%{transform:translateY(-50%) translateX(6px)}}
+    .station{position:absolute;right:0;top:0;bottom:0;width:70px;background:rgba(251,191,36,.07);border-left:2px dashed rgba(251,191,36,.4);display:flex;align-items:center;justify-content:center;font-size:1.4rem;opacity:.7;z-index:1}
+    .btn-start{background:linear-gradient(135deg,#fbbf24,#d97706);color:#000;font-weight:900;font-size:1rem;padding:13px 36px;border-radius:12px;border:none;cursor:pointer;font-family:inherit}
+    .result-card{background:#111;border:1px solid #222;border-radius:14px;padding:1.4rem 1.8rem;max-width:400px;width:100%;text-align:center;margin-top:8px}
+    .coins-earned{font-size:1.5rem;font-weight:900;color:#fbbf24;margin:.6rem 0}
+    .result-row{display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px solid #1a1a1a;font-size:.84rem}
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:.6rem 1.4rem;font-size:.85rem;font-weight:700;transition:.3s;opacity:0;z-index:99}
+    .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+    .toast.ok{border-color:#22c55e;color:#22c55e}.toast.err{border-color:#ef4444;color:#ef4444}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.92);z-index:100}
+    .ov.hidden{display:none}
+    .ov-card{background:#111;border:1px solid #222;border-radius:18px;padding:36px;max-width:400px;width:100%;text-align:center}
+    .ov-card p{color:#666;font-size:.88rem;margin:.5rem 0 1.5rem;line-height:1.55}
+    .btn-portal{background:#fff;color:#000;font-weight:900;padding:12px 28px;border-radius:12px;text-decoration:none;display:inline-block}
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <a href="/" class="nav-btn">← Portal</a>
+  <div style="font-size:.8rem;color:#555;font-weight:600">Fließband · Endlos</div>
+</div>
+<h1>🏭 Fließband-Montage</h1>
+<p class="sub">Schnapp dir das <b>gesuchte Teil</b> vom Band, bevor es an der Station vorbeirauscht. Falsches Teil oder verpasst = Leben weg. Combo = Multiplikator!</p>
+
+<div class="hud">
+  <div><div class="v" id="hudScore">0</div><div class="l">Punkte</div></div>
+  <div><div class="v" id="hudCombo">×1</div><div class="l">Combo</div></div>
+  <div><div class="v lives" id="hudLives">❤❤❤</div><div class="l">Leben</div></div>
+  <div><div class="v" id="hudSpeed">1.0</div><div class="l">Tempo</div></div>
+</div>
+
+<div class="target"><div class="want" id="want">❓</div><div class="txt">Gesucht wird:<b id="wantName">–</b></div></div>
+<div class="belt" id="belt"><div class="station">🤖</div></div>
+<div id="startArea"><button class="btn-start" onclick="startGame()">▶ Schicht starten</button></div>
+<div id="resultArea"></div>
+
+<div class="ov hidden" id="ovLogin"><div class="ov-card">
+  <div style="font-size:3rem;margin-bottom:6px">🔒</div><h2>Anmeldung nötig</h2>
+  <p>Melde dich im Portal an, um deinen Score zu speichern.</p><a href="/" class="btn-portal">Zum Portal</a>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const PARTS = [
+  { e:'🛞', n:'Reifen' }, { e:'🔋', n:'Batterie' }, { e:'💡', n:'Scheinwerfer' },
+  { e:'🪟', n:'Scheibe' }, { e:'🔩', n:'Schrauben' }, { e:'⚙️', n:'Getriebe' },
+  { e:'🛢️', n:'Öl' }, { e:'🪫', n:'Zündspule' }, { e:'🧯', n:'Feuerlöscher' },
+  { e:'🔧', n:'Werkzeug' },
+];
+
+let token=null, gameTs=null;
+let running=false, score=0, combo=0, lives=3, speed=1, want=null, spawnT=null, tickT=null;
+let parts=[]; // { el, x, part, dead }
+
+function showToast(m,t='ok'){ const e=$('toast'); e.textContent=m; e.className='toast show '+t; clearTimeout(showToast._t); showToast._t=setTimeout(()=>e.className='toast',1500); }
+async function getToken(){
+  try{
+    const r = await fetch('/api/game-token/assembly');
+    if (r.status===401){ $('ovLogin').classList.remove('hidden'); return false; }
+    const d = await r.json(); token=d.token; gameTs=d.ts; return true;
+  }catch{ return false; }
+}
+const rnd = a => a[Math.floor(Math.random()*a.length)];
+
+function newTarget(){
+  want = rnd(PARTS);
+  $('want').textContent = want.e;
+  $('wantName').textContent = want.n;
+}
+
+function spawn(){
+  if (!running) return;
+  const part = Math.random() < 0.42 ? want : rnd(PARTS);
+  const el = document.createElement('div');
+  el.className='part'; el.textContent = part.e;
+  el.style.left = '-60px';
+  const beltH = $('belt').clientHeight;
+  el.style.top = (30 + Math.random()*(beltH-60)) + 'px';
+  el.style.transform = '';
+  const p = { el, x: -60, part, dead:false };
+  el.onpointerdown = ()=>grab(p);
+  $('belt').appendChild(el);
+  parts.push(p);
+  // Nächster Spawn: schneller mit steigendem Tempo
+  spawnT = setTimeout(spawn, Math.max(420, 1150 - speed*120) + Math.random()*300);
+}
+
+function grab(p){
+  if (!running || p.dead) return;
+  p.dead = true;
+  if (p.part === want){
+    combo++;
+    const pts = 120 * Math.min(combo, 10);
+    score += pts;
+    p.el.classList.add('grabbed');
+    setTimeout(()=>p.el.remove(), 300);
+    speed = Math.min(5, 1 + score/4000);
+    newTarget();
+  } else {
+    combo = 0; lives--;
+    p.el.classList.add('badflash');
+    setTimeout(()=>{ p.dead=false; p.el.classList.remove('badflash'); }, 320);
+    showToast('✗ Falsches Teil!', 'err');
+    if (lives<=0) return endGame();
+  }
+  updateHud();
+}
+
+function tick(){
+  if (!running) return;
+  const beltW = $('belt').clientWidth;
+  const stationX = beltW - 70;
+  for (const p of parts){
+    if (p.dead && p.el.classList.contains('grabbed')) continue;
+    p.x += 1.7 * speed;
+    p.el.style.left = p.x + 'px';
+    // An Station vorbei?
+    if (!p.dead && p.x > beltW + 10){
+      p.dead = true; p.el.remove();
+      if (p.part === want){
+        combo = 0; lives--;
+        showToast('⏱ Teil verpasst!', 'err');
+        updateHud();
+        if (lives<=0) return endGame();
+        newTarget();
+      }
+    }
+  }
+  parts = parts.filter(p=>document.body.contains(p.el) || !p.dead);
+  tickT = requestAnimationFrame(tick);
+}
+
+function updateHud(){
+  $('hudScore').textContent = score.toLocaleString('de-DE');
+  $('hudCombo').textContent = '×'+Math.min(Math.max(combo,1),10);
+  $('hudLives').textContent = '❤'.repeat(Math.max(0,lives)) || '💀';
+  $('hudSpeed').textContent = speed.toFixed(1);
+}
+
+async function startGame(){
+  if (!await getToken()) return;
+  $('startArea').innerHTML=''; $('resultArea').innerHTML='';
+  document.querySelectorAll('.part').forEach(e=>e.remove());
+  parts=[]; running=true; score=0; combo=0; lives=3; speed=1;
+  newTarget(); updateHud();
+  clearTimeout(spawnT); cancelAnimationFrame(tickT);
+  spawn(); tick();
+}
+
+async function endGame(){
+  running=false;
+  clearTimeout(spawnT); cancelAnimationFrame(tickT);
+  document.querySelectorAll('.part').forEach(e=>e.remove());
+  parts=[];
+
+  let coinsEarned=0;
+  try{
+    const r = await fetch('/api/game-scores/assembly', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ score, token, ts: gameTs }),
+    });
+    const d = await r.json();
+    if (r.ok) coinsEarned = d.coinsEarned||0;
+  }catch{}
+
+  $('resultArea').innerHTML = `
+    <div class="result-card">
+      <h2>🏭 Schichtende!</h2>
+      <div style="margin:.6rem 0">
+        <div class="result-row"><span style="color:#666">Score</span><b style="color:#fbbf24">${score.toLocaleString('de-DE')}</b></div>
+        <div class="result-row"><span style="color:#666">Max. Tempo</span><b>${speed.toFixed(1)}×</b></div>
+      </div>
+      ${coinsEarned>0?`<div class="coins-earned">+${coinsEarned} 🪙</div>`:''}
+      ${score>=30000?'<div style="font-size:.8rem;color:#fbbf24;margin-bottom:.5rem">🏅 Zertifikat „Montage-Meister" erreicht!</div>':'<div style="font-size:.75rem;color:#555;margin-bottom:.5rem">Ab 30.000 Punkten: Zertifikat „Montage-Meister"</div>'}
+      <button class="btn-start" style="width:100%" onclick="startGame()">Neue Schicht</button>
+    </div>`;
+  if (coinsEarned>0) showToast(`+${coinsEarned} 🪙 Coins!`, 'ok');
+}
+</script>
+</body>
+</html>

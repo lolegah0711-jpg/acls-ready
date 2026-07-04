@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reifenwechsel – ACLS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#0a0a0a;font-family:'Inter',sans-serif;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px 16px 40px;user-select:none;-webkit-tap-highlight-color:transparent}
+    .topbar{width:100%;max-width:520px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+    .nav-btn{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7);padding:7px 14px;border-radius:9px;font-size:12px;font-weight:700;text-decoration:none}
+    h1{font-size:clamp(22px,6vw,32px);font-weight:900;margin-bottom:4px;text-align:center}
+    .sub{font-size:13px;color:#666;margin-bottom:16px;text-align:center;max-width:420px}
+    .hud{display:flex;gap:1.4rem;margin-bottom:14px;flex-wrap:wrap;justify-content:center}
+    .hud div{text-align:center}
+    .hud .v{font-size:1.3rem;font-weight:900;color:#fb923c;font-variant-numeric:tabular-nums}
+    .hud .l{font-size:.62rem;color:#555;text-transform:uppercase;letter-spacing:.08em}
+    .phase-banner{font-size:.95rem;font-weight:800;margin-bottom:12px;padding:.45rem 1.2rem;border-radius:99px;background:rgba(251,146,60,.12);color:#fb923c;border:1px solid rgba(251,146,60,.3);text-align:center}
+    /* Rad */
+    .wheelbox{position:relative;width:min(320px,86vw);height:min(320px,86vw);margin-bottom:16px}
+    .tire{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle,#333 0%,#1c1c1c 55%,#0f0f0f 100%);border:14px solid #222;box-shadow:0 0 40px rgba(0,0,0,.8) inset, 0 6px 24px rgba(0,0,0,.5);transition:transform .45s,opacity .45s}
+    .tire.off{transform:translateX(120%) rotate(80deg);opacity:0}
+    .rim{position:absolute;inset:22%;border-radius:50%;background:radial-gradient(circle,#666,#3a3a3a 70%);border:3px solid #777}
+    .hubcap{position:absolute;left:50%;top:50%;width:16%;height:16%;transform:translate(-50%,-50%);border-radius:50%;background:#999;border:2px solid #bbb}
+    .nut{position:absolute;width:15%;height:15%;transform:translate(-50%,-50%);border-radius:50%;background:linear-gradient(135deg,#8a8a8a,#555);border:3px solid #999;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.95rem;color:#111;cursor:pointer;transition:background .15s,border-color .15s,opacity .3s}
+    .nut.done{background:#14532d;border-color:#4ade80;color:#4ade80;cursor:default}
+    .nut.next-hint{animation:hintpulse 1.2s infinite}
+    .nut.wrongflash{background:#7f1d1d;border-color:#ef4444;color:#fff}
+    @keyframes hintpulse{0%,100%{box-shadow:0 0 0 0 rgba(251,146,60,.5)}50%{box-shadow:0 0 0 10px rgba(251,146,60,0)}}
+    .bigaction{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,#fb923c,#ea580c);color:#111;font-weight:900;font-size:1rem;border:none;border-radius:14px;padding:16px 26px;cursor:pointer;font-family:inherit;box-shadow:0 6px 22px rgba(234,88,12,.4);z-index:5}
+    .bigaction:active{transform:translate(-50%,-50%) scale(.95)}
+    .btn-start{background:linear-gradient(135deg,#fb923c,#ea580c);color:#111;font-weight:900;font-size:1rem;padding:13px 36px;border-radius:12px;border:none;cursor:pointer;font-family:inherit}
+    .result-card{background:#111;border:1px solid #222;border-radius:14px;padding:1.4rem 1.8rem;max-width:400px;width:100%;text-align:center;margin-top:8px}
+    .coins-earned{font-size:1.5rem;font-weight:900;color:#fbbf24;margin:.6rem 0}
+    .result-row{display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px solid #1a1a1a;font-size:.84rem}
+    .result-row:last-child{border:none}
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:.6rem 1.4rem;font-size:.85rem;font-weight:700;transition:.3s;opacity:0;z-index:99}
+    .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+    .toast.ok{border-color:#22c55e;color:#22c55e}.toast.err{border-color:#ef4444;color:#ef4444}
+    .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.92);z-index:100}
+    .ov.hidden{display:none}
+    .ov-card{background:#111;border:1px solid #222;border-radius:18px;padding:36px;max-width:400px;width:100%;text-align:center}
+    .ov-card p{color:#666;font-size:.88rem;margin:.5rem 0 1.5rem;line-height:1.55}
+    .btn-portal{background:#fff;color:#000;font-weight:900;padding:12px 28px;border-radius:12px;text-decoration:none;display:inline-block}
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <a href="/" class="nav-btn">← Portal</a>
+  <div style="font-size:.8rem;color:#555;font-weight:600">Reifenwechsel · 3 Räder</div>
+</div>
+<h1>🔧 Reifenwechsel</h1>
+<p class="sub">Radmuttern immer <b>über Kreuz</b> (Sternmuster) lösen und anziehen! Falsche Reihenfolge kostet Zeit & Punkte.</p>
+
+<div class="hud">
+  <div><div class="v" id="hudScore">0</div><div class="l">Punkte</div></div>
+  <div><div class="v" id="hudTime">0.0s</div><div class="l">Zeit</div></div>
+  <div><div class="v" id="hudWheel">–</div><div class="l">Rad</div></div>
+  <div><div class="v" id="hudErr">0</div><div class="l">Fehler</div></div>
+</div>
+
+<div class="phase-banner" id="phase">Bereit? Klicke auf Start!</div>
+<div class="wheelbox" id="wheelbox">
+  <div class="tire" id="tire"><div class="rim"></div><div class="hubcap"></div></div>
+  <button class="bigaction" id="startBtn" onclick="startGame()">▶ Start</button>
+</div>
+<div id="resultArea"></div>
+
+<div class="ov hidden" id="ovLogin"><div class="ov-card">
+  <div style="font-size:3rem;margin-bottom:6px">🔒</div><h2>Anmeldung nötig</h2>
+  <p>Melde dich im Portal an, um deinen Score zu speichern.</p><a href="/" class="btn-portal">Zum Portal</a>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const WHEELS = 3;
+// Sternmuster für 5 Muttern: 1 → 3 → 5 → 2 → 4 (Index 0,2,4,1,3)
+const STAR_ORDER = [0, 2, 4, 1, 3];
+
+let token = null, gameTs = null;
+let state = 'idle'; // idle | loosen | tireoff | tireon | tighten | done
+let wheel = 0, step = 0, score = 0, errors = 0, t0 = 0, tick = null;
+let nutEls = [];
+
+function showToast(m, t='ok'){ const e=$('toast'); e.textContent=m; e.className='toast show '+t; clearTimeout(showToast._t); showToast._t=setTimeout(()=>e.className='toast',1800); }
+
+async function getToken(){
+  try{
+    const r = await fetch('/api/game-token/tirechange');
+    if (r.status===401){ $('ovLogin').classList.remove('hidden'); return false; }
+    const d = await r.json(); token=d.token; gameTs=d.ts; return true;
+  }catch{ return false; }
+}
+
+function buildNuts(){
+  nutEls.forEach(n=>n.remove()); nutEls=[];
+  const box = $('wheelbox');
+  for (let i=0;i<5;i++){
+    const ang = -90 + i*72; // Mutter 1 oben, im Uhrzeigersinn
+    const r = 34; // % Abstand vom Zentrum
+    const x = 50 + r*Math.cos(ang*Math.PI/180);
+    const y = 50 + r*Math.sin(ang*Math.PI/180);
+    const el = document.createElement('div');
+    el.className='nut'; el.style.left=x+'%'; el.style.top=y+'%';
+    el.textContent = i+1; el.dataset.i = i;
+    el.onclick = ()=>nutClick(i);
+    box.appendChild(el); nutEls.push(el);
+  }
+}
+
+function expectedNut(){ return STAR_ORDER[step]; }
+function hint(){
+  nutEls.forEach(n=>n.classList.remove('next-hint'));
+  if (state==='loosen'||state==='tighten') nutEls[expectedNut()]?.classList.add('next-hint');
+}
+
+function nutClick(i){
+  if (state!=='loosen' && state!=='tighten') return;
+  const exp = expectedNut();
+  const el = nutEls[i];
+  if (el.classList.contains('done')) return;
+  if (i===exp){
+    el.classList.add('done'); el.classList.remove('next-hint');
+    score += 500; step++;
+    if (step>=5){
+      if (state==='loosen'){ state='tireoff'; showBigAction('🛞 Rad abnehmen', tireOff); $('phase').textContent='Muttern gelöst! Nimm das Rad ab.'; }
+      else { // tighten fertig → Rad komplett
+        score += 800; wheel++;
+        if (wheel>=WHEELS) return finishGame();
+        $('phase').textContent = `Rad ${wheel} fertig! Weiter zum nächsten…`;
+        setTimeout(nextWheel, 700);
+      }
+    } else hint();
+  } else {
+    errors++; score = Math.max(0, score-300);
+    el.classList.add('wrongflash');
+    setTimeout(()=>el.classList.remove('wrongflash'), 350);
+    showToast('Falsche Reihenfolge! Über Kreuz arbeiten (Sternmuster)', 'err');
+  }
+  updateHud();
+}
+
+function showBigAction(label, fn){
+  const b = document.createElement('button');
+  b.className='bigaction'; b.textContent=label;
+  b.onclick = ()=>{ b.remove(); fn(); };
+  $('wheelbox').appendChild(b);
+}
+
+function tireOff(){
+  $('tire').classList.add('off');
+  nutEls.forEach(n=>n.style.opacity='0');
+  score += 250; updateHud();
+  state='tireon';
+  setTimeout(()=>{ showBigAction('🆕 Neues Rad montieren', tireOn); $('phase').textContent='Altes Rad ist runter – neues Rad drauf!'; }, 500);
+}
+
+function tireOn(){
+  $('tire').classList.remove('off');
+  score += 250;
+  setTimeout(()=>{
+    nutEls.forEach(n=>{ n.classList.remove('done'); n.style.opacity='1'; });
+    state='tighten'; step=0; hint();
+    $('phase').textContent='Jetzt die Muttern über Kreuz FESTZIEHEN!';
+    updateHud();
+  }, 500);
+}
+
+function nextWheel(){
+  $('tire').classList.remove('off');
+  buildNuts();
+  state='loosen'; step=0; hint();
+  $('hudWheel').textContent = (wheel+1)+'/'+WHEELS;
+  $('phase').textContent = `Rad ${wheel+1}: Muttern über Kreuz LÖSEN!`;
+}
+
+function updateHud(){
+  $('hudScore').textContent = score.toLocaleString('de-DE');
+  $('hudErr').textContent = errors;
+}
+
+async function startGame(){
+  if (!await getToken()) return;
+  $('startBtn')?.remove();
+  $('resultArea').innerHTML='';
+  score=0; errors=0; wheel=0; t0=Date.now();
+  updateHud();
+  clearInterval(tick);
+  tick = setInterval(()=>{ $('hudTime').textContent=((Date.now()-t0)/1000).toFixed(1)+'s'; }, 100);
+  nextWheel();
+}
+
+async function finishGame(){
+  state='done'; clearInterval(tick);
+  const sec = (Date.now()-t0)/1000;
+  const timeBonus = Math.max(0, Math.round((90 - sec) * 400));
+  score += timeBonus;
+  updateHud();
+  $('phase').textContent='🏁 Alle Räder gewechselt!';
+  nutEls.forEach(n=>n.remove()); nutEls=[];
+
+  let coinsEarned = 0;
+  try{
+    const r = await fetch('/api/game-scores/tirechange', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ score, token, ts: gameTs }),
+    });
+    const d = await r.json();
+    if (r.ok) coinsEarned = d.coinsEarned||0;
+  }catch{}
+
+  $('resultArea').innerHTML = `
+    <div class="result-card">
+      <h2>🏁 Fertig!</h2>
+      <div style="margin:.6rem 0">
+        <div class="result-row"><span style="color:#666">Zeit</span><b>${sec.toFixed(1)}s</b></div>
+        <div class="result-row"><span style="color:#666">Fehler</span><b style="color:${errors? '#ef4444':'#4ade80'}">${errors}</b></div>
+        <div class="result-row"><span style="color:#666">Zeit-Bonus</span><b style="color:#4ade80">+${timeBonus.toLocaleString('de-DE')}</b></div>
+        <div class="result-row"><span style="color:#666">Score</span><b style="color:#fb923c">${score.toLocaleString('de-DE')}</b></div>
+      </div>
+      ${coinsEarned>0?`<div class="coins-earned">+${coinsEarned} 🪙</div>`:''}
+      ${score>=15000?'<div style="font-size:.8rem;color:#fbbf24;margin-bottom:.5rem">🏅 Zertifikat „Reifen-Spezialist" erreicht!</div>':'<div style="font-size:.75rem;color:#555;margin-bottom:.5rem">Ab 15.000 Punkten: Zertifikat „Reifen-Spezialist"</div>'}
+      <button class="btn-start" style="width:100%" onclick="location.reload()">Nochmal spielen</button>
+    </div>`;
+  if (coinsEarned>0) showToast(`+${coinsEarned} 🪙 Coins!`, 'ok');
+}
+</script>
+</body>
+</html>

@@ -1299,6 +1299,79 @@ function initDb() {
   )`);
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_ghost_track ON ghost_runs(track_id, finish_ms)'); } catch {}
 
+  // ── Papierkram-Suite: Werkstattaufträge, Rechnungen, TÜV-Berichte etc. ──
+  // Ein generisches Dokument-Modell: type bestimmt das Formular, payload (JSON)
+  // trägt die Felder. doc_no ist die fortlaufende "amtliche" Nummer pro Typ.
+  db.exec(`CREATE TABLE IF NOT EXISTS documents (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    type         TEXT NOT NULL,
+    doc_no       TEXT NOT NULL,
+    kennzeichen  TEXT,
+    citizen_name TEXT,
+    title        TEXT,
+    payload      TEXT NOT NULL DEFAULT '{}',
+    status       TEXT NOT NULL DEFAULT 'offen',
+    created_by   INTEGER NOT NULL REFERENCES users(id),
+    creator_name TEXT,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_docs_type ON documents(type, created_at DESC)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_docs_kz ON documents(kennzeichen)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_docs_citizen ON documents(citizen_name)'); } catch {}
+
+  // ── Fahrzeugakte: eine Akte pro Kennzeichen, Dokumente hängen daran ──
+  db.exec(`CREATE TABLE IF NOT EXISTS vehicle_files (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    kennzeichen  TEXT NOT NULL UNIQUE,
+    marke        TEXT,
+    modell       TEXT,
+    farbe        TEXT,
+    owner_name   TEXT,
+    notes        TEXT,
+    created_by   INTEGER REFERENCES users(id),
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // ── Punkte-Register (Flensburg-Style): Verkehrspunkte pro Bürger ──
+  db.exec(`CREATE TABLE IF NOT EXISTS citizen_points (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    citizen_name TEXT NOT NULL,
+    points       INTEGER NOT NULL DEFAULT 1,
+    reason       TEXT NOT NULL,
+    fine         TEXT,
+    issued_by    INTEGER NOT NULL REFERENCES users(id),
+    issuer_name  TEXT,
+    expires_at   DATETIME,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_points_citizen ON citizen_points(citizen_name)'); } catch {}
+
+  // ── Rabatt-Gutscheine: mit Coins gekauft, von Mitarbeitern einlösbar ──
+  db.exec(`CREATE TABLE IF NOT EXISTS vouchers (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    code         TEXT NOT NULL UNIQUE,
+    discord_id   TEXT NOT NULL,
+    owner_name   TEXT,
+    kind         TEXT NOT NULL,
+    label        TEXT NOT NULL,
+    cost_coins   INTEGER NOT NULL,
+    redeemed_at  DATETIME,
+    redeemed_by  TEXT,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_vouchers_owner ON vouchers(discord_id)'); } catch {}
+
+  // ── RP-Tagesaufgaben: Claim-Log (Aufgaben-Fortschritt wird live berechnet) ──
+  db.exec(`CREATE TABLE IF NOT EXISTS rp_task_claims (
+    discord_id  TEXT NOT NULL,
+    day         TEXT NOT NULL,
+    task_id     TEXT NOT NULL,
+    claimed_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (discord_id, day, task_id)
+  )`);
+
   return db;
 }
 

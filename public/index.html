@@ -81,8 +81,8 @@
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <link rel="stylesheet" href="styles.css?v=6" />
-  <link rel="preload" as="image" href="/landingpage.png" />
+  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="preload" as="image" href="/landingpage.webp" />
 </head>
 <body>
   <a class="skip-link" href="#pageContent">Zum Inhalt springen</a>
@@ -182,6 +182,8 @@
           </div>
           <div class="nav-group-items">
             <a class="nav-item" data-page="werkstatt"><i class="fas fa-wrench" style="color:#f97316"></i><span>Werkstatt-Hub</span></a>
+            <a class="nav-item" data-page="dokumente"><i class="fas fa-file-signature" style="color:#f97316"></i><span>Dokumente</span></a>
+            <a class="nav-item" data-page="fahrzeugakte"><i class="fas fa-car" style="color:#f97316"></i><span>Fahrzeugakten</span></a>
             <a class="nav-item" data-page="prices"><i class="fas fa-tags" style="color:#f97316"></i><span>Preisliste</span></a>
             <a class="nav-item" data-page="map"><i class="fas fa-map-marked-alt" style="color:#f97316"></i><span>Abschlepphöfe</span></a>
           </div>
@@ -198,6 +200,7 @@
             <a class="nav-item" data-page="meinacls"><i class="fas fa-home" style="color:#a855f7"></i><span>Mein Hub</span></a>
             <a class="nav-item" data-page="profil"><i class="fas fa-user-circle" style="color:#a855f7"></i><span>Mein Profil</span></a>
             <a class="nav-item" data-page="nachrichten"><i class="fas fa-envelope" style="color:#a855f7"></i><span>Nachrichten <span id="dmBadge" style="display:none;background:#ef4444;color:#fff;border-radius:999px;padding:1px 6px;font-size:10px;margin-left:4px"></span></span></a>
+            <a class="nav-item" data-page="karriere"><i class="fas fa-briefcase" style="color:#a855f7"></i><span>Karriere</span></a>
             <a class="nav-item" data-page="level"><i class="fas fa-star" style="color:#a855f7"></i><span>Level & Prestige</span></a>
             <a class="nav-item" data-page="milestones"><i class="fas fa-flag-checkered" style="color:#a855f7"></i><span>Meilensteine</span></a>
             <a class="nav-item" data-page="wheel"><i class="fas fa-dharmachakra" style="color:#a855f7"></i><span>Daily Wheel</span></a>
@@ -424,8 +427,9 @@
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
   </script>
-  <script src="script.js?v=11"></script>
+  <script src="script.js?v=12"></script>
   <script src="/js/social.js?v=1"></script>
+  <script src="/js/acls-plus.js?v=1"></script>
   <script>init();</script>
 </body>
 </html>
