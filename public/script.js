@@ -626,6 +626,16 @@ const loading = () => `<div class="skel-page">
   <div class="skel skel-line"></div><div class="skel skel-line" style="width:82%"></div><div class="skel skel-line" style="width:65%"></div>
 </div>`;
 
+// Gemeinsame Paginierungs-Steuerung (Vor/Zurück + "Seite X von Y"), Muster aus
+// renderActivity() verallgemeinert. `gotoCall` ist ein onclick-Code-String mit
+// "{p}" als Platzhalter für die Zielseite, z.B. "regGoto({p})".
+const pagerHtml = (page, totalPages, gotoCall) => totalPages <= 1 ? '' : `
+  <div style="display:flex;align-items:center;justify-content:center;gap:.5rem;margin-top:1rem">
+    <button class="btn btn-ghost btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="${gotoCall.replace('{p}', page - 1)}"><i class="fas fa-chevron-left"></i></button>
+    <span style="font-size:.85rem;color:var(--muted)">Seite ${page} / ${totalPages}</span>
+    <button class="btn btn-ghost btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="${gotoCall.replace('{p}', page + 1)}"><i class="fas fa-chevron-right"></i></button>
+  </div>`;
+
 // Einheitlicher Fehler-Zustand mit Retry-Button (Stil wie runSearch()'s Fehleranzeige).
 // `retryCall` ist ein JS-Code-String fürs onclick-Attribut (Konvention wie im Rest der App),
 // kein Funktionsobjekt. Wird zentral von navigate() genutzt, wenn eine Seite hängen bleibt.
@@ -3548,7 +3558,11 @@ window.submitPraxis = async () => {
 //  REGISTRY
 // ════════════════════════════════════════════════════════════════
 let regSearch = '';
+let _regPage = 1;
+const REG_PER_PAGE = 20;
+
 async function registry() {
+  _regPage = 1; // neue Suche/Navigation -> zurück auf Seite 1
   const [rows, cats] = await Promise.all([api(`/api/registry?search=${encodeURIComponent(regSearch)}`), api('/api/exam-categories')]);
   if (!rows) return;
 
@@ -3559,17 +3573,34 @@ async function registry() {
     if (!grouped[key]) grouped[key] = { name: r.citizen_name, citizenId: r.citizen_id, entries: [] };
     grouped[key].entries.push(r);
   });
-  const citizens = Object.values(grouped).sort((a, b) => {
+  window._regAllCitizens = Object.values(grouped).sort((a, b) => {
     const aT = Math.max(...a.entries.map(e => new Date(e.registered_at).getTime()));
     const bT = Math.max(...b.entries.map(e => new Date(e.registered_at).getTime()));
     return bT - aT;
   });
+  window._regTotalEntries = rows.length;
+  window._regCats = cats;
+  renderRegistryPage();
+}
+
+window.regGoto = p => { _regPage = p; renderRegistryPage(); };
+
+function renderRegistryPage() {
+  const allCitizens = window._regAllCitizens || [];
+  const total = allCitizens.length;
+  const pages = Math.ceil(total / REG_PER_PAGE) || 1;
+  _regPage = Math.min(Math.max(_regPage, 1), pages);
+  const pageStart = (_regPage - 1) * REG_PER_PAGE;
+  const citizens = allCitizens.slice(pageStart, pageStart + REG_PER_PAGE);
+  // _regCitizens bleibt die VOLLSTÄNDIGE Liste – toggleCitizenDetail()/addCitizenNote()
+  // greifen per globalem Index darauf zu (idx = pageStart + lokaler Index, s.u.)
+  window._regCitizens = allCitizens;
 
   const CAT_COLORS = { PKW: '#f97316', Motorrad: '#ef4444', Boot: '#3b82f6', LKW: '#22c55e', Flugschein: '#a855f7' };
 
   $('pageContent').innerHTML = `
     <div class="pg-header">
-      <div class="pg-header-left"><h2>Bürgerregister</h2><p>${citizens.length} Bürger · ${rows.length} Einträge</p></div>
+      <div class="pg-header-left"><h2>Bürgerregister</h2><p>${total} Bürger · ${window._regTotalEntries || 0} Einträge</p></div>
       <div style="display:flex;gap:.75rem;flex-wrap:wrap">
         <div class="search-bar"><i class="fas fa-search"></i>
           <input id="regSearch" placeholder="Bürger suchen..." value="${regSearch}" oninput="regSearch=this.value;clearTimeout(window._rst);window._rst=setTimeout(registry,250)">
@@ -3577,7 +3608,8 @@ async function registry() {
         <button class="btn btn-primary" onclick="openAddRegistry()"><i class="fas fa-plus"></i> Eintrag hinzufügen</button>
       </div>
     </div>
-    ${citizens.length ? citizens.map((c, idx) => {
+    ${citizens.length ? citizens.map((c, localIdx) => {
+      const idx = pageStart + localIdx; // globaler Index in _regCitizens
       const passed    = c.entries.filter(e => e.passed);
       const licenses  = [...new Map(passed.map(e => [e.category_name, e])).values()];
       const latest    = c.entries.reduce((a, b) => new Date(a.registered_at) > new Date(b.registered_at) ? a : b);
@@ -3642,10 +3674,9 @@ async function registry() {
           </div>
         </div>
       </div>`;
-    }).join('') : `<div class="empty"><i class="fas fa-id-card"></i><p>Keine Einträge gefunden</p></div>`}`;
+    }).join('') : `<div class="empty"><i class="fas fa-id-card"></i><p>Keine Einträge gefunden</p></div>`}
+    ${pagerHtml(_regPage, pages, 'regGoto({p})')}`;
 
-  window._regCitizens = citizens;
-  window._regCats = cats;
   const si = $('regSearch');
   if (si && document.activeElement !== si) { si.focus(); si.setSelectionRange(si.value.length, si.value.length); }
 }
@@ -4459,21 +4490,37 @@ window.confirmResetIc = async scope => {
 // ════════════════════════════════════════════════════════════════
 //  BANS
 // ════════════════════════════════════════════════════════════════
+let _bansPage = 1;
+const BANS_PER_PAGE = 25;
+
 async function bans() {
+  _bansPage = 1;
   const rows = await api('/api/bans');
   if (!rows) return;
+  window._bansAll = rows;
+  renderBansPage();
+}
+
+window.bansGoto = p => { _bansPage = p; renderBansPage(); };
+
+function renderBansPage() {
+  const rows = window._bansAll || [];
   const active = rows.filter(b => b.is_active);
+  const pages = Math.ceil(rows.length / BANS_PER_PAGE) || 1;
+  _bansPage = Math.min(Math.max(_bansPage, 1), pages);
+  const start = (_bansPage - 1) * BANS_PER_PAGE;
+  const slice = rows.slice(start, start + BANS_PER_PAGE);
 
   $('pageContent').innerHTML = `
     <div class="pg-header">
-      <div class="pg-header-left"><h2>Aktive Sperren</h2><p>${active.length} aktive Hausverbote</p></div>
+      <div class="pg-header-left"><h2>Aktive Sperren</h2><p>${active.length} aktive Hausverbote · ${rows.length} gesamt</p></div>
       <button class="btn btn-primary" onclick="openAddBan()"><i class="fas fa-plus"></i> Sperre eintragen</button>
     </div>
     <div class="tbl-wrap">
       <table class="data-tbl">
         <thead><tr><th>Person</th><th>ID</th><th>Grund</th><th>Ausgestellt von</th><th>Dauer</th><th>Datum</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          ${rows.map(b => `<tr>
+          ${slice.map(b => `<tr>
             <td style="font-weight:600;color:var(--text)">${esc(b.person_name)}</td>
             <td>${b.person_id || '—'}</td>
             <td>${esc(b.reason)}</td>
@@ -4488,7 +4535,8 @@ async function bans() {
           </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">Keine Sperren</td></tr>'}
         </tbody>
       </table>
-    </div>`;
+    </div>
+    ${pagerHtml(_bansPage, pages, 'bansGoto({p})')}`;
 }
 
 window.openAddBan = () => openModal(`
@@ -5203,11 +5251,27 @@ function steckbrief() { navigate('organigramm'); }
 // ════════════════════════════════════════════════════════════════
 //  BEWERBUNGEN (Staff)
 // ════════════════════════════════════════════════════════════════
+let _appsDecidedPage = 1;
+const APPS_DECIDED_PER_PAGE = 10;
+
+window.appsDecidedGoto = p => { _appsDecidedPage = p; renderApplicationsPage(); };
+
 async function applications() {
+  _appsDecidedPage = 1;
   const rows = await api('/api/applications');
   if (!rows) return;
+  window._appsAll = rows;
+  renderApplicationsPage();
+}
+
+function renderApplicationsPage() {
+  const rows = window._appsAll || [];
   const pending  = rows.filter(r => r.status === 'pending');
-  const decided  = rows.filter(r => r.status !== 'pending');
+  const decidedAll = rows.filter(r => r.status !== 'pending');
+  const decidedPages = Math.ceil(decidedAll.length / APPS_DECIDED_PER_PAGE) || 1;
+  _appsDecidedPage = Math.min(Math.max(_appsDecidedPage, 1), decidedPages);
+  const decidedStart = (_appsDecidedPage - 1) * APPS_DECIDED_PER_PAGE;
+  const decided = decidedAll.slice(decidedStart, decidedStart + APPS_DECIDED_PER_PAGE);
 
   function statusBadge(s) {
     if (s === 'pending')  return '<span style="background:rgba(251,191,36,.15);color:#fbbf24;font-size:.7rem;font-weight:700;padding:.18rem .55rem;border-radius:20px"><i class="fas fa-clock" style="margin-right:.3rem"></i>Ausstehend</span>';
@@ -5256,13 +5320,14 @@ async function applications() {
         </div>
         <div style="display:flex;flex-direction:column;gap:.75rem">${pending.map(a => appCard(a, true)).join('')}</div>
       </div>` : '<div class="empty"><i class="fas fa-inbox"></i><p>Keine offenen Bewerbungen</p></div>'}
-      ${decided.length ? `
+      ${decidedAll.length ? `
       <div>
         <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:.85rem;display:flex;align-items:center;gap:.5rem">
-          <i class="fas fa-history"></i>Entschieden (${decided.length})
+          <i class="fas fa-history"></i>Entschieden (${decidedAll.length})
           <div style="flex:1;height:1px;background:var(--border);margin-left:.25rem"></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:.75rem">${decided.map(a => appCard(a, false)).join('')}</div>
+        ${pagerHtml(_appsDecidedPage, decidedPages, 'appsDecidedGoto({p})')}
       </div>` : ''}
     </div>`;
 }
@@ -5299,11 +5364,29 @@ window.deleteApplication = async id => {
 };
 
 // ════════════════════════════════════════════════════════════════
+let _cmPage = 1;
+const CARMARKET_PER_PAGE = 24;
+
+window.carmarketGoto = p => { _cmPage = p; renderCarmarketPage(); };
+
 async function carmarket() {
+  _cmPage = 1;
   const rows = await api('/api/car-listings');
   if (rows === null) return;
+  window._listingsAll = rows;
+  // Vollständige Map (nicht nur die aktuelle Seite) – Detail-Modal muss jedes
+  // Inserat per ID nachschlagen können, unabhängig von der Grid-Paginierung.
   window._listingsCache = new Map(rows.map(l => [l.id, l]));
+  renderCarmarketPage();
+}
+
+function renderCarmarketPage() {
+  const rows = window._listingsAll || [];
   const canEditAny = isAdmin();
+  const pages = Math.ceil(rows.length / CARMARKET_PER_PAGE) || 1;
+  _cmPage = Math.min(Math.max(_cmPage, 1), pages);
+  const start = (_cmPage - 1) * CARMARKET_PER_PAGE;
+  const slice = rows.slice(start, start + CARMARKET_PER_PAGE);
 
   $('pageContent').innerHTML = `
     <div class="pg-header">
@@ -5315,8 +5398,9 @@ async function carmarket() {
     </div>
     ${!rows.length ? `<div class="empty"><i class="fas fa-car-side"></i><p>Noch keine Inserate vorhanden.</p></div>` : `
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem" id="listingGrid">
-      ${rows.map(l => listingCard(l, canEditAny)).join('')}
-    </div>`}`;
+      ${slice.map(l => listingCard(l, canEditAny)).join('')}
+    </div>
+    ${pagerHtml(_cmPage, pages, 'carmarketGoto({p})')}`}`;
 }
 
 window.openListingDetail = id => {
@@ -7441,9 +7525,10 @@ window.sendCoins = async () => {
 // ════════════════════════════════════════════════════════════════
 //  FREUNDE — Liste & Statistik-Vergleich
 // ════════════════════════════════════════════════════════════════
-async function freunde() {
-  const [data, allUsers] = await Promise.all([api('/api/friends'), api('/api/users/public')]);
-  if (!data) return;
+// Gemeinsames Markup für Mitarbeiter- und Bürger-Freundesliste (früher zweimal
+// kopiert – jede UI-Änderung musste doppelt gepflegt werden). Unterschiede
+// (Select-ID, Handler-Namen, Wortwahl, IC-Zeit-Chip nur für Staff) über `opts`.
+function friendsListHtml(data, allUsers, opts) {
   const friendIds = new Set(data.friends.map(f => f.id));
   const addable = (allUsers || []).filter(u => u.id !== currentUser.id && !friendIds.has(u.id));
 
@@ -7462,20 +7547,20 @@ async function freunde() {
     return main + season + streak;
   };
 
-  $('pageContent').innerHTML = `
+  return `
     <div class="card" style="padding:1rem 1.2rem;margin-bottom:1.25rem">
       <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
         <div style="font-size:1.6rem">🤝</div>
         <div style="flex:1;min-width:200px">
           <div style="font-weight:700;font-size:.9rem">Freund hinzufügen</div>
-          <div style="font-size:.72rem;color:var(--muted)">Füge bis zu 30 Mitglieder hinzu und vergleiche eure Statistiken</div>
+          <div style="font-size:.72rem;color:var(--muted)">Füge bis zu 30 ${opts.personLabelPlural} hinzu und vergleiche eure Statistiken</div>
         </div>
         <div style="display:flex;gap:.5rem;align-items:center">
-          <select class="form-control" id="friendSelect" style="width:200px;font-size:.82rem">
-            <option value="">Mitglied wählen…</option>
+          <select class="form-control" id="${opts.selectId}" style="width:200px;font-size:.82rem">
+            <option value="">${opts.personLabel} wählen…</option>
             ${addable.map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('')}
           </select>
-          <button class="btn btn-primary btn-sm" onclick="addFriend()"><i class="fas fa-user-plus"></i> Hinzufügen</button>
+          <button class="btn btn-primary btn-sm" onclick="${opts.addCall}"><i class="fas fa-user-plus"></i> Hinzufügen</button>
         </div>
       </div>
     </div>
@@ -7498,11 +7583,11 @@ async function freunde() {
             <div style="font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.username)}${bffBadge}</div>
             <div style="font-size:.68rem;color:var(--muted)">${rankLine(f)}${isOnline ? ' · <span style="color:#22c55e">Online</span>' : ''}</div>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="removeFriend(${f.id})" title="Entfernen" style="color:var(--muted)"><i class="fas fa-user-minus"></i></button>
+          <button class="btn btn-ghost btn-sm" onclick="${opts.removeCallPrefix}(${f.id})" title="Entfernen" style="color:var(--muted)"><i class="fas fa-user-minus"></i></button>
         </div>
         <div style="display:flex;gap:.9rem;flex-wrap:wrap;margin-bottom:.8rem">
           ${statChip('fa-coins', (+f.coins_earned).toLocaleString('de-DE'), 'Coins verdient', '#fbbf24')}
-          ${statChip('fa-clock', f.ic_week + 'h', 'IC-Zeit diese Woche', '#60a5fa')}
+          ${opts.showIcChip ? statChip('fa-clock', f.ic_week + 'h', 'IC-Zeit diese Woche', '#60a5fa') : ''}
           ${statChip('fa-medal', f.badges, 'Abzeichen', '#facc15')}
           ${statChip('fa-gamepad', f.games_played, 'Spiele gespielt', '#f472b6')}
         </div>
@@ -7512,7 +7597,16 @@ async function freunde() {
         </div>
       </div>`;}).join('')}
     </div>` : `
-    <div class="empty"><i class="fas fa-user-friends"></i><p>Noch keine Freunde hinzugefügt.<br>Wähle oben ein Mitglied aus und starte den Vergleich!</p></div>`}`;
+    <div class="empty"><i class="fas fa-user-friends"></i><p>Noch keine Freunde hinzugefügt.<br>Wähle oben ${opts.emptyPickHint} und starte den Vergleich!</p></div>`}`;
+}
+
+async function freunde() {
+  const [data, allUsers] = await Promise.all([api('/api/friends'), api('/api/users/public')]);
+  if (!data) return;
+  $('pageContent').innerHTML = friendsListHtml(data, allUsers, {
+    selectId: 'friendSelect', addCall: 'addFriend()', removeCallPrefix: 'removeFriend',
+    personLabel: 'Mitglied', personLabelPlural: 'Mitglieder', emptyPickHint: 'ein Mitglied aus', showIcChip: true,
+  });
 }
 
 window.addFriend = async () => {
@@ -7533,67 +7627,10 @@ async function loadVoterFriends() {
   if (!box) return;
   const [data, allUsers] = await Promise.all([api('/api/friends'), api('/api/users/public')]);
   if (!data) { box.innerHTML = '<div class="empty"><i class="fas fa-lock"></i><p>Freunde sind für dich nicht verfügbar.</p></div>'; return; }
-  const friendIds = new Set(data.friends.map(f => f.id));
-  const addable = (allUsers || []).filter(u => u.id !== currentUser.id && !friendIds.has(u.id));
-
-  const statChip = (icon, val, label, color) => `
-    <div style="display:flex;align-items:center;gap:.35rem;font-size:.72rem;color:var(--muted)" title="${label}">
-      <i class="fas ${icon}" style="color:${color};font-size:.7rem"></i><b style="color:var(--text)">${val}</b>
-    </div>`;
-  const rankLine = (f) => {
-    const main = f.is_staff
-      ? `<span>${esc(f.rank || 'Mitarbeiter')}</span>`
-      : `<span style="color:${f.tier?.color || 'var(--muted)'};font-weight:600">${f.tier?.icon || ''} ${esc(f.tier?.name || 'Bürger')}</span>`;
-    const season = f.season_level > 0 ? ` · <span title="Season-Pass-Level" style="color:#c084fc">🎫 Lvl ${f.season_level}</span>` : '';
-    const streak = f.streak > 0 ? ` · 🔥 ${f.streak}` : '';
-    return main + season + streak;
-  };
-
-  box.innerHTML = `
-    <div class="card" style="padding:1rem 1.2rem;margin-bottom:1.25rem">
-      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
-        <div style="font-size:1.6rem">🤝</div>
-        <div style="flex:1;min-width:200px">
-          <div style="font-weight:700;font-size:.9rem">Freund hinzufügen</div>
-          <div style="font-size:.72rem;color:var(--muted)">Füge bis zu 30 Personen hinzu und vergleiche eure Statistiken</div>
-        </div>
-        <div style="display:flex;gap:.5rem;align-items:center">
-          <select class="form-control" id="vFriendSelect" style="width:200px;font-size:.82rem">
-            <option value="">Person wählen…</option>
-            ${addable.map(u => `<option value="${u.id}">${esc(u.username)}</option>`).join('')}
-          </select>
-          <button class="btn btn-primary btn-sm" onclick="voterAddFriend()"><i class="fas fa-user-plus"></i> Hinzufügen</button>
-        </div>
-      </div>
-    </div>
-    ${data.friends.length ? `
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:.8rem">
-      ${data.friends.map(f => {
-        const isOnline = f.last_seen_at && (Date.now() - new Date(f.last_seen_at).getTime()) < 5 * 60 * 1000;
-        const onlineDot = isOnline ? `<span title="Jetzt online" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#22c55e;border:2px solid var(--bg);position:absolute;bottom:1px;right:1px"></span>` : '';
-        const bffBadge = f.is_best_friend ? `<span style="font-size:.68rem;background:rgba(251,191,36,.15);color:#fbbf24;border:1px solid rgba(251,191,36,.3);border-radius:20px;padding:.1rem .45rem;margin-left:.3rem"><i class="fas fa-star"></i> BFF</span>` : '';
-        return `
-      <div class="card" style="padding:1rem 1.1rem${f.is_best_friend?';border-color:rgba(251,191,36,.35)':''}">
-        <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.7rem">
-          <div style="position:relative;flex-shrink:0">${avatarEl(f, 40)}${onlineDot}</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.username)}${bffBadge}</div>
-            <div style="font-size:.68rem;color:var(--muted)">${rankLine(f)}${isOnline?' · <span style="color:#22c55e">Online</span>':''}</div>
-          </div>
-          <button class="btn btn-ghost btn-sm" onclick="voterRemoveFriend(${f.id})" title="Entfernen" style="color:var(--muted)"><i class="fas fa-user-minus"></i></button>
-        </div>
-        <div style="display:flex;gap:.9rem;flex-wrap:wrap;margin-bottom:.8rem">
-          ${statChip('fa-coins', (+f.coins_earned).toLocaleString('de-DE'), 'Coins verdient', '#fbbf24')}
-          ${statChip('fa-medal', f.badges, 'Abzeichen', '#facc15')}
-          ${statChip('fa-gamepad', f.games_played, 'Spiele gespielt', '#f472b6')}
-        </div>
-        <div style="display:flex;gap:.4rem">
-          <button class="btn btn-primary btn-sm" style="flex:1" onclick="compareFriend(${f.id})"><i class="fas fa-balance-scale"></i> Vergleichen</button>
-          <a href="/profil/${f.id}" target="_blank" class="btn btn-ghost btn-sm" style="text-decoration:none"><i class="fas fa-user"></i> Profil</a>
-        </div>
-      </div>`;}).join('')}
-    </div>` : `
-    <div class="empty"><i class="fas fa-user-friends"></i><p>Noch keine Freunde hinzugefügt.<br>Wähle oben jemanden aus und starte den Vergleich!</p></div>`}`;
+  box.innerHTML = friendsListHtml(data, allUsers, {
+    selectId: 'vFriendSelect', addCall: 'voterAddFriend()', removeCallPrefix: 'voterRemoveFriend',
+    personLabel: 'Person', personLabelPlural: 'Personen', emptyPickHint: 'jemanden aus', showIcChip: false,
+  });
 }
 
 window.voterAddFriend = async () => {
@@ -9058,6 +9095,7 @@ window.replyTicket = async id => {
 // ════════════════════════════════════════════════════════════════
 //  STATISTIK-TRENDS (H9)
 // ════════════════════════════════════════════════════════════════
+let _statsCharts = [];
 async function statistiken() {
   const d = await api('/api/stats/trends');
   if (!d) return;
@@ -9077,22 +9115,26 @@ async function statistiken() {
   try { await loadLib('chart'); } catch { toast('Diagramm-Modul konnte nicht geladen werden', 'err'); return; }
   requestAnimationFrame(() => {
     if (!window.Chart) return;
+    // Alte Chart-Instanzen zerstören, bevor die Seite neue Canvases bekommt – sonst
+    // sammeln sich bei jedem Besuch verwaiste Chart.js-Instanzen an (Speicherleck).
+    _statsCharts.forEach(c => { try { c.destroy(); } catch {} });
+    _statsCharts = [];
     const chartOpts = (labels, datasets, y_label) => ({
       type:'line', data:{ labels: labels.map(fmt_wk), datasets },
       options:{ responsive:true, plugins:{ legend:{ labels:{ color:'#9ca3af', font:{ size:11 } } } }, scales:{ x:{ ticks:{ color:'#6b7280', font:{size:10} }, grid:{color:'rgba(255,255,255,.05)' }}, y:{ ticks:{ color:'#6b7280', font:{size:10} }, grid:{color:'rgba(255,255,255,.05)' }, title:{ display:!!y_label, text:y_label||'', color:'#9ca3af' } } } }
     });
     const getVal = (arr, wk, field) => arr.find(r=>r.wk===wk)?.[field] ?? 0;
-    new Chart($('chartExams'), chartOpts(labels, [
+    _statsCharts.push(new Chart($('chartExams'), chartOpts(labels, [
       { label:'Gesamt', data: labels.map(wk=>getVal(d.exams,wk,'total')), borderColor:'#f97316', backgroundColor:'rgba(249,115,22,.1)', tension:.3, fill:true },
       { label:'Bestanden', data: labels.map(wk=>getVal(d.exams,wk,'passed')), borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,.08)', tension:.3, fill:true },
-    ]));
-    new Chart($('chartIc'), chartOpts(labels, [
+    ])));
+    _statsCharts.push(new Chart($('chartIc'), chartOpts(labels, [
       { label:'IC-Stunden', data: labels.map(wk=>getVal(d.ic,wk,'hours')), borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,.1)', tension:.3, fill:true },
-    ], 'Stunden'));
-    new Chart($('chartCoins'), chartOpts(labels, [
+    ], 'Stunden')));
+    _statsCharts.push(new Chart($('chartCoins'), chartOpts(labels, [
       { label:'Verdient', data: labels.map(wk=>getVal(d.coins,wk,'earned')), borderColor:'#fbbf24', backgroundColor:'rgba(251,191,36,.1)', tension:.3, fill:true },
       { label:'Ausgegeben', data: labels.map(wk=>getVal(d.coins,wk,'spent')), borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,.08)', tension:.3, fill:true },
-    ], 'Coins'));
+    ], 'Coins')));
   });
 }
 

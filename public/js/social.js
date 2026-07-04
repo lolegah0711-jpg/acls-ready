@@ -114,13 +114,19 @@ async function updateDMBadge() {
 }
 
 // ── MARKTPLATZ (Kosmetika-Handel) ────────────────────────────────
+let _mktPage = 1;
+const MKT_PER_PAGE = 24;
+window.mktGoto = p => { _mktPage = p; renderMarketListings(window._mktAllListings || []); };
+
 async function marktplatz() {
   $('pageContent').innerHTML = loading();
+  _mktPage = 1;
   const [listings, mine] = await Promise.all([api('/api/market'), api('/api/market/my')]);
   if (!listings) return;
+  window._mktAllListings = listings;
 
   const tabs = [
-    { id: 'tab-all', label: 'Alle Angebote', fn: () => renderMarketListings(listings) },
+    { id: 'tab-all', label: 'Alle Angebote', fn: () => renderMarketListings(window._mktAllListings) },
     { id: 'tab-mine', label: 'Meine Listings', fn: () => renderMyListings(mine || []) },
     { id: 'tab-sell', label: 'Item einstellen', fn: renderMarketSellForm },
   ];
@@ -146,8 +152,12 @@ window.mktTab = function(id) {
 function renderMarketListings(listings) {
   const el = $('mkt-body');
   if (!listings.length) { el.innerHTML = '<div style="color:var(--muted);text-align:center;padding:2rem">Keine Angebote im Marktplatz</div>'; return; }
+  const pages = Math.ceil(listings.length / MKT_PER_PAGE) || 1;
+  _mktPage = Math.min(Math.max(_mktPage, 1), pages);
+  const start = (_mktPage - 1) * MKT_PER_PAGE;
+  const slice = listings.slice(start, start + MKT_PER_PAGE);
   el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.8rem">
-    ${listings.map(l => `
+    ${slice.map(l => `
     <div class="card" style="padding:1rem;display:flex;flex-direction:column;gap:.5rem">
       <div style="font-weight:700">${esc(l.item_name)}</div>
       <div style="font-size:.78rem;color:var(--muted)">Verkäufer: ${esc(l.seller_name)}</div>
@@ -155,7 +165,8 @@ function renderMarketListings(listings) {
       <div style="font-size:.72rem;color:var(--muted)">Eingestellt: ${fmt(l.created_at)}</div>
       <button class="btn btn-sm btn-primary" onclick="mktBuy(${l.id},'${esc(l.item_name)}',${l.price})">Kaufen</button>
     </div>`).join('')}
-  </div>`;
+  </div>
+  ${pagerHtml(_mktPage, pages, 'mktGoto({p})')}`;
 }
 
 function renderMyListings(mine) {
