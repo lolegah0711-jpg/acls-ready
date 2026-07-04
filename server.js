@@ -3574,7 +3574,15 @@ app.get('/api/coins/me', (req, res) => {
   const ident = coinIdent(req);
   if (!ident) return res.status(401).json({ error: 'Nicht angemeldet' });
   const row = db.prepare('SELECT * FROM coin_balances WHERE discord_id = ?').get(ident.id);
-  const tx  = db.prepare('SELECT amount, reason, created_at FROM coin_transactions WHERE discord_id = ? ORDER BY id DESC LIMIT 15').all(ident.id);
+  // ?days=N: für die Finanzen-Seite alle Transaktionen der letzten N Tage statt nur
+  // der letzten 15 – sonst verzerren Cashflow-Chart/Kategorien bei aktiven Nutzern
+  // (alle 15 könnten von heute sein, ältere Tage würden fälschlich als "0" erscheinen).
+  const days = Math.min(parseInt(req.query.days, 10) || 0, 90);
+  const tx = days
+    ? db.prepare(`SELECT amount, reason, created_at FROM coin_transactions
+        WHERE discord_id = ? AND created_at >= datetime('now', '-' || ? || ' days')
+        ORDER BY id DESC LIMIT 1000`).all(ident.id, days)
+    : db.prepare('SELECT amount, reason, created_at FROM coin_transactions WHERE discord_id = ? ORDER BY id DESC LIMIT 15').all(ident.id);
   const vip     = getPerk(ident.id, 'vip');
   const booster = getPerk(ident.id, 'booster');
   const ctr     = db.prepare('SELECT text, status FROM custom_title_requests WHERE discord_id = ? ORDER BY id DESC LIMIT 1').get(ident.id);

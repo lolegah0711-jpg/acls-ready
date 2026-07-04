@@ -1372,6 +1372,16 @@ function initDb() {
     PRIMARY KEY (discord_id, day, task_id)
   )`);
 
+  // ── Expression-Indizes für LOWER()-Lookups (Bürgerakte, Register) ──
+  // Normale Indizes auf citizen_name/person_name greifen nicht, weil server.js/
+  // routes/papierkram.js konsequent case-insensitiv per LOWER(spalte)=LOWER(?) sucht –
+  // SQLite kann dafür nur einen Index auf genau diesem Ausdruck nutzen.
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_registry_citizen_lower ON registry(LOWER(citizen_name))'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_docs_citizen_lower ON documents(LOWER(citizen_name))'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_points_citizen_lower ON citizen_points(LOWER(citizen_name))'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_notes_citizen_lower ON citizen_notes(LOWER(citizen_name))'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_bans_person_lower ON bans(LOWER(person_name))'); } catch {}
+
   return db;
 }
 

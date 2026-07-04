@@ -174,8 +174,12 @@ module.exports = function makePapierkramRouter({ db, requireAuth, requireAdmin, 
   });
 
   // ── Bürgerakte: alles zu einem Namen gebündelt ──────────────────
+  // id (citizen_id) ist optional und disambiguiert namensgleiche Bürger –
+  // nur registry/citizen_notes tragen eine citizen_id, bans/points/documents
+  // werden weiterhin per Name gebündelt (wie schon vor der Bürgerakte).
   router.get('/api/citizen-file', requireAuth, (req, res) => {
     const name = String(req.query.name || '').trim();
+    const id = String(req.query.id || '').trim();
     if (!name) return res.status(400).json({ error: 'Name erforderlich' });
 
     const registry = db.prepare(`
@@ -183,13 +187,15 @@ module.exports = function makePapierkramRouter({ db, requireAuth, requireAdmin, 
       FROM registry r
       LEFT JOIN exam_categories ec ON ec.id = r.category_id
       LEFT JOIN users u ON u.id = r.examiner_id
-      WHERE LOWER(r.citizen_name) = LOWER(?) ORDER BY r.registered_at DESC
-    `).all(name);
+      WHERE LOWER(r.citizen_name) = LOWER(?) ${id ? 'AND r.citizen_id = ?' : ''}
+      ORDER BY r.registered_at DESC
+    `).all(...(id ? [name, id] : [name]));
     const notes = db.prepare(`
       SELECT cn.*, u.username AS author FROM citizen_notes cn
       JOIN users u ON u.id = cn.created_by
-      WHERE LOWER(cn.citizen_name) = LOWER(?) ORDER BY cn.created_at DESC
-    `).all(name);
+      WHERE LOWER(cn.citizen_name) = LOWER(?) ${id ? 'AND cn.citizen_id = ?' : ''}
+      ORDER BY cn.created_at DESC
+    `).all(...(id ? [name, id] : [name]));
     const bans = db.prepare(`
       SELECT * FROM bans WHERE LOWER(person_name) = LOWER(?) ORDER BY issued_at DESC
     `).all(name);
@@ -203,7 +209,7 @@ module.exports = function makePapierkramRouter({ db, requireAuth, requireAdmin, 
     `).all(name);
     const activePoints = points.filter(p => !p.expired).reduce((s, p) => s + p.points, 0);
 
-    res.json({ name, registry, notes, bans, points, activePoints, documents });
+    res.json({ name, id, registry, notes, bans, points, activePoints, documents });
   });
 
   // ── Punkte-Register ─────────────────────────────────────────────

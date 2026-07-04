@@ -89,6 +89,26 @@ const req = async (method, p, body) => {
   assert.equal(cf.activePoints, 3, 'Bürgerakte: 3 aktive Punkte (case-insensitive)');
   assert.equal(cf.documents.length, 1, 'Bürgerakte: Dokument verknüpft');
 
+  // ── Regressionstest QA-1: Disambiguierung namensgleicher Bürger per citizen_id ──
+  // (public/js/acls-plus.js überschrieb window.showCitizenHistory früher mit einer
+  // 1-Parameter-Version und verlor dabei die citizen_id aus der registry-Seite)
+  const catId = db.prepare('SELECT id FROM exam_categories LIMIT 1').get().id;
+  db.prepare(`INSERT INTO registry (citizen_name, citizen_id, category_id, examiner_id, passed)
+    VALUES ('Max Muster', 'CID-1', ?, ?, 1)`).run(catId, USER.id);
+  db.prepare(`INSERT INTO registry (citizen_name, citizen_id, category_id, examiner_id, passed)
+    VALUES ('Max Muster', 'CID-2', ?, ?, 0)`).run(catId, USER.id);
+
+  const cfAll = await get('/api/citizen-file?name=max%20muster');
+  assert.equal(cfAll.registry.length, 2, 'Ohne id: beide namensgleichen Bürger gemischt');
+
+  const cfById1 = await get('/api/citizen-file?name=max%20muster&id=CID-1');
+  assert.equal(cfById1.registry.length, 1, 'Mit id=CID-1: nur der eine Bürger gefiltert');
+  assert.equal(cfById1.registry[0].citizen_id, 'CID-1', 'Gefilterter Eintrag hat korrekte citizen_id');
+
+  const cfById2 = await get('/api/citizen-file?name=max%20muster&id=CID-2');
+  assert.equal(cfById2.registry.length, 1, 'Mit id=CID-2: nur der andere Bürger gefiltert');
+  assert.equal(cfById2.registry[0].passed, 0, 'CID-2 ist der nicht-bestandene Eintrag');
+
   // ── Gutscheine ────────────────────────────────────────────────
   addCoins(USER.discord_id, USER.username, 500, 'seed');
   const buy = await req('POST', '/api/vouchers/buy', { kind: 'rabatt10' });
@@ -119,7 +139,7 @@ const req = async (method, p, body) => {
   assert.equal(signCert.earned, true, 'Verkehrs-Zertifikat freigeschaltet (9000 ≥ 8000)');
   assert.equal(certs.find(c => c.game === 'obd').earned, false, 'OBD-Zertifikat noch gesperrt');
 
-  console.log('✓ Alle Papierkram/Karriere-Smoke-Tests bestanden (26 Assertions)');
+  console.log('✓ Alle Papierkram/Karriere-Smoke-Tests bestanden (33 Assertions)');
   server.close();
   db.close();
   process.exitCode = 0;

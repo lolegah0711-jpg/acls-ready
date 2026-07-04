@@ -578,10 +578,14 @@
   // ═══════════════════════════════════════════════════════════════
   //  BÜRGERAKTE (ersetzt showCitizenHistory aus script.js)
   // ═══════════════════════════════════════════════════════════════
-  window.showCitizenHistory = (name) => window.openCitizenFile(name);
+  // id = citizen_id, disambiguiert namensgleiche Bürger (siehe registry-Seite,
+  // die showCitizenHistory(name, id) mit beiden Argumenten aufruft).
+  window.showCitizenHistory = (name, id) => window.openCitizenFile(name, id);
 
-  window.openCitizenFile = async (name) => {
-    const f = await api('/api/citizen-file?name=' + encodeURIComponent(name));
+  window.openCitizenFile = async (name, id = '') => {
+    const qs = new URLSearchParams({ name });
+    if (id) qs.set('id', id);
+    const f = await api('/api/citizen-file?' + qs.toString());
     if (!f) return;
 
     const timeline = [
@@ -603,8 +607,8 @@
         </span>
       </div>
       <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.8rem 0">
-        <button class="btn btn-ghost btn-sm" onclick="openAddPoints('${esc(f.name).replace(/'/g, "\\'")}')"><i class="fas fa-exclamation-triangle" style="color:#fbbf24"></i> Punkte eintragen</button>
-        <button class="btn btn-ghost btn-sm" onclick="openAddCitizenNote('${esc(f.name).replace(/'/g, "\\'")}')"><i class="fas fa-sticky-note" style="color:#a855f7"></i> Notiz</button>
+        <button class="btn btn-ghost btn-sm" onclick="openAddPoints('${esc(f.name).replace(/'/g, "\\'")}','${esc(f.id || '').replace(/'/g, "\\'")}')"><i class="fas fa-exclamation-triangle" style="color:#fbbf24"></i> Punkte eintragen</button>
+        <button class="btn btn-ghost btn-sm" onclick="openAddCitizenNote('${esc(f.name).replace(/'/g, "\\'")}','${esc(f.id || '').replace(/'/g, "\\'")}')"><i class="fas fa-sticky-note" style="color:#a855f7"></i> Notiz</button>
         <button class="btn btn-ghost btn-sm" onclick='closeModal();openDocForm("fuehrerschein",{citizen_name:"${esc(f.name)}"})'><i class="fas fa-id-card" style="color:#ec4899"></i> Führerschein</button>
         <button class="btn btn-ghost btn-sm" onclick='closeModal();openDocForm("zertifikat",{citizen_name:"${esc(f.name)}"})'><i class="fas fa-award" style="color:#fbbf24"></i> Zertifikat</button>
       </div>
@@ -622,7 +626,7 @@
       <div style="display:flex;justify-content:flex-end;margin-top:1rem"><button class="btn btn-ghost" onclick="closeModal()">Schließen</button></div>`);
   };
 
-  window.openAddPoints = (name) => {
+  window.openAddPoints = (name, id = '') => {
     openModal(`
       <h3 style="margin:0 0 1rem"><i class="fas fa-exclamation-triangle" style="color:#fbbf24"></i> Punkte eintragen – ${esc(name)}</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
@@ -633,10 +637,10 @@
       </div>
       <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">
         <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
-        <button class="btn btn-primary" onclick="savePoints('${esc(name).replace(/'/g, "\\'")}')"><i class="fas fa-save"></i> Eintragen</button>
+        <button class="btn btn-primary" onclick="savePoints('${esc(name).replace(/'/g, "\\'")}','${esc(id).replace(/'/g, "\\'")}')"><i class="fas fa-save"></i> Eintragen</button>
       </div>`);
   };
-  window.savePoints = async (name) => {
+  window.savePoints = async (name, id = '') => {
     const reason = $('pt_reason').value.trim();
     if (!reason) return toast('Grund erforderlich', 'err');
     const r = await api('/api/points', { method: 'POST', body: {
@@ -645,25 +649,25 @@
     }});
     if (!r) return;
     toast('Punkte eingetragen', 'ok');
-    window.openCitizenFile(name);
+    window.openCitizenFile(name, id);
   };
 
-  window.openAddCitizenNote = (name) => {
+  window.openAddCitizenNote = (name, id = '') => {
     openModal(`
       <h3 style="margin:0 0 1rem"><i class="fas fa-sticky-note" style="color:#a855f7"></i> Interne Notiz – ${esc(name)}</h3>
       <textarea id="cn_note" rows="4" style="width:100%" placeholder="Nur für Mitarbeiter sichtbar…"></textarea>
       <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">
         <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
-        <button class="btn btn-primary" onclick="saveCitizenNote('${esc(name).replace(/'/g, "\\'")}')"><i class="fas fa-save"></i> Speichern</button>
+        <button class="btn btn-primary" onclick="saveCitizenNote('${esc(name).replace(/'/g, "\\'")}','${esc(id).replace(/'/g, "\\'")}')"><i class="fas fa-save"></i> Speichern</button>
       </div>`);
   };
-  window.saveCitizenNote = async (name) => {
+  window.saveCitizenNote = async (name, id = '') => {
     const note = $('cn_note').value.trim();
     if (!note) return toast('Notiz ist leer', 'err');
-    const r = await api('/api/citizen-notes', { method: 'POST', body: { citizen_name: name, note } });
+    const r = await api('/api/citizen-notes', { method: 'POST', body: { citizen_name: name, citizen_id: id || null, note } });
     if (!r) return;
     toast('Notiz gespeichert', 'ok');
-    window.openCitizenFile(name);
+    window.openCitizenFile(name, id);
   };
 
   // ═══════════════════════════════════════════════════════════════

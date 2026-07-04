@@ -626,10 +626,19 @@ const loading = () => `<div class="skel-page">
   <div class="skel skel-line"></div><div class="skel skel-line" style="width:82%"></div><div class="skel skel-line" style="width:65%"></div>
 </div>`;
 
+// Einheitlicher Fehler-Zustand mit Retry-Button (Stil wie runSearch()'s Fehleranzeige).
+// `retryCall` ist ein JS-Code-String fürs onclick-Attribut (Konvention wie im Rest der App),
+// kein Funktionsobjekt. Wird zentral von navigate() genutzt, wenn eine Seite hängen bleibt.
+const errorState = (msg, retryCall) => `<div style="display:flex;align-items:center;gap:.6rem;color:var(--red);font-size:.9rem;padding:1.1rem 1.2rem;background:var(--red-dim);border:1px solid rgba(239,68,68,.3);border-radius:var(--rl,12px);margin:1rem 0">
+  <i class="fas fa-exclamation-triangle"></i>
+  <div style="flex:1">${esc(msg)}</div>
+  <button class="btn btn-ghost btn-sm" onclick="${retryCall}">Erneut versuchen</button>
+</div>`;
+
 // ── Export für Zusatz-Module (js/acls-plus.js etc.) ──────────────
 // const/let-Helper sind nicht automatisch auf window – hier gebündelt freigeben.
 window.ACLSCore = {
-  $, esc, fmt, loading,
+  $, esc, fmt, loading, errorState,
   get user() { return currentUser; },
   isAdmin: () => currentUser?.role === 'admin',
 };
@@ -1773,7 +1782,7 @@ function getTodayVisits() {
   try { return JSON.parse(localStorage.getItem('acls-visits-' + _todayKey()) || '[]'); } catch { return []; }
 }
 
-function navigate(page) {
+async function navigate(page) {
   if (page === 'admin'     && !isAdmin())     { toast('Kein Zugriff', 'err'); return; }
   if (page === 'ausbildung' && !isAusbilder()) { toast('Kein Zugriff', 'err'); return; }
   closeModal();
@@ -1792,7 +1801,21 @@ function navigate(page) {
   const renders = { dashboard, werkstatt, arcade, activity, eow, exams, registry, factions, map, iczeit, prices, carmarket, organigramm, applications, admin, ausbildung, bans, search, faq, auditlog, turnier, duell, shop, saison, freunde, schwarzmarkt, feedback, frageneditor, beschwerden, nachrichten, marktplatz, wetten, tickets, statistiken, team_vorstellung, level, wheel, milestones, changelog, trivia, onboarding, profil, meinacls, finanzen };
   // Zusatz-Module (js/acls-plus.js) registrieren ihre Seiten hier
   if (window.ACLSPlusPages) Object.assign(renders, window.ACLSPlusPages);
-  (renders[page] || dashboard)();
+  const renderFn = renders[page] || dashboard;
+
+  try {
+    await renderFn();
+  } catch (e) {
+    console.error('[navigate]', page, e);
+  }
+
+  // Manche Render-Funktionen brechen bei einem API-Fehler früh ab (`if (!data) return`)
+  // und überschreiben dabei nie den Skeleton-Loader von oben. Statt dass die Seite dann
+  // für immer im Ladezustand hängen bleibt, zeigen wir einen Fehler mit Retry-Button.
+  // Nur eingreifen, wenn der Nutzer währenddessen nicht schon weitergeklickt hat.
+  if (_activePage === page && $('pageContent')?.querySelector('.skel-page')) {
+    $('pageContent').innerHTML = errorState('Seite konnte nicht geladen werden.', `navigate('${page}')`);
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -3310,7 +3333,7 @@ function renderQuiz(cat) {
       <div class="quiz-progress"><div class="quiz-progress-bar" style="width:${(q.current / q.questions.length) * 100}%"></div></div>
       <div class="quiz-counter">Frage ${q.current + 1} von ${q.questions.length}</div>
       ${koBadge}
-      <div class="quiz-q">${qst.question}</div>
+      <div class="quiz-q">${esc(qst.question)}</div>
       ${[qst.option_a, qst.option_b, qst.option_c, qst.option_d]
         .map((opt, i) => ({ opt, i }))
         .filter(({ opt }) => opt && opt.trim())
@@ -3321,7 +3344,7 @@ function renderQuiz(cat) {
           if (isSelected) cls += ' selected';
           if (isCorrect)  cls += ' correct-hint';
           return `<div class="${cls}" onclick="selectOpt(${i})">
-            <div class="opt-letter">${'ABCD'[i]}</div><div>${opt}</div>
+            <div class="opt-letter">${'ABCD'[i]}</div><div>${esc(opt)}</div>
             ${isCorrect ? '<i class="fas fa-check-circle" style="margin-left:auto;color:var(--green);font-size:.85rem;flex-shrink:0"></i>' : ''}
           </div>`;
         }).join('')}
@@ -4425,6 +4448,10 @@ window.openResetIcModal = () => {
 
 window.confirmResetIc = async scope => {
   const labels = { week: 'Diese Woche', month: 'Diesen Monat', all: 'Gesamte Historie' };
+  const warn = scope === 'all'
+    ? `Wirklich die GESAMTE IC-Zeit-Historie unwiderruflich löschen? Das kann nicht rückgängig gemacht werden!`
+    : `IC-Zeit für „${labels[scope]}" wirklich unwiderruflich löschen?`;
+  if (!confirm(warn)) return;
   const r = await api('/api/ic-log/reset', { method: 'POST', body: { scope } });
   if (r?.ok) { toast(`IC-Zeit (${labels[scope]}) zurückgesetzt`, 'ok'); closeModal(); iczeit(); }
 };
@@ -6767,8 +6794,8 @@ async function ausbildung() {
         <thead><tr><th>Typ</th><th>Prüfling</th><th>Prüfer</th><th>M1</th><th>M2</th><th>M3</th><th>Ergebnis</th><th>Datum</th><th></th></tr></thead>
         <tbody>${exams.map(e => `<tr>
           <td><span class="badge badge-m">${e.exam_type==='meister'?'Meister':'Geselle'}</span></td>
-          <td><b>${e.examinee_name}</b>${e.examinee_id?` <span style="font-size:.72rem;color:var(--muted)">${e.examinee_id}</span>`:''}</td>
-          <td>${e.examiner_name}${e.examiner2_name?`<br><span style="font-size:.72rem;color:var(--muted)">+ ${e.examiner2_name}</span>`:''}</td>
+          <td><b>${esc(e.examinee_name)}</b>${e.examinee_id?` <span style="font-size:.72rem;color:var(--muted)">${esc(e.examinee_id)}</span>`:''}</td>
+          <td>${esc(e.examiner_name)}${e.examiner2_name?`<br><span style="font-size:.72rem;color:var(--muted)">+ ${esc(e.examiner2_name)}</span>`:''}</td>
           <td><span class="badge ${e.m1_passed?'badge-g':'badge-r'}">${e.m1_score}/${e.m1_max} Orte</span></td>
           <td><span class="badge ${e.m2_passed?'badge-g':'badge-r'}">${e.m2_score}/${e.m2_total}</span></td>
           <td><span class="badge ${e.m3_passed?'badge-g':'badge-r'}">${(+e.m3_score).toFixed(1)}/4</span></td>
@@ -9900,7 +9927,10 @@ function txCategory(reason) {
 }
 
 async function finanzen() {
-  const me = await api('/api/coins/me');
+  // ?days=30: echte 30-Tage-Historie statt der sonst üblichen "letzten 15 Transaktionen" –
+  // Cashflow-Chart und Kategorien-Aufschlüsselung brauchen einen vollständigen Zeitraum,
+  // sonst zeigen aktive Nutzer fälschlich "0" an Tagen, die nur nicht mehr mitgeladen wurden.
+  const me = await api('/api/coins/me?days=30');
   if (!me) {
     $('pageContent').innerHTML = '<div class="empty"><i class="fas fa-wallet"></i><p>Finanzdaten konnten nicht geladen werden.</p></div>';
     return;
@@ -9956,7 +9986,7 @@ async function finanzen() {
         <div class="stat-ico b"><i class="fas fa-scale-balanced"></i></div>
       </div>
     </div>
-    <div style="font-size:.7rem;color:var(--muted);margin:-.4rem 0 1rem">Basierend auf deinen letzten ${txs.length} Transaktionen.</div>
+    <div style="font-size:.7rem;color:var(--muted);margin:-.4rem 0 1rem">Basierend auf den letzten 30 Tagen (${txs.length} Transaktion${txs.length === 1 ? '' : 'en'}).</div>
 
     <div class="dash-bottom">
       <!-- Cashflow 7 Tage -->
