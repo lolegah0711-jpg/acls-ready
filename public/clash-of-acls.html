@@ -5,289 +5,522 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Clash of ACLS</title>
 <style>
-  :root { --bg:#0b0f17; --card:#151b27; --card2:#1c2433; --line:#26303f; --txt:#e5e9f0; --mut:#8b97a9; --acc:#f97316; --good:#22c55e; --bad:#ef4444; --lock:#0d1622; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--txt); font-family:system-ui,Segoe UI,Roboto,sans-serif; }
-  .wrap { max-width:980px; margin:0 auto; padding:1.2rem; }
-  h1 { font-size:1.5rem; margin:.2rem 0; }
-  .sub { color:var(--mut); margin-bottom:1rem; font-size:.9rem; }
-  a.back { color:var(--acc); text-decoration:none; font-size:.85rem; }
-  .err { color:var(--bad); font-size:.85rem; min-height:1rem; margin:.4rem 0; } .err.ok{ color:var(--good); }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1.1rem; margin-bottom:1rem; }
-  .res-bar { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; }
-  .res { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:.5rem .8rem; flex:1; min-width:120px; }
-  .res b { display:block; font-size:1.05rem; } .res span { color:var(--mut); font-size:.7rem; }
-  .queue-bar { height:10px; background:var(--lock); border-radius:999px; overflow:hidden; margin:.5rem 0; }
-  .queue-bar > i { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#22c55e); transition:width .3s; }
-  button { background:var(--acc); color:#1a0a00; border:0; border-radius:9px; padding:.55rem .95rem; font-weight:700; cursor:pointer; font-size:.85rem; }
-  button:hover { filter:brightness(1.08); } button:disabled { opacity:.45; cursor:default; }
-  button.ghost { background:var(--card2); color:var(--txt); border:1px solid var(--line); }
-  button.bad { background:var(--bad); color:#fff; }
-  button.sm { padding:.35rem .7rem; font-size:.78rem; }
-  .muted { color:var(--mut); font-size:.82rem; }
-  .grid-outer { display:flex; justify-content:center; }
-  .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:3px; width:100%; max-width:480px; aspect-ratio:1; }
-  .cell { position:relative; aspect-ratio:1; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:1rem; cursor:pointer; background:var(--card2); border:1px solid var(--line); user-select:none; }
-  .cell.locked { background:var(--lock); border-color:var(--lock); cursor:default; color:var(--mut); font-size:.7rem; }
-  .cell.empty:hover { border-color:var(--acc); }
-  .cell.building { background:#1e2a1e; border-color:#2e4a2e; flex-direction:column; }
-  .cell .lvl { position:absolute; bottom:1px; right:2px; font-size:.55rem; color:var(--mut); background:rgba(0,0,0,.5); border-radius:4px; padding:0 2px; }
-  .cell.progress { animation:pulse 1.4s infinite; }
-  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(249,115,22,.5); } 50%{ box-shadow:0 0 0 4px rgba(249,115,22,.15); } }
-  .panel-title { font-weight:700; margin-bottom:.5rem; display:flex; align-items:center; gap:.5rem; }
-  .opt-list { display:flex; flex-direction:column; gap:.5rem; margin-top:.5rem; }
-  .opt { display:flex; align-items:center; justify-content:space-between; gap:.6rem; background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:.55rem .7rem; }
-  .opt .l { display:flex; align-items:center; gap:.55rem; }
-  .opt .l .ic { font-size:1.3rem; }
-  .opt .l .name { font-weight:600; font-size:.88rem; } .opt .l .d { color:var(--mut); font-size:.72rem; }
-  .tabs { display:flex; gap:.4rem; margin-bottom:.8rem; flex-wrap:wrap; }
-  .tab { padding:.4rem .8rem; border-radius:8px; background:var(--card2); border:1px solid var(--line); cursor:pointer; font-size:.82rem; color:var(--mut); }
-  .tab.active { background:var(--acc); color:#1a0a00; border-color:var(--acc); font-weight:700; }
-  .lbrow { display:flex; justify-content:space-between; padding:.35rem .2rem; border-bottom:1px solid var(--line); font-size:.86rem; }
+  :root {
+    --bg:#0b0f17; --card:#151b27; --card2:#1c2433; --line:#26303f; --txt:#e5e9f0; --mut:#8b97a9;
+    --acc:#f97316; --good:#22c55e; --bad:#ef4444;
+    --cell: clamp(19px, calc((100vw - 28px) / 17.2), 44px);
+    --board: calc(var(--cell) * 12);
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:radial-gradient(1100px 500px at 50% -80px, #141d30, var(--bg)); color:var(--txt); font-family:system-ui,Segoe UI,Roboto,sans-serif; overflow-x:hidden; min-height:100vh; }
+  button { font-family:inherit; }
+
+  /* ── HUD oben ── */
+  #hud { position:sticky; top:0; z-index:60; display:flex; align-items:center; gap:.45rem; padding:.5rem .6rem; background:linear-gradient(#0b0f17f2,#0b0f17cc); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  #hud a.back { color:var(--mut); text-decoration:none; font-size:1rem; padding:.25rem .4rem; border-radius:8px; }
+  #hud a.back:hover { color:var(--acc); }
+  .res { display:flex; align-items:center; gap:.28rem; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:.22rem .55rem; font-size:.76rem; font-weight:700; white-space:nowrap; }
+  .res .cap { color:var(--mut); font-weight:400; font-size:.65rem; }
+  .hud-btn { width:34px; height:34px; border-radius:10px; background:var(--card); border:1px solid var(--line); color:var(--txt); font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; margin-left:auto; }
+  .hud-btn + .hud-btn { margin-left:0; }
+  .hud-btn:hover { border-color:var(--acc); }
+
+  /* ── Toast ── */
+  #msg { position:fixed; top:104px; left:50%; transform:translateX(-50%); z-index:120; background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:.5rem .9rem; font-size:.85rem; box-shadow:0 8px 24px rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:opacity .2s; max-width:90vw; text-align:center; }
+  #msg.show { opacity:1; }
+  #msg.ok { border-color:rgba(34,197,94,.5); color:var(--good); }
+  #msg.err { border-color:rgba(239,68,68,.5); color:var(--bad); }
+
+  /* ── Platzierungs-Banner ── */
+  #placeBar { position:fixed; top:56px; left:50%; transform:translateX(-50%); z-index:70; display:none; align-items:center; gap:.6rem; background:rgba(34,197,94,.12); border:1px solid rgba(34,197,94,.45); border-radius:999px; padding:.4rem .5rem .4rem .9rem; font-size:.82rem; backdrop-filter:blur(6px); white-space:nowrap; }
+  #placeBar.show { display:flex; }
+  #placeBar button { background:var(--card2); color:var(--txt); border:1px solid var(--line); border-radius:999px; padding:.25rem .7rem; font-size:.76rem; cursor:pointer; }
+
+  /* ── Iso-Karte ── */
+  #scene { position:relative; height:max(calc(var(--board) * 1.05), calc(100vh - 230px)); display:flex; justify-content:center; align-items:center; margin:.6rem 0 5.5rem; }
+  #board { width:var(--board); height:var(--board); display:grid; grid-template-columns:repeat(12,1fr); grid-template-rows:repeat(12,1fr); gap:2px; transform:rotateX(55deg) rotateZ(45deg); transform-style:preserve-3d; }
+  .tile { position:relative; border-radius:3px; background:linear-gradient(135deg,#33405c,#242e45); box-shadow:inset 0 0 0 1px #43527a; transform-style:preserve-3d; cursor:pointer; transition:box-shadow .15s, filter .15s; }
+  .tile:hover { filter:brightness(1.25); }
+  .tile.locked { background:repeating-linear-gradient(45deg,#0e1420,#0e1420 5px,#121927 5px,#121927 10px); box-shadow:inset 0 0 0 1px #1a2130; cursor:default; }
+  .tile.locked:hover { filter:none; }
+  .tile.sel { box-shadow:inset 0 0 0 2px var(--acc), 0 0 14px rgba(249,115,22,.35); }
+  .tile.can-place { box-shadow:inset 0 0 0 2px var(--good); animation:placePulse 1.1s infinite; }
+  @keyframes placePulse { 0%,100% { filter:brightness(1); } 50% { filter:brightness(1.6); } }
+
+  /* Gebäude-Sprite: gegenrotiert, damit es aufrecht auf der Iso-Fläche steht */
+  .b { position:absolute; left:50%; top:50%; transform:translate(-50%,-62%) rotateZ(-45deg) rotateX(-55deg); display:flex; flex-direction:column; align-items:center; pointer-events:none; }
+  .b .em { font-size:calc(var(--cell) * .92); line-height:1; filter:drop-shadow(0 5px 4px rgba(0,0,0,.55)); }
+  .b .lv { margin-top:-2px; font-size:calc(var(--cell) * .26); font-weight:800; background:rgba(0,0,0,.65); border:1px solid var(--line); color:#fbbf24; border-radius:999px; padding:0 5px; line-height:1.5; }
+  .b .cwrap { width:calc(var(--cell) * .95); height:4px; background:rgba(0,0,0,.6); border-radius:99px; overflow:hidden; margin-top:2px; }
+  .b .cfill { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#22c55e); width:0%; }
+  .tile.busy .em { animation:bounce 1.6s infinite; }
+  @keyframes bounce { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-9%); } }
+
+  /* ── Bau-Queue-Chip unten links ── */
+  #queueChip { position:fixed; left:.7rem; bottom:.8rem; z-index:60; display:none; align-items:center; gap:.55rem; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:.5rem .7rem; box-shadow:0 8px 24px rgba(0,0,0,.45); max-width:62vw; }
+  #queueChip.show { display:flex; }
+  #queueChip .qi { font-size:1.4rem; }
+  #queueChip .qt { font-size:.72rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #queueChip .cd { font-size:.72rem; color:var(--mut); font-variant-numeric:tabular-nums; }
+  #queueChip .qbar { width:80px; height:5px; background:#0d1622; border-radius:99px; overflow:hidden; margin-top:2px; }
+  #queueChip .qfill { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#22c55e); }
+  #queueChip .spd { background:var(--acc); color:#1a0a00; border:0; border-radius:9px; padding:.35rem .5rem; font-weight:800; font-size:.72rem; cursor:pointer; }
+
+  /* ── Bauen-FAB ── */
+  #buildBtn { position:fixed; right:.9rem; bottom:.9rem; z-index:60; width:58px; height:58px; border-radius:50%; background:linear-gradient(145deg,#fb923c,var(--acc)); color:#1a0a00; border:0; font-size:1.5rem; cursor:pointer; box-shadow:0 10px 26px rgba(249,115,22,.4); transition:transform .15s; }
+  #buildBtn:hover { transform:scale(1.07); }
+  #buildBtn.hidden { display:none; }
+
+  /* ── Info-Leiste (gewähltes Gebäude) ── */
+  #infoBar { position:fixed; left:0; right:0; bottom:0; z-index:65; display:none; align-items:center; gap:.7rem; background:var(--card); border-top:1px solid var(--line); padding:.7rem .9rem calc(.7rem + env(safe-area-inset-bottom)); box-shadow:0 -10px 30px rgba(0,0,0,.5); }
+  #infoBar.show { display:flex; }
+  #infoBar .ii { font-size:2rem; filter:drop-shadow(0 3px 3px rgba(0,0,0,.5)); }
+  #infoBar .im { flex:1; min-width:0; }
+  #infoBar .in { font-weight:800; font-size:.92rem; }
+  #infoBar .ie { color:var(--mut); font-size:.72rem; margin-top:.15rem; line-height:1.4; }
+  #infoBar .ib { display:flex; flex-direction:column; gap:.35rem; align-items:stretch; }
+  #infoBar button { border:0; border-radius:9px; padding:.45rem .7rem; font-weight:700; font-size:.78rem; cursor:pointer; white-space:nowrap; }
+  #infoBar .up { background:var(--good); color:#04200f; }
+  #infoBar .up:disabled { opacity:.45; cursor:default; }
+  #infoBar .mk { background:var(--acc); color:#1a0a00; }
+  #infoBar .cl { position:absolute; top:.35rem; right:.5rem; background:none; border:0; color:var(--mut); font-size:.9rem; cursor:pointer; padding:.2rem; }
+
+  /* ── Sheets (Baumenü / Mitarbeiter / Fuhrpark / Rangliste / Fertigung) ── */
+  #backdrop { position:fixed; inset:0; z-index:75; background:rgba(0,0,0,.45); opacity:0; pointer-events:none; transition:opacity .2s; }
+  #backdrop.show { opacity:1; pointer-events:auto; }
+  #sheet { position:fixed; left:0; right:0; bottom:0; z-index:80; background:var(--card); border-top:1px solid var(--line); border-radius:18px 18px 0 0; max-height:72vh; display:flex; flex-direction:column; transform:translateY(105%); transition:transform .25s; }
+  #sheet.open { transform:none; }
+  .sh-head { display:flex; align-items:center; gap:.6rem; padding:.85rem 1rem .6rem; border-bottom:1px solid var(--line); }
+  .sh-title { font-weight:800; font-size:1rem; flex:1; }
+  .sh-close { background:var(--card2); border:1px solid var(--line); color:var(--mut); border-radius:9px; padding:.3rem .65rem; cursor:pointer; font-size:.8rem; }
+  .sh-body { overflow-y:auto; padding:.8rem 1rem calc(1rem + env(safe-area-inset-bottom)); }
+
+  .cats { display:flex; gap:.4rem; flex-wrap:wrap; padding:.6rem 1rem 0; }
+  .cat { padding:.28rem .7rem; border-radius:999px; background:var(--card2); border:1px solid var(--line); color:var(--mut); font-size:.74rem; cursor:pointer; }
+  .cat.active { background:var(--acc); border-color:var(--acc); color:#1a0a00; font-weight:800; }
+
+  .shop-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:.6rem; }
+  .shop-card { background:var(--card2); border:1px solid var(--line); border-radius:13px; padding:.7rem .6rem .6rem; text-align:center; cursor:pointer; transition:border-color .15s, transform .15s; position:relative; }
+  .shop-card:hover { border-color:var(--acc); transform:translateY(-2px); }
+  .shop-card.off { opacity:.45; cursor:default; }
+  .shop-card.off:hover { border-color:var(--line); transform:none; }
+  .shop-card .si { font-size:1.9rem; filter:drop-shadow(0 3px 3px rgba(0,0,0,.5)); }
+  .shop-card .sn { font-weight:700; font-size:.8rem; margin-top:.25rem; }
+  .shop-card .sc { display:flex; justify-content:center; gap:.4rem; flex-wrap:wrap; font-size:.7rem; margin-top:.35rem; font-weight:700; }
+  .shop-card .sc .short { color:var(--bad); }
+  .shop-card .st { color:var(--mut); font-size:.64rem; margin-top:.2rem; }
+  .shop-card .cnt { position:absolute; top:.4rem; right:.5rem; font-size:.64rem; color:var(--mut); background:rgba(0,0,0,.4); border-radius:99px; padding:.05rem .4rem; }
+
+  .row { display:flex; align-items:center; justify-content:space-between; gap:.6rem; background:var(--card2); border:1px solid var(--line); border-radius:11px; padding:.55rem .7rem; margin-bottom:.5rem; }
+  .row .rl { display:flex; align-items:center; gap:.55rem; min-width:0; }
+  .row .rl .ric { font-size:1.35rem; }
+  .row .rl .rn { font-weight:700; font-size:.85rem; }
+  .row .rl .rd { color:var(--mut); font-size:.7rem; }
+  .row button { border:0; border-radius:8px; padding:.38rem .6rem; font-weight:700; font-size:.74rem; cursor:pointer; background:var(--acc); color:#1a0a00; white-space:nowrap; }
+  .row button:disabled { opacity:.45; cursor:default; }
+  .row button.ghost { background:var(--card); color:var(--txt); border:1px solid var(--line); }
+  .row button.bad { background:var(--bad); color:#fff; }
+  .lbrow { display:flex; justify-content:space-between; padding:.42rem .2rem; border-bottom:1px solid var(--line); font-size:.85rem; }
+  .muted { color:var(--mut); font-size:.8rem; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <a class="back" href="/">← Zurück zum Portal</a>
-  <h1>🏗️ Clash of ACLS</h1>
-  <div class="sub">Baue dein Werkstattgelände aus — Gebäude leveln, Mitarbeiter einstellen, Fahrzeuge fertigen und verkaufen.</div>
-  <div class="err" id="msg"></div>
 
-  <div class="res-bar" id="resBar"></div>
-
-  <div class="card" id="queueCard" style="display:none">
-    <div class="panel-title"><i class="ic">🛠️</i><span id="queueTitle">Bauauftrag läuft…</span></div>
-    <div class="queue-bar"><i id="queueBar" style="width:0%"></i></div>
-    <div class="muted" id="queueNote"></div>
-    <div style="margin-top:.5rem"><button class="ghost sm" onclick="speedup()">⚡ Beschleunigen (ACLS-Coins)</button></div>
-  </div>
-
-  <div class="card">
-    <div class="panel-title"><i class="ic">🗺️</i><span>Gelände</span></div>
-    <div class="grid-outer"><div class="grid" id="grid"></div></div>
-    <div class="muted" style="margin-top:.5rem">Klick auf eine freie Zelle zum Bauen, auf ein Gebäude zum Ausbauen.</div>
-  </div>
-
-  <div class="card" id="detailCard" style="display:none"></div>
-
-  <div class="tabs">
-    <div class="tab active" data-tab="mitarbeiter" onclick="switchTab('mitarbeiter')">👷 Mitarbeiter</div>
-    <div class="tab" data-tab="fuhrpark" onclick="switchTab('fuhrpark')">🚗 Fuhrpark</div>
-    <div class="tab" data-tab="rang" onclick="switchTab('rang')">🏆 Rangliste</div>
-  </div>
-
-  <div class="card" id="tab-mitarbeiter"></div>
-  <div class="card" id="tab-fuhrpark" style="display:none"></div>
-  <div class="card" id="tab-rang" style="display:none"></div>
+<div id="hud">
+  <a class="back" href="/" title="Zurück zum Portal">←</a>
+  <span id="resBar" style="display:contents"></span>
+  <button class="hud-btn" onclick="openSheet('emp')" title="Mitarbeiter">👷</button>
+  <button class="hud-btn" onclick="openSheet('veh')" title="Fuhrpark">🚗</button>
+  <button class="hud-btn" onclick="openSheet('lb')" title="Rangliste">🏆</button>
 </div>
 
-<script src="/game-auth.js"></script>
-<script src="/js/clash-of-acls-config.js?v=1"></script>
+<div id="msg"></div>
+<div id="placeBar"><span id="placeTxt"></span><button onclick="cancelPlacing()">Abbrechen</button></div>
+
+<div id="scene"><div id="board"></div></div>
+
+<div id="queueChip">
+  <span class="qi" id="qIcon">🚧</span>
+  <div style="min-width:0">
+    <div class="qt" id="qTitle"></div>
+    <div class="cd" id="qCd"></div>
+    <div class="qbar"><i class="qfill" id="qFill"></i></div>
+  </div>
+  <button class="spd" onclick="speedup()" title="Mit ACLS-Coins sofort fertigstellen">⚡</button>
+</div>
+
+<button id="buildBtn" onclick="openSheet('shop')" title="Baumenü">🔨</button>
+
+<div id="infoBar">
+  <button class="cl" onclick="deselect()">✕</button>
+  <span class="ii" id="iIcon"></span>
+  <div class="im">
+    <div class="in" id="iName"></div>
+    <div class="ie" id="iEffect"></div>
+  </div>
+  <div class="ib" id="iBtns"></div>
+</div>
+
+<div id="backdrop" onclick="closeSheet()"></div>
+<div id="sheet">
+  <div class="sh-head"><span class="sh-title" id="shTitle"></span><button class="sh-close" onclick="closeSheet()">Schließen</button></div>
+  <div class="cats" id="shCats" style="display:none"></div>
+  <div class="sh-body" id="shBody"></div>
+</div>
+
+<script src="/js/clash-of-acls-config.js?v=2"></script>
 <script>
 const CFG = window.CLASH_OF_ACLS_CONFIG;
 const $ = id => document.getElementById(id);
-const fmt = n => Math.round(n||0).toLocaleString('de-DE');
-const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = n => Math.round(n || 0).toLocaleString('de-DE');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 const RES_ICON = { money:'💰', steel:'🔩', parts:'⚙️', electronics:'💡', fuel:'⛽' };
 const RES_NAME = { money:'Geld', steel:'Stahl', parts:'Ersatzteile', electronics:'Elektronik', fuel:'Treibstoff' };
+const CATS = [['alle','Alle'], ['spezial','Spezial'], ['produktion','Produktion'], ['lager','Lager'], ['boni','Boni'], ['deko','Deko']];
+const ts = s => new Date(s + 'Z').getTime();
+function fmtDur(sec) {
+  sec = Math.max(0, Math.round(sec));
+  if (sec >= 3600) return Math.floor(sec/3600) + 'h ' + Math.floor((sec%3600)/60) + 'm';
+  if (sec >= 60) return Math.floor(sec/60) + 'm ' + (sec%60) + 's';
+  return sec + 's';
+}
 
-async function api(path, opts={}) {
-  const r = await fetch(path, { headers:{'Content-Type':'application/json'}, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
-  const d = await r.json().catch(()=>({}));
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers:{ 'Content-Type':'application/json' }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || 'Fehler');
   return d;
 }
-function msg(t, ok) { const m=$('msg'); m.textContent=t; m.className = ok ? 'err ok' : 'err'; if (t) setTimeout(()=>{ if (m.textContent===t) m.textContent=''; }, 4000); }
+let msgTimer = null;
+function msg(t, ok) {
+  const m = $('msg');
+  m.textContent = t; m.className = 'show ' + (ok ? 'ok' : 'err');
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => { m.className = ''; }, 3200);
+}
 
 let st = null;
-let selected = null; // {x,y} oder building id
-let activeTab = 'mitarbeiter';
+let placing = null;      // building_key im Platzierungs-Modus
+let selectedId = null;   // gewähltes Gebäude (id)
+let sheetType = null;    // 'shop' | 'emp' | 'veh' | 'lb' | 'manu'
+let sheetCtx = null;     // z.B. garage building id für 'manu'
+let shopCat = 'alle';
 
-function buildingLabel(key, level) {
-  const def = CFG.BUILDINGS[key];
-  if (!def) return key;
-  return typeof def.label === 'function' ? def.label(level) : def.label;
+const bLabel = (key, lvl) => { const d = CFG.BUILDINGS[key]; if (!d) return key; return typeof d.label === 'function' ? d.label(Math.max(1, lvl)) : d.label; };
+const canAfford = cost => Object.entries(cost).every(([r, a]) => (st.resources[r] || 0) >= a);
+const costHtml = cost => Object.entries(cost).filter(([, a]) => a > 0).map(([r, a]) =>
+  `<span class="${(st.resources[r]||0) < a ? 'short' : ''}">${RES_ICON[r]}${fmt(a)}</span>`).join(' ');
+
+function effectLines(def, lvl) {
+  const e = def.effect || {}; const out = [];
+  if (e.perHour) Object.entries(e.perHour(lvl)).forEach(([r, v]) => out.push(`+${fmt(v)} ${RES_NAME[r]}/h`));
+  if (e.capBonus) out.push('Lager ' + Object.entries(e.capBonus(lvl)).map(([r, v]) => `${RES_ICON[r]}+${fmt(v)}`).join(' '));
+  if (e.unlockedCells) out.push(`${e.unlockedCells(lvl)} Bauplätze`);
+  if (e.otherMaxLevel) out.push(`Gebäude-Max-Level ${e.otherMaxLevel(lvl)}`);
+  if (e.unlockedTier) out.push(`Fahrzeug-Tier ${e.unlockedTier(lvl)}`);
+  if (e.manufactureTimeSec) out.push(`Fertigung ${fmtDur(e.manufactureTimeSec(lvl))}`);
+  if (e.sellValuePct) out.push(`Verkaufswert +${e.sellValuePct(lvl)}%`);
+  if (e.sellBonusPct) out.push(`Verkaufsbonus +${e.sellBonusPct(lvl)}%`);
+  if (e.rarityBonusPct) out.push(`Fahrzeugwert +${e.rarityBonusPct(lvl)}%`);
+  if (e.globalProdPct) out.push(`Gesamtproduktion +${e.globalProdPct(lvl)}%`);
+  if (e.employeeSlots) out.push(`+${e.employeeSlots(lvl)} Mitarbeiter-Slots`);
+  if (e.vehicleSlots) out.push(`${e.vehicleSlots(lvl)} Stellplätze`);
+  return out;
 }
 
+/* ── Rendering ── */
 function render(d) {
   st = d;
-  renderResBar();
-  renderQueue();
-  renderGrid();
-  if (selected) renderDetail(); else $('detailCard').style.display = 'none';
-  renderTab();
+  renderRes();
+  renderBoard();
+  renderQueueChip();
+  if (selectedId !== null) renderInfoBar();
+  if (sheetType) renderSheet();
 }
 
-function renderResBar() {
-  $('resBar').innerHTML = CFG.RESOURCES.map(r => `
-    <div class="res"><b>${RES_ICON[r]} ${fmt(st.resources[r])} <span style="color:var(--mut);font-size:.65rem">/ ${fmt(st.caps[r])}</span></b>
-    <span>${RES_NAME[r]} · +${fmt(st.ratesPerHour[r])}/h</span></div>`).join('');
+function renderRes() {
+  $('resBar').innerHTML = CFG.RESOURCES.map(r =>
+    `<span class="res" title="${RES_NAME[r]}: ${fmt(st.resources[r])} / ${fmt(st.caps[r])} (+${fmt(st.ratesPerHour[r])}/h)">${RES_ICON[r]} ${fmt(st.resources[r])}<span class="cap">/${fmt(st.caps[r])}</span></span>`).join('');
 }
 
-function renderQueue() {
-  const q = st.activeBuild;
-  if (!q) { $('queueCard').style.display = 'none'; return; }
-  $('queueCard').style.display = '';
-  const total = (new Date(q.finish_at+'Z').getTime() - new Date(q.started_at+'Z').getTime());
-  const left = Math.max(0, new Date(q.finish_at+'Z').getTime() - Date.now());
-  const pct = total > 0 ? Math.min(100, 100 - (left/total*100)) : 100;
-  $('queueBar').style.width = pct + '%';
-  const label = buildingLabel(q.building_key, q.target_level);
-  $('queueTitle').textContent = `${label} → Level ${q.target_level}`;
-  const mins = Math.ceil(left/60000);
-  $('queueNote').textContent = left <= 0 ? 'Wird abgeschlossen…' : `Noch ca. ${mins} Min.`;
-}
-
-function renderGrid() {
-  const built = new Map(st.buildings.map(b => [`${b.x},${b.y}`, b]));
-  const manuByBuilding = new Map((st.activeManufacture||[]).map(m => [m.building_id, m]));
+function renderBoard() {
+  const built = new Map(st.buildings.map(b => [b.x + ',' + b.y, b]));
+  const manuByBuilding = new Map((st.activeManufacture || []).map(m => [m.building_id, m]));
   const html = [];
-  for (let y = 0; y < CFG.GRID.H; y++) {
-    for (let x = 0; x < CFG.GRID.W; x++) {
-      const idx = CFG.cellIndex(x, y);
-      const b = built.get(`${x},${y}`);
-      if (b) {
-        const inProgress = (st.activeBuild && st.activeBuild.x === x && st.activeBuild.y === y) || manuByBuilding.has(b.id);
-        const def = CFG.BUILDINGS[b.building_key];
-        html.push(`<div class="cell building${inProgress?' progress':''}" data-x="${x}" data-y="${y}" title="${esc(buildingLabel(b.building_key,b.level))}">
-          <span>${b.level < 1 ? '🚧' : def.icon}</span>${b.level>=1?`<span class="lvl">Lv${b.level}</span>`:''}</div>`);
-      } else if (idx < st.unlockedCells) {
-        html.push(`<div class="cell empty" data-x="${x}" data-y="${y}">+</div>`);
-      } else {
-        html.push(`<div class="cell locked">🔒</div>`);
-      }
+  for (let y = 0; y < CFG.GRID.H; y++) for (let x = 0; x < CFG.GRID.W; x++) {
+    const unlocked = CFG.cellIndex(x, y) < st.unlockedCells;
+    const b = built.get(x + ',' + y);
+    const cls = ['tile'];
+    if (!unlocked) cls.push('locked');
+    let inner = '';
+    if (b) {
+      const constructing = st.activeBuild && st.activeBuild.x === x && st.activeBuild.y === y;
+      const manu = manuByBuilding.get(b.id);
+      if (constructing || manu) cls.push('busy');
+      if (b.id === selectedId) cls.push('sel');
+      const icon = b.level < 1 ? '🚧' : CFG.BUILDINGS[b.building_key].icon;
+      const job = constructing ? st.activeBuild : manu;
+      inner = `<div class="b"><span class="em">${icon}</span>` +
+        (b.level >= 1 ? `<span class="lv">${b.level}</span>` : '') +
+        (job ? `<span class="cwrap"><i class="cfill" data-s="${ts(job.started_at)}" data-e="${ts(job.finish_at)}"></i></span>` : '') +
+        `</div>`;
+    } else if (unlocked && placing) {
+      cls.push('can-place');
     }
+    html.push(`<div class="${cls.join(' ')}" data-x="${x}" data-y="${y}">${inner}</div>`);
   }
-  $('grid').innerHTML = html.join('');
-  $('grid').querySelectorAll('.cell.building,.cell.empty').forEach(el => {
-    el.addEventListener('click', () => selectCell(+el.dataset.x, +el.dataset.y));
+  $('board').innerHTML = html.join('');
+  tickProgress();
+}
+
+$('board').addEventListener('click', e => {
+  const t = e.target.closest('.tile');
+  if (!t || !st) return;
+  const x = +t.dataset.x, y = +t.dataset.y;
+  const unlocked = CFG.cellIndex(x, y) < st.unlockedCells;
+  const b = st.buildings.find(b => b.x === x && b.y === y);
+  if (placing) {
+    if (!unlocked) return msg('Dieser Bauplatz ist noch gesperrt — Büro ausbauen!');
+    if (b) return msg('Hier steht schon ein Gebäude.');
+    return place(placing, x, y);
+  }
+  if (b) { selectedId = b.id; renderBoard(); renderInfoBar(); return; }
+  if (unlocked) openSheet('shop');
+});
+
+/* ── Bau-Queue-Chip ── */
+function renderQueueChip() {
+  const q = st.activeBuild;
+  const el = $('queueChip');
+  if (!q) { el.classList.remove('show'); return; }
+  el.classList.add('show');
+  $('qIcon').textContent = CFG.BUILDINGS[q.building_key]?.icon || '🚧';
+  $('qTitle').textContent = `${bLabel(q.building_key, q.target_level)} → Lv ${q.target_level}`;
+  updateQueueTimes();
+}
+function updateQueueTimes() {
+  const q = st && st.activeBuild;
+  if (!q) return;
+  const total = ts(q.finish_at) - ts(q.started_at);
+  const left = ts(q.finish_at) - Date.now();
+  $('qCd').textContent = left <= 0 ? 'Wird abgeschlossen…' : 'Noch ' + fmtDur(left / 1000);
+  $('qFill').style.width = (total > 0 ? Math.min(100, 100 - left / total * 100) : 100) + '%';
+}
+
+/* ── Info-Leiste ── */
+function renderInfoBar() {
+  const b = st.buildings.find(b => b.id === selectedId);
+  if (!b) return deselect();
+  const def = CFG.BUILDINGS[b.building_key];
+  $('infoBar').classList.add('show');
+  $('buildBtn').classList.add('hidden');
+  $('iIcon').textContent = b.level < 1 ? '🚧' : def.icon;
+  $('iName').textContent = `${bLabel(b.building_key, b.level)} — Level ${b.level < 1 ? '(im Bau)' : b.level}`;
+  if (b.level < 1) {
+    $('iEffect').textContent = 'Wird gerade gebaut — Fortschritt unten links.';
+    $('iBtns').innerHTML = '';
+    return;
+  }
+  $('iEffect').textContent = effectLines(def, b.level).join(' · ') || def.desc;
+  const btns = [];
+  if (b.level >= def.maxLevel) {
+    btns.push('<span class="muted">Max-Level erreicht</span>');
+  } else {
+    const next = b.level + 1;
+    const gated = b.building_key !== 'office' && next > (Math.max(1, st.officeLevel) + 2);
+    const cost = def.cost(next);
+    const dis = st.activeBuild || gated || !canAfford(cost);
+    const hint = st.activeBuild ? 'Bautrupp beschäftigt' : gated ? 'Büro-Level zu niedrig' : !canAfford(cost) ? 'Zu teuer' : '';
+    btns.push(`<button class="up" ${dis ? 'disabled' : ''} title="${esc(hint)}" onclick="upgrade(${b.id})">⬆ Lv ${next} — ${Object.entries(cost).filter(([,a])=>a>0).map(([r,a])=>RES_ICON[r]+fmt(a)).join(' ')} · ${fmtDur(def.buildTimeSec(next))}</button>`);
+  }
+  if (b.building_key === 'garage') btns.push(`<button class="mk" onclick="openSheet('manu', ${b.id})">🚗 Fahrzeuge</button>`);
+  $('iBtns').innerHTML = btns.join('');
+}
+function deselect() {
+  selectedId = null;
+  $('infoBar').classList.remove('show');
+  $('buildBtn').classList.remove('hidden');
+  renderBoard();
+}
+
+/* ── Platzierungs-Modus ── */
+function startPlacing(key) {
+  placing = key;
+  closeSheet();
+  deselect();
+  $('placeTxt').textContent = `${CFG.BUILDINGS[key].icon} Bauplatz für „${bLabel(key, 1)}" wählen`;
+  $('placeBar').classList.add('show');
+  renderBoard();
+}
+function cancelPlacing() {
+  placing = null;
+  $('placeBar').classList.remove('show');
+  renderBoard();
+}
+
+/* ── Sheets ── */
+function openSheet(type, ctx) {
+  sheetType = type; sheetCtx = ctx ?? null;
+  $('backdrop').classList.add('show');
+  $('sheet').classList.add('open');
+  renderSheet();
+}
+function closeSheet() {
+  sheetType = null; sheetCtx = null;
+  $('backdrop').classList.remove('show');
+  $('sheet').classList.remove('open');
+}
+function renderSheet() {
+  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen' };
+  $('shTitle').textContent = titles[sheetType] || '';
+  $('shCats').style.display = sheetType === 'shop' ? 'flex' : 'none';
+  if (sheetType === 'shop') renderShop();
+  else if (sheetType === 'emp') renderEmp();
+  else if (sheetType === 'veh') renderVeh();
+  else if (sheetType === 'lb') renderLb();
+  else if (sheetType === 'manu') renderManu();
+}
+
+function renderShop() {
+  $('shCats').innerHTML = CATS.map(([k, l]) =>
+    `<span class="cat ${shopCat === k ? 'active' : ''}" onclick="shopCat='${k}';renderShop()">${l}</span>`).join('');
+  const counts = {};
+  st.buildings.forEach(b => { counts[b.building_key] = (counts[b.building_key] || 0) + 1; });
+  const cards = Object.entries(CFG.BUILDINGS)
+    .filter(([, d]) => shopCat === 'alle' || d.cat === shopCat)
+    .map(([key, d]) => {
+      const cost = d.cost(1);
+      const placed = counts[key] || 0;
+      const soldOut = d.singleton && placed > 0;
+      const off = soldOut || st.activeBuild;
+      const label = typeof d.label === 'function' ? d.label(1) : d.label;
+      return `<div class="shop-card ${off ? 'off' : ''}" data-key="${key}" title="${esc(d.desc)}">
+        ${placed ? `<span class="cnt">×${placed}</span>` : ''}
+        <div class="si">${d.icon}</div>
+        <div class="sn">${esc(label)}</div>
+        <div class="sc">${soldOut ? '<span class="muted">Gebaut</span>' : costHtml(cost)}</div>
+        <div class="st">${soldOut ? 'Nur 1× baubar' : '⏱ ' + fmtDur(d.buildTimeSec(1))}</div>
+      </div>`;
+    }).join('');
+  $('shBody').innerHTML = `<div class="shop-grid">${cards}</div>` +
+    (st.activeBuild ? '<div class="muted" style="margin-top:.7rem;text-align:center">🚧 Der Bautrupp ist beschäftigt — warte oder beschleunige den laufenden Bau.</div>' : '');
+  $('shBody').querySelectorAll('.shop-card:not(.off)').forEach(el => {
+    el.addEventListener('click', () => {
+      const key = el.dataset.key;
+      if (!canAfford(CFG.BUILDINGS[key].cost(1))) return msg('Nicht genug Ressourcen für ' + bLabel(key, 1));
+      startPlacing(key);
+    });
   });
 }
 
-function selectCell(x, y) {
-  const b = st.buildings.find(b => b.x === x && b.y === y);
-  selected = b ? { mode:'building', id:b.id } : { mode:'place', x, y };
-  renderDetail();
-}
-
-function renderDetail() {
-  const el = $('detailCard');
-  el.style.display = '';
-  if (selected.mode === 'place') {
-    const placed = new Set(st.buildings.map(b=>b.building_key));
-    const options = Object.keys(CFG.BUILDINGS).filter(k => !(CFG.BUILDINGS[k].singleton && placed.has(k)));
-    el.innerHTML = `<div class="panel-title"><i class="ic">🏗️</i><span>Gebäude bauen</span> <button class="ghost sm" style="margin-left:auto" onclick="closeDetail()">Schließen</button></div>
-      <div class="opt-list">${options.map(k => {
-        const def = CFG.BUILDINGS[k];
-        const cost = def.cost(1);
-        const affordable = Object.entries(cost).every(([r,a]) => st.resources[r] >= a);
-        const label = typeof def.label==='function' ? def.label(1) : def.label;
-        return `<div class="opt"><div class="l"><span class="ic">${def.icon}</span><div><div class="name">${esc(label)}</div><div class="d">${esc(def.desc)} · ${Object.entries(cost).map(([r,a])=>`${RES_ICON[r]}${fmt(a)}`).join(' ')} · ⏱${fmt(def.buildTimeSec(1))}s</div></div></div>
-          <button ${affordable?'':'disabled'} onclick="place('${k}')">Bauen</button></div>`;
-      }).join('') || '<div class="muted">Keine Gebäude verfügbar.</div>'}</div>`;
-  } else {
-    const b = st.buildings.find(b => b.id === selected.id);
-    if (!b) { selected = null; el.style.display='none'; return; }
-    const def = CFG.BUILDINGS[b.building_key];
-    const label = buildingLabel(b.building_key, b.level);
-    if (b.level < 1) {
-      el.innerHTML = `<div class="panel-title"><i class="ic">🚧</i><span>${esc(label)} — im Bau</span> <button class="ghost sm" style="margin-left:auto" onclick="closeDetail()">Schließen</button></div><div class="muted">Fertigstellung siehe Bauauftrag oben.</div>`;
-      return;
-    }
-    let extra = '';
-    if (b.building_key === 'garage') extra = renderGarage(b, def);
-    const canUpgrade = b.level < def.maxLevel && !st.activeBuild;
-    const nextCost = canUpgrade ? def.cost(b.level+1) : null;
-    const affordable = nextCost && Object.entries(nextCost).every(([r,a]) => st.resources[r] >= a);
-    el.innerHTML = `<div class="panel-title"><i class="ic">${def.icon}</i><span>${esc(label)} — Level ${b.level}</span> <button class="ghost sm" style="margin-left:auto" onclick="closeDetail()">Schließen</button></div>
-      <div class="muted">${esc(def.desc)}</div>
-      ${b.level >= def.maxLevel ? '<div class="muted" style="margin-top:.5rem">Maximales Level erreicht.</div>' :
-        `<div style="margin-top:.6rem"><button ${affordable && canUpgrade ? '' : 'disabled'} onclick="upgrade(${b.id})">Ausbauen → Level ${b.level+1} (${nextCost?Object.entries(nextCost).map(([r,a])=>`${RES_ICON[r]}${fmt(a)}`).join(' '):''})</button></div>`}
-      ${extra}`;
-  }
-}
-function closeDetail() { selected = null; $('detailCard').style.display = 'none'; }
-
-function renderGarage(b, def) {
-  const activeManu = (st.activeManufacture||[]).find(m => m.building_id === b.id);
-  if (activeManu) {
-    const left = Math.max(0, new Date(activeManu.finish_at+'Z').getTime() - Date.now());
-    return `<div class="muted" style="margin-top:.6rem">🚧 Fertigt: ${esc(CFG.VEHICLES[activeManu.vehicle_key]?.label||activeManu.vehicle_key)} — noch ca. ${Math.ceil(left/60000)} Min.</div>`;
-  }
-  const tier = def.effect.unlockedTier(b.level);
-  const vehicles = Object.entries(CFG.VEHICLES).filter(([,v]) => v.tier <= tier);
-  const cost = def.manufactureCost;
-  const affordable = Object.entries(cost).every(([r,a]) => st.resources[r] >= a);
-  return `<div class="panel-title" style="margin-top:.8rem"><i class="ic">🚗</i><span>Fahrzeug fertigen</span></div>
-    <div class="muted">Kosten: ${Object.entries(cost).map(([r,a])=>`${RES_ICON[r]}${fmt(a)}`).join(' ')} · ⏱${fmt(def.effect.manufactureTimeSec(b.level))}s</div>
-    <div class="opt-list">${vehicles.map(([k,v]) => `<div class="opt"><div class="l"><span class="ic">${v.icon}</span><div><div class="name">${esc(v.label)}</div><div class="d">${v.rarity}</div></div></div>
-      <button ${affordable?'':'disabled'} onclick="manufacture(${b.id},'${k}')">Fertigen</button></div>`).join('')}</div>`;
-}
-
-function switchTab(t) {
-  activeTab = t;
-  document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === t));
-  ['mitarbeiter','fuhrpark','rang'].forEach(k => $('tab-'+k).style.display = k===t ? '' : 'none');
-  renderTab();
-}
-
-function renderTab() {
-  if (activeTab === 'mitarbeiter') renderMitarbeiter();
-  else if (activeTab === 'fuhrpark') renderFuhrpark();
-  else loadLeaderboard();
-}
-
-function renderMitarbeiter() {
-  const slotsUsed = st.employees.length, slotsMax = st.employeeSlots;
-  const hireCost = CFG.empHireCost(st.employees.length);
-  const hireOptions = Object.entries(CFG.EMPLOYEES).map(([k,e]) => `<div class="opt"><div class="l"><span class="ic">${e.icon}</span><div><div class="name">${esc(e.label)}</div><div class="d">${esc(e.desc)}</div></div></div>
-    <button ${slotsUsed>=slotsMax || st.resources.money<hireCost ? 'disabled':''} onclick="hire('${k}')">Einstellen — 💰${fmt(hireCost)}</button></div>`).join('');
+function renderEmp() {
+  const used = st.employees.length, max = st.employeeSlots;
+  const hireCost = CFG.empHireCost(used);
   const list = st.employees.map(e => {
-    const def = CFG.EMPLOYEES[e.emp_type];
-    const cost = CFG.empLevelCost(e.level);
-    return `<div class="opt"><div class="l"><span class="ic">${def?.icon||'👷'}</span><div><div class="name">${esc(def?.label||e.emp_type)} — Lv.${e.level}</div><div class="d">${def?.desc||''}</div></div></div>
-      <div style="display:flex;gap:.4rem">
-        <button class="sm" ${e.level>=CFG.EMP_MAX_LEVEL || st.resources.money<cost ? 'disabled':''} onclick="levelUpEmployee(${e.id})">⬆ 💰${fmt(cost)}</button>
-        <button class="sm bad" onclick="fireEmployee(${e.id})">Entlassen</button>
+    const d = CFG.EMPLOYEES[e.emp_type] || {};
+    const lvCost = CFG.empLevelCost(e.level);
+    return `<div class="row"><div class="rl"><span class="ric">${d.icon || '👷'}</span><div><div class="rn">${esc(d.label || e.emp_type)} · Lv ${e.level}</div><div class="rd">${esc(d.desc || '')}</div></div></div>
+      <div style="display:flex;gap:.35rem">
+        <button ${e.level >= CFG.EMP_MAX_LEVEL || st.resources.money < lvCost ? 'disabled' : ''} onclick="empLevel(${e.id})">⬆ 💰${fmt(lvCost)}</button>
+        <button class="bad" onclick="empFire(${e.id})">✕</button>
       </div></div>`;
   }).join('');
-  $('tab-mitarbeiter').innerHTML = `<div class="panel-title"><i class="ic">👷</i><span>Mitarbeiter (${slotsUsed}/${slotsMax})</span></div>
-    ${list || '<div class="muted">Noch keine Mitarbeiter eingestellt.</div>'}
-    <div class="panel-title" style="margin-top:1rem">Neu einstellen</div>
-    <div class="opt-list">${hireOptions}</div>`;
+  const hire = Object.entries(CFG.EMPLOYEES).map(([k, d]) =>
+    `<div class="row"><div class="rl"><span class="ric">${d.icon}</span><div><div class="rn">${esc(d.label)}</div><div class="rd">${esc(d.desc)}</div></div></div>
+      <button ${used >= max || st.resources.money < hireCost ? 'disabled' : ''} onclick="hire('${k}')">💰${fmt(hireCost)}</button></div>`).join('');
+  $('shBody').innerHTML = `<div class="muted" style="margin-bottom:.6rem">Slots: <b>${used}/${max}</b> — mehr über das Personalbüro.</div>` +
+    (list || '<div class="muted" style="margin-bottom:.6rem">Noch niemand eingestellt.</div>') +
+    `<div style="font-weight:800;margin:.8rem 0 .5rem">Einstellen</div>` + hire;
 }
 
-function renderFuhrpark() {
-  if (!st.vehicles.length) { $('tab-fuhrpark').innerHTML = '<div class="muted">Noch keine fertigen Fahrzeuge — in der Garage produzieren.</div>'; return; }
-  $('tab-fuhrpark').innerHTML = `<div class="panel-title"><i class="ic">🚗</i><span>Fuhrpark (${st.vehicles.length})</span></div>
-    <div class="opt-list">${st.vehicles.map(v => {
-      const def = CFG.VEHICLES[v.vehicle_key];
-      return `<div class="opt"><div class="l"><span class="ic">${def?.icon||'🚗'}</span><div><div class="name">${esc(def?.label||v.vehicle_key)}</div><div class="d">${v.rarity} · Wert 💰${fmt(v.value)}</div></div></div>
-        <button onclick="sellVehicle(${v.id})">Verkaufen</button></div>`;
-    }).join('')}</div>`;
+function renderVeh() {
+  $('shBody').innerHTML = st.vehicles.length ? st.vehicles.map(v => {
+    const d = CFG.VEHICLES[v.vehicle_key] || {};
+    return `<div class="row"><div class="rl"><span class="ric">${d.icon || '🚗'}</span><div><div class="rn">${esc(d.label || v.vehicle_key)}</div><div class="rd">${esc(v.rarity)} · Wert 💰${fmt(v.value)}</div></div></div>
+      <button onclick="sell(${v.id})">Verkaufen</button></div>`;
+  }).join('') : '<div class="muted">Noch keine Fahrzeuge — fertige welche in der Garage (Garage antippen → Fahrzeuge).</div>';
 }
 
-async function loadLeaderboard() {
+async function renderLb() {
+  $('shBody').innerHTML = '<div class="muted">Lädt…</div>';
   try {
     const l = await api('/api/clash-of-acls/leaderboard');
-    $('tab-rang').innerHTML = `<div class="panel-title"><i class="ic">🏆</i><span>Rangliste</span></div>` +
-      (l.length ? l.map((x,i)=>`<div class="lbrow"><span>#${i+1} ${esc(x.username||'?')}</span><span>💰 ${fmt(x.total_earned)}</span></div>`).join('') : '<div class="muted">Noch keine Einträge.</div>');
-  } catch(e) {}
+    $('shBody').innerHTML = l.length
+      ? l.map((x, i) => `<div class="lbrow"><span>#${i + 1} ${esc(x.username || '?')}</span><span>💰 ${fmt(x.total_earned)}</span></div>`).join('')
+      : '<div class="muted">Noch keine Einträge.</div>';
+  } catch (e) { $('shBody').innerHTML = '<div class="muted">Konnte nicht geladen werden.</div>'; }
 }
 
-async function load() { try { render(await api('/api/clash-of-acls/state')); } catch(e) { msg(e.message); } }
-async function place(key) { try { const d = await api('/api/clash-of-acls/place', { method:'POST', body:{ building_key:key, x:selected.x, y:selected.y } }); msg('Baustelle eingerichtet!', true); closeDetail(); render(d); } catch(e) { msg(e.message); } }
-async function upgrade(id) { try { const d = await api('/api/clash-of-acls/upgrade', { method:'POST', body:{ building_id:id } }); msg('Ausbau gestartet!', true); render(d); } catch(e) { msg(e.message); } }
-async function manufacture(id, key) { try { const d = await api('/api/clash-of-acls/manufacture', { method:'POST', body:{ building_id:id, vehicle_key:key } }); msg('Fertigung gestartet!', true); render(d); } catch(e) { msg(e.message); } }
-async function hire(type) { try { const d = await api('/api/clash-of-acls/hire', { method:'POST', body:{ emp_type:type } }); msg('Mitarbeiter eingestellt!', true); render(d); } catch(e) { msg(e.message); } }
-async function fireEmployee(id) { try { const d = await api(`/api/clash-of-acls/fire/${id}`, { method:'POST' }); msg('Mitarbeiter entlassen.', true); render(d); } catch(e) { msg(e.message); } }
-async function levelUpEmployee(id) { try { const d = await api(`/api/clash-of-acls/employee/${id}/levelup`, { method:'POST' }); msg('Mitarbeiter aufgestiegen!', true); render(d); } catch(e) { msg(e.message); } }
-async function sellVehicle(id) { try { const d = await api(`/api/clash-of-acls/sell/${id}`, { method:'POST' }); msg(`Verkauft für 💰${fmt(d.credited)}!`, true); render(d); } catch(e) { msg(e.message); } }
-async function speedup() { try { const d = await api('/api/clash-of-acls/speedup', { method:'POST' }); msg(`Beschleunigt für ${d.cost} ACLS-Coins!`, true); render(d); } catch(e) { msg(e.message); } }
+function renderManu() {
+  const b = st.buildings.find(b => b.id === sheetCtx && b.building_key === 'garage');
+  if (!b) return closeSheet();
+  const def = CFG.BUILDINGS.garage;
+  const active = (st.activeManufacture || []).find(m => m.building_id === b.id);
+  if (active) {
+    const v = CFG.VEHICLES[active.vehicle_key] || {};
+    $('shBody').innerHTML = `<div class="row"><div class="rl"><span class="ric">${v.icon || '🚗'}</span><div><div class="rn">${esc(v.label || active.vehicle_key)} wird gefertigt…</div><div class="rd" id="manuCd"></div></div></div></div>`;
+    updateManuTime();
+    return;
+  }
+  const tier = def.effect.unlockedTier(b.level);
+  const cost = def.manufactureCost;
+  const rows = Object.entries(CFG.VEHICLES).map(([k, v]) => {
+    const locked = v.tier > tier;
+    return `<div class="row" style="${locked ? 'opacity:.45' : ''}"><div class="rl"><span class="ric">${v.icon}</span><div><div class="rn">${esc(v.label)}</div><div class="rd">${esc(v.rarity)} · Basiswert 💰${fmt(v.baseValue)}${locked ? ' · 🔒 Garage Lv ' + (v.tier * 4 - 3) + '+' : ''}</div></div></div>
+      <button ${locked || !canAfford(cost) ? 'disabled' : ''} onclick="manufacture(${b.id}, '${k}')">Fertigen</button></div>`;
+  }).join('');
+  $('shBody').innerHTML = `<div class="muted" style="margin-bottom:.6rem">Kosten pro Fahrzeug: ${Object.entries(cost).map(([r, a]) => RES_ICON[r] + fmt(a)).join(' ')} · ⏱ ${fmtDur(def.effect.manufactureTimeSec(b.level))}</div>` + rows;
+}
+function updateManuTime() {
+  const el = $('manuCd');
+  if (!el || !st) return;
+  const active = (st.activeManufacture || []).find(m => m.building_id === sheetCtx);
+  if (!active) return;
+  const left = ts(active.finish_at) - Date.now();
+  el.textContent = left <= 0 ? 'Wird abgeschlossen…' : 'Noch ' + fmtDur(left / 1000);
+}
+
+/* ── Aktionen ── */
+async function load() { try { render(await api('/api/clash-of-acls/state')); } catch (e) { msg(e.message); } }
+async function place(key, x, y) {
+  try {
+    const d = await api('/api/clash-of-acls/place', { method:'POST', body:{ building_key:key, x, y } });
+    cancelPlacing(); msg('Baustelle eingerichtet!', true); render(d);
+  } catch (e) { msg(e.message); }
+}
+async function upgrade(id) { try { const d = await api('/api/clash-of-acls/upgrade', { method:'POST', body:{ building_id:id } }); msg('Ausbau gestartet!', true); render(d); } catch (e) { msg(e.message); } }
+async function manufacture(id, key) { try { const d = await api('/api/clash-of-acls/manufacture', { method:'POST', body:{ building_id:id, vehicle_key:key } }); msg('Fertigung gestartet!', true); render(d); } catch (e) { msg(e.message); } }
+async function hire(type) { try { const d = await api('/api/clash-of-acls/hire', { method:'POST', body:{ emp_type:type } }); msg('Mitarbeiter eingestellt!', true); render(d); } catch (e) { msg(e.message); } }
+async function empFire(id) { try { const d = await api(`/api/clash-of-acls/fire/${id}`, { method:'POST' }); msg('Mitarbeiter entlassen.', true); render(d); } catch (e) { msg(e.message); } }
+async function empLevel(id) { try { const d = await api(`/api/clash-of-acls/employee/${id}/levelup`, { method:'POST' }); msg('Mitarbeiter aufgestiegen!', true); render(d); } catch (e) { msg(e.message); } }
+async function sell(id) { try { const d = await api(`/api/clash-of-acls/sell/${id}`, { method:'POST' }); msg(`Verkauft für 💰${fmt(d.credited)}!`, true); render(d); } catch (e) { msg(e.message); } }
+async function speedup() { try { const d = await api('/api/clash-of-acls/speedup', { method:'POST' }); msg(`Fertig! (−${d.cost} ACLS-Coins)`, true); render(d); } catch (e) { msg(e.message); } }
+
+/* ── Ticker ── */
+let reloadPending = false;
+function tickProgress() {
+  document.querySelectorAll('.cfill').forEach(el => {
+    const s = +el.dataset.s, e = +el.dataset.e;
+    el.style.width = Math.min(100, Math.max(0, (Date.now() - s) / Math.max(1, e - s) * 100)) + '%';
+  });
+}
+setInterval(() => {
+  if (!st) return;
+  updateQueueTimes(); tickProgress(); updateManuTime();
+  const due = (st.activeBuild && ts(st.activeBuild.finish_at) <= Date.now())
+    || (st.activeManufacture || []).some(m => ts(m.finish_at) <= Date.now());
+  if (due && !reloadPending) { reloadPending = true; load().finally(() => { reloadPending = false; }); }
+}, 1000);
+setInterval(load, 30000);
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (placing) cancelPlacing();
+  else if (sheetType) closeSheet();
+  else if (selectedId !== null) deselect();
+});
 
 load();
-setInterval(load, 30000);
-setInterval(() => { if (st && st.activeBuild) renderQueue(); }, 1000);
 </script>
 </body>
 </html>
