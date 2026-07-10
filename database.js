@@ -761,6 +761,74 @@ function initDb() {
     );
   `);
 
+  // ── Clash of ACLS: Grid-Aufbauspiel (Gebäude/Mitarbeiter/Fahrzeuge), Phase 1 ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coa_state (
+      discord_id   TEXT PRIMARY KEY,
+      username     TEXT,
+      money        INTEGER NOT NULL DEFAULT 1000,
+      steel        INTEGER NOT NULL DEFAULT 100,
+      parts        INTEGER NOT NULL DEFAULT 50,
+      electronics  INTEGER NOT NULL DEFAULT 20,
+      fuel         INTEGER NOT NULL DEFAULT 100,
+      total_earned INTEGER NOT NULL DEFAULT 0,
+      last_tick_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS coa_buildings (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id   TEXT NOT NULL,
+      building_key TEXT NOT NULL,
+      x            INTEGER NOT NULL,
+      y            INTEGER NOT NULL,
+      level        INTEGER NOT NULL DEFAULT 0,
+      created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(discord_id, x, y)
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_buildings_did ON coa_buildings(discord_id);
+    CREATE TABLE IF NOT EXISTS coa_build_queue (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id      TEXT NOT NULL UNIQUE,
+      building_ref_id INTEGER REFERENCES coa_buildings(id),
+      building_key    TEXT NOT NULL,
+      x               INTEGER NOT NULL,
+      y               INTEGER NOT NULL,
+      target_level    INTEGER NOT NULL,
+      started_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finish_at       DATETIME NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_bq_finish ON coa_build_queue(finish_at);
+    CREATE TABLE IF NOT EXISTS coa_manufacture_queue (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id   TEXT NOT NULL,
+      building_id  INTEGER NOT NULL UNIQUE REFERENCES coa_buildings(id),
+      vehicle_key  TEXT NOT NULL,
+      started_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finish_at    DATETIME NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_mq_finish ON coa_manufacture_queue(finish_at);
+    CREATE TABLE IF NOT EXISTS coa_employees (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id TEXT NOT NULL,
+      emp_type   TEXT NOT NULL,
+      level      INTEGER NOT NULL DEFAULT 1,
+      xp         INTEGER NOT NULL DEFAULT 0,
+      hired_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_employees_did ON coa_employees(discord_id);
+    CREATE TABLE IF NOT EXISTS coa_vehicles (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id  TEXT NOT NULL,
+      vehicle_key TEXT NOT NULL,
+      rarity      TEXT NOT NULL,
+      value       INTEGER NOT NULL,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      sold_at     DATETIME
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_vehicles_did ON coa_vehicles(discord_id, sold_at);
+  `);
+
   // ── Idle-Werkstatt: Prestige-Punkte (spendbar) + permanente Prestige-Upgrades ──
   try { db.exec('ALTER TABLE idle_saves ADD COLUMN prestige_points INTEGER NOT NULL DEFAULT 0'); } catch {}
   try { db.exec("ALTER TABLE idle_saves ADD COLUMN prestige_upgrades TEXT NOT NULL DEFAULT '{}'"); } catch {}

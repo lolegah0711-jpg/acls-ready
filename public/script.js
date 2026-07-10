@@ -1912,6 +1912,7 @@ const FREIZEIT_CATALOG = [
   { id: 'spielbank', name: 'Spielbank',    url: '/spielbank',      icon: 'fa-dice',     color: '#fbbf24', desc: 'Slots, Blackjack, Roulette, Mines & mehr', voter: true },
   { id: 'automarkt', name: 'AutoMarkt Pro', url: '/automarkt.html', icon: 'fa-car-side', color: '#f97316', desc: 'Handeln, verhandeln, Sammlung aufbauen',   voter: false },
   { id: 'empire',    name: 'Auto Empire',   url: '/empire.html',    icon: 'fa-industry', color: '#94a3b8', desc: 'Baue dein Werkstatt-Imperium auf',         voter: false },
+  { id: 'clashofacls', name: 'Clash of ACLS', url: '/clash-of-acls.html', icon: 'fa-city', color: '#fb7185', desc: 'Gelände ausbauen, Fahrzeuge fertigen, Mitarbeiter einstellen', voter: true },
 ];
 
 function arcadeTile(g, isTournament) {
@@ -2717,7 +2718,7 @@ window.toggleNotifPanel = async function() {
   const badge = $('notifBadge');
   if (badge) badge.style.display = 'none';
 
-  const ICONS = { badge: '🏅', transfer_in: '🪙', guestbook: '✏️' };
+  const ICONS = { badge: '🏅', transfer_in: '🪙', guestbook: '✏️', coa_build_done: '🏗️' };
 
   const panel = document.createElement('div');
   panel.id = 'notifPanel';
@@ -2743,6 +2744,10 @@ window.toggleNotifPanel = async function() {
         text = `<b>${esc(d.from)}</b> hat dir <b style="color:#fbbf24">${d.amount} Coins</b> überwiesen`;
       } else if (n.type === 'guestbook') {
         text = `<b>${esc(d.authorName)}</b> hat in dein Gästebuch geschrieben${d.preview ? `<div style="color:var(--muted);font-size:.74rem;margin-top:.12rem">„${esc(d.preview)}…"</div>` : ''}`;
+      } else if (n.type === 'coa_build_done') {
+        text = d.kind === 'vehicle'
+          ? `Fahrzeug fertig: <b>${esc(d.vehicle)}</b> steht im Fuhrpark bereit`
+          : `<b>${esc(d.building)}</b> ist jetzt <b>Level ${d.level}</b>`;
       }
       const dot = n.is_read ? '' : `<span style="width:7px;height:7px;min-width:7px;border-radius:50%;background:#ef4444;margin-top:.3rem"></span>`;
       return `<div onclick="openNotif(${i})" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='${n.is_read ? 'transparent' : 'var(--surface2)'}'" style="display:flex;align-items:flex-start;gap:.65rem;padding:.75rem 1rem;border-bottom:1px solid var(--border);font-size:.82rem;cursor:pointer${n.is_read ? '' : ';background:var(--surface2)'}">
@@ -2792,6 +2797,8 @@ window.openNotif = function(i) {
   } else if (n.type === 'guestbook') {
     if (currentUser && currentUser.id) openProfileModal(currentUser.id);
     else navigate('dashboard');
+  } else if (n.type === 'coa_build_done') {
+    window.open('/clash-of-acls.html', '_blank');
   }
 };
 
@@ -2842,6 +2849,7 @@ const SEARCH_PAGES = [
   { href: '/clubs.html',     label: 'Clubs & Gilden',       icon: 'fa-shield-alt',     kw: 'club gilde verein gruppe kasse' },
   { href: '/automarkt.html', label: 'AutoMarkt Pro',        icon: 'fa-car-side',       kw: 'automarkt handel fahrzeuge' },
   { href: '/empire.html',    label: 'Auto Empire',          icon: 'fa-industry',       kw: 'empire tycoon firma imperium' },
+  { href: '/clash-of-acls.html', label: 'Clash of ACLS',    icon: 'fa-city',        kw: 'werkstatt aufbau gelände gebäude bauen aufbauspiel clash' },
 ];
 
 function searchPages(q) {
