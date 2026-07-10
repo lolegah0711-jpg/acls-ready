@@ -38,14 +38,21 @@
 
   /* ── Iso-Karte ── */
   #scene { position:relative; height:max(calc(var(--board) * 1.05), calc(100vh - 230px)); display:flex; justify-content:center; align-items:center; margin:.6rem 0 5.5rem; }
-  #board { width:var(--board); height:var(--board); display:grid; grid-template-columns:repeat(12,1fr); grid-template-rows:repeat(12,1fr); gap:2px; transform:rotateX(55deg) rotateZ(45deg); transform-style:preserve-3d; }
-  .tile { position:relative; border-radius:3px; background:linear-gradient(135deg,#33405c,#242e45); box-shadow:inset 0 0 0 1px #43527a; transform-style:preserve-3d; cursor:pointer; transition:box-shadow .15s, filter .15s; }
-  .tile:hover { filter:brightness(1.25); }
-  .tile.locked { background:repeating-linear-gradient(45deg,#0e1420,#0e1420 5px,#121927 5px,#121927 10px); box-shadow:inset 0 0 0 1px #1a2130; cursor:default; }
+  #board { width:var(--board); height:var(--board); display:grid; grid-template-columns:repeat(12,1fr); grid-template-rows:repeat(12,1fr); gap:0; transform:rotateX(55deg) rotateZ(45deg); transform-style:preserve-3d; filter:drop-shadow(0 26px 30px rgba(0,0,0,.6)) drop-shadow(0 4px 10px rgba(0,0,0,.4)); }
+  /* Rasen im CoC-Stil: zwei Grüntöne im Schachbrett ("gemähter Rasen") */
+  .tile { position:relative; background:linear-gradient(135deg,#54964b,#487f40); box-shadow:inset 0 0 0 .5px rgba(35,64,30,.55); transform-style:preserve-3d; cursor:pointer; transition:box-shadow .15s, filter .15s; }
+  .tile.alt { background:linear-gradient(135deg,#4c8a44,#41733a); }
+  .tile:hover { filter:brightness(1.15); }
+  /* Gesperrter Bereich: dunkler Wald am Rand */
+  .tile.locked { background:linear-gradient(135deg,#26421f,#1e3519); box-shadow:inset 0 0 0 .5px rgba(15,28,12,.7); cursor:default; }
+  .tile.locked.alt { background:linear-gradient(135deg,#223c1c,#1a2f16); }
   .tile.locked:hover { filter:none; }
-  .tile.sel { box-shadow:inset 0 0 0 2px var(--acc), 0 0 14px rgba(249,115,22,.35); }
-  .tile.can-place { box-shadow:inset 0 0 0 2px var(--good); animation:placePulse 1.1s infinite; }
-  @keyframes placePulse { 0%,100% { filter:brightness(1); } 50% { filter:brightness(1.6); } }
+  .tile.sel { box-shadow:inset 0 0 0 2px var(--acc), 0 0 14px rgba(249,115,22,.45); }
+  .tile.can-place { box-shadow:inset 0 0 0 2px #fde047; animation:placePulse 1.1s infinite; }
+  @keyframes placePulse { 0%,100% { filter:brightness(1); } 50% { filter:brightness(1.45); } }
+  /* Deko im Wald (Bäume/Felsen), gegenrotiert wie Gebäude */
+  .dec { position:absolute; left:50%; top:50%; transform:translate(-50%,-60%) rotateZ(-45deg) rotateX(-55deg); pointer-events:none; }
+  .dec .em { font-size:calc(var(--cell) * .72); line-height:1; opacity:.9; filter:drop-shadow(0 3px 3px rgba(0,0,0,.45)); }
 
   /* Gebäude-Sprite: gegenrotiert, damit es aufrecht auf der Iso-Fläche steht */
   .b { position:absolute; left:50%; top:50%; transform:translate(-50%,-62%) rotateZ(-45deg) rotateX(-55deg); display:flex; flex-direction:column; align-items:center; pointer-events:none; }
@@ -122,6 +129,14 @@
   .row button.bad { background:var(--bad); color:#fff; }
   .lbrow { display:flex; justify-content:space-between; padding:.42rem .2rem; border-bottom:1px solid var(--line); font-size:.85rem; }
   .muted { color:var(--mut); font-size:.8rem; }
+
+  /* ── Anleitung ── */
+  .hstep { display:flex; gap:.7rem; padding:.55rem 0; border-bottom:1px solid var(--line); align-items:flex-start; }
+  .hstep:last-of-type { border-bottom:0; }
+  .hstep .hic { font-size:1.5rem; flex-shrink:0; margin-top:.1rem; }
+  .hstep .hti { font-weight:800; font-size:.88rem; margin-bottom:.15rem; }
+  .hstep .htx { color:var(--mut); font-size:.78rem; line-height:1.5; }
+  .hgo { display:block; width:100%; margin-top:.9rem; background:linear-gradient(145deg,#fb923c,var(--acc)); color:#1a0a00; border:0; border-radius:12px; padding:.7rem; font-weight:800; font-size:.95rem; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -132,6 +147,7 @@
   <button class="hud-btn" onclick="openSheet('emp')" title="Mitarbeiter">👷</button>
   <button class="hud-btn" onclick="openSheet('veh')" title="Fuhrpark">🚗</button>
   <button class="hud-btn" onclick="openSheet('lb')" title="Rangliste">🏆</button>
+  <button class="hud-btn" onclick="openSheet('help')" title="Anleitung">❓</button>
 </div>
 
 <div id="msg"></div>
@@ -251,8 +267,15 @@ function renderBoard() {
     const unlocked = CFG.cellIndex(x, y) < st.unlockedCells;
     const b = built.get(x + ',' + y);
     const cls = ['tile'];
+    if ((x + y) % 2) cls.push('alt');
     if (!unlocked) cls.push('locked');
     let inner = '';
+    if (!unlocked) {
+      // deterministische Wald-Deko, damit sie bei jedem Rendern gleich aussieht
+      const seed = (x * 31 + y * 17 + 7) % 10;
+      if (seed < 3) inner = `<div class="dec"><span class="em">${seed === 0 ? '🌳' : '🌲'}</span></div>`;
+      else if (seed === 3) inner = `<div class="dec"><span class="em">🪨</span></div>`;
+    }
     if (b) {
       const constructing = st.activeBuild && st.activeBuild.x === x && st.activeBuild.y === y;
       const manu = manuByBuilding.get(b.id);
@@ -371,7 +394,7 @@ function closeSheet() {
   $('sheet').classList.remove('open');
 }
 function renderSheet() {
-  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen' };
+  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung' };
   $('shTitle').textContent = titles[sheetType] || '';
   $('shCats').style.display = sheetType === 'shop' ? 'flex' : 'none';
   if (sheetType === 'shop') renderShop();
@@ -379,6 +402,7 @@ function renderSheet() {
   else if (sheetType === 'veh') renderVeh();
   else if (sheetType === 'lb') renderLb();
   else if (sheetType === 'manu') renderManu();
+  else if (sheetType === 'help') renderHelp();
 }
 
 function renderShop() {
@@ -471,6 +495,21 @@ function renderManu() {
   }).join('');
   $('shBody').innerHTML = `<div class="muted" style="margin-bottom:.6rem">Kosten pro Fahrzeug: ${Object.entries(cost).map(([r, a]) => RES_ICON[r] + fmt(a)).join(' ')} · ⏱ ${fmtDur(def.effect.manufactureTimeSec(b.level))}</div>` + rows;
 }
+function renderHelp() {
+  const step = (icon, title, text) =>
+    `<div class="hstep"><span class="hic">${icon}</span><div><div class="hti">${title}</div><div class="htx">${text}</div></div></div>`;
+  $('shBody').innerHTML =
+    step('🎯', 'Dein Ziel', 'Baue aus einer kleinen Werkstatt dein eigenes Werkstatt-Imperium: Gelände erweitern, Fahrzeuge produzieren, verkaufen und in der Rangliste aufsteigen.') +
+    step('💰', 'Ressourcen', 'Geld, Stahl, Ersatzteile, Elektronik und Treibstoff werden von deinen Gebäuden automatisch produziert — auch während du offline bist! Aber: Volle Lager produzieren nicht weiter. Baue das Lager aus, um mehr zu bunkern.') +
+    step('🔨', 'Bauen', 'Tippe auf den Hammer-Button unten rechts, wähle ein Gebäude und tippe dann auf einen gelb markierten Bauplatz. Es kann immer nur <b>ein</b> Bauauftrag gleichzeitig laufen — der Fortschritt läuft unten links.') +
+    step('🏢', 'Das Büro', 'Dein wichtigstes Gebäude (wie das Rathaus): Jedes Büro-Level schaltet neue Bauplätze frei und erlaubt höhere Level für alle anderen Gebäude. Der dunkle Wald ist noch gesperrtes Gelände.') +
+    step('⬆️', 'Ausbauen', 'Tippe ein Gebäude auf der Karte an — unten erscheinen Infos und der Ausbau-Button mit Kosten und Bauzeit. Höhere Level = mehr Produktion, mehr Lager, bessere Boni.') +
+    step('👷', 'Mitarbeiter', 'Über das 👷-Symbol oben stellst du Mechaniker, Abschlepper, Elektriker & Co. ein und levelst sie hoch — sie steigern die Produktion ihrer Gebäude. Das Personalbüro schaltet mehr Slots frei.') +
+    step('🚗', 'Fahrzeuge', 'Tippe die Garage an → „Fahrzeuge": Aus Rohstoffen fertigst du Abschleppwagen bis Sportwagen. Höheres Garagen-Level = schnellere Fertigung und bessere Fahrzeuge. Verkaufen im Fuhrpark (🚗 oben) — Tuningzentrum, Lackiererei und Fahrzeughandel erhöhen den Erlös!') +
+    step('⚡', 'Tipp', 'Zu ungeduldig? Laufende Bauaufträge kannst du mit ACLS-Coins sofort abschließen (⚡-Button). Und du bekommst eine Benachrichtigung im Portal, sobald etwas fertig ist.') +
+    `<button class="hgo" onclick="closeSheet()">Los geht's! 🔧</button>`;
+}
+
 function updateManuTime() {
   const el = $('manuCd');
   if (!el || !st) return;
@@ -481,7 +520,19 @@ function updateManuTime() {
 }
 
 /* ── Aktionen ── */
-async function load() { try { render(await api('/api/clash-of-acls/state')); } catch (e) { msg(e.message); } }
+let tutorialChecked = false;
+async function load() {
+  try {
+    render(await api('/api/clash-of-acls/state'));
+    if (!tutorialChecked) {
+      tutorialChecked = true;
+      if (!localStorage.getItem('coa-tutorial')) {
+        localStorage.setItem('coa-tutorial', '1');
+        openSheet('help');
+      }
+    }
+  } catch (e) { msg(e.message); }
+}
 async function place(key, x, y) {
   try {
     const d = await api('/api/clash-of-acls/place', { method:'POST', body:{ building_key:key, x, y } });
