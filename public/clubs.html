@@ -152,7 +152,7 @@ async function transfer(did){ if(!confirm('Präsidentschaft übergeben?')) retur
 
 const fmt = n => (n||0).toLocaleString('de-DE');
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const tdate = s => { try { return new Date(s+'Z').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch { return ''; } };
+const tdate = s => { try { return new Date(s.replace(' ','T')+'Z').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch { return ''; } };
 load();
 </script>
 </body>
