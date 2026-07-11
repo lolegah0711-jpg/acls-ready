@@ -170,9 +170,20 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     const employees = getEmployees(ident.id);
     const vehicles = db.prepare('SELECT * FROM coa_vehicles WHERE discord_id = ? AND sold_at IS NULL ORDER BY created_at DESC').all(ident.id);
     const offLvl = officeLevel(buildings);
-    const activeBuild = db.prepare('SELECT * FROM coa_build_queue WHERE discord_id = ?').get(ident.id) || null;
+    // remaining_sec/total_sec server-seitig mitliefern: der Client soll SQLite-Timestamps
+    // nie selbst parsen ('YYYY-MM-DD HH:MM:SS' ist kein valides Date-Format in Safari/Firefox)
+    // und ist so auch gegen falsch gehende Client-Uhren immun.
+    const activeBuild = db.prepare(`
+      SELECT *,
+        CAST(strftime('%s', finish_at) AS INTEGER) - CAST(strftime('%s', 'now') AS INTEGER)      AS remaining_sec,
+        CAST(strftime('%s', finish_at) AS INTEGER) - CAST(strftime('%s', started_at) AS INTEGER) AS total_sec
+      FROM coa_build_queue WHERE discord_id = ?
+    `).get(ident.id) || null;
     const activeManufacture = db.prepare(`
-      SELECT mq.* FROM coa_manufacture_queue mq JOIN coa_buildings b ON b.id = mq.building_id WHERE b.discord_id = ?
+      SELECT mq.*,
+        CAST(strftime('%s', mq.finish_at) AS INTEGER) - CAST(strftime('%s', 'now') AS INTEGER)         AS remaining_sec,
+        CAST(strftime('%s', mq.finish_at) AS INTEGER) - CAST(strftime('%s', mq.started_at) AS INTEGER) AS total_sec
+      FROM coa_manufacture_queue mq JOIN coa_buildings b ON b.id = mq.building_id WHERE b.discord_id = ?
     `).all(ident.id);
     return {
       resources: { money: state.money, steel: state.steel, parts: state.parts, electronics: state.electronics, fuel: state.fuel },

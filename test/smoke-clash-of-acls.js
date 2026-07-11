@@ -54,6 +54,10 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   assert.equal(place.status, 200, 'Platzierung ok: ' + JSON.stringify(place.json));
   assert.ok(place.json.resources.money < moneyBefore, 'Kosten wurden abgebucht');
   assert.ok(place.json.activeBuild, 'Bauauftrag aktiv');
+  assert.ok(Number.isInteger(place.json.activeBuild.remaining_sec) && place.json.activeBuild.remaining_sec > 0,
+    'activeBuild liefert server-seitige Restzeit (remaining_sec): ' + place.json.activeBuild.remaining_sec);
+  assert.ok(Number.isInteger(place.json.activeBuild.total_sec) && place.json.activeBuild.total_sec >= place.json.activeBuild.remaining_sec,
+    'activeBuild liefert Gesamtdauer (total_sec)');
   const newBuildingId = place.json.buildings.find(b => b.building_key === 'schrottplatz').id;
   assert.equal(place.json.buildings.find(b => b.id === newBuildingId).level, 0, 'Neues Gebäude startet auf Level 0 (im Bau)');
 
@@ -92,6 +96,8 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   const manuOk = await post('/api/clash-of-acls/manufacture', { building_id: garageId, vehicle_key: 'abschleppwagen' });
   assert.equal(manuOk.status, 200, 'Fertigung gestartet: ' + JSON.stringify(manuOk.json));
   assert.equal(manuOk.json.activeManufacture.length, 1, 'Eine aktive Fertigung');
+  assert.ok(Number.isInteger(manuOk.json.activeManufacture[0].remaining_sec) && manuOk.json.activeManufacture[0].remaining_sec > 0,
+    'Fertigung liefert server-seitige Restzeit (remaining_sec)');
 
   backdateManufacture();
   st = await get('/api/clash-of-acls/state');
