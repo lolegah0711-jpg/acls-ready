@@ -84,15 +84,18 @@
   #zoomCtl button { width:40px; height:40px; border-radius:11px; background:var(--card); border:1px solid var(--line); color:var(--txt); font-size:1.1rem; cursor:pointer; font-weight:800; box-shadow:0 4px 12px rgba(0,0,0,.35); }
   #zoomCtl button:hover { border-color:var(--acc); }
 
-  /* ── Bau-Queue-Chip unten links ── */
-  #queueChip { position:fixed; left:.7rem; bottom:.8rem; z-index:60; display:none; align-items:center; gap:.55rem; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:.5rem .7rem; box-shadow:0 8px 24px rgba(0,0,0,.45); max-width:62vw; }
-  #queueChip.show { display:flex; }
-  #queueChip .qi { font-size:1.4rem; }
-  #queueChip .qt { font-size:.72rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  #queueChip .cd { font-size:.72rem; color:var(--mut); font-variant-numeric:tabular-nums; }
-  #queueChip .qbar { width:80px; height:5px; background:#0d1622; border-radius:99px; overflow:hidden; margin-top:2px; }
-  #queueChip .qfill { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#22c55e); }
-  #queueChip .spd { background:var(--acc); color:#1a0a00; border:0; border-radius:9px; padding:.35rem .5rem; font-weight:800; font-size:.72rem; cursor:pointer; }
+  /* ── Job-Chips unten links: Bauauftrag / Forschung / laufende Einsätze ── */
+  #jobs { position:fixed; left:.7rem; bottom:.8rem; z-index:60; display:flex; flex-direction:column; gap:.45rem; max-width:66vw; }
+  .jchip { display:flex; align-items:center; gap:.55rem; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:.5rem .7rem; box-shadow:0 8px 24px rgba(0,0,0,.45); }
+  .jchip.click { cursor:pointer; }
+  .jchip.click:hover { border-color:var(--acc); }
+  .jchip .qi { font-size:1.35rem; }
+  .jchip .qt { font-size:.72rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .jchip .cd { font-size:.72rem; color:var(--mut); font-variant-numeric:tabular-nums; }
+  .jchip .qbar { width:80px; height:5px; background:#0d1622; border-radius:99px; overflow:hidden; margin-top:2px; }
+  .jchip .qbar .cfill { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#22c55e); width:0%; }
+  .jchip .spd { background:var(--acc); color:#1a0a00; border:0; border-radius:9px; padding:.35rem .5rem; font-weight:800; font-size:.72rem; cursor:pointer; }
+  .sheet-select { background:var(--card); color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:.3rem; font-size:.74rem; max-width:140px; }
 
   /* ── Bauen-FAB ── */
   #buildBtn { position:fixed; right:.9rem; bottom:.9rem; z-index:60; width:58px; height:58px; border-radius:50%; background:linear-gradient(145deg,#fb923c,var(--acc)); color:#1a0a00; border:0; font-size:1.5rem; cursor:pointer; box-shadow:0 10px 26px rgba(249,115,22,.4); transition:transform .15s; }
@@ -173,6 +176,7 @@
 <div id="hud">
   <a class="back" href="/" title="Zurück zum Portal">←</a>
   <span id="resBar" style="display:contents"></span>
+  <button class="hud-btn" onclick="openSheet('missions')" title="Einsätze">🚨</button>
   <button class="hud-btn" onclick="openSheet('emp')" title="Mitarbeiter">👷</button>
   <button class="hud-btn" onclick="openSheet('veh')" title="Fuhrpark">🚗</button>
   <button class="hud-btn" onclick="openSheet('lb')" title="Rangliste">🏆</button>
@@ -189,15 +193,7 @@
   <button onclick="resetView()" title="Ansicht zurücksetzen">⌂</button>
 </div>
 
-<div id="queueChip">
-  <span class="qi" id="qIcon">🚧</span>
-  <div style="min-width:0">
-    <div class="qt" id="qTitle"></div>
-    <div class="cd" id="qCd"></div>
-    <div class="qbar"><i class="qfill" id="qFill"></i></div>
-  </div>
-  <button class="spd" onclick="speedup()" title="Mit ACLS-Coins sofort fertigstellen">⚡</button>
-</div>
+<div id="jobs"></div>
 
 <button id="buildBtn" onclick="openSheet('shop')" title="Baumenü">🔨</button>
 
@@ -218,7 +214,7 @@
   <div class="sh-body" id="shBody"></div>
 </div>
 
-<script src="/js/clash-of-acls-config.js?v=2"></script>
+<script src="/js/clash-of-acls-config.js?v=3"></script>
 <script>
 const CFG = window.CLASH_OF_ACLS_CONFIG;
 const $ = id => document.getElementById(id);
@@ -308,6 +304,12 @@ const BUILD3D = {
     P(8, 8, 84, 84, 0, .58, '#2f7a7a', { frs: 'background-image:linear-gradient(rgba(190,240,255,.5), rgba(190,240,255,.15))', sds: 'background-image:linear-gradient(rgba(190,240,255,.4), rgba(190,240,255,.1))' }),
     P(4, 4, 92, 92, .58, .12, '#245c5c'),
   ] },
+  forschungszentrum: { H: 1.06, parts: [
+    P(8, 8, 84, 84, 0, .3, '#3f4d7a'),
+    P(16, 16, 68, 68, .3, .5, '#5468b8', { frs: WIN, sds: WIN }),
+    P(31, 31, 38, 38, .8, .24, '#8fa8e8', { r: '50%' }),
+    P(72, 14, 7, 7, .3, .68, '#c2d0f0'),
+  ] },
   dekoration: { H: .92, parts: [
     P(42, 42, 16, 16, 0, .2, '#6b4a2b'),
     P(24, 24, 52, 52, .2, .28, '#357a35', { r: '22%' }),
@@ -358,6 +360,10 @@ let shopCat = 'alle';
 
 const bLabel = (key, lvl) => { const d = CFG.BUILDINGS[key]; if (!d) return key; return typeof d.label === 'function' ? d.label(Math.max(1, lvl)) : d.label; };
 const canAfford = cost => Object.entries(cost).every(([r, a]) => (st.resources[r] || 0) >= a);
+// Forschungs-Rabatte auf angezeigte Kosten/Zeiten anwenden (Server rechnet identisch)
+const mCost = c => Object.fromEntries(Object.entries(c).map(([r, v]) => [r, Math.round(v * (1 - st.mods.buildCostPct / 100))]));
+const mTime = s => Math.round(s * (1 - st.mods.buildTimePct / 100));
+const mManu = s => Math.round(s * (1 - st.mods.manuTimePct / 100));
 const costHtml = cost => Object.entries(cost).filter(([, a]) => a > 0).map(([r, a]) =>
   `<span class="${(st.resources[r]||0) < a ? 'short' : ''}">${RES_ICON[r]}${fmt(a)}</span>`).join(' ');
 
@@ -369,7 +375,7 @@ function render(d) {
   st._now = Date.now();
   renderRes();
   renderBoard();
-  renderQueueChip();
+  renderJobs();
   if (selectedId !== null) renderInfoBar();
   if (sheetType) renderSheet();
 }
@@ -491,31 +497,42 @@ $('board').addEventListener('click', e => {
   if (unlocked) openSheet('shop');
 });
 
-/* ── Bau-Queue-Chip ── */
-function renderQueueChip() {
-  const q = st.activeBuild;
-  const el = $('queueChip');
-  if (!q) { el.classList.remove('show'); return; }
-  el.classList.add('show');
-  $('qIcon').textContent = CFG.BUILDINGS[q.building_key]?.icon || '🚧';
-  $('qTitle').textContent = `${bLabel(q.building_key, q.target_level)} → Lv ${q.target_level}`;
-  updateQueueTimes();
-}
+/* ── Job-Chips: Bauauftrag / Forschung / laufende Einsätze ── */
 // Restzeit eines Queue-Jobs in ms, aus Server-Restsekunden + lokalem Anker
 const jobLeft = job => job.remaining_sec * 1000 - (Date.now() - st._now);
-function updateQueueTimes() {
-  const q = st && st.activeBuild;
-  if (!q) return;
-  const total = q.total_sec * 1000;
-  const left = jobLeft(q);
-  $('qCd').textContent = left <= 0 ? 'Wird abgeschlossen…' : 'Noch ' + fmtDur(left / 1000);
-  $('qFill').style.width = (total > 0 ? Math.min(100, 100 - left / total * 100) : 100) + '%';
+const cdAttr = job => `data-cde="${st._now + job.remaining_sec * 1000}"`;
+const barHtml = job => `<div class="qbar"><i class="cfill" data-e="${st._now + job.remaining_sec * 1000}" data-t="${job.total_sec * 1000}"></i></div>`;
+function renderJobs() {
+  const parts = [];
+  const q = st.activeBuild;
+  if (q) parts.push(`<div class="jchip show" id="queueChip">
+    <span class="qi" id="qIcon">${CFG.BUILDINGS[q.building_key]?.icon || '🚧'}</span>
+    <div style="min-width:0"><div class="qt" id="qTitle">${esc(bLabel(q.building_key, q.target_level))} → Lv ${q.target_level}</div>
+    <div class="cd" id="qCd" ${cdAttr(q)}></div>${barHtml(q)}</div>
+    <button class="spd" onclick="speedup('build')" title="Mit ACLS-Coins sofort fertigstellen">⚡</button></div>`);
+  const r = st.activeResearch;
+  if (r) {
+    const t = CFG.RESEARCH[r.tech_key] || {};
+    parts.push(`<div class="jchip show" id="researchChip">
+      <span class="qi">${t.icon || '🔬'}</span>
+      <div style="min-width:0"><div class="qt">${esc(t.label || r.tech_key)} → Stufe ${r.target_level}</div>
+      <div class="cd" ${cdAttr(r)}></div>${barHtml(r)}</div>
+      <button class="spd" onclick="speedup('research')" title="Mit ACLS-Coins sofort abschließen">⚡</button></div>`);
+  }
+  const ms = st.activeMissions || [];
+  if (ms.length) parts.push(`<div class="jchip show click" id="missionChip" onclick="openSheet('missions')">
+    <span class="qi">🚨</span>
+    <div style="min-width:0"><div class="qt">${ms.length} ${ms.length > 1 ? 'Einsätze' : 'Einsatz'} unterwegs</div>
+    <div class="cd" ${cdAttr(ms[0])}></div></div></div>`);
+  $('jobs').innerHTML = parts.join('');
+  tickProgress(); tickCdEls();
 }
-function updateInfoCd() {
-  const el = $('iCd');
-  if (!el || !st || !st.activeBuild) return;
-  const left = jobLeft(st.activeBuild);
-  el.textContent = left <= 0 ? 'Wird abgeschlossen…' : 'Noch ' + fmtDur(left / 1000);
+// Alle Countdown-Texte generisch aktualisieren (Elemente mit data-cde = End-Zeitstempel)
+function tickCdEls() {
+  document.querySelectorAll('[data-cde]').forEach(el => {
+    const left = +el.dataset.cde - Date.now();
+    el.textContent = left <= 0 ? 'Wird abgeschlossen…' : 'Noch ' + fmtDur(left / 1000);
+  });
 }
 
 /* ── Info-Panel mit Jetzt→Nach-Ausbau-Vergleich ── */
@@ -535,6 +552,8 @@ function statPairs(def, lvl) {
   if (e.globalProdPct) out.push(['⚡ Gesamtproduktion', '+' + e.globalProdPct(lvl) + '%']);
   if (e.employeeSlots) out.push(['👷 Mitarbeiter-Slots', '+' + e.employeeSlots(lvl)]);
   if (e.vehicleSlots) out.push(['🅿️ Stellplätze', e.vehicleSlots(lvl)]);
+  if (e.missionSlots) out.push(['🚨 Einsatz-Slots', e.missionSlots(lvl)]);
+  if (e.researchSpeedPct) out.push(['🔬 Forschungstempo', '+' + e.researchSpeedPct(lvl) + '%']);
   return out;
 }
 
@@ -548,9 +567,10 @@ function renderInfoBar() {
   $('iName').textContent = bLabel(b.building_key, b.level) + (b.level >= 1 ? ` — Level ${b.level}` : ' — im Bau');
   $('iSub').textContent = def.desc;
   if (b.level < 1) {
-    $('iStats').innerHTML = `<div class="strow"><span class="sl">🚧 Baustelle</span><span class="sv" id="iCd"></span></div>`;
+    const cd = st.activeBuild ? cdAttr(st.activeBuild) : '';
+    $('iStats').innerHTML = `<div class="strow"><span class="sl">🚧 Baustelle</span><span class="sv" id="iCd" ${cd}></span></div>`;
     $('iBtns').innerHTML = '';
-    updateInfoCd();
+    tickCdEls();
     return;
   }
   const isMax = b.level >= def.maxLevel;
@@ -565,14 +585,16 @@ function renderInfoBar() {
   } else {
     const next = b.level + 1;
     const gated = b.building_key !== 'office' && next > (Math.max(1, st.officeLevel) + 2);
-    const cost = def.cost(next);
+    const cost = mCost(def.cost(next));
     const dis = st.activeBuild || gated || !canAfford(cost);
     const costStr = Object.entries(cost).filter(([, a]) => a > 0).map(([r, a]) => RES_ICON[r] + fmt(a)).join('  ');
-    btns.push(`<button class="up" ${dis ? 'disabled' : ''} onclick="upgrade(${b.id})">⬆ Auf Level ${next} ausbauen<small>Kosten: ${costStr} · Dauer: ⏱ ${fmtDur(def.buildTimeSec(next))}</small></button>`);
+    btns.push(`<button class="up" ${dis ? 'disabled' : ''} onclick="upgrade(${b.id})">⬆ Auf Level ${next} ausbauen<small>Kosten: ${costStr} · Dauer: ⏱ ${fmtDur(mTime(def.buildTimeSec(next)))}</small></button>`);
     const hint = st.activeBuild ? '🚧 Der Bautrupp ist gerade beschäftigt.' : gated ? `🏢 Benötigt Büro Level ${next - 2}.` : !canAfford(cost) ? 'Nicht genug Ressourcen.' : '';
     if (hint) btns.push(`<div class="muted" style="text-align:center">${hint}</div>`);
   }
   if (b.building_key === 'garage') btns.push(`<button class="mk" onclick="openSheet('manu', ${b.id})">🚗 Fahrzeuge fertigen</button>`);
+  if (b.building_key === 'towyard') btns.push(`<button class="mk" onclick="openSheet('missions')">🚨 Einsätze</button>`);
+  if (b.building_key === 'forschungszentrum') btns.push(`<button class="mk" onclick="openSheet('research')">🔬 Forschung</button>`);
   $('iBtns').innerHTML = btns.join('');
 }
 function deselect() {
@@ -610,7 +632,7 @@ function closeSheet() {
   $('sheet').classList.remove('open');
 }
 function renderSheet() {
-  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung' };
+  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung' };
   $('shTitle').textContent = titles[sheetType] || '';
   $('shCats').style.display = sheetType === 'shop' ? 'flex' : 'none';
   if (sheetType === 'shop') renderShop();
@@ -619,6 +641,8 @@ function renderSheet() {
   else if (sheetType === 'lb') renderLb();
   else if (sheetType === 'manu') renderManu();
   else if (sheetType === 'help') renderHelp();
+  else if (sheetType === 'missions') renderMissions();
+  else if (sheetType === 'research') renderResearch();
 }
 
 function renderShop() {
@@ -629,7 +653,7 @@ function renderShop() {
   const cards = Object.entries(CFG.BUILDINGS)
     .filter(([, d]) => shopCat === 'alle' || d.cat === shopCat)
     .map(([key, d]) => {
-      const cost = d.cost(1);
+      const cost = mCost(d.cost(1));
       const placed = counts[key] || 0;
       const soldOut = d.singleton && placed > 0;
       const off = soldOut || st.activeBuild;
@@ -639,7 +663,7 @@ function renderShop() {
         <div class="si">${d.icon}</div>
         <div class="sn">${esc(label)}</div>
         <div class="sc">${soldOut ? '<span class="muted">Gebaut</span>' : costHtml(cost)}</div>
-        <div class="st">${soldOut ? 'Nur 1× baubar' : '⏱ ' + fmtDur(d.buildTimeSec(1))}</div>
+        <div class="st">${soldOut ? 'Nur 1× baubar' : '⏱ ' + fmtDur(mTime(d.buildTimeSec(1)))}</div>
       </div>`;
     }).join('');
   $('shBody').innerHTML = `<div class="shop-grid">${cards}</div>` +
@@ -647,7 +671,7 @@ function renderShop() {
   $('shBody').querySelectorAll('.shop-card:not(.off)').forEach(el => {
     el.addEventListener('click', () => {
       const key = el.dataset.key;
-      if (!canAfford(CFG.BUILDINGS[key].cost(1))) return msg('Nicht genug Ressourcen für ' + bLabel(key, 1));
+      if (!canAfford(mCost(CFG.BUILDINGS[key].cost(1)))) return msg('Nicht genug Ressourcen für ' + bLabel(key, 1));
       startPlacing(key);
     });
   });
@@ -676,9 +700,80 @@ function renderEmp() {
 function renderVeh() {
   $('shBody').innerHTML = st.vehicles.length ? st.vehicles.map(v => {
     const d = CFG.VEHICLES[v.vehicle_key] || {};
-    return `<div class="row"><div class="rl"><span class="ric">${d.icon || '🚗'}</span><div><div class="rn">${esc(d.label || v.vehicle_key)}</div><div class="rd">${esc(v.rarity)} · Wert 💰${fmt(v.value)}</div></div></div>
-      <button onclick="sell(${v.id})">Verkaufen</button></div>`;
+    return `<div class="row"><div class="rl"><span class="ric">${d.icon || '🚗'}</span><div><div class="rn">${esc(d.label || v.vehicle_key)}${v.on_mission ? ' <span style="color:var(--acc)">🚨 im Einsatz</span>' : ''}</div><div class="rd">${esc(v.rarity)} · Tier ${d.tier || 1} · Wert 💰${fmt(v.value)}</div></div></div>
+      <button ${v.on_mission ? 'disabled' : ''} onclick="sell(${v.id})">Verkaufen</button></div>`;
   }).join('') : '<div class="muted">Noch keine Fahrzeuge — fertige welche in der Garage (Garage antippen → Fahrzeuge).</div>';
+}
+
+/* ── Einsätze (PvE-Missionen) ── */
+function renderMissions() {
+  const slots = st.missionSlots;
+  const active = st.activeMissions || [];
+  let html = `<div class="muted" style="margin-bottom:.6rem">Einsatz-Slots: <b>${active.length}/${slots}</b> — mehr Slots durch ein höheres Abschlepphof-Level. Abgeschlossen: <b>${st.missionsDone || 0}</b></div>`;
+  if (active.length) {
+    html += active.map(m => {
+      const d = CFG.MISSIONS[m.mission_key] || {};
+      const v = CFG.VEHICLES[m.vehicle_key] || {};
+      return `<div class="row"><div class="rl"><span class="ric">${d.icon || '🚨'}</span><div><div class="rn">${esc(d.label || m.mission_key)}</div><div class="rd">${v.icon || '🚗'} ${esc(v.label || '')} unterwegs</div></div></div>
+        <span class="rd" style="white-space:nowrap" ${cdAttr(m)}></span></div>`;
+    }).join('');
+  }
+  html += '<div style="font-weight:800;margin:.8rem 0 .5rem">Verfügbare Einsätze</div>';
+  const freeVehicles = st.vehicles.filter(v => !v.on_mission);
+  html += Object.entries(CFG.MISSIONS).map(([key, d]) => {
+    const eligible = freeVehicles.filter(v => (CFG.VEHICLES[v.vehicle_key]?.tier || 1) >= d.minTier);
+    const rew = Object.entries(d.rewards).map(([r, v]) => RES_ICON[r] + fmt(Math.round(v * (1 + st.mods.missionRewardPct / 100)))).join(' ');
+    const canStart = eligible.length > 0 && active.length < slots && slots >= 1;
+    return `<div class="row" style="flex-wrap:wrap"><div class="rl"><span class="ric">${d.icon}</span><div>
+      <div class="rn">${esc(d.label)} <span class="rd">· ⏱ ${fmtDur(d.durationSec)} · ab Fahrzeug-Tier ${d.minTier}</span></div>
+      <div class="rd">${esc(d.desc)}</div>
+      <div class="rd">🎁 ${rew}${st.mods.missionRewardPct ? ` <span style="color:var(--good)">(+${st.mods.missionRewardPct} % Forschung)</span>` : ''}</div>
+    </div></div>
+    <div style="display:flex;gap:.35rem;align-items:center">
+      ${eligible.length ? `<select class="sheet-select" id="msel-${key}">${eligible.map(v => `<option value="${v.id}">${CFG.VEHICLES[v.vehicle_key]?.icon || ''} ${esc(CFG.VEHICLES[v.vehicle_key]?.label || v.vehicle_key)}</option>`).join('')}</select>` : '<span class="rd">kein passendes Fahrzeug frei</span>'}
+      <button ${canStart ? '' : 'disabled'} onclick="startMission('${key}')">Start</button>
+    </div></div>`;
+  }).join('');
+  if (!st.vehicles.length) html += '<div class="muted" style="margin-top:.5rem">💡 Fertige zuerst ein Fahrzeug in der Garage — Einsätze brauchen Fahrzeuge.</div>';
+  $('shBody').innerHTML = html;
+  tickCdEls();
+}
+
+/* ── Forschung ── */
+function renderResearch() {
+  const centerLvl = st.researchCenterLevel;
+  if (centerLvl < 1) {
+    $('shBody').innerHTML = '<div class="muted">🔬 Baue zuerst ein <b>Forschungszentrum</b> (Baumenü → Spezial), um dauerhafte Boni zu erforschen.</div>';
+    return;
+  }
+  const speedPct = CFG.BUILDINGS.forschungszentrum.effect.researchSpeedPct(centerLvl);
+  const act = st.activeResearch;
+  let html = `<div class="muted" style="margin-bottom:.6rem">Forschungszentrum Level <b>${centerLvl}</b> — Stufe N braucht Zentrum-Level N${speedPct ? ` · Forschung ${speedPct} % schneller` : ''}</div>`;
+  if (act) {
+    const t = CFG.RESEARCH[act.tech_key] || {};
+    html += `<div class="row"><div class="rl"><span class="ric">${t.icon || '🔬'}</span><div><div class="rn">${esc(t.label || act.tech_key)} → Stufe ${act.target_level}</div><div class="rd" ${cdAttr(act)}></div></div></div>
+      <button onclick="speedup('research')" title="Mit ACLS-Coins sofort abschließen">⚡</button></div>`;
+  }
+  const REDUCTIONS = ['buildTimePct', 'buildCostPct', 'manuTimePct'];
+  const fmtEff = (t, lvl) => lvl ? (REDUCTIONS.includes(t.mod) ? '−' : '+') + (t.perLevel * lvl) + t.unit : '—';
+  html += Object.entries(CFG.RESEARCH).map(([key, t]) => {
+    const lvl = st.researchLevels[key] || 0;
+    const maxed = lvl >= t.maxLevel;
+    const target = lvl + 1;
+    const gated = !maxed && centerLvl < target;
+    const cost = maxed ? null : t.cost(target);
+    const dur = maxed ? 0 : Math.max(60, Math.round(t.timeSec(target) * (1 - speedPct / 100)));
+    const dis = maxed || !!act || gated || !canAfford(cost || {});
+    return `<div class="row" style="flex-wrap:wrap"><div class="rl"><span class="ric">${t.icon}</span><div>
+      <div class="rn">${esc(t.label)} <span class="rd">· Stufe ${lvl}/${t.maxLevel}</span></div>
+      <div class="rd">${esc(t.desc)}</div>
+      <div class="rd">Jetzt: <b>${fmtEff(t, lvl)}</b>${maxed ? '' : ` → <b style="color:var(--good)">${fmtEff(t, target)}</b>`}</div>
+      ${maxed ? '' : `<div class="rd">${Object.entries(cost).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' ')} · ⏱ ${fmtDur(dur)}${gated ? ` · 🔒 Zentrum Lv ${target} nötig` : ''}</div>`}
+    </div></div>
+    <button ${dis ? 'disabled' : ''} onclick="research('${key}')">${maxed ? '✔ Max' : 'Erforschen'}</button></div>`;
+  }).join('');
+  $('shBody').innerHTML = html;
+  tickCdEls();
 }
 
 async function renderLb() {
@@ -698,8 +793,8 @@ function renderManu() {
   const active = (st.activeManufacture || []).find(m => m.building_id === b.id);
   if (active) {
     const v = CFG.VEHICLES[active.vehicle_key] || {};
-    $('shBody').innerHTML = `<div class="row"><div class="rl"><span class="ric">${v.icon || '🚗'}</span><div><div class="rn">${esc(v.label || active.vehicle_key)} wird gefertigt…</div><div class="rd" id="manuCd"></div></div></div></div>`;
-    updateManuTime();
+    $('shBody').innerHTML = `<div class="row"><div class="rl"><span class="ric">${v.icon || '🚗'}</span><div><div class="rn">${esc(v.label || active.vehicle_key)} wird gefertigt…</div><div class="rd" id="manuCd" ${cdAttr(active)}></div></div></div></div>`;
+    tickCdEls();
     return;
   }
   const tier = def.effect.unlockedTier(b.level);
@@ -709,7 +804,7 @@ function renderManu() {
     return `<div class="row" style="${locked ? 'opacity:.45' : ''}"><div class="rl"><span class="ric">${v.icon}</span><div><div class="rn">${esc(v.label)}</div><div class="rd">${esc(v.rarity)} · Basiswert 💰${fmt(v.baseValue)}${locked ? ' · 🔒 Garage Lv ' + (v.tier * 4 - 3) + '+' : ''}</div></div></div>
       <button ${locked || !canAfford(cost) ? 'disabled' : ''} onclick="manufacture(${b.id}, '${k}')">Fertigen</button></div>`;
   }).join('');
-  $('shBody').innerHTML = `<div class="muted" style="margin-bottom:.6rem">Kosten pro Fahrzeug: ${Object.entries(cost).map(([r, a]) => RES_ICON[r] + fmt(a)).join(' ')} · ⏱ ${fmtDur(def.effect.manufactureTimeSec(b.level))}</div>` + rows;
+  $('shBody').innerHTML = `<div class="muted" style="margin-bottom:.6rem">Kosten pro Fahrzeug: ${Object.entries(cost).map(([r, a]) => RES_ICON[r] + fmt(a)).join(' ')} · ⏱ ${fmtDur(mManu(def.effect.manufactureTimeSec(b.level)))}</div>` + rows;
 }
 function renderHelp() {
   const step = (icon, title, text) =>
@@ -722,18 +817,11 @@ function renderHelp() {
     step('⬆️', 'Ausbauen', 'Tippe ein Gebäude auf der Karte an — unten erscheinen Infos und der Ausbau-Button mit Kosten und Bauzeit. Höhere Level = mehr Produktion, mehr Lager, bessere Boni.') +
     step('👷', 'Mitarbeiter', 'Über das 👷-Symbol oben stellst du Mechaniker, Abschlepper, Elektriker & Co. ein und levelst sie hoch — sie steigern die Produktion ihrer Gebäude. Das Personalbüro schaltet mehr Slots frei.') +
     step('🚗', 'Fahrzeuge', 'Tippe die Garage an → „Fahrzeuge": Aus Rohstoffen fertigst du Abschleppwagen bis Sportwagen. Höheres Garagen-Level = schnellere Fertigung und bessere Fahrzeuge. Verkaufen im Fuhrpark (🚗 oben) — Tuningzentrum, Lackiererei und Fahrzeughandel erhöhen den Erlös!') +
+    step('🚨', 'Einsätze', 'Schicke deine Fahrzeuge auf Missionen (🚨 oben oder Abschlepphof antippen) — vom 10-Minuten-Abschleppauftrag bis zur 8-Stunden-Flottenwartung. Das Fahrzeug ist solange unterwegs, dafür gibt es Geld und Material. Der Abschlepphof schaltet mit höherem Level mehr gleichzeitige Einsätze frei.') +
+    step('🔬', 'Forschung', 'Baue das Forschungszentrum und erforsche dauerhafte Boni: schnelleres Bauen, größere Lager, billigere Ausbauten, mehr Produktion und bessere Missionserträge. Stufe N braucht Zentrum-Level N, und es läuft immer eine Forschung gleichzeitig.') +
     step('🔍', 'Karte bedienen', 'Zoome mit dem Mausrad, zwei Fingern oder den ＋/−-Buttons rechts. Ziehe die Karte mit gedrückter Maustaste oder dem Finger, um dich umzusehen. ⌂ setzt die Ansicht zurück.') +
     step('⚡', 'Tipp', 'Zu ungeduldig? Laufende Bauaufträge kannst du mit ACLS-Coins sofort abschließen (⚡-Button). Und du bekommst eine Benachrichtigung im Portal, sobald etwas fertig ist.') +
     `<button class="hgo" onclick="closeSheet()">Los geht's! 🔧</button>`;
-}
-
-function updateManuTime() {
-  const el = $('manuCd');
-  if (!el || !st) return;
-  const active = (st.activeManufacture || []).find(m => m.building_id === sheetCtx);
-  if (!active) return;
-  const left = jobLeft(active);
-  el.textContent = left <= 0 ? 'Wird abgeschlossen…' : 'Noch ' + fmtDur(left / 1000);
 }
 
 /* ── Aktionen ── */
@@ -762,7 +850,14 @@ async function hire(type) { try { const d = await api('/api/clash-of-acls/hire',
 async function empFire(id) { try { const d = await api(`/api/clash-of-acls/fire/${id}`, { method:'POST' }); msg('Mitarbeiter entlassen.', true); render(d); } catch (e) { msg(e.message); } }
 async function empLevel(id) { try { const d = await api(`/api/clash-of-acls/employee/${id}/levelup`, { method:'POST' }); msg('Mitarbeiter aufgestiegen!', true); render(d); } catch (e) { msg(e.message); } }
 async function sell(id) { try { const d = await api(`/api/clash-of-acls/sell/${id}`, { method:'POST' }); msg(`Verkauft für 💰${fmt(d.credited)}!`, true); render(d); } catch (e) { msg(e.message); } }
-async function speedup() { try { const d = await api('/api/clash-of-acls/speedup', { method:'POST' }); msg(`Fertig! (−${d.cost} ACLS-Coins)`, true); render(d); } catch (e) { msg(e.message); } }
+async function speedup(what) { try { const d = await api('/api/clash-of-acls/speedup', { method:'POST', body:{ what: what || 'build' } }); msg(`Fertig! (−${d.cost} ACLS-Coins)`, true); render(d); } catch (e) { msg(e.message); } }
+async function startMission(key) {
+  const sel = $('msel-' + key);
+  const vid = sel ? +sel.value : 0;
+  if (!vid) return msg('Kein passendes Fahrzeug verfügbar');
+  try { const d = await api('/api/clash-of-acls/mission', { method:'POST', body:{ mission_key: key, vehicle_id: vid } }); msg('Einsatz gestartet!', true); render(d); } catch (e) { msg(e.message); }
+}
+async function research(key) { try { const d = await api('/api/clash-of-acls/research', { method:'POST', body:{ tech_key: key } }); msg('Forschung gestartet!', true); render(d); } catch (e) { msg(e.message); } }
 
 /* ── Ticker ── */
 let reloadPending = false;
@@ -774,9 +869,11 @@ function tickProgress() {
 }
 setInterval(() => {
   if (!st) return;
-  updateQueueTimes(); tickProgress(); updateManuTime(); updateInfoCd();
+  tickProgress(); tickCdEls();
   const due = (st.activeBuild && jobLeft(st.activeBuild) <= 0)
-    || (st.activeManufacture || []).some(m => jobLeft(m) <= 0);
+    || (st.activeResearch && jobLeft(st.activeResearch) <= 0)
+    || (st.activeManufacture || []).some(m => jobLeft(m) <= 0)
+    || (st.activeMissions || []).some(m => jobLeft(m) <= 0);
   if (due && !reloadPending) { reloadPending = true; load().finally(() => { reloadPending = false; }); }
 }, 1000);
 setInterval(load, 30000);

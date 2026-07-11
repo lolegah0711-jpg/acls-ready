@@ -37,19 +37,43 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     return o ? o.level : 0;
   }
 
-  function computeCaps(buildings) {
+  // ── Forschung: abgeschlossene Stufen → Modifikator-Objekt (Formel in der Config) ──
+  function getResearchLevels(discordId) {
+    const levels = {};
+    db.prepare('SELECT tech_key, level FROM coa_research WHERE discord_id = ?').all(discordId)
+      .forEach((r) => { levels[r.tech_key] = r.level; });
+    return levels;
+  }
+  const getMods = (discordId) => CFG.researchMods(getResearchLevels(discordId));
+  const NO_MODS = CFG.researchMods({});
+
+  function researchCenterLevel(buildings) {
+    const c = buildings.find((b) => b.building_key === 'forschungszentrum');
+    return c ? c.level : 0;
+  }
+  // Einsatz-Slots: bestes (höchstes) Abschlepphof-Level zählt, nicht die Summe.
+  function missionSlots(buildings) {
+    let best = 0;
+    buildings.forEach((b) => { if (b.building_key === 'towyard' && b.level > best) best = b.level; });
+    return best >= 1 ? CFG.BUILDINGS.towyard.effect.missionSlots(best) : 0;
+  }
+  const scaleCost = (cost, reductionPct) =>
+    Object.fromEntries(Object.entries(cost).map(([r, v]) => [r, Math.round(v * (1 - reductionPct / 100))]));
+
+  function computeCaps(buildings, mods = NO_MODS) {
     const caps = { ...CFG.BASE_CAP };
     buildings.forEach((b) => {
       if (b.level < 1) return;
       const bonus = CFG.BUILDINGS[b.building_key]?.effect?.capBonus?.(b.level);
       if (bonus) Object.keys(bonus).forEach((r) => { caps[r] = (caps[r] || 0) + bonus[r]; });
     });
+    Object.keys(caps).forEach((r) => { caps[r] = Math.round(caps[r] * (1 + mods.capPct / 100)); });
     return caps;
   }
 
   // Generalisten (linkedBuilding=null) wirken auf jedes Produktionsgebäude, Spezialisten
   // nur auf ihr verknüpftes Gebäude — Bonus ist additiv auf die Basisrate.
-  function computeRatesPerHour(buildings, employees) {
+  function computeRatesPerHour(buildings, employees, mods = NO_MODS) {
     const rates = { money: 0, steel: 0, parts: 0, electronics: 0, fuel: 0 };
     let generatorPct = 0;
     buildings.forEach((b) => {
@@ -71,6 +95,8 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       const mult = 1 + bonusPct + generatorPct / 100;
       Object.keys(per).forEach((r) => { rates[r] = (rates[r] || 0) + per[r] * mult; });
     });
+    const researchMult = 1 + mods.prodPct / 100;
+    Object.keys(rates).forEach((r) => { rates[r] *= researchMult; });
     return rates;
   }
 
@@ -92,8 +118,8 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     return pct;
   }
 
-  function employeeSlots(buildings) {
-    let slots = BASE_EMPLOYEE_SLOTS;
+  function employeeSlots(buildings, mods = NO_MODS) {
+    let slots = BASE_EMPLOYEE_SLOTS + mods.extraEmployeeSlots;
     buildings.forEach((b) => { if (b.level >= 1 && b.building_key === 'personalbuero') slots += CFG.BUILDINGS.personalbuero.effect.employeeSlots(b.level); });
     return slots;
   }
@@ -105,8 +131,9 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     if (elapsedSec < 1) return s;
     const buildings = getBuildings(discordId);
     const employees = getEmployees(discordId);
-    const rates = computeRatesPerHour(buildings, employees);
-    const caps = computeCaps(buildings);
+    const mods = getMods(discordId);
+    const rates = computeRatesPerHour(buildings, employees, mods);
+    const caps = computeCaps(buildings, mods);
     const next = {};
     CFG.RESOURCES.forEach((r) => { next[r] = Math.min(caps[r], s[r] + (rates[r] * elapsedSec) / 3600); });
     const moneyGain = Math.max(0, Math.round(next.money) - s.money);
@@ -126,11 +153,11 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     queueNotification('coa_build_done', q.discord_id, { kind: 'building', building: label, level: q.target_level });
   }
 
-  function finalizeOneManufacture(q, allBuildings, allEmployees) {
+  function finalizeOneManufacture(q, allBuildings, allEmployees, mods = NO_MODS) {
     const vdef = CFG.VEHICLES[q.vehicle_key];
     if (!vdef) { db.prepare('DELETE FROM coa_manufacture_queue WHERE id = ?').run(q.id); return; }
     const bonus = rarityBonusPct(allBuildings, allEmployees);
-    const value = Math.round(vdef.baseValue * (1 + (bonus / 100) * Math.random()));
+    const value = Math.round(vdef.baseValue * (1 + (bonus / 100) * Math.random()) * (1 + mods.vehicleValuePct / 100));
     db.transaction(() => {
       db.prepare('INSERT INTO coa_vehicles (discord_id, vehicle_key, rarity, value) VALUES (?,?,?,?)').run(q.discord_id, q.vehicle_key, vdef.rarity, value);
       db.prepare('DELETE FROM coa_manufacture_queue WHERE id = ?').run(q.id);
@@ -139,18 +166,60 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     queueNotification('coa_build_done', q.discord_id, { kind: 'vehicle', vehicle: vdef.label });
   }
 
+  // Forschung abgeschlossen: Stufe dauerhaft eintragen, Queue leeren.
+  function finalizeOneResearch(q) {
+    const tech = CFG.RESEARCH[q.tech_key];
+    db.transaction(() => {
+      db.prepare(`INSERT INTO coa_research (discord_id, tech_key, level) VALUES (?,?,?)
+        ON CONFLICT(discord_id, tech_key) DO UPDATE SET level = MAX(level, excluded.level)`).run(q.discord_id, q.tech_key, q.target_level);
+      db.prepare('DELETE FROM coa_research_queue WHERE id = ?').run(q.id);
+    })();
+    if (tech) {
+      createNotif(q.discord_id, 'coa_research_done', { tech: tech.label, level: q.target_level });
+      queueNotification('coa_research_done', q.discord_id, { tech: tech.label, level: q.target_level });
+    }
+  }
+
+  // Einsatz abgeschlossen: Belohnung (× Einsatzleitung-Forschung, gedeckelt durch
+  // Lagerkapazität) gutschreiben, Fahrzeug freigeben, Zähler erhöhen.
+  function finalizeOneMission(m) {
+    const def = CFG.MISSIONS[m.mission_key];
+    if (!def) { db.prepare('DELETE FROM coa_missions WHERE id = ?').run(m.id); return; }
+    const state = syncResources(m.discord_id);
+    const buildings = getBuildings(m.discord_id);
+    const mods = getMods(m.discord_id);
+    const caps = computeCaps(buildings, mods);
+    const factor = 1 + mods.missionRewardPct / 100;
+    const next = {};
+    CFG.RESOURCES.forEach((r) => {
+      next[r] = Math.min(caps[r], (state[r] || 0) + Math.round((def.rewards[r] || 0) * factor));
+    });
+    const moneyGain = Math.max(0, next.money - state.money);
+    db.transaction(() => {
+      db.prepare(`UPDATE coa_state SET money=?, steel=?, parts=?, electronics=?, fuel=?,
+        total_earned = total_earned + ?, missions_done = missions_done + 1 WHERE discord_id = ?`)
+        .run(next.money, next.steel, next.parts, next.electronics, next.fuel, moneyGain, m.discord_id);
+      db.prepare('DELETE FROM coa_missions WHERE id = ?').run(m.id);
+    })();
+    createNotif(m.discord_id, 'coa_mission_done', { mission: def.label, money: Math.round((def.rewards.money || 0) * factor) });
+    queueNotification('coa_mission_done', m.discord_id, { mission: def.label });
+  }
+
   // Wird pro Request UND von einem minütlichen Cron-Sweep in server.js aufgerufen,
   // damit fällige Aufträge auch abgeschlossen werden, wenn der Spieler offline ist.
   function finalizeDueForAll() {
+    // Forschung zuerst: dann gelten neue Modifikatoren schon für die folgenden Abschlüsse
+    db.prepare("SELECT * FROM coa_research_queue WHERE finish_at <= datetime('now')").all().forEach(finalizeOneResearch);
     const dueBuilds = db.prepare("SELECT * FROM coa_build_queue WHERE finish_at <= datetime('now')").all();
     dueBuilds.forEach(finalizeOneBuild);
     const dueMakes = db.prepare("SELECT * FROM coa_manufacture_queue WHERE finish_at <= datetime('now')").all();
     const cache = new Map();
     dueMakes.forEach((q) => {
-      if (!cache.has(q.discord_id)) cache.set(q.discord_id, { b: getBuildings(q.discord_id), e: getEmployees(q.discord_id) });
-      const { b, e } = cache.get(q.discord_id);
-      finalizeOneManufacture(q, b, e);
+      if (!cache.has(q.discord_id)) cache.set(q.discord_id, { b: getBuildings(q.discord_id), e: getEmployees(q.discord_id), m: getMods(q.discord_id) });
+      const { b, e, m } = cache.get(q.discord_id);
+      finalizeOneManufacture(q, b, e, m);
     });
+    db.prepare("SELECT * FROM coa_missions WHERE finish_at <= datetime('now')").all().forEach(finalizeOneMission);
   }
 
   function canAfford(state, cost) {
@@ -168,7 +237,14 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     const state = syncResources(ident.id);
     const buildings = getBuildings(ident.id);
     const employees = getEmployees(ident.id);
-    const vehicles = db.prepare('SELECT * FROM coa_vehicles WHERE discord_id = ? AND sold_at IS NULL ORDER BY created_at DESC').all(ident.id);
+    const researchLevels = getResearchLevels(ident.id);
+    const mods = CFG.researchMods(researchLevels);
+    // on_mission markiert Fahrzeuge, die gerade einen Einsatz fahren (nicht verkaufbar)
+    const vehicles = db.prepare(`
+      SELECT v.*, CASE WHEN m.id IS NULL THEN 0 ELSE 1 END AS on_mission
+      FROM coa_vehicles v LEFT JOIN coa_missions m ON m.vehicle_id = v.id
+      WHERE v.discord_id = ? AND v.sold_at IS NULL ORDER BY v.created_at DESC
+    `).all(ident.id);
     const offLvl = officeLevel(buildings);
     // remaining_sec/total_sec server-seitig mitliefern: der Client soll SQLite-Timestamps
     // nie selbst parsen ('YYYY-MM-DD HH:MM:SS' ist kein valides Date-Format in Safari/Firefox)
@@ -185,19 +261,39 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
         CAST(strftime('%s', mq.finish_at) AS INTEGER) - CAST(strftime('%s', mq.started_at) AS INTEGER) AS total_sec
       FROM coa_manufacture_queue mq JOIN coa_buildings b ON b.id = mq.building_id WHERE b.discord_id = ?
     `).all(ident.id);
+    const activeResearch = db.prepare(`
+      SELECT *,
+        CAST(strftime('%s', finish_at) AS INTEGER) - CAST(strftime('%s', 'now') AS INTEGER)      AS remaining_sec,
+        CAST(strftime('%s', finish_at) AS INTEGER) - CAST(strftime('%s', started_at) AS INTEGER) AS total_sec
+      FROM coa_research_queue WHERE discord_id = ?
+    `).get(ident.id) || null;
+    const activeMissions = db.prepare(`
+      SELECT m.*, v.vehicle_key,
+        CAST(strftime('%s', m.finish_at) AS INTEGER) - CAST(strftime('%s', 'now') AS INTEGER)        AS remaining_sec,
+        CAST(strftime('%s', m.finish_at) AS INTEGER) - CAST(strftime('%s', m.started_at) AS INTEGER) AS total_sec
+      FROM coa_missions m JOIN coa_vehicles v ON v.id = m.vehicle_id
+      WHERE m.discord_id = ? ORDER BY m.finish_at ASC
+    `).all(ident.id);
     return {
       resources: { money: state.money, steel: state.steel, parts: state.parts, electronics: state.electronics, fuel: state.fuel },
-      caps: computeCaps(buildings),
-      ratesPerHour: computeRatesPerHour(buildings, employees),
+      caps: computeCaps(buildings, mods),
+      ratesPerHour: computeRatesPerHour(buildings, employees, mods),
       totalEarned: state.total_earned,
+      missionsDone: state.missions_done,
       unlockedCells: CFG.BUILDINGS.office.effect.unlockedCells(Math.max(1, offLvl)),
       officeLevel: offLvl,
+      researchCenterLevel: researchCenterLevel(buildings),
+      researchLevels,
+      mods,
       buildings: buildings.map((b) => ({ id: b.id, building_key: b.building_key, x: b.x, y: b.y, level: b.level })),
       employees,
-      employeeSlots: employeeSlots(buildings),
+      employeeSlots: employeeSlots(buildings, mods),
+      missionSlots: missionSlots(buildings),
       vehicles,
       activeBuild,
       activeManufacture,
+      activeResearch,
+      activeMissions,
     };
   }
 
@@ -233,13 +329,14 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       return res.status(400).json({ error: 'Es läuft bereits ein Bauauftrag' });
     }
     const state = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
-    const cost = def.cost(1);
+    const mods = getMods(ident.id);
+    const cost = scaleCost(def.cost(1), mods.buildCostPct);
     if (!canAfford(state, cost)) return res.status(400).json({ error: 'Nicht genug Ressourcen' });
 
     db.transaction(() => {
       deduct(ident.id, state, cost);
       const row = db.prepare('INSERT INTO coa_buildings (discord_id, building_key, x, y, level) VALUES (?,?,?,?,0)').run(ident.id, building_key, x, y);
-      const finishAt = toSqliteUTC(Date.now() + def.buildTimeSec(1) * 1000);
+      const finishAt = toSqliteUTC(Date.now() + Math.round(def.buildTimeSec(1) * (1 - mods.buildTimePct / 100)) * 1000);
       db.prepare('INSERT INTO coa_build_queue (discord_id, building_ref_id, building_key, x, y, target_level, finish_at) VALUES (?,?,?,?,?,1,?)')
         .run(ident.id, row.lastInsertRowid, building_key, x, y, finishAt);
     })();
@@ -267,12 +364,13 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       return res.status(400).json({ error: 'Es läuft bereits ein Bauauftrag' });
     }
     const state = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
-    const cost = def.cost(targetLevel);
+    const mods = getMods(ident.id);
+    const cost = scaleCost(def.cost(targetLevel), mods.buildCostPct);
     if (!canAfford(state, cost)) return res.status(400).json({ error: 'Nicht genug Ressourcen' });
 
     db.transaction(() => {
       deduct(ident.id, state, cost);
-      const finishAt = toSqliteUTC(Date.now() + def.buildTimeSec(targetLevel) * 1000);
+      const finishAt = toSqliteUTC(Date.now() + Math.round(def.buildTimeSec(targetLevel) * (1 - mods.buildTimePct / 100)) * 1000);
       db.prepare('INSERT INTO coa_build_queue (discord_id, building_ref_id, building_key, x, y, target_level, finish_at) VALUES (?,?,?,?,?,?,?)')
         .run(ident.id, building.id, building.building_key, building.x, building.y, targetLevel, finishAt);
     })();
@@ -299,7 +397,8 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
 
     db.transaction(() => {
       deduct(ident.id, state, def.manufactureCost);
-      const finishAt = toSqliteUTC(Date.now() + def.effect.manufactureTimeSec(building.level) * 1000);
+      const mods = getMods(ident.id);
+      const finishAt = toSqliteUTC(Date.now() + Math.round(def.effect.manufactureTimeSec(building.level) * (1 - mods.manuTimePct / 100)) * 1000);
       db.prepare('INSERT INTO coa_manufacture_queue (discord_id, building_id, vehicle_key, finish_at) VALUES (?,?,?,?)')
         .run(ident.id, building.id, vehicle_key, finishAt);
     })();
@@ -357,10 +456,13 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     finalizeDueForAll();
     const vehicle = db.prepare('SELECT * FROM coa_vehicles WHERE id = ? AND discord_id = ? AND sold_at IS NULL').get(req.params.id, ident.id);
     if (!vehicle) return res.status(404).json({ error: 'Fahrzeug nicht gefunden' });
+    if (db.prepare('SELECT 1 FROM coa_missions WHERE vehicle_id = ?').get(vehicle.id)) {
+      return res.status(400).json({ error: 'Fahrzeug ist gerade im Einsatz' });
+    }
     const buildings = getBuildings(ident.id);
     const employees = getEmployees(ident.id);
     const state = syncResources(ident.id);
-    const caps = computeCaps(buildings);
+    const caps = computeCaps(buildings, getMods(ident.id));
     const price = Math.round(vehicle.value * (1 + sellBonusPct(buildings, employees) / 100));
     const credited = Math.max(0, Math.min(caps.money, state.money + price) - state.money);
     db.transaction(() => {
@@ -370,18 +472,80 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     res.json({ ok: true, credited, ...buildView(ident) });
   });
 
-  // ── Bauzeit gegen ACLS-Coins verkürzen (Stretch, kein Shop-Bezug) ──
+  // ── Einsatz starten: Fahrzeug (>= minTier) fährt die Mission, solange gesperrt ──
+  router.post('/api/clash-of-acls/mission', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    const { mission_key, vehicle_id } = req.body || {};
+    const def = CFG.MISSIONS[mission_key];
+    if (!def) return res.status(400).json({ error: 'Unbekannter Einsatz' });
+    const buildings = getBuildings(ident.id);
+    const slots = missionSlots(buildings);
+    if (slots < 1) return res.status(400).json({ error: 'Du brauchst einen fertigen Abschlepphof für Einsätze' });
+    const active = db.prepare('SELECT COUNT(*) AS c FROM coa_missions WHERE discord_id = ?').get(ident.id).c;
+    if (active >= slots) return res.status(400).json({ error: `Alle ${slots} Einsatz-Slots belegt (Abschlepphof ausbauen)` });
+    const vehicle = db.prepare('SELECT * FROM coa_vehicles WHERE id = ? AND discord_id = ? AND sold_at IS NULL').get(vehicle_id, ident.id);
+    if (!vehicle) return res.status(404).json({ error: 'Fahrzeug nicht gefunden' });
+    if (db.prepare('SELECT 1 FROM coa_missions WHERE vehicle_id = ?').get(vehicle.id)) {
+      return res.status(400).json({ error: 'Dieses Fahrzeug ist bereits im Einsatz' });
+    }
+    const tier = CFG.VEHICLES[vehicle.vehicle_key]?.tier || 1;
+    if (tier < def.minTier) return res.status(400).json({ error: `Dieser Einsatz benötigt ein Tier-${def.minTier}-Fahrzeug` });
+    const finishAt = toSqliteUTC(Date.now() + def.durationSec * 1000);
+    db.prepare('INSERT INTO coa_missions (discord_id, mission_key, vehicle_id, finish_at) VALUES (?,?,?,?)')
+      .run(ident.id, mission_key, vehicle.id, finishAt);
+    res.json({ ok: true, ...buildView(ident) });
+  });
+
+  // ── Forschung starten: Stufe N braucht Forschungszentrum-Level N, eine Queue ──
+  router.post('/api/clash-of-acls/research', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    const { tech_key } = req.body || {};
+    const tech = CFG.RESEARCH[tech_key];
+    if (!tech) return res.status(400).json({ error: 'Unbekannte Forschung' });
+    const buildings = getBuildings(ident.id);
+    const centerLvl = researchCenterLevel(buildings);
+    if (centerLvl < 1) return res.status(400).json({ error: 'Du brauchst zuerst ein Forschungszentrum' });
+    const current = getResearchLevels(ident.id)[tech_key] || 0;
+    const target = current + 1;
+    if (target > tech.maxLevel) return res.status(400).json({ error: 'Maximale Forschungsstufe erreicht' });
+    if (centerLvl < target) return res.status(400).json({ error: `Stufe ${target} benötigt Forschungszentrum-Level ${target}` });
+    if (db.prepare('SELECT 1 FROM coa_research_queue WHERE discord_id = ?').get(ident.id)) {
+      return res.status(400).json({ error: 'Es läuft bereits eine Forschung' });
+    }
+    const state = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
+    const cost = tech.cost(target);
+    if (!canAfford(state, cost)) return res.status(400).json({ error: 'Nicht genug Ressourcen' });
+    const speedPct = CFG.BUILDINGS.forschungszentrum.effect.researchSpeedPct(centerLvl);
+    const durSec = Math.max(60, Math.round(tech.timeSec(target) * (1 - speedPct / 100)));
+    db.transaction(() => {
+      deduct(ident.id, state, cost);
+      const finishAt = toSqliteUTC(Date.now() + durSec * 1000);
+      db.prepare('INSERT INTO coa_research_queue (discord_id, tech_key, target_level, finish_at) VALUES (?,?,?,?)')
+        .run(ident.id, tech_key, target, finishAt);
+    })();
+    res.json({ ok: true, ...buildView(ident) });
+  });
+
+  // ── Bau- oder Forschungszeit gegen ACLS-Coins verkürzen ──
   router.post('/api/clash-of-acls/speedup', requireLogin, (req, res) => {
     const ident = coinIdent(req);
     if (rateLimit(`coa-act:${ident.id}`, 10, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
-    const q = db.prepare('SELECT * FROM coa_build_queue WHERE discord_id = ?').get(ident.id);
-    if (!q) return res.status(400).json({ error: 'Kein aktiver Bauauftrag' });
+    const what = (req.body && req.body.what) === 'research' ? 'research' : 'build';
+    const table = what === 'research' ? 'coa_research_queue' : 'coa_build_queue';
+    const q = db.prepare(`SELECT * FROM ${table} WHERE discord_id = ?`).get(ident.id);
+    if (!q) return res.status(400).json({ error: what === 'research' ? 'Keine aktive Forschung' : 'Kein aktiver Bauauftrag' });
     const remainingSec = Math.max(0, (asDate(q.finish_at).getTime() - Date.now()) / 1000);
-    if (remainingSec < 30) return res.status(400).json({ error: 'Bauauftrag ist fast fertig' });
+    if (remainingSec < 30) return res.status(400).json({ error: 'Ist fast fertig — warte kurz' });
     const cost = Math.max(10, Math.ceil(remainingSec / 60) * 2);
-    const newBalance = addCoins(ident.id, ident.name, -cost, 'coa_speedup', { building_key: q.building_key });
+    const newBalance = addCoins(ident.id, ident.name, -cost, 'coa_speedup', { what, key: q.building_key || q.tech_key });
     if (newBalance === null) return res.status(400).json({ error: `Nicht genug ACLS-Coins (${cost} nötig)` });
-    db.prepare("UPDATE coa_build_queue SET finish_at = datetime('now') WHERE id = ?").run(q.id);
+    db.prepare(`UPDATE ${table} SET finish_at = datetime('now') WHERE id = ?`).run(q.id);
     finalizeDueForAll();
     res.json({ ok: true, cost, ...buildView(ident) });
   });

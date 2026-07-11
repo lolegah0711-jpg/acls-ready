@@ -829,6 +829,36 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_coa_vehicles_did ON coa_vehicles(discord_id, sold_at);
   `);
 
+  // ── Clash of ACLS Phase 2: Einsätze (PvE-Missionen) + Forschung ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coa_missions (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id  TEXT NOT NULL,
+      mission_key TEXT NOT NULL,
+      vehicle_id  INTEGER NOT NULL UNIQUE REFERENCES coa_vehicles(id),
+      started_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finish_at   DATETIME NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_missions_finish ON coa_missions(finish_at);
+    CREATE INDEX IF NOT EXISTS idx_coa_missions_did ON coa_missions(discord_id);
+    CREATE TABLE IF NOT EXISTS coa_research (
+      discord_id TEXT NOT NULL,
+      tech_key   TEXT NOT NULL,
+      level      INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (discord_id, tech_key)
+    );
+    CREATE TABLE IF NOT EXISTS coa_research_queue (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id   TEXT NOT NULL UNIQUE,
+      tech_key     TEXT NOT NULL,
+      target_level INTEGER NOT NULL,
+      started_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finish_at    DATETIME NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_rq_finish ON coa_research_queue(finish_at);
+  `);
+  try { db.exec('ALTER TABLE coa_state ADD COLUMN missions_done INTEGER NOT NULL DEFAULT 0'); } catch {}
+
   // ── Idle-Werkstatt: Prestige-Punkte (spendbar) + permanente Prestige-Upgrades ──
   try { db.exec('ALTER TABLE idle_saves ADD COLUMN prestige_points INTEGER NOT NULL DEFAULT 0'); } catch {}
   try { db.exec("ALTER TABLE idle_saves ADD COLUMN prestige_upgrades TEXT NOT NULL DEFAULT '{}'"); } catch {}

@@ -137,7 +137,74 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   assert.equal(speedup.status, 200, 'Speedup ok: ' + JSON.stringify(speedup.json));
   assert.equal(speedup.json.activeBuild, null, 'Bauauftrag nach Speedup abgeschlossen');
 
-  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS)');
+  // ══ Phase 2: Einsätze (PvE-Missionen) ══════════════════════
+  // Fahrzeug für Einsätze fertigen (Tier 1)
+  db.prepare('UPDATE coa_state SET steel=500, parts=500, electronics=500, fuel=500 WHERE discord_id=?').run(ME.id);
+  await post('/api/clash-of-acls/manufacture', { building_id: garageId, vehicle_key: 'abschleppwagen' });
+  backdateManufacture();
+  st = await get('/api/clash-of-acls/state');
+  assert.equal(st.missionSlots, 1, 'Abschlepphof Level 1 = 1 Einsatz-Slot');
+  const mVehicle = st.vehicles[0];
+
+  const badMission = await post('/api/clash-of-acls/mission', { mission_key: 'vip', vehicle_id: mVehicle.id });
+  assert.equal(badMission.status, 400, 'Tier-2-Einsatz mit Tier-1-Fahrzeug abgelehnt');
+  const m1 = await post('/api/clash-of-acls/mission', { mission_key: 'abschlepp', vehicle_id: mVehicle.id });
+  assert.equal(m1.status, 200, 'Einsatz gestartet: ' + JSON.stringify(m1.json));
+  assert.equal(m1.json.activeMissions.length, 1, 'Ein aktiver Einsatz');
+  assert.ok(m1.json.activeMissions[0].remaining_sec > 0, 'Einsatz liefert Restzeit');
+  assert.equal(m1.json.vehicles[0].on_mission, 1, 'Fahrzeug als "im Einsatz" markiert');
+
+  const sellBusy = await post('/api/clash-of-acls/sell/' + mVehicle.id);
+  assert.equal(sellBusy.status, 400, 'Fahrzeug im Einsatz nicht verkaufbar');
+  const m2 = await post('/api/clash-of-acls/mission', { mission_key: 'abschlepp', vehicle_id: mVehicle.id });
+  assert.equal(m2.status, 400, 'Fahrzeug kann nicht zwei Einsätze gleichzeitig fahren');
+
+  const moneyBeforeMission = m1.json.resources.money;
+  db.prepare("UPDATE coa_missions SET finish_at = datetime('now','-1 minute')").run();
+  st = await get('/api/clash-of-acls/state');
+  assert.equal(st.activeMissions.length, 0, 'Einsatz abgeschlossen');
+  assert.equal(st.missionsDone, 1, 'Einsatz-Zähler erhöht');
+  assert.ok(st.resources.money > moneyBeforeMission, 'Missions-Belohnung gutgeschrieben');
+  assert.equal(st.vehicles[0].on_mission, 0, 'Fahrzeug nach Einsatz wieder frei');
+  assert.ok(notifs.some(n => n.type === 'coa_mission_done'), 'Missions-Benachrichtigung erzeugt');
+
+  // ══ Phase 2: Forschung ═════════════════════════════════════
+  const noCenter = await post('/api/clash-of-acls/research', { tech_key: 'bauplanung' });
+  assert.equal(noCenter.status, 400, 'Forschung ohne Forschungszentrum abgelehnt');
+  // Forschungszentrum direkt in die DB legen (Bauzeit im Test überspringen)
+  db.prepare("INSERT INTO coa_buildings (discord_id, building_key, x, y, level) VALUES (?,?,7,0,1)").run(ME.id, 'forschungszentrum');
+  db.prepare('UPDATE coa_state SET money=99999, steel=999, parts=999, electronics=999, fuel=999 WHERE discord_id=?').run(ME.id);
+
+  const gated = await post('/api/clash-of-acls/research', { tech_key: 'personalwesen' });
+  assert.equal(gated.status, 200, 'Stufe 1 mit Zentrum-Level 1 erlaubt');
+  const parallel = await post('/api/clash-of-acls/research', { tech_key: 'bauplanung' });
+  assert.equal(parallel.status, 400, 'Nur eine Forschung gleichzeitig');
+  assert.ok(gated.json.activeResearch && gated.json.activeResearch.remaining_sec > 0, 'Forschung liefert Restzeit');
+
+  const slotsBefore = gated.json.employeeSlots;
+  db.prepare("UPDATE coa_research_queue SET finish_at = datetime('now','-1 minute')").run();
+  st = await get('/api/clash-of-acls/state');
+  assert.equal(st.activeResearch, null, 'Forschung abgeschlossen');
+  assert.equal(st.researchLevels.personalwesen, 1, 'Forschungsstufe eingetragen');
+  assert.equal(st.mods.extraEmployeeSlots, 1, 'Modifikator aktiv (extraEmployeeSlots)');
+  assert.equal(st.employeeSlots, slotsBefore + 1, 'Mitarbeiter-Slots durch Forschung +1');
+  assert.ok(notifs.some(n => n.type === 'coa_research_done'), 'Forschungs-Benachrichtigung erzeugt');
+
+  // Stufe 2 braucht Zentrum-Level 2
+  const gate2 = await post('/api/clash-of-acls/research', { tech_key: 'personalwesen' });
+  assert.equal(gate2.status, 400, 'Stufe 2 ohne Zentrum-Level 2 abgelehnt');
+
+  // Bauzeit-Forschung wirkt auf neue Bauaufträge
+  db.prepare("INSERT INTO coa_research (discord_id, tech_key, level) VALUES (?,'bauplanung',5) ON CONFLICT(discord_id, tech_key) DO UPDATE SET level=5").run(ME.id);
+  const place3 = await post('/api/clash-of-acls/place', { building_key: 'schrottplatz', x: 8, y: 0 });
+  assert.equal(place3.status, 200, 'Platzierung mit Forschungsrabatt ok');
+  const CFG2 = require('../public/js/clash-of-acls-config.js');
+  const baseTime = CFG2.BUILDINGS.schrottplatz.buildTimeSec(1);
+  assert.ok(place3.json.activeBuild.total_sec <= Math.round(baseTime * 0.8) + 1,
+    `Bauzeit um 20 % reduziert (${place3.json.activeBuild.total_sec}s <= ${Math.round(baseTime * 0.8)}s)`);
+  assert.equal(place3.json.mods.buildTimePct, 20, 'mods.buildTimePct = 20 im View');
+
+  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS, inkl. Einsätze + Forschung)');
   finish(0);
 })().catch(e => { console.error('✗ Test fehlgeschlagen:', e.message); finish(1); });
 

@@ -32,10 +32,10 @@
     },
     towyard: {
       label: 'Abschlepphof', icon: '🚨', cat: 'produktion', maxLevel: 12,
-      desc: 'Abschleppaufträge bringen laufend Geld ein.',
+      desc: 'Abschleppaufträge bringen laufend Geld ein — und höhere Level schalten zusätzliche Einsatz-Slots für Missionen frei.',
       cost: lvl => ({ money: round(400 * Math.pow(1.6, lvl - 1)) }),
       buildTimeSec: lvl => Math.min(21600, round(60 * Math.pow(1.45, lvl - 1))),
-      effect: { perHour: lvl => ({ money: 40 * lvl }) },
+      effect: { perHour: lvl => ({ money: 40 * lvl }), missionSlots: lvl => 1 + Math.floor(lvl / 4) },
     },
     garage: {
       label: lvl => (lvl < 5 ? 'Kleine Garage' : 'Große Garage'), icon: '🔧', cat: 'spezial', maxLevel: 10,
@@ -125,6 +125,13 @@
       buildTimeSec: lvl => Math.min(21600, round(65 * Math.pow(1.45, lvl - 1))),
       effect: { sellBonusPct: lvl => lvl * 5 },
     },
+    forschungszentrum: {
+      label: 'Forschungszentrum', icon: '🔬', singleton: true, cat: 'spezial', maxLevel: 10,
+      desc: 'Schaltet den Forschungsbaum frei. Stufe N einer Forschung benötigt Zentrum-Level N — höhere Level forschen außerdem schneller.',
+      cost: lvl => ({ money: round(900 * Math.pow(1.7, lvl - 1)), electronics: round(40 * Math.pow(1.35, lvl - 1)) }),
+      buildTimeSec: lvl => Math.min(28800, round(150 * Math.pow(1.5, lvl - 1))),
+      effect: { researchSpeedPct: lvl => (lvl - 1) * 4 },
+    },
     dekoration: {
       label: 'Dekoration', icon: '🌳', cat: 'deko', maxLevel: 5, cosmetic: true,
       desc: 'Rein kosmetisch — verschönert das Werkstattgelände.',
@@ -154,6 +161,110 @@
     sportwagen: { label: 'Sportwagen', icon: '🏎️', tier: 3, rarity: 'epic', baseValue: 900 },
   };
 
+  // ── Forschungsbaum (Phase 2) ─────────────────────────────────────────────
+  // Stufe n einer Forschung benötigt Forschungszentrum-Level >= n.
+  // `mod` benennt den Eintrag im researchMods()-Objekt, `perLevel` die Wirkung pro Stufe.
+  // Semantik der Prozente: buildTimePct/buildCostPct/manuTimePct = REDUKTION,
+  // capPct/prodPct/vehicleValuePct/missionRewardPct = ERHÖHUNG.
+  const RESEARCH = {
+    bauplanung: {
+      label: 'Bauplanung', icon: '📐', maxLevel: 5, mod: 'buildTimePct', perLevel: 4, unit: '% Bauzeit',
+      desc: 'Optimierte Abläufe — der Bautrupp arbeitet schneller.',
+      cost: lvl => ({ money: round(700 * Math.pow(1.8, lvl - 1)), parts: round(40 * Math.pow(1.4, lvl - 1)) }),
+      timeSec: lvl => round(600 * Math.pow(1.8, lvl - 1)),
+    },
+    einkauf: {
+      label: 'Einkaufsnetzwerk', icon: '🧾', maxLevel: 5, mod: 'buildCostPct', perLevel: 3, unit: '% Baukosten',
+      desc: 'Bessere Lieferantenpreise — Bauen und Ausbauen wird günstiger.',
+      cost: lvl => ({ money: round(800 * Math.pow(1.8, lvl - 1)) }),
+      timeSec: lvl => round(720 * Math.pow(1.8, lvl - 1)),
+    },
+    logistik: {
+      label: 'Lagerlogistik', icon: '📦', maxLevel: 5, mod: 'capPct', perLevel: 6, unit: '% Lagerplatz',
+      desc: 'Cleverere Regalsysteme — alle Lagerkapazitäten steigen.',
+      cost: lvl => ({ money: round(600 * Math.pow(1.8, lvl - 1)), steel: round(60 * Math.pow(1.4, lvl - 1)) }),
+      timeSec: lvl => round(540 * Math.pow(1.8, lvl - 1)),
+    },
+    produktionstechnik: {
+      label: 'Produktionstechnik', icon: '🏭', maxLevel: 5, mod: 'prodPct', perLevel: 4, unit: '% Produktion',
+      desc: 'Modernere Maschinen — alle Gebäude produzieren mehr.',
+      cost: lvl => ({ money: round(900 * Math.pow(1.85, lvl - 1)), electronics: round(30 * Math.pow(1.4, lvl - 1)) }),
+      timeSec: lvl => round(900 * Math.pow(1.85, lvl - 1)),
+    },
+    fliessband: {
+      label: 'Fließbandfertigung', icon: '🛠️', maxLevel: 5, mod: 'manuTimePct', perLevel: 6, unit: '% Fertigungszeit',
+      desc: 'Die Garage fertigt Fahrzeuge deutlich schneller.',
+      cost: lvl => ({ money: round(750 * Math.pow(1.8, lvl - 1)), parts: round(50 * Math.pow(1.4, lvl - 1)) }),
+      timeSec: lvl => round(780 * Math.pow(1.8, lvl - 1)),
+    },
+    motorentechnik: {
+      label: 'Motorentechnik', icon: '🔩', maxLevel: 5, mod: 'vehicleValuePct', perLevel: 4, unit: '% Fahrzeugwert',
+      desc: 'Bessere Technik unter der Haube — neue Fahrzeuge sind mehr wert.',
+      cost: lvl => ({ money: round(850 * Math.pow(1.85, lvl - 1)), electronics: round(40 * Math.pow(1.4, lvl - 1)) }),
+      timeSec: lvl => round(840 * Math.pow(1.85, lvl - 1)),
+    },
+    personalwesen: {
+      label: 'Personalwesen', icon: '🗃️', maxLevel: 3, mod: 'extraEmployeeSlots', perLevel: 1, unit: ' Mitarbeiter-Slot(s)',
+      desc: 'Moderne Personalarbeit — dauerhaft zusätzliche Mitarbeiter-Slots.',
+      cost: lvl => ({ money: round(1200 * Math.pow(2, lvl - 1)) }),
+      timeSec: lvl => round(1200 * Math.pow(2, lvl - 1)),
+    },
+    einsatzleitung: {
+      label: 'Einsatzleitung', icon: '🎧', maxLevel: 5, mod: 'missionRewardPct', perLevel: 5, unit: '% Missionsertrag',
+      desc: 'Professionelle Koordination — Einsätze bringen mehr Belohnung.',
+      cost: lvl => ({ money: round(650 * Math.pow(1.8, lvl - 1)), fuel: round(40 * Math.pow(1.4, lvl - 1)) }),
+      timeSec: lvl => round(600 * Math.pow(1.8, lvl - 1)),
+    },
+  };
+
+  // Aggregiert abgeschlossene Forschungsstufen zu einem Modifikator-Objekt —
+  // wird identisch im Server (Formeln) und im Client (Anzeige) verwendet.
+  const researchMods = (levels) => {
+    const m = { buildTimePct: 0, buildCostPct: 0, capPct: 0, prodPct: 0, manuTimePct: 0, vehicleValuePct: 0, missionRewardPct: 0, extraEmployeeSlots: 0 };
+    Object.entries(levels || {}).forEach(([key, lvl]) => {
+      const t = RESEARCH[key];
+      if (t && lvl > 0) m[t.mod] += t.perLevel * Math.min(lvl, t.maxLevel);
+    });
+    return m;
+  };
+
+  // ── Einsätze / PvE-Missionen (Phase 2) ───────────────────────────────────
+  // Ein Fahrzeug (>= minTier) fährt den Einsatz und ist solange gesperrt.
+  // Slots kommen vom Abschlepphof (effect.missionSlots), Erträge werden durch
+  // die Forschung "Einsatzleitung" erhöht und sind durch die Lager gedeckelt.
+  const MISSIONS = {
+    abschlepp: {
+      label: 'Abschleppauftrag', icon: '🚨', minTier: 1, durationSec: 600,
+      desc: 'Ein Liegenbleiber an der Route 68 muss in die Werkstatt.',
+      rewards: { money: 120, steel: 20 },
+    },
+    motorrep: {
+      label: 'Motorreparatur vor Ort', icon: '⚙️', minTier: 1, durationSec: 1800,
+      desc: 'Motorschaden auf dem Highway — mobiler Einsatz mit Werkzeugkoffer.',
+      rewards: { money: 260, parts: 35 },
+    },
+    vip: {
+      label: 'VIP-Fahrzeug überführen', icon: '⭐', minTier: 2, durationSec: 3600,
+      desc: 'Ein Promi aus Vinewood braucht einen diskreten Transport.',
+      rewards: { money: 550, electronics: 30 },
+    },
+    polizei: {
+      label: 'Polizeiauftrag', icon: '🚓', minTier: 2, durationSec: 7200,
+      desc: 'Das LSPD lässt beschlagnahmte Fahrzeuge zum Verwahrhof bringen.',
+      rewards: { money: 900, steel: 80, parts: 50 },
+    },
+    lkw: {
+      label: 'LKW-Bergung', icon: '🚛', minTier: 3, durationSec: 14400,
+      desc: 'Ein Sattelzug liegt im Graben am Mount Chiliad — schweres Gerät nötig.',
+      rewards: { money: 1800, steel: 160, fuel: 90 },
+    },
+    gross: {
+      label: 'Großauftrag: Flotten-Wartung', icon: '🏭', minTier: 3, durationSec: 28800,
+      desc: 'Eine Spedition lässt ihre komplette Flotte durchchecken.',
+      rewards: { money: 3600, steel: 200, parts: 150, electronics: 80 },
+    },
+  };
+
   // Startkit exakt wie im Auftrag: Büro, Lager, Kleine Garage, Abschlepphof, Tanklager,
   // alle Level 1, in Zeile y=0 platziert (Index < 24 = initial freigeschaltet).
   const STARTER_KIT = [
@@ -164,7 +275,7 @@
     { key: 'tanklager', x: 4, y: 0 },
   ];
 
-  const CONFIG = { GRID, cellIndex, isUnlocked, RESOURCES, BASE_CAP, BUILDINGS, EMPLOYEES, VEHICLES, STARTER_KIT, EMP_MAX_LEVEL, empHireCost, empLevelCost };
+  const CONFIG = { GRID, cellIndex, isUnlocked, RESOURCES, BASE_CAP, BUILDINGS, EMPLOYEES, VEHICLES, RESEARCH, researchMods, MISSIONS, STARTER_KIT, EMP_MAX_LEVEL, empHireCost, empLevelCost };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = CONFIG;
   else root.CLASH_OF_ACLS_CONFIG = CONFIG;
