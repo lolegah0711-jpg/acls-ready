@@ -132,6 +132,13 @@
       buildTimeSec: lvl => Math.min(28800, round(150 * Math.pow(1.5, lvl - 1))),
       effect: { researchSpeedPct: lvl => (lvl - 1) * 4 },
     },
+    sicherheitszentrale: {
+      label: 'Sicherheitszentrale', icon: '🛡️', singleton: true, cat: 'spezial', maxLevel: 10,
+      desc: 'Schaltet den Werkschutz frei: bilde Einheiten aus und überfalle NPC-Banden. Höhere Level erlauben größere Trupps und stärkere Einheiten.',
+      cost: lvl => ({ money: round(850 * Math.pow(1.7, lvl - 1)), steel: round(50 * Math.pow(1.35, lvl - 1)) }),
+      buildTimeSec: lvl => Math.min(28800, round(140 * Math.pow(1.5, lvl - 1))),
+      effect: { unitCap: lvl => 4 + 2 * lvl, unlockedUnitTier: lvl => Math.min(3, Math.ceil(lvl / 3)) },
+    },
     dekoration: {
       label: 'Dekoration', icon: '🌳', cat: 'deko', maxLevel: 5, cosmetic: true,
       desc: 'Rein kosmetisch — verschönert das Werkstattgelände.',
@@ -265,6 +272,73 @@
     },
   };
 
+  // ── Kampfsystem (Phase 4): Werkschutz-Einheiten + NPC-Überfälle ──────────
+  // Einheiten werden in der Sicherheitszentrale ausgebildet (Tier-Gate über
+  // deren Level) und auf Überfälle geschickt. Trupp-Stärke = Summe atk.
+  const UNITS = {
+    wachmann: {
+      label: 'Wachmann', icon: '💂', tier: 1, atk: 10, def: 14, trainTimeSec: 120,
+      cost: { money: 150, parts: 10 },
+      desc: 'Solide Grundeinheit — günstig und schnell ausgebildet.',
+    },
+    wachhund: {
+      label: 'Wachhund', icon: '🐕', tier: 1, atk: 15, def: 8, trainTimeSec: 180,
+      cost: { money: 220, parts: 5 },
+      desc: 'Schnell und bissig — mehr Angriff, aber verwundbar.',
+    },
+    drohne: {
+      label: 'Überwachungsdrohne', icon: '🛸', tier: 2, atk: 26, def: 16, trainTimeSec: 480,
+      cost: { money: 500, electronics: 40 },
+      desc: 'Späht Gegner aus der Luft aus — starker Allrounder.',
+    },
+    sicherheitstruck: {
+      label: 'Sicherheitstruck', icon: '🚔', tier: 3, atk: 55, def: 45, trainTimeSec: 1200,
+      cost: { money: 1200, steel: 120, fuel: 80 },
+      desc: 'Gepanzertes Schwergewicht — das Rückgrat jedes großen Überfalls.',
+    },
+  };
+
+  // NPC-Ziele: power = nötige Trupp-Stärke für gute Chancen, loot = volle Beute bei Sieg.
+  const RAIDS = {
+    schrottdiebe: {
+      label: 'Schrottdiebe-Versteck', icon: '🏚️', power: 30, durationSec: 600, xp: 20,
+      desc: 'Eine kleine Bande klaut nachts Schrott — hol dir die Beute zurück.',
+      loot: { money: 180, steel: 40 },
+    },
+    teileschieber: {
+      label: 'Teileschieber-Lager', icon: '📦', power: 80, durationSec: 1800, xp: 45,
+      desc: 'Gestohlene Ersatzteile stapeln sich in einer Lagerhalle am Hafen.',
+      loot: { money: 380, parts: 60 },
+    },
+    tuner_gang: {
+      label: 'Illegale Tuner-Gang', icon: '🏁', power: 160, durationSec: 3600, xp: 85,
+      desc: 'Straßenrennen-Szene mit teurer Elektronik in der Garage.',
+      loot: { money: 700, electronics: 45 },
+    },
+    benzin_kartell: {
+      label: 'Benzin-Kartell', icon: '🛢️', power: 300, durationSec: 7200, xp: 150,
+      desc: 'Ein Kartell hortet gestohlenen Sprit in Tanklastern.',
+      loot: { money: 1100, fuel: 150, steel: 80 },
+    },
+    chop_shop: {
+      label: 'Chop-Shop der Hehler', icon: '🔪', power: 550, durationSec: 14400, xp: 260,
+      desc: 'Hier werden gestohlene Fahrzeuge zerlegt — volle Lager garantiert.',
+      loot: { money: 2200, steel: 180, parts: 140 },
+    },
+    syndikat: {
+      label: 'Auto-Syndikat-Zentrale', icon: '🏰', power: 900, durationSec: 28800, xp: 450,
+      desc: 'Der Endgegner: das große Syndikat hinter allen Banden der Stadt.',
+      loot: { money: 4500, steel: 250, parts: 200, electronics: 120, fuel: 150 },
+    },
+  };
+
+  // Kampfformeln — identisch für Server (Auflösung) und Client (Chancen-Anzeige).
+  // winChance: Trupp-Stärke gegen Lager-Stärke; lossChance: Risiko PRO Einheit.
+  const COMBAT = {
+    winChance: (atk, power) => Math.max(0.05, Math.min(0.95, (0.75 * atk) / Math.max(1, power))),
+    lossChance: (won, winP) => (won ? 0.08 + 0.22 * (1 - winP) : 0.30 + 0.35 * (1 - winP)),
+  };
+
   // ── Spieler-Level (Phase 3) ──────────────────────────────────────────────
   // xpFor(l) = Gesamt-XP, um Level l zu ERREICHEN. XP kommen aus abgeschlossenen
   // Aktionen (Bau, Fertigung, Verkauf, Einsatz, Forschung, Quests, Erfolge).
@@ -286,6 +360,7 @@
     vehicle: (baseValue) => round(baseValue / 8),
     sell: (price) => round(price / 25),
     research: (sec) => 20 + round(sec / 40),
+    unit: (atk) => 5 + round(atk / 2),
   };
 
   // ── Täglicher Login-Bonus (Phase 3): 7-Tage-Zyklus, skaliert mit Spieler-Level ──
@@ -321,6 +396,7 @@
       forschung: { label: 'Neugierig bleiben', icon: '🔬', desc: 'Schließe {n} Forschung ab', metric: 'research', target: 1, xp: 80, reward: (lvl) => ({ electronics: 30 + 6 * lvl }) },
       personal: { label: 'Guter Chef', icon: '👷', desc: 'Stelle {n} Mitarbeiter ein oder befördere sie', metric: 'employee', target: 2, xp: 50, reward: (lvl) => ({ money: 250 + 50 * lvl }) },
       umsatz: { label: 'Die Kasse klingelt', icon: '💰', desc: 'Verdiene {n} Geld durch Verkäufe & Einsätze', metric: 'earn', target: 1500, xp: 70, reward: (lvl) => ({ money: 350 + 80 * lvl }) },
+      ueberfall: { label: 'Aufräumkommando', icon: '🛡️', desc: 'Schließe {n} Überfälle ab', metric: 'raid', target: 2, xp: 70, reward: (lvl) => ({ money: 300 + 60 * lvl, steel: 30 + 8 * lvl }) },
     },
     weekly: {
       bau: { label: 'Großbaustelle', icon: '🏗️', desc: 'Schließe {n} Bauaufträge ab', metric: 'build', target: 12, xp: 350, reward: (lvl) => ({ money: 1500 + 300 * lvl, steel: 150 + 25 * lvl }) },
@@ -329,6 +405,7 @@
       einsatz: { label: 'Einsatz-Marathon', icon: '🚨', desc: 'Schließe {n} Einsätze ab', metric: 'mission', target: 15, xp: 380, reward: (lvl) => ({ money: 1200 + 250 * lvl, fuel: 200 + 30 * lvl }) },
       forschung: { label: 'Wissensdurst', icon: '🔬', desc: 'Schließe {n} Forschungen ab', metric: 'research', target: 3, xp: 400, reward: (lvl) => ({ electronics: 150 + 25 * lvl, money: 1000 + 200 * lvl }) },
       umsatz: { label: 'Wochenbilanz', icon: '💰', desc: 'Verdiene {n} Geld durch Verkäufe & Einsätze', metric: 'earn', target: 20000, xp: 400, reward: (lvl) => ({ money: 2500 + 500 * lvl }) },
+      ueberfall: { label: 'Banden-Schreck', icon: '🛡️', desc: 'Schließe {n} Überfälle ab', metric: 'raid', target: 10, xp: 380, reward: (lvl) => ({ money: 1500 + 300 * lvl, parts: 120 + 20 * lvl }) },
     },
   };
   const questDesc = (q) => q.desc.replace('{n}', q.target.toLocaleString('de-DE'));
@@ -397,6 +474,12 @@
     streak2: { label: 'Eiserne Routine', icon: '🔥', stat: 'daily_streak', value: 30, xp: 500, money: 3000, desc: 'Hole den Login-Bonus an 30 Tagen in Folge' },
     samml1: { label: 'Sammler I', icon: '🚙', stat: 'vehicle_types', value: 4, xp: 100, money: 500, desc: 'Fertige 4 verschiedene Fahrzeugtypen' },
     samml2: { label: 'Vollsortiment', icon: '🏎️', stat: 'vehicle_types', value: 7, xp: 300, money: 2000, desc: 'Fertige alle 7 Fahrzeugtypen' },
+    kampf1: { label: 'Erster Schlag', icon: '🛡️', stat: 'raids_won', value: 1, xp: 40, money: 200, desc: 'Gewinne deinen ersten Überfall' },
+    kampf2: { label: 'Banden-Jäger I', icon: '🛡️', stat: 'raids_won', value: 10, xp: 120, money: 600, desc: 'Gewinne 10 Überfälle' },
+    kampf3: { label: 'Banden-Jäger II', icon: '⚔️', stat: 'raids_won', value: 30, xp: 250, money: 1500, desc: 'Gewinne 30 Überfälle' },
+    kampf4: { label: 'Stadt-Beschützer', icon: '🦾', stat: 'raids_won', value: 75, xp: 500, money: 4000, desc: 'Gewinne 75 Überfälle' },
+    armee1: { label: 'Kleine Truppe', icon: '💂', stat: 'units_count', value: 5, xp: 60, money: 300, desc: 'Unterhalte 5 Werkschutz-Einheiten gleichzeitig' },
+    armee2: { label: 'Privatarmee', icon: '🚔', stat: 'units_count', value: 12, xp: 200, money: 1200, desc: 'Unterhalte 12 Werkschutz-Einheiten gleichzeitig' },
   };
 
   // Startkit exakt wie im Auftrag: Büro, Lager, Kleine Garage, Abschlepphof, Tanklager,
@@ -413,6 +496,7 @@
     GRID, cellIndex, isUnlocked, RESOURCES, BASE_CAP, BUILDINGS, EMPLOYEES, VEHICLES, RESEARCH, researchMods,
     MISSIONS, STARTER_KIT, EMP_MAX_LEVEL, empHireCost, empLevelCost,
     LEVEL, XP, DAILY_BONUS, QUESTS, questDesc, pickQuests, periodKey, ACHIEVEMENTS,
+    UNITS, RAIDS, COMBAT,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = CONFIG;

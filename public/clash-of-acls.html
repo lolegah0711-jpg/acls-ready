@@ -273,6 +273,7 @@
   <button class="hud-btn" id="dailyBtn" onclick="openSheet('daily')" title="Täglicher Bonus" style="display:none">🎁</button>
   <button class="hud-btn" id="questBtn" onclick="openSheet('quests')" title="Quests">🎯</button>
   <button class="hud-btn" onclick="openSheet('missions')" title="Einsätze">🚨</button>
+  <button class="hud-btn" onclick="openSheet('army')" title="Werkschutz & Überfälle">🛡️</button>
   <button class="hud-btn" onclick="openSheet('emp')" title="Mitarbeiter">👷</button>
   <button class="hud-btn" onclick="openSheet('veh')" title="Fuhrpark">🚗</button>
   <button class="hud-btn" onclick="openSheet('lb')" title="Rangliste">🏆</button>
@@ -329,7 +330,7 @@
   <div class="sh-body" id="shBody"></div>
 </div>
 
-<script src="/js/clash-of-acls-config.js?v=4"></script>
+<script src="/js/clash-of-acls-config.js?v=5"></script>
 <script>
 const CFG = window.CLASH_OF_ACLS_CONFIG;
 const $ = id => document.getElementById(id);
@@ -424,6 +425,12 @@ const BUILD3D = {
     P(16, 16, 68, 68, .3, .5, '#5468b8', { frs: WIN, sds: WIN }),
     P(31, 31, 38, 38, .8, .24, '#8fa8e8', { r: '50%' }),
     P(72, 14, 7, 7, .3, .68, '#c2d0f0'),
+  ] },
+  sicherheitszentrale: { H: 1.0, parts: [
+    P(6, 6, 88, 88, 0, .34, '#4a3f3f', { frs: HAZ }),
+    P(16, 16, 56, 56, .34, .42, '#7a3b3b', { frs: WIN }),
+    P(66, 62, 24, 24, 0, .78, '#5c4848'),
+    P(71, 67, 14, 14, .78, .22, '#c9b5b5'),
   ] },
   dekoration: { H: .92, parts: [
     P(42, 42, 16, 16, 0, .2, '#6b4a2b'),
@@ -608,6 +615,20 @@ function render(d) {
     const fresh = d.achievements.filter(a => a.unlocked && !had.has(a.key));
     if (fresh.length) { fresh.forEach(a => toast(a.icon, 'Erfolg: ' + a.label, a.desc)); SFX.ach(); }
   }
+  // Überfall aufgelöst → Kampfbericht-Toast
+  if (prev && prev.activeRaid && !d.activeRaid && (d.raidReports || []).length) {
+    const rep = d.raidReports[0];
+    const rdef = CFG.RAIDS[rep.raid_key] || {};
+    const lootStr = Object.entries(rep.loot || {}).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' ');
+    if (rep.won) {
+      toast('🏆', 'Überfall gewonnen: ' + (rdef.label || ''), `Beute: ${lootStr}${(rep.lost || []).length ? ` · ${rep.lost.length} Verlust(e)` : ''}`);
+      burstAt(innerWidth / 2, innerHeight / 3, 20);
+      SFX.ach();
+    } else {
+      toast('💥', 'Überfall gescheitert: ' + (rdef.label || ''), `${(rep.lost || []).length} Einheit(en) verloren — stärkerer Trupp nötig!`);
+      SFX.err();
+    }
+  }
 }
 
 function renderHudExtras() {
@@ -765,6 +786,22 @@ function renderJobs() {
     <span class="qi">🚨</span>
     <div style="min-width:0"><div class="qt">${ms.length} ${ms.length > 1 ? 'Einsätze' : 'Einsatz'} unterwegs</div>
     <div class="cd" ${cdAttr(ms[0])}></div></div></div>`);
+  const tr = st.activeTraining;
+  if (tr) {
+    const u = CFG.UNITS[tr.unit_key] || {};
+    parts.push(`<div class="jchip show click" onclick="openSheet('army')">
+      <span class="qi">${u.icon || '💂'}</span>
+      <div style="min-width:0"><div class="qt">${esc(u.label || tr.unit_key)} in Ausbildung</div>
+      <div class="cd" ${cdAttr(tr)}></div>${barHtml(tr)}</div></div>`);
+  }
+  const rd = st.activeRaid;
+  if (rd) {
+    const r = CFG.RAIDS[rd.raid_key] || {};
+    parts.push(`<div class="jchip show click" onclick="openSheet('army')">
+      <span class="qi">🛡️</span>
+      <div style="min-width:0"><div class="qt">Überfall: ${esc(r.label || rd.raid_key)}</div>
+      <div class="cd" ${cdAttr(rd)}></div>${barHtml(rd)}</div></div>`);
+  }
   $('jobs').innerHTML = parts.join('');
   tickProgress(); tickCdEls();
 }
@@ -795,6 +832,8 @@ function statPairs(def, lvl) {
   if (e.vehicleSlots) out.push(['🅿️ Stellplätze', e.vehicleSlots(lvl)]);
   if (e.missionSlots) out.push(['🚨 Einsatz-Slots', e.missionSlots(lvl)]);
   if (e.researchSpeedPct) out.push(['🔬 Forschungstempo', '+' + e.researchSpeedPct(lvl) + '%']);
+  if (e.unitCap) out.push(['💂 Trupp-Kapazität', e.unitCap(lvl)]);
+  if (e.unlockedUnitTier) out.push(['⚔️ Einheiten-Tier', e.unlockedUnitTier(lvl)]);
   return out;
 }
 
@@ -837,6 +876,7 @@ function renderInfoBar() {
   if (b.building_key === 'garage') btns.push(`<button class="mk" onclick="openSheet('manu', ${b.id})">🚗 Fahrzeuge fertigen</button>`);
   if (b.building_key === 'towyard') btns.push(`<button class="mk" onclick="openSheet('missions')">🚨 Einsätze</button>`);
   if (b.building_key === 'forschungszentrum') btns.push(`<button class="mk" onclick="openSheet('research')">🔬 Forschung</button>`);
+  if (b.building_key === 'sicherheitszentrale') btns.push(`<button class="mk" onclick="openSheet('army')">🛡️ Werkschutz & Überfälle</button>`);
   $('iBtns').innerHTML = btns.join('');
 }
 function deselect() {
@@ -875,7 +915,7 @@ function closeSheet() {
   $('sheet').classList.remove('open');
 }
 function renderSheet() {
-  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!' };
+  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!', army:'🛡️ Werkschutz & Überfälle' };
   $('shTitle').textContent = titles[sheetType] || '';
   $('shCats').style.display = sheetType === 'shop' ? 'flex' : 'none';
   if (sheetType === 'shop') renderShop();
@@ -890,6 +930,103 @@ function renderSheet() {
   else if (sheetType === 'profile') renderProfile();
   else if (sheetType === 'daily') renderDaily();
   else if (sheetType === 'offline') renderOffline();
+  else if (sheetType === 'army') renderArmy();
+}
+
+/* ── Werkschutz: Ausbildung, Trupp-Auswahl, Überfälle, Kampfberichte ── */
+let raidSel = new Set();
+function toggleUnitSel(id) {
+  raidSel.has(id) ? raidSel.delete(id) : raidSel.add(id);
+  renderArmy();
+}
+function renderArmy() {
+  const sec = st.security;
+  if (sec.level < 1) {
+    $('shBody').innerHTML = '<div class="muted">🛡️ Baue zuerst eine <b>Sicherheitszentrale</b> (Baumenü → Spezial), um Werkschutz-Einheiten auszubilden und NPC-Banden zu überfallen.</div>';
+    return;
+  }
+  const units = st.units || [];
+  const freeIds = new Set(units.filter(u => !u.raid_id).map(u => u.id));
+  raidSel = new Set([...raidSel].filter(id => freeIds.has(id)));
+  const selAtk = units.reduce((s, u) => s + (raidSel.has(u.id) ? (CFG.UNITS[u.unit_key]?.atk || 0) : 0), 0);
+
+  let html = `<div class="muted">Zentrale Level <b>${sec.level}</b> · Trupp: <b>${units.length}/${sec.unitCap}</b> · Einheiten bis Tier <b>${sec.unlockedUnitTier}</b> — mehr durch Ausbau der Zentrale.</div>`;
+
+  // Laufende Ausbildung
+  if (st.activeTraining) {
+    const u = CFG.UNITS[st.activeTraining.unit_key] || {};
+    html += `<div class="row" style="margin-top:.6rem"><div class="rl"><span class="ric">${u.icon || '💂'}</span><div><div class="rn">${esc(u.label || '')} wird ausgebildet…</div><div class="rd" ${cdAttr(st.activeTraining)}></div></div></div></div>`;
+  }
+
+  // Ausbildung
+  html += '<div style="font-weight:800;margin:.75rem 0 .45rem">💂 Einheiten ausbilden</div>';
+  html += Object.entries(CFG.UNITS).map(([k, u]) => {
+    const locked = u.tier > sec.unlockedUnitTier;
+    const full = units.length >= sec.unitCap;
+    const dis = locked || full || st.activeTraining || !canAfford(u.cost);
+    return `<div class="row" style="${locked ? 'opacity:.45' : ''}"><div class="rl"><span class="ric">${u.icon}</span><div>
+      <div class="rn">${esc(u.label)} <span class="rd">· ⚔️ ${u.atk} · 🛡️ ${u.def} · Tier ${u.tier}</span></div>
+      <div class="rd">${esc(u.desc)}</div>
+      <div class="rd">${costHtml(u.cost)} · ⏱ ${fmtDur(u.trainTimeSec)}${locked ? ' · 🔒 Zentrale Lv ' + (u.tier * 3 - 2) + '+' : ''}</div>
+    </div></div>
+    <button ${dis ? 'disabled' : ''} onclick="train('${k}')">Ausbilden</button></div>`;
+  }).join('');
+
+  // Trupp zusammenstellen
+  html += `<div style="font-weight:800;margin:.75rem 0 .45rem">⚔️ Trupp für den nächsten Überfall <span class="rd" style="font-weight:400">· gewählte Stärke: <b style="color:var(--acc)">⚔️ ${selAtk}</b></span></div>`;
+  if (!units.length) {
+    html += '<div class="muted">Noch keine Einheiten — bilde zuerst welche aus.</div>';
+  } else {
+    html += units.map(u => {
+      const d = CFG.UNITS[u.unit_key] || {};
+      if (u.raid_id) {
+        return `<div class="row" style="opacity:.55"><div class="rl"><span class="ric">${d.icon || '💂'}</span><div><div class="rn">${esc(d.label || u.unit_key)}</div><div class="rd">🛡️ im Einsatz</div></div></div></div>`;
+      }
+      return `<div class="row"><div class="rl"><span class="ric">${d.icon || '💂'}</span><div><div class="rn">${esc(d.label || u.unit_key)}</div><div class="rd">⚔️ ${d.atk} · 🛡️ ${d.def}</div></div></div>
+        <input type="checkbox" style="width:19px;height:19px;accent-color:var(--acc);cursor:pointer" ${raidSel.has(u.id) ? 'checked' : ''} onchange="toggleUnitSel(${u.id})"></div>`;
+    }).join('');
+  }
+
+  // Aktiver Überfall
+  if (st.activeRaid) {
+    const d = CFG.RAIDS[st.activeRaid.raid_key] || {};
+    html += `<div class="row" style="border-color:rgba(249,115,22,.5);margin-top:.7rem"><div class="rl"><span class="ric">${d.icon || '🛡️'}</span><div><div class="rn">Überfall läuft: ${esc(d.label || '')}</div><div class="rd" ${cdAttr(st.activeRaid)}></div></div></div></div>`;
+  }
+
+  // Ziele
+  html += '<div style="font-weight:800;margin:.75rem 0 .45rem">🏴 Ziele</div>';
+  html += Object.entries(CFG.RAIDS).map(([k, d]) => {
+    const p = Math.round(CFG.COMBAT.winChance(selAtk, d.power) * 100);
+    const col = p >= 70 ? 'var(--good)' : p >= 40 ? '#fbbf24' : 'var(--bad)';
+    const loot = Object.entries(d.loot).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' ');
+    const dis = !raidSel.size || st.activeRaid;
+    return `<div class="row" style="flex-wrap:wrap"><div class="rl"><span class="ric">${d.icon}</span><div>
+      <div class="rn">${esc(d.label)} <span class="rd">· Stärke ${d.power} · ⏱ ${fmtDur(d.durationSec)}</span></div>
+      <div class="rd">${esc(d.desc)}</div>
+      <div class="rd">🎁 ${loot} · ✨${d.xp} XP</div>
+    </div></div>
+    <div style="display:flex;gap:.5rem;align-items:center">
+      <span style="font-weight:800;color:${col};font-size:.82rem" title="Siegchance mit gewähltem Trupp">${raidSel.size ? p + ' %' : '—'}</span>
+      <button ${dis ? 'disabled' : ''} onclick="startRaid('${k}')">Angriff</button>
+    </div></div>`;
+  }).join('');
+
+  // Kampfberichte
+  if ((st.raidReports || []).length) {
+    html += '<div style="font-weight:800;margin:.75rem 0 .45rem">📜 Letzte Kampfberichte</div>';
+    html += st.raidReports.map(rep => {
+      const d = CFG.RAIDS[rep.raid_key] || {};
+      const loot = Object.entries(rep.loot || {}).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' ');
+      const lostStr = (rep.lost || []).map(k => CFG.UNITS[k]?.icon || '💂').join('') || 'keine';
+      return `<div class="row" style="border-color:${rep.won ? 'rgba(34,197,94,.4)' : 'rgba(239,68,68,.4)'}"><div class="rl"><span class="ric">${rep.won ? '🏆' : '💥'}</span><div>
+        <div class="rn">${rep.won ? 'Sieg' : 'Niederlage'} — ${esc(d.label || rep.raid_key)}</div>
+        <div class="rd">⚔️ ${rep.atk} vs. ${rep.power} (Chance ${rep.chance} %) · Verluste: ${lostStr}</div>
+        <div class="rd">${rep.won ? `🎁 ${loot} · ` : ''}✨${rep.xp} XP</div>
+      </div></div></div>`;
+    }).join('');
+  }
+  $('shBody').innerHTML = html;
+  tickCdEls();
 }
 
 /* ── Quests: 3 Tages- + 3 Wochen-Aufgaben mit Fortschritt & Belohnung ── */
@@ -955,6 +1092,7 @@ function renderProfile() {
       ${stat('🔬 ' + fmt(s.researches_done), 'Forschungen')}
       ${stat('🏘️ ' + fmt(s.buildings_count), 'Gebäude')}
       ${stat('👷 ' + fmt(s.employees_count), 'Mitarbeiter')}
+      ${stat('🛡️ ' + fmt(s.raids_won) + '/' + fmt(s.raids_done), 'Überfälle gewonnen')}
       ${stat('🔥 ' + fmt(s.daily_streak), 'Login-Serie')}
     </div>
     <div style="font-weight:800;margin:.8rem 0 .5rem">🏆 Erfolge <span class="muted" style="font-weight:400">· ${unlocked}/${st.achievements.length} freigeschaltet</span></div>
@@ -1154,6 +1292,7 @@ function renderHelp() {
     step('🚗', 'Fahrzeuge', 'Tippe die Garage an → „Fahrzeuge": Aus Rohstoffen fertigst du Abschleppwagen bis Sportwagen. Höheres Garagen-Level = schnellere Fertigung und bessere Fahrzeuge. Verkaufen im Fuhrpark (🚗 oben) — Tuningzentrum, Lackiererei und Fahrzeughandel erhöhen den Erlös!') +
     step('🚨', 'Einsätze', 'Schicke deine Fahrzeuge auf Missionen (🚨 oben oder Abschlepphof antippen) — vom 10-Minuten-Abschleppauftrag bis zur 8-Stunden-Flottenwartung. Das Fahrzeug ist solange unterwegs, dafür gibt es Geld und Material. Der Abschlepphof schaltet mit höherem Level mehr gleichzeitige Einsätze frei.') +
     step('🔬', 'Forschung', 'Baue das Forschungszentrum und erforsche dauerhafte Boni: schnelleres Bauen, größere Lager, billigere Ausbauten, mehr Produktion und bessere Missionserträge. Stufe N braucht Zentrum-Level N, und es läuft immer eine Forschung gleichzeitig.') +
+    step('🛡️', 'Werkschutz & Überfälle', 'Die Sicherheitszentrale schaltet den Kampf frei: Bilde Wachmänner, Wachhunde, Drohnen und Sicherheitstrucks aus und überfalle NPC-Banden — vom Schrottdiebe-Versteck bis zur Syndikat-Zentrale. Je stärker dein Trupp, desto höher die Siegchance (wird live angezeigt). Sieg bringt fette Beute, aber Vorsicht: Einheiten können fallen! Jeder Kampf landet im Kampfbericht.') +
     step('⭐', 'Level & XP', 'Fast alles gibt Erfahrungspunkte: Bauen, Fertigen, Verkaufen, Einsätze, Forschung. Mit jedem Level-Aufstieg gibt es eine Belohnung und einen neuen Titel — dein Fortschritt steckt im ⭐-Chip oben links (antippen = Profil mit Statistiken und allen Erfolgen).') +
     step('🎯', 'Quests & Erfolge', 'Jeden Tag warten 3 Tages-Quests, jede Woche 3 Wochen-Quests (🎯 oben) — abschließen, abholen, kassieren. Dazu gibt es über 40 Erfolge mit XP- und Geld-Belohnungen im Profil.') +
     step('🎁', 'Täglicher Bonus', 'Einmal am Tag wartet ein Login-Bonus (🎁 oben). Wer an 7 Tagen in Folge abholt, knackt den Jackpot — die Beträge wachsen mit deinem Level. Verpasst du einen Tag, startet die Serie neu.') +
@@ -1221,6 +1360,16 @@ async function startMission(key) {
   try { const d = await api('/api/clash-of-acls/mission', { method:'POST', body:{ mission_key: key, vehicle_id: vid } }); msg('Einsatz gestartet!', true); render(d); } catch (e) { msg(e.message); }
 }
 async function research(key) { try { const d = await api('/api/clash-of-acls/research', { method:'POST', body:{ tech_key: key } }); msg('Forschung gestartet!', true); render(d); } catch (e) { msg(e.message); } }
+async function train(key) { try { const d = await api('/api/clash-of-acls/train', { method:'POST', body:{ unit_key: key } }); msg('Ausbildung gestartet!', true); render(d); } catch (e) { msg(e.message); } }
+async function startRaid(key) {
+  if (!raidSel.size) return msg('Wähle zuerst Einheiten für den Trupp');
+  try {
+    const d = await api('/api/clash-of-acls/raid', { method:'POST', body:{ raid_key: key, unit_ids: [...raidSel] } });
+    raidSel.clear();
+    msg('Überfall gestartet — der Trupp ist unterwegs!', true);
+    render(d);
+  } catch (e) { msg(e.message); }
+}
 
 /* ── Ticker ── */
 let reloadPending = false;
@@ -1235,6 +1384,8 @@ setInterval(() => {
   tickProgress(); tickCdEls();
   const due = (st.activeBuild && jobLeft(st.activeBuild) <= 0)
     || (st.activeResearch && jobLeft(st.activeResearch) <= 0)
+    || (st.activeTraining && jobLeft(st.activeTraining) <= 0)
+    || (st.activeRaid && jobLeft(st.activeRaid) <= 0)
     || (st.activeManufacture || []).some(m => jobLeft(m) <= 0)
     || (st.activeMissions || []).some(m => jobLeft(m) <= 0);
   if (due && !reloadPending) { reloadPending = true; load().finally(() => { reloadPending = false; }); }

@@ -51,6 +51,11 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     const c = buildings.find((b) => b.building_key === 'forschungszentrum');
     return c ? c.level : 0;
   }
+  function securityLevel(buildings) {
+    const c = buildings.find((b) => b.building_key === 'sicherheitszentrale');
+    return c ? c.level : 0;
+  }
+  const getUnits = (discordId) => db.prepare('SELECT id, unit_key, raid_id FROM coa_units WHERE discord_id = ?').all(discordId);
   // Einsatz-Slots: bestes (höchstes) Abschlepphof-Level zählt, nicht die Summe.
   function missionSlots(buildings) {
     let best = 0;
@@ -217,6 +222,7 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       employees_count: db.prepare('SELECT COUNT(*) AS c FROM coa_employees WHERE discord_id = ?').get(discordId).c,
       vehicle_types: db.prepare('SELECT COUNT(DISTINCT vehicle_key) AS c FROM coa_vehicles WHERE discord_id = ?').get(discordId).c,
       research_total: db.prepare('SELECT COALESCE(SUM(level),0) AS s FROM coa_research WHERE discord_id = ?').get(discordId).s,
+      units_count: db.prepare('SELECT COUNT(*) AS c FROM coa_units WHERE discord_id = ?').get(discordId).c,
     };
   }
 
@@ -318,6 +324,62 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     queueNotification('coa_mission_done', m.discord_id, { mission: def.label });
   }
 
+  // Ausbildung abgeschlossen: Einheit in die Truppe übernehmen.
+  function finalizeOneTraining(q) {
+    const u = CFG.UNITS[q.unit_key];
+    db.transaction(() => {
+      db.prepare('INSERT INTO coa_units (discord_id, unit_key) VALUES (?,?)').run(q.discord_id, q.unit_key);
+      db.prepare('DELETE FROM coa_unit_queue WHERE id = ?').run(q.id);
+    })();
+    if (u) {
+      grantXp(q.discord_id, CFG.XP.unit(u.atk));
+      checkAchievements(q.discord_id);
+      createNotif(q.discord_id, 'coa_build_done', { kind: 'unit', unit: u.label });
+      queueNotification('coa_build_done', q.discord_id, { kind: 'unit', unit: u.label });
+    }
+  }
+
+  // Überfall auflösen: Sieg würfeln (Trupp-Stärke vs. Lager-Stärke), Verluste pro
+  // Einheit würfeln, Beute/XP gutschreiben und den Kampfbericht dauerhaft ablegen.
+  function finalizeOneRaid(r) {
+    const def = CFG.RAIDS[r.raid_key];
+    const units = db.prepare('SELECT * FROM coa_units WHERE raid_id = ?').all(r.id);
+    if (!def) {
+      db.transaction(() => {
+        db.prepare('UPDATE coa_units SET raid_id = NULL WHERE raid_id = ?').run(r.id);
+        db.prepare('DELETE FROM coa_raids WHERE id = ?').run(r.id);
+      })();
+      return;
+    }
+    const atk = units.reduce((s, u) => s + (CFG.UNITS[u.unit_key]?.atk || 0), 0);
+    const winP = CFG.COMBAT.winChance(atk, def.power);
+    const won = Math.random() < winP;
+    const lossP = CFG.COMBAT.lossChance(won, winP);
+    const lost = [], survivors = [];
+    units.forEach((u) => (Math.random() < lossP ? lost : survivors).push(u));
+    // Ein Sieg löscht nie den ganzen Trupp aus — eine Einheit humpelt immer zurück.
+    if (won && !survivors.length && lost.length) survivors.push(lost.pop());
+    const loot = won ? def.loot : {};
+    const xpGain = won ? def.xp : Math.ceil(def.xp / 2);
+    const result = {
+      won, chance: Math.round(winP * 100), atk, power: def.power,
+      loot, lost: lost.map((u) => u.unit_key), survivors: survivors.length, xp: xpGain,
+    };
+    db.transaction(() => {
+      lost.forEach((u) => db.prepare('DELETE FROM coa_units WHERE id = ?').run(u.id));
+      db.prepare('UPDATE coa_units SET raid_id = NULL WHERE raid_id = ?').run(r.id);
+      if (won) grantResources(r.discord_id, loot);
+      db.prepare(`UPDATE coa_state SET raids_done = raids_done + 1${won ? ', raids_won = raids_won + 1' : ''} WHERE discord_id = ?`).run(r.discord_id);
+      db.prepare("UPDATE coa_raids SET resolved_at = datetime('now'), result = ? WHERE id = ?").run(JSON.stringify(result), r.id);
+    })();
+    grantXp(r.discord_id, xpGain);
+    questInc(r.discord_id, 'raid');
+    if (won && loot.money) questInc(r.discord_id, 'earn', loot.money);
+    checkAchievements(r.discord_id);
+    createNotif(r.discord_id, 'coa_raid_done', { raid: def.label, won, money: loot.money || 0, lost: lost.length });
+    queueNotification('coa_raid_done', r.discord_id, { raid: def.label, won });
+  }
+
   // Wird pro Request UND von einem minütlichen Cron-Sweep in server.js aufgerufen,
   // damit fällige Aufträge auch abgeschlossen werden, wenn der Spieler offline ist.
   function finalizeDueForAll() {
@@ -333,6 +395,8 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       finalizeOneManufacture(q, b, e, m);
     });
     db.prepare("SELECT * FROM coa_missions WHERE finish_at <= datetime('now')").all().forEach(finalizeOneMission);
+    db.prepare("SELECT * FROM coa_unit_queue WHERE finish_at <= datetime('now')").all().forEach(finalizeOneTraining);
+    db.prepare("SELECT * FROM coa_raids WHERE resolved_at IS NULL AND finish_at <= datetime('now')").all().forEach(finalizeOneRaid);
   }
 
   function canAfford(state, cost) {
@@ -393,6 +457,25 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       FROM coa_missions m JOIN coa_vehicles v ON v.id = m.vehicle_id
       WHERE m.discord_id = ? ORDER BY m.finish_at ASC
     `).all(ident.id);
+    // ── Phase 4: Werkschutz & Überfälle ──
+    const secLvl = securityLevel(buildings);
+    const units = getUnits(ident.id);
+    const activeTraining = db.prepare(`
+      SELECT *,
+        CAST(strftime('%s', finish_at) AS INTEGER) - CAST(strftime('%s', 'now') AS INTEGER)      AS remaining_sec,
+        CAST(strftime('%s', finish_at) AS INTEGER) - CAST(strftime('%s', started_at) AS INTEGER) AS total_sec
+      FROM coa_unit_queue WHERE discord_id = ?
+    `).get(ident.id) || null;
+    const activeRaid = db.prepare(`
+      SELECT id, raid_key,
+        CAST(strftime('%s', finish_at) AS INTEGER) - CAST(strftime('%s', 'now') AS INTEGER)      AS remaining_sec,
+        CAST(strftime('%s', finish_at) AS INTEGER) - CAST(strftime('%s', started_at) AS INTEGER) AS total_sec
+      FROM coa_raids WHERE discord_id = ? AND resolved_at IS NULL
+    `).get(ident.id) || null;
+    const raidReports = db.prepare(`
+      SELECT raid_key, result, resolved_at FROM coa_raids
+      WHERE discord_id = ? AND resolved_at IS NOT NULL ORDER BY resolved_at DESC LIMIT 6
+    `).all(ident.id).map((r) => { let res = {}; try { res = JSON.parse(r.result || '{}'); } catch {} return { raid_key: r.raid_key, ...res }; });
     // ── Phase 3: Progression, Daily-Bonus, Quests, Erfolge, Statistiken ──
     const level = state.level, xp = state.xp;
     const today = CFG.periodKey('daily');
@@ -437,6 +520,15 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       activeManufacture,
       activeResearch,
       activeMissions,
+      security: {
+        level: secLvl,
+        unitCap: secLvl >= 1 ? CFG.BUILDINGS.sicherheitszentrale.effect.unitCap(secLvl) : 0,
+        unlockedUnitTier: secLvl >= 1 ? CFG.BUILDINGS.sicherheitszentrale.effect.unlockedUnitTier(secLvl) : 0,
+      },
+      units,
+      activeTraining,
+      activeRaid,
+      raidReports,
       offline,
       progression: {
         xp, level,
@@ -462,6 +554,7 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
         missions_done: ctx.missions_done, researches_done: ctx.researches_done, total_earned: ctx.total_earned,
         buildings_count: ctx.buildings_count, employees_count: ctx.employees_count,
         vehicle_types: ctx.vehicle_types, research_total: ctx.research_total, daily_streak: ctx.daily_streak,
+        raids_done: ctx.raids_done, raids_won: ctx.raids_won, units_count: ctx.units_count,
       },
     };
   }
@@ -724,6 +817,67 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     db.prepare(`UPDATE ${table} SET finish_at = datetime('now') WHERE id = ?`).run(q.id);
     finalizeDueForAll();
     res.json({ ok: true, cost, ...buildView(ident) });
+  });
+
+  // ── Einheit ausbilden (Sicherheitszentrale, eine Ausbildung gleichzeitig) ──
+  router.post('/api/clash-of-acls/train', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    const { unit_key } = req.body || {};
+    const u = CFG.UNITS[unit_key];
+    if (!u) return res.status(400).json({ error: 'Unbekannte Einheit' });
+    const buildings = getBuildings(ident.id);
+    const secLvl = securityLevel(buildings);
+    if (secLvl < 1) return res.status(400).json({ error: 'Du brauchst zuerst eine Sicherheitszentrale' });
+    const def = CFG.BUILDINGS.sicherheitszentrale;
+    if (u.tier > def.effect.unlockedUnitTier(secLvl)) {
+      return res.status(400).json({ error: `Tier-${u.tier}-Einheiten brauchen Zentrale-Level ${u.tier * 3 - 2}` });
+    }
+    if (db.prepare('SELECT 1 FROM coa_unit_queue WHERE discord_id = ?').get(ident.id)) {
+      return res.status(400).json({ error: 'Es wird bereits eine Einheit ausgebildet' });
+    }
+    const count = db.prepare('SELECT COUNT(*) AS c FROM coa_units WHERE discord_id = ?').get(ident.id).c;
+    if (count >= def.effect.unitCap(secLvl)) {
+      return res.status(400).json({ error: 'Trupp voll — Sicherheitszentrale ausbauen für mehr Kapazität' });
+    }
+    const state = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
+    if (!canAfford(state, u.cost)) return res.status(400).json({ error: 'Nicht genug Ressourcen' });
+    db.transaction(() => {
+      deduct(ident.id, state, u.cost);
+      const finishAt = toSqliteUTC(Date.now() + u.trainTimeSec * 1000);
+      db.prepare('INSERT INTO coa_unit_queue (discord_id, unit_key, finish_at) VALUES (?,?,?)').run(ident.id, unit_key, finishAt);
+    })();
+    res.json({ ok: true, ...buildView(ident) });
+  });
+
+  // ── Überfall starten: gewählte Einheiten sind für die Dauer gebunden ──
+  router.post('/api/clash-of-acls/raid', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    const { raid_key } = req.body || {};
+    const unitIds = Array.isArray(req.body?.unit_ids) ? req.body.unit_ids.map(Number).filter(Number.isInteger) : [];
+    const def = CFG.RAIDS[raid_key];
+    if (!def) return res.status(400).json({ error: 'Unbekanntes Ziel' });
+    if (securityLevel(getBuildings(ident.id)) < 1) {
+      return res.status(400).json({ error: 'Du brauchst eine fertige Sicherheitszentrale für Überfälle' });
+    }
+    if (!unitIds.length || unitIds.length > 50) return res.status(400).json({ error: 'Wähle mindestens eine Einheit' });
+    if (db.prepare('SELECT 1 FROM coa_raids WHERE discord_id = ? AND resolved_at IS NULL').get(ident.id)) {
+      return res.status(400).json({ error: 'Ein Überfall läuft bereits' });
+    }
+    const ph = unitIds.map(() => '?').join(',');
+    const units = db.prepare(`SELECT * FROM coa_units WHERE discord_id = ? AND raid_id IS NULL AND id IN (${ph})`).all(ident.id, ...unitIds);
+    if (units.length !== new Set(unitIds).size) return res.status(400).json({ error: 'Einheit nicht verfügbar' });
+    db.transaction(() => {
+      const finishAt = toSqliteUTC(Date.now() + def.durationSec * 1000);
+      const raid = db.prepare('INSERT INTO coa_raids (discord_id, raid_key, finish_at) VALUES (?,?,?)').run(ident.id, raid_key, finishAt);
+      db.prepare(`UPDATE coa_units SET raid_id = ? WHERE id IN (${ph})`).run(raid.lastInsertRowid, ...unitIds);
+    })();
+    res.json({ ok: true, ...buildView(ident) });
   });
 
   // ── Täglicher Login-Bonus: 7-Tage-Zyklus, Streak bricht nach einem Fehltag ──

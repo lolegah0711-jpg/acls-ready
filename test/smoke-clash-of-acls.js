@@ -283,7 +283,66 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   const h4 = await post('/api/clash-of-acls/hire', { emp_type: 'azubi' });
   assert.equal(h4.status, 400, 'Vierter Hire ohne freien Slot abgelehnt');
 
-  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS, inkl. Einsätze + Forschung + Progression)');
+  // ══ Phase 4: Kampfsystem (Werkschutz + Überfälle) ══════════
+  const noCenterTrain = await post('/api/clash-of-acls/train', { unit_key: 'wachmann' });
+  assert.equal(noCenterTrain.status, 400, 'Ausbildung ohne Sicherheitszentrale abgelehnt');
+  // Zentrale direkt in die DB legen (Bauzeit überspringen), Level 4 → Tier 2, Kapazität 12
+  db.prepare("INSERT INTO coa_buildings (discord_id, building_key, x, y, level) VALUES (?,?,9,0,4)").run(ME.id, 'sicherheitszentrale');
+  db.prepare('UPDATE coa_state SET money=999999, steel=9999, parts=9999, electronics=9999, fuel=9999 WHERE discord_id=?').run(ME.id);
+
+  const badTier = await post('/api/clash-of-acls/train', { unit_key: 'sicherheitstruck' });
+  assert.equal(badTier.status, 400, 'Tier-3-Einheit mit Zentrale-Level 4 abgelehnt');
+  const t1 = await post('/api/clash-of-acls/train', { unit_key: 'wachmann' });
+  assert.equal(t1.status, 200, 'Ausbildung gestartet: ' + JSON.stringify(t1.json.error || ''));
+  assert.ok(t1.json.activeTraining && t1.json.activeTraining.remaining_sec > 0, 'Ausbildung liefert Restzeit');
+  const t2 = await post('/api/clash-of-acls/train', { unit_key: 'wachmann' });
+  assert.equal(t2.status, 400, 'Nur eine Ausbildung gleichzeitig');
+  db.prepare("UPDATE coa_unit_queue SET finish_at = datetime('now','-1 minute')").run();
+  st = await get('/api/clash-of-acls/state');
+  assert.equal(st.units.length, 1, 'Einheit nach Ausbildung im Trupp');
+  assert.equal(st.security.unitCap, 12, 'Zentrale Level 4 = 12 Kapazität');
+  assert.equal(st.security.unlockedUnitTier, 2, 'Zentrale Level 4 = Tier 2');
+
+  // Zwei weitere Einheiten für den Überfall ausbilden
+  for (const k of ['wachhund', 'drohne']) {
+    const t = await post('/api/clash-of-acls/train', { unit_key: k });
+    assert.equal(t.status, 200, `Ausbildung ${k} ok`);
+    db.prepare("UPDATE coa_unit_queue SET finish_at = datetime('now','-1 minute')").run();
+    await get('/api/clash-of-acls/state');
+  }
+  st = await get('/api/clash-of-acls/state');
+  assert.equal(st.units.length, 3, '3 Einheiten im Trupp');
+
+  const noUnits = await post('/api/clash-of-acls/raid', { raid_key: 'schrottdiebe', unit_ids: [] });
+  assert.equal(noUnits.status, 400, 'Überfall ohne Einheiten abgelehnt');
+  const foreign = await post('/api/clash-of-acls/raid', { raid_key: 'schrottdiebe', unit_ids: [999999] });
+  assert.equal(foreign.status, 400, 'Überfall mit fremder/unbekannter Einheit abgelehnt');
+  const ids = st.units.map(u => u.id);
+  const r1 = await post('/api/clash-of-acls/raid', { raid_key: 'schrottdiebe', unit_ids: ids });
+  assert.equal(r1.status, 200, 'Überfall gestartet: ' + JSON.stringify(r1.json.error || ''));
+  assert.ok(r1.json.activeRaid && r1.json.activeRaid.remaining_sec > 0, 'Überfall liefert Restzeit');
+  assert.ok(r1.json.units.every(u => u.raid_id), 'Einheiten als gebunden markiert');
+  const r2 = await post('/api/clash-of-acls/raid', { raid_key: 'schrottdiebe', unit_ids: ids });
+  assert.equal(r2.status, 400, 'Nur ein Überfall gleichzeitig (und Einheiten gebunden)');
+
+  // Auflösen: 51 atk vs. 30 power → 95 % Siegchance (praktisch sicher, aber RNG-tolerant prüfen)
+  db.prepare("UPDATE coa_raids SET finish_at = datetime('now','-1 minute') WHERE resolved_at IS NULL").run();
+  st = await get('/api/clash-of-acls/state');
+  assert.equal(st.activeRaid, null, 'Überfall aufgelöst');
+  assert.equal(st.raidReports.length, 1, 'Kampfbericht abgelegt');
+  const rep = st.raidReports[0];
+  assert.ok(typeof rep.won === 'boolean' && rep.atk === 51 && rep.power === 30, 'Kampfbericht enthält Stärken: ' + JSON.stringify(rep));
+  assert.ok(rep.chance === 95, 'Siegchance korrekt berechnet (95 %)');
+  assert.equal(st.stats.raids_done, 1, 'Überfall-Zähler erhöht');
+  if (rep.won) {
+    assert.ok(rep.loot.money > 0, 'Beute im Bericht');
+    assert.equal(st.stats.raids_won, 1, 'Sieg-Zähler erhöht');
+    assert.ok(st.achievements.find(a => a.key === 'kampf1')?.unlocked, 'Erfolg „Erster Schlag" freigeschaltet');
+  }
+  assert.ok(st.units.every(u => !u.raid_id), 'Überlebende Einheiten wieder frei');
+  assert.ok(notifs.some(n => n.type === 'coa_raid_done'), 'Überfall-Benachrichtigung erzeugt');
+
+  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem)');
   finish(0);
 })().catch(e => { console.error('✗ Test fehlgeschlagen:', e.message); finish(1); });
 

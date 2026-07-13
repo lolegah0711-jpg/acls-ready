@@ -870,6 +870,41 @@ function initDb() {
     'upgrades_done INTEGER NOT NULL DEFAULT 0',
     'researches_done INTEGER NOT NULL DEFAULT 0',
   ].forEach((col) => { try { db.exec(`ALTER TABLE coa_state ADD COLUMN ${col}`); } catch {} });
+  // ── Clash of ACLS Phase 4: Kampfsystem (Werkschutz-Einheiten + NPC-Überfälle) ──
+  [
+    'raids_done INTEGER NOT NULL DEFAULT 0',
+    'raids_won INTEGER NOT NULL DEFAULT 0',
+  ].forEach((col) => { try { db.exec(`ALTER TABLE coa_state ADD COLUMN ${col}`); } catch {} });
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coa_units (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id TEXT NOT NULL,
+      unit_key   TEXT NOT NULL,
+      raid_id    INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_units_did ON coa_units(discord_id);
+    CREATE TABLE IF NOT EXISTS coa_unit_queue (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id TEXT NOT NULL UNIQUE,
+      unit_key   TEXT NOT NULL,
+      started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finish_at  DATETIME NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_uq_finish ON coa_unit_queue(finish_at);
+    CREATE TABLE IF NOT EXISTS coa_raids (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      discord_id  TEXT NOT NULL,
+      raid_key    TEXT NOT NULL,
+      started_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finish_at   DATETIME NOT NULL,
+      resolved_at DATETIME,
+      result      TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_raids_finish ON coa_raids(resolved_at, finish_at);
+    CREATE INDEX IF NOT EXISTS idx_coa_raids_did ON coa_raids(discord_id);
+  `);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS coa_quests (
       discord_id TEXT NOT NULL,

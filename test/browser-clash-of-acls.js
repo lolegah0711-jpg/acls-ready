@@ -89,7 +89,33 @@ const B = 'http://localhost:4013';
   const iName = await page.locator('#iName').innerText();
   iName.includes('Büro') ? ok('Info-Panel: ' + iName) : fail('Info-Panel: ' + iName);
 
-  // 8) Himmel/Wolken vorhanden, keine JS-Fehler
+  // 8) Werkschutz-Sheet (ohne Zentrale → Hinweis)
+  await page.click('button[title="Werkschutz & Überfälle"]');
+  await page.waitForSelector('#sheet.open', { timeout: 5000 });
+  const armyBody = await page.locator('#shBody').innerText();
+  armyBody.includes('Sicherheitszentrale') ? ok('Werkschutz-Sheet zeigt Freischalt-Hinweis') : fail('Werkschutz-Sheet: ' + armyBody.slice(0, 80));
+  await page.click('.sh-close');
+
+  // 9) Kompletter Kampf-Flow: Zentrale + Einheiten seeden, Trupp wählen, Angriff
+  db.prepare("INSERT INTO coa_buildings (discord_id, building_key, x, y, level) VALUES (?, 'sicherheitszentrale', 9, 0, 3)").run(ME.id);
+  db.prepare("INSERT INTO coa_units (discord_id, unit_key) VALUES (?, 'wachmann'), (?, 'wachmann'), (?, 'wachhund')").run(ME.id, ME.id, ME.id);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('button[title="Werkschutz & Überfälle"]');
+  await page.waitForSelector('#shBody input[type="checkbox"]', { timeout: 5000 });
+  const boxes = await page.locator('#shBody input[type="checkbox"]').count();
+  boxes === 3 ? ok('3 Einheiten wählbar') : fail('Checkboxen: ' + boxes);
+  for (let i = 0; i < 3; i++) await page.locator('#shBody input[type="checkbox"]').nth(i).check();
+  await page.waitForFunction(() => document.querySelector('#shBody').innerText.includes('⚔️ 35'), null, { timeout: 5000 });
+  ok('Trupp-Stärke 35 (10+10+15) live angezeigt');
+  const chanceTxt = await page.locator('#shBody').innerText();
+  chanceTxt.includes('88 %') ? ok('Siegchance 88 % gegen Schrottdiebe angezeigt') : fail('Chance nicht gefunden');
+  await page.locator('#shBody button:has-text("Angriff")').first().click();
+  await page.waitForFunction(() => st && st.activeRaid, null, { timeout: 5000 });
+  ok('Überfall gestartet (activeRaid gesetzt)');
+  await page.click('.sh-close');
+  (await page.locator('#jobs .jchip').count()) >= 1 ? ok('Überfall-Job-Chip sichtbar') : fail('Job-Chip fehlt');
+
+  // 10) Himmel/Wolken vorhanden, keine JS-Fehler
   (await page.locator('.cloud').count()) === 3 ? ok('3 Wolken am Himmel') : fail('Wolken fehlen');
   await page.screenshot({ path: path.join(os.tmpdir(), 'coa-phase3.png') });
   console.log('  Screenshot: ' + path.join(os.tmpdir(), 'coa-phase3.png'));
