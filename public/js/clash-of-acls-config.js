@@ -234,35 +234,169 @@
   // die Forschung "Einsatzleitung" erhöht und sind durch die Lager gedeckelt.
   const MISSIONS = {
     abschlepp: {
-      label: 'Abschleppauftrag', icon: '🚨', minTier: 1, durationSec: 600,
+      label: 'Abschleppauftrag', icon: '🚨', minTier: 1, durationSec: 600, xp: 15,
       desc: 'Ein Liegenbleiber an der Route 68 muss in die Werkstatt.',
       rewards: { money: 120, steel: 20 },
     },
     motorrep: {
-      label: 'Motorreparatur vor Ort', icon: '⚙️', minTier: 1, durationSec: 1800,
+      label: 'Motorreparatur vor Ort', icon: '⚙️', minTier: 1, durationSec: 1800, xp: 35,
       desc: 'Motorschaden auf dem Highway — mobiler Einsatz mit Werkzeugkoffer.',
       rewards: { money: 260, parts: 35 },
     },
     vip: {
-      label: 'VIP-Fahrzeug überführen', icon: '⭐', minTier: 2, durationSec: 3600,
+      label: 'VIP-Fahrzeug überführen', icon: '⭐', minTier: 2, durationSec: 3600, xp: 70,
       desc: 'Ein Promi aus Vinewood braucht einen diskreten Transport.',
       rewards: { money: 550, electronics: 30 },
     },
     polizei: {
-      label: 'Polizeiauftrag', icon: '🚓', minTier: 2, durationSec: 7200,
+      label: 'Polizeiauftrag', icon: '🚓', minTier: 2, durationSec: 7200, xp: 120,
       desc: 'Das LSPD lässt beschlagnahmte Fahrzeuge zum Verwahrhof bringen.',
       rewards: { money: 900, steel: 80, parts: 50 },
     },
     lkw: {
-      label: 'LKW-Bergung', icon: '🚛', minTier: 3, durationSec: 14400,
+      label: 'LKW-Bergung', icon: '🚛', minTier: 3, durationSec: 14400, xp: 220,
       desc: 'Ein Sattelzug liegt im Graben am Mount Chiliad — schweres Gerät nötig.',
       rewards: { money: 1800, steel: 160, fuel: 90 },
     },
     gross: {
-      label: 'Großauftrag: Flotten-Wartung', icon: '🏭', minTier: 3, durationSec: 28800,
+      label: 'Großauftrag: Flotten-Wartung', icon: '🏭', minTier: 3, durationSec: 28800, xp: 400,
       desc: 'Eine Spedition lässt ihre komplette Flotte durchchecken.',
       rewards: { money: 3600, steel: 200, parts: 150, electronics: 80 },
     },
+  };
+
+  // ── Spieler-Level (Phase 3) ──────────────────────────────────────────────
+  // xpFor(l) = Gesamt-XP, um Level l zu ERREICHEN. XP kommen aus abgeschlossenen
+  // Aktionen (Bau, Fertigung, Verkauf, Einsatz, Forschung, Quests, Erfolge).
+  const LEVEL = {
+    maxLevel: 60,
+    xpFor: (lvl) => round(100 * Math.pow(Math.max(0, lvl - 1), 1.75)),
+    fromXp(xp) { let l = 1; while (l < this.maxLevel && xp >= this.xpFor(l + 1)) l++; return l; },
+    reward: (lvl) => ({ money: 150 * lvl, steel: 20 * lvl, parts: 15 * lvl, electronics: 10 * lvl, fuel: 12 * lvl }),
+    titles: [
+      [1, 'Schrauber-Lehrling'], [3, 'Hobbyschrauber'], [5, 'Geselle'], [8, 'Mechaniker'],
+      [12, 'Werkstattleiter'], [16, 'KFZ-Meister'], [20, 'Unternehmer'], [25, 'Flotten-Boss'],
+      [30, 'Auto-Tycoon'], [40, 'Werkstatt-Legende'], [50, 'ACLS-Ikone'],
+    ],
+    title(lvl) { let t = this.titles[0][1]; this.titles.forEach(([l, name]) => { if (lvl >= l) t = name; }); return t; },
+  };
+  // XP-Formeln pro Aktionstyp (Basis: nominelle Dauer/Wert, unabhängig von Forschungsrabatten)
+  const XP = {
+    build: (sec) => 10 + round(sec / 30),
+    vehicle: (baseValue) => round(baseValue / 8),
+    sell: (price) => round(price / 25),
+    research: (sec) => 20 + round(sec / 40),
+  };
+
+  // ── Täglicher Login-Bonus (Phase 3): 7-Tage-Zyklus, skaliert mit Spieler-Level ──
+  const DAILY_BONUS = {
+    cycleDays: 7,
+    scale: (level) => 1 + 0.2 * (Math.max(1, level) - 1),
+    days: [
+      { money: 300 },
+      { money: 400, steel: 40 },
+      { money: 550, parts: 40 },
+      { money: 700, electronics: 30 },
+      { money: 900, fuel: 60 },
+      { money: 1200, steel: 60, parts: 50 },
+      { money: 2500, steel: 120, parts: 90, electronics: 60, fuel: 90 },
+    ],
+    xp: (day) => 15 * day,
+    rewards(day, level) {
+      const s = this.scale(level);
+      const base = this.days[(day - 1) % this.cycleDays];
+      return Object.fromEntries(Object.entries(base).map(([r, v]) => [r, round(v * s)]));
+    },
+  };
+
+  // ── Quests (Phase 3): pro Tag/Woche werden 3 Aufgaben aus dem Pool gelost ──
+  // metric = Zähler, den der Server bei der passenden Aktion erhöht.
+  // reward(level) skaliert mit dem Spieler-Level, XP sind fix.
+  const QUESTS = {
+    daily: {
+      bau: { label: 'Fleißiger Bauherr', icon: '🏗️', desc: 'Schließe {n} Bauaufträge ab', metric: 'build', target: 2, xp: 60, reward: (lvl) => ({ money: 250 + 60 * lvl }) },
+      fertigung: { label: 'Fließbandarbeit', icon: '🚗', desc: 'Fertige {n} Fahrzeuge', metric: 'vehicle', target: 2, xp: 60, reward: (lvl) => ({ steel: 60 + 10 * lvl, parts: 40 + 8 * lvl }) },
+      verkauf: { label: 'Verkaufstalent', icon: '🏷️', desc: 'Verkaufe {n} Fahrzeuge', metric: 'sell', target: 2, xp: 50, reward: (lvl) => ({ money: 300 + 70 * lvl }) },
+      einsatz: { label: 'Immer im Einsatz', icon: '🚨', desc: 'Schließe {n} Einsätze ab', metric: 'mission', target: 3, xp: 70, reward: (lvl) => ({ fuel: 60 + 10 * lvl, money: 200 + 40 * lvl }) },
+      forschung: { label: 'Neugierig bleiben', icon: '🔬', desc: 'Schließe {n} Forschung ab', metric: 'research', target: 1, xp: 80, reward: (lvl) => ({ electronics: 30 + 6 * lvl }) },
+      personal: { label: 'Guter Chef', icon: '👷', desc: 'Stelle {n} Mitarbeiter ein oder befördere sie', metric: 'employee', target: 2, xp: 50, reward: (lvl) => ({ money: 250 + 50 * lvl }) },
+      umsatz: { label: 'Die Kasse klingelt', icon: '💰', desc: 'Verdiene {n} Geld durch Verkäufe & Einsätze', metric: 'earn', target: 1500, xp: 70, reward: (lvl) => ({ money: 350 + 80 * lvl }) },
+    },
+    weekly: {
+      bau: { label: 'Großbaustelle', icon: '🏗️', desc: 'Schließe {n} Bauaufträge ab', metric: 'build', target: 12, xp: 350, reward: (lvl) => ({ money: 1500 + 300 * lvl, steel: 150 + 25 * lvl }) },
+      fertigung: { label: 'Serienproduktion', icon: '🚗', desc: 'Fertige {n} Fahrzeuge', metric: 'vehicle', target: 10, xp: 320, reward: (lvl) => ({ steel: 250 + 40 * lvl, parts: 180 + 30 * lvl }) },
+      verkauf: { label: 'Umsatzmaschine', icon: '🏷️', desc: 'Verkaufe {n} Fahrzeuge', metric: 'sell', target: 8, xp: 300, reward: (lvl) => ({ money: 2000 + 400 * lvl }) },
+      einsatz: { label: 'Einsatz-Marathon', icon: '🚨', desc: 'Schließe {n} Einsätze ab', metric: 'mission', target: 15, xp: 380, reward: (lvl) => ({ money: 1200 + 250 * lvl, fuel: 200 + 30 * lvl }) },
+      forschung: { label: 'Wissensdurst', icon: '🔬', desc: 'Schließe {n} Forschungen ab', metric: 'research', target: 3, xp: 400, reward: (lvl) => ({ electronics: 150 + 25 * lvl, money: 1000 + 200 * lvl }) },
+      umsatz: { label: 'Wochenbilanz', icon: '💰', desc: 'Verdiene {n} Geld durch Verkäufe & Einsätze', metric: 'earn', target: 20000, xp: 400, reward: (lvl) => ({ money: 2500 + 500 * lvl }) },
+    },
+  };
+  const questDesc = (q) => q.desc.replace('{n}', q.target.toLocaleString('de-DE'));
+
+  // Deterministische Quest-Auswahl: gleicher Spieler + gleiche Periode = gleiche 3 Quests
+  const hashStr = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+  const pickQuests = (pool, seedStr, n = 3) => {
+    let x = hashStr(seedStr) || 1;
+    const rnd = () => { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; };
+    const keys = Object.keys(pool);
+    for (let i = keys.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [keys[i], keys[j]] = [keys[j], keys[i]]; }
+    return keys.slice(0, n);
+  };
+  // Perioden-Schlüssel (UTC): daily = 'YYYY-MM-DD', weekly = ISO-Woche 'YYYY-Www'
+  const isoWeek = (d) => {
+    const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    const day = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const week = Math.ceil(((date - yearStart) / 86400000 + 1) / 7);
+    return date.getUTCFullYear() + '-W' + String(week).padStart(2, '0');
+  };
+  const periodKey = (period, now = new Date()) => (period === 'weekly' ? isoWeek(now) : now.toISOString().slice(0, 10));
+
+  // ── Erfolge (Phase 3): stat = Zähler im Server-Kontext, value = Schwelle ──
+  const ACHIEVEMENTS = {
+    bau1: { label: 'Baumeister I', icon: '🏗️', stat: 'upgrades_done', value: 1, xp: 30, money: 150, desc: 'Schließe deinen ersten Bauauftrag ab' },
+    bau2: { label: 'Baumeister II', icon: '🏗️', stat: 'upgrades_done', value: 10, xp: 80, money: 400, desc: 'Schließe 10 Bauaufträge ab' },
+    bau3: { label: 'Baumeister III', icon: '🏗️', stat: 'upgrades_done', value: 25, xp: 150, money: 1000, desc: 'Schließe 25 Bauaufträge ab' },
+    bau4: { label: 'Baumeister IV', icon: '🏗️', stat: 'upgrades_done', value: 50, xp: 300, money: 2500, desc: 'Schließe 50 Bauaufträge ab' },
+    bau5: { label: 'Baumeister V', icon: '🏗️', stat: 'upgrades_done', value: 100, xp: 600, money: 6000, desc: 'Schließe 100 Bauaufträge ab' },
+    fzg1: { label: 'Vom Band gerollt', icon: '🚗', stat: 'vehicles_built', value: 1, xp: 30, money: 150, desc: 'Fertige dein erstes Fahrzeug' },
+    fzg2: { label: 'Fließband I', icon: '🚗', stat: 'vehicles_built', value: 10, xp: 80, money: 400, desc: 'Fertige 10 Fahrzeuge' },
+    fzg3: { label: 'Fließband II', icon: '🚗', stat: 'vehicles_built', value: 25, xp: 150, money: 1000, desc: 'Fertige 25 Fahrzeuge' },
+    fzg4: { label: 'Fließband III', icon: '🚗', stat: 'vehicles_built', value: 60, xp: 300, money: 2500, desc: 'Fertige 60 Fahrzeuge' },
+    fzg5: { label: 'Fahrzeugwerk', icon: '🏭', stat: 'vehicles_built', value: 150, xp: 600, money: 6000, desc: 'Fertige 150 Fahrzeuge' },
+    verk1: { label: 'Erster Deal', icon: '🏷️', stat: 'vehicles_sold', value: 1, xp: 30, money: 150, desc: 'Verkaufe dein erstes Fahrzeug' },
+    verk2: { label: 'Autohändler I', icon: '🏷️', stat: 'vehicles_sold', value: 10, xp: 80, money: 400, desc: 'Verkaufe 10 Fahrzeuge' },
+    verk3: { label: 'Autohändler II', icon: '🏷️', stat: 'vehicles_sold', value: 30, xp: 150, money: 1000, desc: 'Verkaufe 30 Fahrzeuge' },
+    verk4: { label: 'Autohändler III', icon: '🏷️', stat: 'vehicles_sold', value: 75, xp: 300, money: 2500, desc: 'Verkaufe 75 Fahrzeuge' },
+    verk5: { label: 'Verkaufslegende', icon: '👑', stat: 'vehicles_sold', value: 180, xp: 600, money: 6000, desc: 'Verkaufe 180 Fahrzeuge' },
+    eins1: { label: 'Erster Einsatz', icon: '🚨', stat: 'missions_done', value: 1, xp: 30, money: 150, desc: 'Schließe deinen ersten Einsatz ab' },
+    eins2: { label: 'Einsatzleiter I', icon: '🚨', stat: 'missions_done', value: 10, xp: 80, money: 400, desc: 'Schließe 10 Einsätze ab' },
+    eins3: { label: 'Einsatzleiter II', icon: '🚨', stat: 'missions_done', value: 30, xp: 150, money: 1000, desc: 'Schließe 30 Einsätze ab' },
+    eins4: { label: 'Einsatzleiter III', icon: '🚨', stat: 'missions_done', value: 75, xp: 300, money: 2500, desc: 'Schließe 75 Einsätze ab' },
+    eins5: { label: 'Retter der Straße', icon: '🦸', stat: 'missions_done', value: 150, xp: 600, money: 6000, desc: 'Schließe 150 Einsätze ab' },
+    forsch1: { label: 'Forscher I', icon: '🔬', stat: 'researches_done', value: 1, xp: 40, money: 200, desc: 'Schließe deine erste Forschung ab' },
+    forsch2: { label: 'Forscher II', icon: '🔬', stat: 'researches_done', value: 8, xp: 150, money: 1000, desc: 'Schließe 8 Forschungen ab' },
+    forsch3: { label: 'Denkfabrik', icon: '🧠', stat: 'researches_done', value: 20, xp: 400, money: 3000, desc: 'Schließe 20 Forschungen ab' },
+    geld1: { label: 'Goldgrube I', icon: '💰', stat: 'total_earned', value: 5000, xp: 40, money: 0, desc: 'Verdiene insgesamt 5.000 Geld' },
+    geld2: { label: 'Goldgrube II', icon: '💰', stat: 'total_earned', value: 25000, xp: 100, money: 0, desc: 'Verdiene insgesamt 25.000 Geld' },
+    geld3: { label: 'Goldgrube III', icon: '💰', stat: 'total_earned', value: 100000, xp: 250, money: 0, desc: 'Verdiene insgesamt 100.000 Geld' },
+    geld4: { label: 'Halbe Million', icon: '🤑', stat: 'total_earned', value: 500000, xp: 500, money: 0, desc: 'Verdiene insgesamt 500.000 Geld' },
+    geld5: { label: 'Werkstatt-Millionär', icon: '💎', stat: 'total_earned', value: 2000000, xp: 1000, money: 0, desc: 'Verdiene insgesamt 2.000.000 Geld' },
+    lvl1: { label: 'Aufsteiger', icon: '⭐', stat: 'level', value: 5, xp: 0, money: 500, desc: 'Erreiche Spieler-Level 5' },
+    lvl2: { label: 'Etabliert', icon: '⭐', stat: 'level', value: 10, xp: 0, money: 1500, desc: 'Erreiche Spieler-Level 10' },
+    lvl3: { label: 'Respektiert', icon: '🌟', stat: 'level', value: 20, xp: 0, money: 4000, desc: 'Erreiche Spieler-Level 20' },
+    lvl4: { label: 'Berühmt-berüchtigt', icon: '🌟', stat: 'level', value: 35, xp: 0, money: 10000, desc: 'Erreiche Spieler-Level 35' },
+    buero1: { label: 'Wachsende Zentrale', icon: '🏢', stat: 'office_level', value: 3, xp: 60, money: 300, desc: 'Baue das Büro auf Level 3 aus' },
+    buero2: { label: 'Firmensitz', icon: '🏢', stat: 'office_level', value: 6, xp: 200, money: 1200, desc: 'Baue das Büro auf Level 6 aus' },
+    buero3: { label: 'Konzernzentrale', icon: '🏙️', stat: 'office_level', value: 10, xp: 500, money: 4000, desc: 'Baue das Büro auf Level 10 aus' },
+    team1: { label: 'Teamgeist I', icon: '👷', stat: 'employees_count', value: 3, xp: 50, money: 250, desc: 'Beschäftige 3 Mitarbeiter gleichzeitig' },
+    team2: { label: 'Teamgeist II', icon: '👷', stat: 'employees_count', value: 6, xp: 150, money: 800, desc: 'Beschäftige 6 Mitarbeiter gleichzeitig' },
+    team3: { label: 'Großer Betrieb', icon: '🏭', stat: 'employees_count', value: 10, xp: 350, money: 2500, desc: 'Beschäftige 10 Mitarbeiter gleichzeitig' },
+    streak1: { label: 'Stammgast', icon: '📅', stat: 'daily_streak', value: 7, xp: 120, money: 600, desc: 'Hole den Login-Bonus an 7 Tagen in Folge' },
+    streak2: { label: 'Eiserne Routine', icon: '🔥', stat: 'daily_streak', value: 30, xp: 500, money: 3000, desc: 'Hole den Login-Bonus an 30 Tagen in Folge' },
+    samml1: { label: 'Sammler I', icon: '🚙', stat: 'vehicle_types', value: 4, xp: 100, money: 500, desc: 'Fertige 4 verschiedene Fahrzeugtypen' },
+    samml2: { label: 'Vollsortiment', icon: '🏎️', stat: 'vehicle_types', value: 7, xp: 300, money: 2000, desc: 'Fertige alle 7 Fahrzeugtypen' },
   };
 
   // Startkit exakt wie im Auftrag: Büro, Lager, Kleine Garage, Abschlepphof, Tanklager,
@@ -275,7 +409,11 @@
     { key: 'tanklager', x: 4, y: 0 },
   ];
 
-  const CONFIG = { GRID, cellIndex, isUnlocked, RESOURCES, BASE_CAP, BUILDINGS, EMPLOYEES, VEHICLES, RESEARCH, researchMods, MISSIONS, STARTER_KIT, EMP_MAX_LEVEL, empHireCost, empLevelCost };
+  const CONFIG = {
+    GRID, cellIndex, isUnlocked, RESOURCES, BASE_CAP, BUILDINGS, EMPLOYEES, VEHICLES, RESEARCH, researchMods,
+    MISSIONS, STARTER_KIT, EMP_MAX_LEVEL, empHireCost, empLevelCost,
+    LEVEL, XP, DAILY_BONUS, QUESTS, questDesc, pickQuests, periodKey, ACHIEVEMENTS,
+  };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = CONFIG;
   else root.CLASH_OF_ACLS_CONFIG = CONFIG;

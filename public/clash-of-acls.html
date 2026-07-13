@@ -162,6 +162,99 @@
   .lbrow { display:flex; justify-content:space-between; padding:.42rem .2rem; border-bottom:1px solid var(--line); font-size:.85rem; }
   .muted { color:var(--mut); font-size:.8rem; }
 
+  /* ── Level-Chip im HUD (öffnet das Profil) ── */
+  #lvlChip { display:flex; flex-direction:column; gap:2px; background:linear-gradient(145deg,#1d2a42,#151b27); border:1px solid #3b4c6b; border-radius:10px; padding:.22rem .5rem; cursor:pointer; min-width:64px; }
+  #lvlChip:hover { border-color:var(--acc); }
+  #lvlChip .lc-top { display:flex; align-items:center; gap:.3rem; font-size:.74rem; font-weight:800; white-space:nowrap; }
+  #lvlChip .lc-bar { height:4px; background:#0d1622; border-radius:99px; overflow:hidden; }
+  #lvlChip .lc-fill { display:block; height:100%; background:linear-gradient(90deg,#38bdf8,#818cf8); transition:width .6s; }
+  .hud-btn { position:relative; }
+  .hud-btn .dot { position:absolute; top:-3px; right:-3px; width:11px; height:11px; border-radius:50%; background:var(--bad); border:2px solid var(--bg); }
+  #dailyBtn { border-color:#fbbf24; animation:dailyPulse 1.6s infinite; }
+  @keyframes dailyPulse { 0%,100% { box-shadow:0 0 0 0 rgba(251,191,36,.45); } 50% { box-shadow:0 0 0 6px rgba(251,191,36,0); } }
+
+  /* ── Himmel: Tag/Nacht-Tönung + Sterne + Wolken (Geschwister von #world —
+     nie als Vorfahre des 3D-Boards, sonst würde ein Filter die 3D-Modelle flatten) ── */
+  #skyTint { position:absolute; inset:0; pointer-events:none; z-index:5; transition:background 3s linear, opacity 3s linear; }
+  #stars { position:absolute; inset:0; pointer-events:none; z-index:5; opacity:0; transition:opacity 3s linear;
+    background-image:radial-gradient(1.5px 1.5px at 12% 18%, #fff, transparent), radial-gradient(1px 1px at 34% 8%, #fff9, transparent),
+      radial-gradient(1.5px 1.5px at 58% 14%, #fff, transparent), radial-gradient(1px 1px at 78% 6%, #fffb, transparent),
+      radial-gradient(1px 1px at 90% 20%, #fff8, transparent), radial-gradient(1.5px 1.5px at 45% 4%, #fff, transparent),
+      radial-gradient(1px 1px at 22% 9%, #fffa, transparent), radial-gradient(1px 1px at 67% 22%, #fff9, transparent); }
+  .cloud { position:absolute; pointer-events:none; z-index:6; width:170px; height:44px; border-radius:99px; filter:blur(9px);
+    background:rgba(255,255,255,.16); animation:cloudMove linear infinite; }
+  .cloud::before { content:''; position:absolute; left:34px; top:-19px; width:80px; height:46px; border-radius:50%; background:rgba(255,255,255,.15); }
+  @keyframes cloudMove { from { transform:translateX(-260px); } to { transform:translateX(calc(100vw + 260px)); } }
+
+  /* ── Schwebende Gewinn-Texte + Konfetti-Burst ── */
+  .fgain { position:fixed; z-index:130; font-weight:800; font-size:.95rem; color:#fde047; text-shadow:0 2px 6px rgba(0,0,0,.7); pointer-events:none; animation:fgain 1.3s ease-out forwards; white-space:nowrap; }
+  @keyframes fgain { 0% { opacity:0; transform:translateY(8px); } 15% { opacity:1; } 100% { opacity:0; transform:translateY(-52px); } }
+  .burst { position:fixed; z-index:130; width:8px; height:8px; border-radius:2px; pointer-events:none; animation:burst .8s ease-out forwards; }
+  @keyframes burst { 0% { opacity:1; transform:translate(0,0) rotate(0); } 100% { opacity:0; transform:translate(var(--dx),var(--dy)) rotate(240deg); } }
+
+  /* ── Level-Up-Overlay ── */
+  #lvlOverlay { position:fixed; inset:0; z-index:140; display:none; align-items:center; justify-content:center; background:rgba(5,8,14,.72); backdrop-filter:blur(4px); }
+  #lvlOverlay.show { display:flex; }
+  .lvl-card { background:linear-gradient(160deg,#1c2842,#12182a); border:1px solid #3b4c6b; border-radius:20px; padding:1.6rem 2.2rem; text-align:center; max-width:88vw; box-shadow:0 24px 70px rgba(0,0,0,.6), 0 0 50px rgba(129,140,248,.25); animation:lvlPop .5s cubic-bezier(.2,1.6,.4,1); }
+  @keyframes lvlPop { from { transform:scale(.6); opacity:0; } to { transform:scale(1); opacity:1; } }
+  .lvl-card .big { font-size:3rem; line-height:1; filter:drop-shadow(0 4px 10px rgba(251,191,36,.5)); }
+  .lvl-card h2 { margin:.5rem 0 .2rem; font-size:1.25rem; }
+  .lvl-card .ttl { color:#818cf8; font-weight:800; font-size:.9rem; margin-bottom:.6rem; }
+  .lvl-card .rew { display:flex; gap:.6rem; justify-content:center; flex-wrap:wrap; font-size:.85rem; font-weight:700; margin:.6rem 0 1rem; }
+  .lvl-card button { background:linear-gradient(145deg,#fb923c,var(--acc)); color:#1a0a00; border:0; border-radius:12px; padding:.6rem 1.6rem; font-weight:800; font-size:.95rem; cursor:pointer; }
+
+  /* ── Erfolgs-Toasts (oben rechts, gestapelt) ── */
+  #toasts { position:fixed; top:60px; right:.8rem; z-index:125; display:flex; flex-direction:column; gap:.45rem; max-width:78vw; }
+  .toast { display:flex; align-items:center; gap:.55rem; background:linear-gradient(145deg,#243046,#182034); border:1px solid #4b5c7e; border-radius:12px; padding:.55rem .8rem; box-shadow:0 10px 30px rgba(0,0,0,.5); animation:toastIn .35s ease-out; font-size:.8rem; }
+  .toast.out { animation:toastOut .4s forwards; }
+  @keyframes toastIn { from { transform:translateX(120%); opacity:0; } to { transform:none; opacity:1; } }
+  @keyframes toastOut { to { transform:translateX(120%); opacity:0; } }
+  .toast .ti { font-size:1.4rem; }
+  .toast .tt { font-weight:800; }
+  .toast .td { color:var(--mut); font-size:.72rem; }
+
+  /* ── Quests ── */
+  .qrow { background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:.6rem .7rem; margin-bottom:.55rem; }
+  .qrow.done { border-color:rgba(34,197,94,.5); }
+  .qrow .qhead { display:flex; align-items:center; gap:.55rem; }
+  .qrow .qhead .qic { font-size:1.4rem; }
+  .qrow .qhead .qn { font-weight:800; font-size:.85rem; }
+  .qrow .qhead .qd { color:var(--mut); font-size:.72rem; }
+  .qrow .qhead button { margin-left:auto; border:0; border-radius:9px; padding:.4rem .7rem; font-weight:800; font-size:.76rem; cursor:pointer; background:var(--good); color:#04200f; white-space:nowrap; }
+  .qrow .qhead button:disabled { opacity:.4; cursor:default; }
+  .qrow .qmeta { display:flex; align-items:center; gap:.6rem; margin-top:.45rem; }
+  .qrow .qtrack { flex:1; height:7px; background:#0d1622; border-radius:99px; overflow:hidden; }
+  .qrow .qtrack i { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#22c55e); transition:width .4s; }
+  .qrow .qcount { font-size:.72rem; color:var(--mut); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .qrow .qrew { font-size:.72rem; font-weight:700; white-space:nowrap; }
+
+  /* ── Daily-Bonus ── */
+  .daygrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(86px,1fr)); gap:.5rem; margin:.6rem 0 .9rem; }
+  .daycard { background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:.5rem .35rem; text-align:center; font-size:.68rem; color:var(--mut); }
+  .daycard .dn { font-weight:800; color:var(--txt); font-size:.72rem; margin-bottom:.25rem; }
+  .daycard.past { opacity:.45; }
+  .daycard.today { border-color:#fbbf24; box-shadow:0 0 14px rgba(251,191,36,.25); color:var(--txt); }
+  .claimBtn { display:block; width:100%; background:linear-gradient(145deg,#fbbf24,#f59e0b); color:#1a0f00; border:0; border-radius:12px; padding:.7rem; font-weight:800; font-size:.95rem; cursor:pointer; }
+  .claimBtn:disabled { opacity:.5; cursor:default; }
+
+  /* ── Profil & Erfolge ── */
+  .pstats { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:.5rem; margin:.6rem 0; }
+  .pstat { background:var(--card2); border:1px solid var(--line); border-radius:11px; padding:.5rem .6rem; }
+  .pstat .pv { font-weight:800; font-size:1rem; font-variant-numeric:tabular-nums; }
+  .pstat .pl { color:var(--mut); font-size:.66rem; margin-top:.1rem; }
+  .xpbar-big { height:9px; background:#0d1622; border-radius:99px; overflow:hidden; margin:.4rem 0 .2rem; }
+  .xpbar-big i { display:block; height:100%; background:linear-gradient(90deg,#38bdf8,#818cf8); }
+  .ach-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:.5rem; }
+  .ach { background:var(--card2); border:1px solid var(--line); border-radius:11px; padding:.55rem .6rem; }
+  .ach.on { border-color:rgba(251,191,36,.55); background:linear-gradient(160deg,#2a2617,#1c2433); }
+  .ach.off { opacity:.55; }
+  .ach .ah { display:flex; align-items:center; gap:.4rem; font-weight:800; font-size:.76rem; }
+  .ach .ah .aic { font-size:1.15rem; }
+  .ach .ad { color:var(--mut); font-size:.66rem; margin:.25rem 0; line-height:1.35; }
+  .ach .atrack { height:5px; background:#0d1622; border-radius:99px; overflow:hidden; }
+  .ach .atrack i { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#fbbf24); }
+  .ach .ac { font-size:.62rem; color:var(--mut); margin-top:.2rem; font-variant-numeric:tabular-nums; }
+
   /* ── Anleitung ── */
   .hstep { display:flex; gap:.7rem; padding:.55rem 0; border-bottom:1px solid var(--line); align-items:flex-start; }
   .hstep:last-of-type { border-bottom:0; }
@@ -175,18 +268,40 @@
 
 <div id="hud">
   <a class="back" href="/" title="Zurück zum Portal">←</a>
+  <div id="lvlChip" onclick="openSheet('profile')" title="Spielerprofil & Erfolge"></div>
   <span id="resBar" style="display:contents"></span>
+  <button class="hud-btn" id="dailyBtn" onclick="openSheet('daily')" title="Täglicher Bonus" style="display:none">🎁</button>
+  <button class="hud-btn" id="questBtn" onclick="openSheet('quests')" title="Quests">🎯</button>
   <button class="hud-btn" onclick="openSheet('missions')" title="Einsätze">🚨</button>
   <button class="hud-btn" onclick="openSheet('emp')" title="Mitarbeiter">👷</button>
   <button class="hud-btn" onclick="openSheet('veh')" title="Fuhrpark">🚗</button>
   <button class="hud-btn" onclick="openSheet('lb')" title="Rangliste">🏆</button>
   <button class="hud-btn" onclick="openSheet('help')" title="Anleitung">❓</button>
+  <button class="hud-btn" id="sndBtn" onclick="toggleSound()" title="Sound an/aus">🔊</button>
 </div>
 
 <div id="msg"></div>
+<div id="toasts"></div>
 <div id="placeBar"><span id="placeTxt"></span><button onclick="cancelPlacing()">Abbrechen</button></div>
 
-<div id="scene"><div id="world"><div id="boardShadow"></div><div id="board"></div></div></div>
+<div id="scene">
+  <div id="world"><div id="boardShadow"></div><div id="board"></div></div>
+  <div id="skyTint"></div><div id="stars"></div>
+  <div class="cloud" style="top:9%;animation-duration:95s;animation-delay:-20s"></div>
+  <div class="cloud" style="top:38%;width:220px;animation-duration:140s;animation-delay:-75s;opacity:.7"></div>
+  <div class="cloud" style="top:68%;width:130px;animation-duration:115s;animation-delay:-50s;opacity:.55"></div>
+</div>
+
+<div id="lvlOverlay">
+  <div class="lvl-card">
+    <div class="big">🏆</div>
+    <h2 id="loH"></h2>
+    <div class="ttl" id="loT"></div>
+    <div class="muted" style="font-size:.78rem">Aufstiegs-Belohnung:</div>
+    <div class="rew" id="loR"></div>
+    <button onclick="$('lvlOverlay').classList.remove('show')">Weiter 🚀</button>
+  </div>
+</div>
 <div id="zoomCtl">
   <button onclick="zoomBy(1.3)" title="Reinzoomen">＋</button>
   <button onclick="zoomBy(1/1.3)" title="Rauszoomen">−</button>
@@ -214,7 +329,7 @@
   <div class="sh-body" id="shBody"></div>
 </div>
 
-<script src="/js/clash-of-acls-config.js?v=3"></script>
+<script src="/js/clash-of-acls-config.js?v=4"></script>
 <script>
 const CFG = window.CLASH_OF_ACLS_CONFIG;
 const $ = id => document.getElementById(id);
@@ -349,7 +464,103 @@ function msg(t, ok) {
   m.textContent = t; m.className = 'show ' + (ok ? 'ok' : 'err');
   clearTimeout(msgTimer);
   msgTimer = setTimeout(() => { m.className = ''; }, 3200);
+  if (ok) SFX.ok(); else SFX.err();
 }
+
+/* ── Soundsystem: synthetisierte WebAudio-Effekte, kein Asset nötig ── */
+const SFX = (() => {
+  let ctx = null, muted = localStorage.getItem('coa-mute') === '1';
+  const ac = () => {
+    if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; } }
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    return ctx;
+  };
+  function tone(freq, dur, type = 'sine', gain = .12, delay = 0, slideTo = 0) {
+    if (muted) return;
+    const a = ac(); if (!a) return;
+    const t0 = a.currentTime + delay;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(gain, t0 + .012);
+    g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+    o.connect(g).connect(a.destination);
+    o.start(t0); o.stop(t0 + dur + .05);
+  }
+  return {
+    isMuted: () => muted,
+    setMuted(v) { muted = v; localStorage.setItem('coa-mute', v ? '1' : '0'); },
+    tap() { tone(660, .05, 'triangle', .06); },
+    ok() { tone(520, .09, 'sine', .1); tone(784, .12, 'sine', .1, .07); },
+    err() { tone(196, .2, 'sawtooth', .06); },
+    coin() { tone(988, .07, 'square', .05); tone(1319, .11, 'square', .05, .06); },
+    build() { tone(294, .1, 'triangle', .1); tone(392, .12, 'triangle', .1, .1); tone(523, .16, 'triangle', .1, .2); },
+    levelup() { [523, 659, 784, 1047].forEach((f, i) => tone(f, .2, 'triangle', .11, i * .11)); },
+    ach() { tone(880, .1, 'sine', .1); tone(1175, .18, 'sine', .1, .09); },
+  };
+})();
+function toggleSound() {
+  SFX.setMuted(!SFX.isMuted());
+  $('sndBtn').textContent = SFX.isMuted() ? '🔇' : '🔊';
+  if (!SFX.isMuted()) SFX.ok();
+}
+
+/* ── Kleine Effekte: schwebende Gewinn-Texte + Konfetti-Burst ── */
+let lastPt = { x: innerWidth / 2, y: innerHeight / 2 };
+document.addEventListener('pointerdown', e => { lastPt = { x: e.clientX, y: e.clientY }; }, true);
+function floatGain(text, x = lastPt.x, y = lastPt.y) {
+  const el = document.createElement('div');
+  el.className = 'fgain'; el.textContent = text;
+  el.style.left = Math.min(x, innerWidth - 90) + 'px'; el.style.top = y + 'px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1400);
+}
+const BURST_COLORS = ['#fbbf24', '#22c55e', '#38bdf8', '#f97316', '#e879f9'];
+function burstAt(x, y, n = 14) {
+  for (let i = 0; i < n; i++) {
+    const el = document.createElement('div');
+    el.className = 'burst';
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    el.style.background = BURST_COLORS[i % BURST_COLORS.length];
+    const ang = Math.random() * Math.PI * 2, dist = 40 + Math.random() * 70;
+    el.style.setProperty('--dx', Math.cos(ang) * dist + 'px');
+    el.style.setProperty('--dy', (Math.sin(ang) * dist - 30) + 'px');
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 900);
+  }
+}
+function toast(icon, title, sub) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = `<span class="ti">${icon}</span><div><div class="tt">${esc(title)}</div>${sub ? `<div class="td">${esc(sub)}</div>` : ''}</div>`;
+  $('toasts').appendChild(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 450); }, 4500);
+}
+function showLevelUp(p) {
+  $('loH').textContent = `Level ${p.level} erreicht!`;
+  $('loT').textContent = '„' + p.title + '"';
+  const rew = CFG.LEVEL.reward(p.level);
+  $('loR').innerHTML = Object.entries(rew).map(([r, v]) => `<span>${RES_ICON[r]}${fmt(v)}</span>`).join('');
+  $('lvlOverlay').classList.add('show');
+  burstAt(innerWidth / 2, innerHeight / 2 - 80, 26);
+  SFX.levelup();
+}
+
+/* ── Tag/Nacht-Zyklus: Tönung + Sterne nach lokaler Uhrzeit ── */
+function applySky() {
+  const h = new Date().getHours() + new Date().getMinutes() / 60;
+  const tint = $('skyTint'), stars = $('stars');
+  let bg = 'transparent', starsOn = 0;
+  if (h < 5.5 || h >= 21.5) { bg = 'rgba(8,16,48,.42)'; starsOn = 1; }          // Nacht
+  else if (h < 7.5) { bg = 'rgba(255,150,80,.14)'; }                            // Morgenrot
+  else if (h >= 19.5) { bg = 'rgba(255,120,50,.18)'; starsOn = .3; }            // Abendrot
+  else if (h >= 17.5) { bg = 'rgba(255,170,80,.08)'; }                          // später Nachmittag
+  tint.style.background = bg;
+  stars.style.opacity = starsOn;
+}
+applySky();
+setInterval(applySky, 60000);
 
 let st = null;
 let placing = null;      // building_key im Platzierungs-Modus
@@ -369,15 +580,45 @@ const costHtml = cost => Object.entries(cost).filter(([, a]) => a > 0).map(([r, 
 
 /* ── Rendering ── */
 function render(d) {
+  const prev = st;
   st = d;
   // Countdown-Anker: Server liefert remaining_sec/total_sec, der Client zählt nur
   // lokal ab Empfangszeitpunkt herunter (kein Timestamp-Parsen, kein Uhren-Drift)
   st._now = Date.now();
+  // Bau-fertig erkennen, solange die alte Baustellen-Kachel noch im DOM steht
+  let donePos = null;
+  if (prev && prev.activeBuild && (!d.activeBuild || d.activeBuild.id !== prev.activeBuild.id)) {
+    const b = d.buildings.find(b => b.x === prev.activeBuild.x && b.y === prev.activeBuild.y && b.level >= prev.activeBuild.target_level);
+    if (b) {
+      const tile = document.querySelector(`.tile[data-x="${b.x}"][data-y="${b.y}"]`);
+      const r = tile && tile.getBoundingClientRect();
+      donePos = r && r.width ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: innerWidth / 2, y: innerHeight / 2 };
+    }
+  }
   renderRes();
+  renderHudExtras();
   renderBoard();
   renderJobs();
   if (selectedId !== null) renderInfoBar();
   if (sheetType) renderSheet();
+  if (donePos) { burstAt(donePos.x, donePos.y, 16); SFX.build(); }
+  if (prev && prev.progression && d.progression.level > prev.progression.level) showLevelUp(d.progression);
+  if (prev && prev.achievements) {
+    const had = new Set(prev.achievements.filter(a => a.unlocked).map(a => a.key));
+    const fresh = d.achievements.filter(a => a.unlocked && !had.has(a.key));
+    if (fresh.length) { fresh.forEach(a => toast(a.icon, 'Erfolg: ' + a.label, a.desc)); SFX.ach(); }
+  }
+}
+
+function renderHudExtras() {
+  const p = st.progression;
+  const span = p.xpNext ? p.xpNext - p.xpThis : 1;
+  const pct = p.xpNext ? Math.min(100, Math.max(0, (p.xp - p.xpThis) / span * 100)) : 100;
+  $('lvlChip').innerHTML = `<div class="lc-top">⭐ ${p.level}</div><div class="lc-bar"><i class="lc-fill" style="width:${pct}%"></i></div>`;
+  $('lvlChip').title = `${p.title} · ${fmt(p.xp)} XP` + (p.xpNext ? ` — noch ${fmt(p.xpNext - p.xp)} bis Level ${p.level + 1}` : '');
+  $('dailyBtn').style.display = st.daily.available ? '' : 'none';
+  const claimable = [...st.quests.daily.list, ...st.quests.weekly.list].some(q => !q.claimed && q.progress >= q.target);
+  $('questBtn').innerHTML = '🎯' + (claimable ? '<span class="dot"></span>' : '');
 }
 
 function renderRes() {
@@ -584,12 +825,13 @@ function renderInfoBar() {
     btns.push('<div class="muted" style="text-align:center">✔ Maximales Level erreicht</div>');
   } else {
     const next = b.level + 1;
-    const gated = b.building_key !== 'office' && next > (Math.max(1, st.officeLevel) + 2);
+    const officeCap = CFG.BUILDINGS.office.effect.otherMaxLevel(Math.max(1, st.officeLevel));
+    const gated = b.building_key !== 'office' && next > officeCap;
     const cost = mCost(def.cost(next));
     const dis = st.activeBuild || gated || !canAfford(cost);
     const costStr = Object.entries(cost).filter(([, a]) => a > 0).map(([r, a]) => RES_ICON[r] + fmt(a)).join('  ');
     btns.push(`<button class="up" ${dis ? 'disabled' : ''} onclick="upgrade(${b.id})">⬆ Auf Level ${next} ausbauen<small>Kosten: ${costStr} · Dauer: ⏱ ${fmtDur(mTime(def.buildTimeSec(next)))}</small></button>`);
-    const hint = st.activeBuild ? '🚧 Der Bautrupp ist gerade beschäftigt.' : gated ? `🏢 Benötigt Büro Level ${next - 2}.` : !canAfford(cost) ? 'Nicht genug Ressourcen.' : '';
+    const hint = st.activeBuild ? '🚧 Der Bautrupp ist gerade beschäftigt.' : gated ? `🏢 Benötigt ein höheres Büro-Level (aktuell max. Lv ${officeCap}).` : !canAfford(cost) ? 'Nicht genug Ressourcen.' : '';
     if (hint) btns.push(`<div class="muted" style="text-align:center">${hint}</div>`);
   }
   if (b.building_key === 'garage') btns.push(`<button class="mk" onclick="openSheet('manu', ${b.id})">🚗 Fahrzeuge fertigen</button>`);
@@ -624,6 +866,7 @@ function openSheet(type, ctx) {
   sheetType = type; sheetCtx = ctx ?? null;
   $('backdrop').classList.add('show');
   $('sheet').classList.add('open');
+  SFX.tap();
   renderSheet();
 }
 function closeSheet() {
@@ -632,7 +875,7 @@ function closeSheet() {
   $('sheet').classList.remove('open');
 }
 function renderSheet() {
-  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung' };
+  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!' };
   $('shTitle').textContent = titles[sheetType] || '';
   $('shCats').style.display = sheetType === 'shop' ? 'flex' : 'none';
   if (sheetType === 'shop') renderShop();
@@ -643,6 +886,96 @@ function renderSheet() {
   else if (sheetType === 'help') renderHelp();
   else if (sheetType === 'missions') renderMissions();
   else if (sheetType === 'research') renderResearch();
+  else if (sheetType === 'quests') renderQuests();
+  else if (sheetType === 'profile') renderProfile();
+  else if (sheetType === 'daily') renderDaily();
+  else if (sheetType === 'offline') renderOffline();
+}
+
+/* ── Quests: 3 Tages- + 3 Wochen-Aufgaben mit Fortschritt & Belohnung ── */
+function renderQuests() {
+  const sec = (period, title) => {
+    const qd = st.quests[period];
+    return `<div style="font-weight:800;margin:.2rem 0 .5rem">${title} <span class="muted" style="font-weight:400">· Reset in ${fmtDur(qd.resetInSec)}</span></div>` +
+      qd.list.map(q => {
+        const done = q.progress >= q.target;
+        const rew = Object.entries(q.reward).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' ');
+        return `<div class="qrow ${done && !q.claimed ? 'done' : ''}">
+          <div class="qhead"><span class="qic">${q.icon}</span>
+            <div><div class="qn">${esc(q.label)}</div><div class="qd">${esc(q.desc)}</div></div>
+            <button ${done && !q.claimed ? '' : 'disabled'} onclick="claimQuest('${period}','${q.quest_key}')">${q.claimed ? '✔ Abgeholt' : 'Abholen'}</button></div>
+          <div class="qmeta"><div class="qtrack"><i style="width:${Math.min(100, q.progress / q.target * 100)}%"></i></div>
+            <span class="qcount">${fmt(q.progress)}/${fmt(q.target)}</span><span class="qrew">🎁 ${rew} · ✨${q.xp} XP</span></div>
+        </div>`;
+      }).join('');
+  };
+  $('shBody').innerHTML = sec('daily', '📅 Tages-Quests') + '<div style="height:.7rem"></div>' + sec('weekly', '🗓️ Wochen-Quests');
+}
+
+/* ── Täglicher Login-Bonus: 7-Tage-Zyklus mit Streak ── */
+function renderDaily() {
+  const d = st.daily;
+  const curDone = ((d.streak - 1) % CFG.DAILY_BONUS.cycleDays) + 1;
+  const cards = d.cycle.map((rw, i) => {
+    const day = i + 1;
+    const past = d.available ? day < d.nextDay : day <= curDone;
+    const today = d.available && day === d.nextDay;
+    return `<div class="daycard ${today ? 'today' : past ? 'past' : ''}">
+      <div class="dn">Tag ${day}</div>
+      ${Object.entries(rw).map(([r, v]) => `${RES_ICON[r]}${fmt(v)}`).join('<br>')}
+      <div style="margin-top:.2rem">✨${CFG.DAILY_BONUS.xp(day)} XP</div>
+    </div>`;
+  }).join('');
+  $('shBody').innerHTML =
+    `<div class="muted">Melde dich jeden Tag an und hole dir steigende Belohnungen — Tag 7 bringt den Jackpot! Verpasst du einen Tag, startet der Zyklus neu. Die Beträge wachsen mit deinem Level. Aktuelle Serie: <b style="color:var(--txt)">🔥 ${d.streak} ${d.streak === 1 ? 'Tag' : 'Tage'}</b></div>
+    <div class="daygrid">${cards}</div>
+    <button class="claimBtn" ${d.available ? '' : 'disabled'} onclick="claimDaily()">${d.available ? `🎁 Tag ${d.nextDay} abholen` : '✔ Heute schon abgeholt — bis morgen!'}</button>`;
+}
+
+/* ── Spielerprofil: Level, Statistiken, Erfolge ── */
+function renderProfile() {
+  const p = st.progression, s = st.stats;
+  const span = p.xpNext ? p.xpNext - p.xpThis : 1;
+  const pct = p.xpNext ? Math.min(100, Math.max(0, (p.xp - p.xpThis) / span * 100)) : 100;
+  const unlocked = st.achievements.filter(a => a.unlocked).length;
+  const stat = (v, l) => `<div class="pstat"><div class="pv">${v}</div><div class="pl">${l}</div></div>`;
+  $('shBody').innerHTML = `
+    <div style="display:flex;align-items:center;gap:.8rem">
+      <span style="font-size:2.6rem;filter:drop-shadow(0 3px 6px rgba(251,191,36,.4))">⭐</span>
+      <div style="flex:1"><div style="font-weight:800;font-size:1.05rem">Level ${p.level} — ${esc(p.title)}</div>
+      <div class="xpbar-big"><i style="width:${pct}%"></i></div>
+      <div class="muted" style="font-size:.72rem">${fmt(p.xp)} XP${p.xpNext ? ` · noch ${fmt(p.xpNext - p.xp)} bis Level ${p.level + 1}` : ' · Maximallevel erreicht!'}</div></div>
+    </div>
+    <div class="pstats">
+      ${stat('💰 ' + fmt(s.total_earned), 'Gesamt verdient')}
+      ${stat('🏗️ ' + fmt(s.upgrades_done), 'Bauaufträge fertig')}
+      ${stat('🚗 ' + fmt(s.vehicles_built), 'Fahrzeuge gefertigt')}
+      ${stat('🏷️ ' + fmt(s.vehicles_sold), 'Fahrzeuge verkauft')}
+      ${stat('🚨 ' + fmt(s.missions_done), 'Einsätze')}
+      ${stat('🔬 ' + fmt(s.researches_done), 'Forschungen')}
+      ${stat('🏘️ ' + fmt(s.buildings_count), 'Gebäude')}
+      ${stat('👷 ' + fmt(s.employees_count), 'Mitarbeiter')}
+      ${stat('🔥 ' + fmt(s.daily_streak), 'Login-Serie')}
+    </div>
+    <div style="font-weight:800;margin:.8rem 0 .5rem">🏆 Erfolge <span class="muted" style="font-weight:400">· ${unlocked}/${st.achievements.length} freigeschaltet</span></div>
+    <div class="ach-grid">${st.achievements.map(a => `
+      <div class="ach ${a.unlocked ? 'on' : 'off'}">
+        <div class="ah"><span class="aic">${a.icon}</span>${esc(a.label)}</div>
+        <div class="ad">${esc(a.desc)}</div>
+        <div class="atrack"><i style="width:${Math.min(100, a.progress / a.value * 100)}%"></i></div>
+        <div class="ac">${a.unlocked ? '✔ Freigeschaltet' : `${fmt(a.progress)}/${fmt(a.value)}`}${(a.xp || a.money) ? ` · 🎁${a.xp ? ' ✨' + a.xp : ''}${a.money ? ' 💰' + fmt(a.money) : ''}` : ''}</div>
+      </div>`).join('')}</div>`;
+}
+
+/* ── Offline-Report: was sich während der Abwesenheit angesammelt hat ── */
+function renderOffline() {
+  const o = sheetCtx || { sec: 0, gains: {} };
+  const rows = Object.entries(o.gains).filter(([, v]) => v > 0)
+    .map(([r, v]) => `<div class="lbrow"><span>${RES_ICON[r]} ${RES_NAME[r]}</span><span style="color:var(--good);font-weight:700">+${fmt(v)}</span></div>`).join('');
+  $('shBody').innerHTML =
+    `<div class="muted">Deine Werkstatt hat <b style="color:var(--txt)">${fmtDur(o.sec)}</b> ohne dich weitergearbeitet und produziert:</div>
+    <div style="margin:.6rem 0">${rows || '<div class="muted">Die Lager waren schon voll — baue sie aus!</div>'}</div>
+    <button class="hgo" onclick="closeSheet()${st.daily.available ? ";openSheet('daily')" : ''}">Weiter 🔧</button>`;
 }
 
 function renderShop() {
@@ -780,9 +1113,11 @@ async function renderLb() {
   $('shBody').innerHTML = '<div class="muted">Lädt…</div>';
   try {
     const l = await api('/api/clash-of-acls/leaderboard');
-    $('shBody').innerHTML = l.length
-      ? l.map((x, i) => `<div class="lbrow"><span>#${i + 1} ${esc(x.username || '?')}</span><span>💰 ${fmt(x.total_earned)}</span></div>`).join('')
-      : '<div class="muted">Noch keine Einträge.</div>';
+    $('shBody').innerHTML =
+      (l.myRank ? `<div class="muted" style="margin-bottom:.55rem">Dein Rang: <b style="color:var(--acc)">#${l.myRank}</b></div>` : '') +
+      (l.list.length
+        ? l.list.map(x => `<div class="lbrow"${x.me ? ' style="color:var(--acc)"' : ''}><span>#${x.rank} ${esc(x.username || '?')} <span class="muted">· ⭐ ${x.level}</span></span><span>💰 ${fmt(x.total_earned)}</span></div>`).join('')
+        : '<div class="muted">Noch keine Einträge.</div>');
   } catch (e) { $('shBody').innerHTML = '<div class="muted">Konnte nicht geladen werden.</div>'; }
 }
 
@@ -819,23 +1154,51 @@ function renderHelp() {
     step('🚗', 'Fahrzeuge', 'Tippe die Garage an → „Fahrzeuge": Aus Rohstoffen fertigst du Abschleppwagen bis Sportwagen. Höheres Garagen-Level = schnellere Fertigung und bessere Fahrzeuge. Verkaufen im Fuhrpark (🚗 oben) — Tuningzentrum, Lackiererei und Fahrzeughandel erhöhen den Erlös!') +
     step('🚨', 'Einsätze', 'Schicke deine Fahrzeuge auf Missionen (🚨 oben oder Abschlepphof antippen) — vom 10-Minuten-Abschleppauftrag bis zur 8-Stunden-Flottenwartung. Das Fahrzeug ist solange unterwegs, dafür gibt es Geld und Material. Der Abschlepphof schaltet mit höherem Level mehr gleichzeitige Einsätze frei.') +
     step('🔬', 'Forschung', 'Baue das Forschungszentrum und erforsche dauerhafte Boni: schnelleres Bauen, größere Lager, billigere Ausbauten, mehr Produktion und bessere Missionserträge. Stufe N braucht Zentrum-Level N, und es läuft immer eine Forschung gleichzeitig.') +
+    step('⭐', 'Level & XP', 'Fast alles gibt Erfahrungspunkte: Bauen, Fertigen, Verkaufen, Einsätze, Forschung. Mit jedem Level-Aufstieg gibt es eine Belohnung und einen neuen Titel — dein Fortschritt steckt im ⭐-Chip oben links (antippen = Profil mit Statistiken und allen Erfolgen).') +
+    step('🎯', 'Quests & Erfolge', 'Jeden Tag warten 3 Tages-Quests, jede Woche 3 Wochen-Quests (🎯 oben) — abschließen, abholen, kassieren. Dazu gibt es über 40 Erfolge mit XP- und Geld-Belohnungen im Profil.') +
+    step('🎁', 'Täglicher Bonus', 'Einmal am Tag wartet ein Login-Bonus (🎁 oben). Wer an 7 Tagen in Folge abholt, knackt den Jackpot — die Beträge wachsen mit deinem Level. Verpasst du einen Tag, startet die Serie neu.') +
     step('🔍', 'Karte bedienen', 'Zoome mit dem Mausrad, zwei Fingern oder den ＋/−-Buttons rechts. Ziehe die Karte mit gedrückter Maustaste oder dem Finger, um dich umzusehen. ⌂ setzt die Ansicht zurück.') +
     step('⚡', 'Tipp', 'Zu ungeduldig? Laufende Bauaufträge kannst du mit ACLS-Coins sofort abschließen (⚡-Button). Und du bekommst eine Benachrichtigung im Portal, sobald etwas fertig ist.') +
     `<button class="hgo" onclick="closeSheet()">Los geht's! 🔧</button>`;
 }
 
 /* ── Aktionen ── */
-let tutorialChecked = false;
+let tutorialChecked = false, welcomed = false;
 async function load() {
   try {
-    render(await api('/api/clash-of-acls/state'));
+    const d = await api('/api/clash-of-acls/state');
+    render(d);
     if (!tutorialChecked) {
       tutorialChecked = true;
       if (!localStorage.getItem('coa-tutorial')) {
         localStorage.setItem('coa-tutorial', '1');
+        welcomed = true; // Tutorial hat Vorrang vor Offline-/Daily-Popup
         openSheet('help');
       }
     }
+    if (!welcomed) {
+      welcomed = true;
+      if (d.offline && Object.values(d.offline.gains).some(v => v > 0) && !sheetType) openSheet('offline', d.offline);
+      else if (d.daily.available && !sheetType) openSheet('daily');
+    }
+  } catch (e) { msg(e.message); }
+}
+async function claimDaily() {
+  try {
+    const d = await api('/api/clash-of-acls/daily', { method:'POST' });
+    SFX.coin();
+    floatGain(Object.entries(d.rewards).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' '));
+    msg(`Tag ${d.day} abgeholt — Serie: ${d.streak} 🔥`, true);
+    render(d);
+  } catch (e) { msg(e.message); }
+}
+async function claimQuest(period, key) {
+  try {
+    const d = await api('/api/clash-of-acls/quest-claim', { method:'POST', body:{ period, quest_key: key } });
+    SFX.coin();
+    floatGain('+✨' + d.xp + ' XP ' + Object.entries(d.rewards).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' '));
+    msg('Quest-Belohnung abgeholt!', true);
+    render(d);
   } catch (e) { msg(e.message); }
 }
 async function place(key, x, y) {
@@ -849,7 +1212,7 @@ async function manufacture(id, key) { try { const d = await api('/api/clash-of-a
 async function hire(type) { try { const d = await api('/api/clash-of-acls/hire', { method:'POST', body:{ emp_type:type } }); msg('Mitarbeiter eingestellt!', true); render(d); } catch (e) { msg(e.message); } }
 async function empFire(id) { try { const d = await api(`/api/clash-of-acls/fire/${id}`, { method:'POST' }); msg('Mitarbeiter entlassen.', true); render(d); } catch (e) { msg(e.message); } }
 async function empLevel(id) { try { const d = await api(`/api/clash-of-acls/employee/${id}/levelup`, { method:'POST' }); msg('Mitarbeiter aufgestiegen!', true); render(d); } catch (e) { msg(e.message); } }
-async function sell(id) { try { const d = await api(`/api/clash-of-acls/sell/${id}`, { method:'POST' }); msg(`Verkauft für 💰${fmt(d.credited)}!`, true); render(d); } catch (e) { msg(e.message); } }
+async function sell(id) { try { const d = await api(`/api/clash-of-acls/sell/${id}`, { method:'POST' }); SFX.coin(); floatGain('+💰' + fmt(d.credited)); msg(`Verkauft für 💰${fmt(d.credited)}!`, true); render(d); } catch (e) { msg(e.message); } }
 async function speedup(what) { try { const d = await api('/api/clash-of-acls/speedup', { method:'POST', body:{ what: what || 'build' } }); msg(`Fertig! (−${d.cost} ACLS-Coins)`, true); render(d); } catch (e) { msg(e.message); } }
 async function startMission(key) {
   const sel = $('msel-' + key);
@@ -880,11 +1243,13 @@ setInterval(load, 30000);
 
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  if (placing) cancelPlacing();
+  if ($('lvlOverlay').classList.contains('show')) $('lvlOverlay').classList.remove('show');
+  else if (placing) cancelPlacing();
   else if (sheetType) closeSheet();
   else if (selectedId !== null) deselect();
 });
 
+$('sndBtn').textContent = SFX.isMuted() ? '🔇' : '🔊';
 load();
 </script>
 </body>

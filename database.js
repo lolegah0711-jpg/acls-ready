@@ -859,6 +859,35 @@ function initDb() {
   `);
   try { db.exec('ALTER TABLE coa_state ADD COLUMN missions_done INTEGER NOT NULL DEFAULT 0'); } catch {}
 
+  // ── Clash of ACLS Phase 3: Progression (XP/Level, Daily-Bonus, Quests, Erfolge) ──
+  [
+    'xp INTEGER NOT NULL DEFAULT 0',
+    'level INTEGER NOT NULL DEFAULT 1',
+    'daily_streak INTEGER NOT NULL DEFAULT 0',
+    'daily_last TEXT',
+    'vehicles_built INTEGER NOT NULL DEFAULT 0',
+    'vehicles_sold INTEGER NOT NULL DEFAULT 0',
+    'upgrades_done INTEGER NOT NULL DEFAULT 0',
+    'researches_done INTEGER NOT NULL DEFAULT 0',
+  ].forEach((col) => { try { db.exec(`ALTER TABLE coa_state ADD COLUMN ${col}`); } catch {} });
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coa_quests (
+      discord_id TEXT NOT NULL,
+      period     TEXT NOT NULL,
+      period_key TEXT NOT NULL,
+      quest_key  TEXT NOT NULL,
+      progress   INTEGER NOT NULL DEFAULT 0,
+      claimed_at DATETIME,
+      PRIMARY KEY (discord_id, period_key, quest_key)
+    );
+    CREATE TABLE IF NOT EXISTS coa_achievements (
+      discord_id  TEXT NOT NULL,
+      ach_key     TEXT NOT NULL,
+      unlocked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (discord_id, ach_key)
+    );
+  `);
+
   // ── Idle-Werkstatt: Prestige-Punkte (spendbar) + permanente Prestige-Upgrades ──
   try { db.exec('ALTER TABLE idle_saves ADD COLUMN prestige_points INTEGER NOT NULL DEFAULT 0'); } catch {}
   try { db.exec("ALTER TABLE idle_saves ADD COLUMN prestige_upgrades TEXT NOT NULL DEFAULT '{}'"); } catch {}

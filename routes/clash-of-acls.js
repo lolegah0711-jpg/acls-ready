@@ -125,6 +125,8 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
   }
 
   // Rechnet passive Produktion seit last_tick_at nach, gedeckelt durch Lagerkapazität.
+  // Belohnungen (Quests/Daily/Level-Ups/Missionen) dürfen das Lager überfüllen —
+  // deshalb kürzt der Sync nie unter den aktuellen Stand, er füllt nur bis zum Cap auf.
   function syncResources(discordId) {
     const s = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(discordId);
     const elapsedSec = Math.max(0, (Date.now() - asDate(s.last_tick_at).getTime()) / 1000);
@@ -135,19 +137,125 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     const rates = computeRatesPerHour(buildings, employees, mods);
     const caps = computeCaps(buildings, mods);
     const next = {};
-    CFG.RESOURCES.forEach((r) => { next[r] = Math.min(caps[r], s[r] + (rates[r] * elapsedSec) / 3600); });
+    CFG.RESOURCES.forEach((r) => { next[r] = Math.max(s[r], Math.min(caps[r], s[r] + (rates[r] * elapsedSec) / 3600)); });
     const moneyGain = Math.max(0, Math.round(next.money) - s.money);
     db.prepare(`UPDATE coa_state SET money=?, steel=?, parts=?, electronics=?, fuel=?, total_earned = total_earned + ?, last_tick_at = datetime('now') WHERE discord_id = ?`)
       .run(Math.round(next.money), Math.round(next.steel), Math.round(next.parts), Math.round(next.electronics), Math.round(next.fuel), moneyGain, discordId);
     return db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(discordId);
   }
 
+  // ── Phase 3: Progression (XP/Level, Quests, Erfolge, Daily-Bonus) ──────────
+
+  // Ressourcen-Belohnung gutschreiben (darf das Lager überfüllen, s. syncResources)
+  function grantResources(discordId, rewards) {
+    const sets = [], vals = [];
+    let moneyGain = 0;
+    CFG.RESOURCES.forEach((r) => {
+      const add = Math.round(rewards[r] || 0);
+      if (add <= 0) return;
+      sets.push(`${r} = ${r} + ?`); vals.push(add);
+      if (r === 'money') moneyGain = add;
+    });
+    if (!sets.length) return;
+    if (moneyGain) { sets.push('total_earned = total_earned + ?'); vals.push(moneyGain); }
+    db.prepare(`UPDATE coa_state SET ${sets.join(', ')} WHERE discord_id = ?`).run(...vals, discordId);
+  }
+
+  // XP gutschreiben; bei Level-Aufstieg Belohnung + Benachrichtigung
+  function grantXp(discordId, amount) {
+    if (!amount || amount <= 0) return;
+    const s = db.prepare('SELECT xp, level FROM coa_state WHERE discord_id = ?').get(discordId);
+    if (!s) return;
+    const xp = s.xp + Math.round(amount);
+    let level = s.level;
+    const rewards = {};
+    while (level < CFG.LEVEL.maxLevel && xp >= CFG.LEVEL.xpFor(level + 1)) {
+      level++;
+      Object.entries(CFG.LEVEL.reward(level)).forEach(([r, v]) => { rewards[r] = (rewards[r] || 0) + v; });
+    }
+    db.prepare('UPDATE coa_state SET xp = ?, level = ? WHERE discord_id = ?').run(xp, level, discordId);
+    if (level > s.level) {
+      grantResources(discordId, rewards);
+      createNotif(discordId, 'coa_levelup', { level, title: CFG.LEVEL.title(level) });
+      queueNotification('coa_levelup', discordId, { level });
+    }
+  }
+
+  // Sorgt dafür, dass für die aktuelle Periode 3 geloste Quests existieren
+  function ensureQuests(discordId, period) {
+    const key = CFG.periodKey(period);
+    const have = db.prepare('SELECT COUNT(*) AS c FROM coa_quests WHERE discord_id = ? AND period_key = ?').get(discordId, key).c;
+    if (!have) {
+      const picks = CFG.pickQuests(CFG.QUESTS[period], `${discordId}:${period}:${key}`);
+      const ins = db.prepare('INSERT OR IGNORE INTO coa_quests (discord_id, period, period_key, quest_key) VALUES (?,?,?,?)');
+      picks.forEach((k) => ins.run(discordId, period, key, k));
+    }
+    return key;
+  }
+
+  // Quest-Fortschritt für eine Aktion erhöhen (beide Perioden, nur unabgeholte)
+  function questInc(discordId, metric, amount = 1) {
+    ['daily', 'weekly'].forEach((period) => {
+      const key = ensureQuests(discordId, period);
+      Object.entries(CFG.QUESTS[period]).forEach(([qk, q]) => {
+        if (q.metric !== metric) return;
+        db.prepare('UPDATE coa_quests SET progress = progress + ? WHERE discord_id = ? AND period_key = ? AND quest_key = ? AND claimed_at IS NULL')
+          .run(Math.round(amount), discordId, key, qk);
+      });
+    });
+  }
+
+  // Statistik-Kontext für Erfolge & Spielerprofil
+  function statsCtx(discordId) {
+    const s = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(discordId);
+    if (!s) return null;
+    const buildings = getBuildings(discordId);
+    return {
+      ...s,
+      office_level: officeLevel(buildings),
+      buildings_count: buildings.filter((b) => b.level >= 1).length,
+      employees_count: db.prepare('SELECT COUNT(*) AS c FROM coa_employees WHERE discord_id = ?').get(discordId).c,
+      vehicle_types: db.prepare('SELECT COUNT(DISTINCT vehicle_key) AS c FROM coa_vehicles WHERE discord_id = ?').get(discordId).c,
+      research_total: db.prepare('SELECT COALESCE(SUM(level),0) AS s FROM coa_research WHERE discord_id = ?').get(discordId).s,
+    };
+  }
+
+  // Alle noch gesperrten Erfolge gegen die aktuellen Zähler prüfen und freischalten
+  function checkAchievements(discordId) {
+    const unlocked = new Set(db.prepare('SELECT ach_key FROM coa_achievements WHERE discord_id = ?').all(discordId).map((r) => r.ach_key));
+    const todo = Object.entries(CFG.ACHIEVEMENTS).filter(([k]) => !unlocked.has(k));
+    if (!todo.length) return;
+    const ctx = statsCtx(discordId);
+    if (!ctx) return;
+    todo.forEach(([key, a]) => {
+      if ((ctx[a.stat] || 0) < a.value) return;
+      const ins = db.prepare('INSERT OR IGNORE INTO coa_achievements (discord_id, ach_key) VALUES (?,?)').run(discordId, key);
+      if (!ins.changes) return;
+      if (a.money) grantResources(discordId, { money: a.money });
+      if (a.xp) grantXp(discordId, a.xp);
+      createNotif(discordId, 'coa_achievement', { ach: a.label, xp: a.xp || 0, money: a.money || 0 });
+      queueNotification('coa_achievement', discordId, { ach: a.label });
+    });
+  }
+
+  // Sekunden bis zum nächsten Quest-Reset (UTC-Mitternacht bzw. Montag 00:00 UTC)
+  function secToReset(period) {
+    const now = new Date();
+    const addDays = period === 'weekly' ? 8 - (now.getUTCDay() || 7) : 1;
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + addDays));
+    return Math.max(0, Math.round((next - now) / 1000));
+  }
+
   function finalizeOneBuild(q) {
     db.transaction(() => {
       db.prepare('UPDATE coa_buildings SET level = ? WHERE id = ?').run(q.target_level, q.building_ref_id);
+      db.prepare('UPDATE coa_state SET upgrades_done = upgrades_done + 1 WHERE discord_id = ?').run(q.discord_id);
       db.prepare('DELETE FROM coa_build_queue WHERE id = ?').run(q.id);
     })();
     const def = CFG.BUILDINGS[q.building_key];
+    grantXp(q.discord_id, CFG.XP.build(def?.buildTimeSec ? def.buildTimeSec(q.target_level) : 60));
+    questInc(q.discord_id, 'build');
+    checkAchievements(q.discord_id);
     const label = typeof def?.label === 'function' ? def.label(q.target_level) : (def?.label || q.building_key);
     createNotif(q.discord_id, 'coa_build_done', { kind: 'building', building: label, level: q.target_level });
     queueNotification('coa_build_done', q.discord_id, { kind: 'building', building: label, level: q.target_level });
@@ -160,8 +268,12 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     const value = Math.round(vdef.baseValue * (1 + (bonus / 100) * Math.random()) * (1 + mods.vehicleValuePct / 100));
     db.transaction(() => {
       db.prepare('INSERT INTO coa_vehicles (discord_id, vehicle_key, rarity, value) VALUES (?,?,?,?)').run(q.discord_id, q.vehicle_key, vdef.rarity, value);
+      db.prepare('UPDATE coa_state SET vehicles_built = vehicles_built + 1 WHERE discord_id = ?').run(q.discord_id);
       db.prepare('DELETE FROM coa_manufacture_queue WHERE id = ?').run(q.id);
     })();
+    grantXp(q.discord_id, CFG.XP.vehicle(vdef.baseValue));
+    questInc(q.discord_id, 'vehicle');
+    checkAchievements(q.discord_id);
     createNotif(q.discord_id, 'coa_build_done', { kind: 'vehicle', vehicle: vdef.label });
     queueNotification('coa_build_done', q.discord_id, { kind: 'vehicle', vehicle: vdef.label });
   }
@@ -172,36 +284,37 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     db.transaction(() => {
       db.prepare(`INSERT INTO coa_research (discord_id, tech_key, level) VALUES (?,?,?)
         ON CONFLICT(discord_id, tech_key) DO UPDATE SET level = MAX(level, excluded.level)`).run(q.discord_id, q.tech_key, q.target_level);
+      db.prepare('UPDATE coa_state SET researches_done = researches_done + 1 WHERE discord_id = ?').run(q.discord_id);
       db.prepare('DELETE FROM coa_research_queue WHERE id = ?').run(q.id);
     })();
     if (tech) {
+      grantXp(q.discord_id, CFG.XP.research(tech.timeSec(q.target_level)));
+      questInc(q.discord_id, 'research');
+      checkAchievements(q.discord_id);
       createNotif(q.discord_id, 'coa_research_done', { tech: tech.label, level: q.target_level });
       queueNotification('coa_research_done', q.discord_id, { tech: tech.label, level: q.target_level });
     }
   }
 
-  // Einsatz abgeschlossen: Belohnung (× Einsatzleitung-Forschung, gedeckelt durch
-  // Lagerkapazität) gutschreiben, Fahrzeug freigeben, Zähler erhöhen.
+  // Einsatz abgeschlossen: Belohnung (× Einsatzleitung-Forschung) gutschreiben,
+  // Fahrzeug freigeben, Zähler/XP/Quests erhöhen. Belohnung darf das Lager überfüllen.
   function finalizeOneMission(m) {
     const def = CFG.MISSIONS[m.mission_key];
     if (!def) { db.prepare('DELETE FROM coa_missions WHERE id = ?').run(m.id); return; }
-    const state = syncResources(m.discord_id);
-    const buildings = getBuildings(m.discord_id);
+    syncResources(m.discord_id);
     const mods = getMods(m.discord_id);
-    const caps = computeCaps(buildings, mods);
     const factor = 1 + mods.missionRewardPct / 100;
-    const next = {};
-    CFG.RESOURCES.forEach((r) => {
-      next[r] = Math.min(caps[r], (state[r] || 0) + Math.round((def.rewards[r] || 0) * factor));
-    });
-    const moneyGain = Math.max(0, next.money - state.money);
+    const rewards = Object.fromEntries(Object.entries(def.rewards).map(([r, v]) => [r, Math.round(v * factor)]));
     db.transaction(() => {
-      db.prepare(`UPDATE coa_state SET money=?, steel=?, parts=?, electronics=?, fuel=?,
-        total_earned = total_earned + ?, missions_done = missions_done + 1 WHERE discord_id = ?`)
-        .run(next.money, next.steel, next.parts, next.electronics, next.fuel, moneyGain, m.discord_id);
+      grantResources(m.discord_id, rewards);
+      db.prepare('UPDATE coa_state SET missions_done = missions_done + 1 WHERE discord_id = ?').run(m.discord_id);
       db.prepare('DELETE FROM coa_missions WHERE id = ?').run(m.id);
     })();
-    createNotif(m.discord_id, 'coa_mission_done', { mission: def.label, money: Math.round((def.rewards.money || 0) * factor) });
+    grantXp(m.discord_id, def.xp || 20);
+    questInc(m.discord_id, 'mission');
+    if (rewards.money) questInc(m.discord_id, 'earn', rewards.money);
+    checkAchievements(m.discord_id);
+    createNotif(m.discord_id, 'coa_mission_done', { mission: def.label, money: rewards.money || 0 });
     queueNotification('coa_mission_done', m.discord_id, { mission: def.label });
   }
 
@@ -234,7 +347,13 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
 
   function buildView(ident) {
     finalizeDueForAll();
+    // Offline-Report: war der Spieler >30 min weg, zeigen wir was sich angesammelt hat
+    const before = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
+    const awaySec = before ? Math.max(0, (Date.now() - asDate(before.last_tick_at).getTime()) / 1000) : 0;
     const state = syncResources(ident.id);
+    const offline = awaySec > 1800
+      ? { sec: Math.round(awaySec), gains: Object.fromEntries(CFG.RESOURCES.map((r) => [r, Math.max(0, state[r] - before[r])])) }
+      : null;
     const buildings = getBuildings(ident.id);
     const employees = getEmployees(ident.id);
     const researchLevels = getResearchLevels(ident.id);
@@ -274,6 +393,30 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       FROM coa_missions m JOIN coa_vehicles v ON v.id = m.vehicle_id
       WHERE m.discord_id = ? ORDER BY m.finish_at ASC
     `).all(ident.id);
+    // ── Phase 3: Progression, Daily-Bonus, Quests, Erfolge, Statistiken ──
+    const level = state.level, xp = state.xp;
+    const today = CFG.periodKey('daily');
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const nextStreak = state.daily_last === yesterday ? state.daily_streak + 1 : 1;
+    const nextDay = ((nextStreak - 1) % CFG.DAILY_BONUS.cycleDays) + 1;
+    const questView = (period) => {
+      const key = ensureQuests(ident.id, period);
+      const rows = db.prepare('SELECT quest_key, progress, claimed_at FROM coa_quests WHERE discord_id = ? AND period_key = ?').all(ident.id, key);
+      return {
+        resetInSec: secToReset(period),
+        list: rows.map((r) => {
+          const q = CFG.QUESTS[period][r.quest_key];
+          if (!q) return null;
+          return {
+            quest_key: r.quest_key, label: q.label, icon: q.icon, desc: CFG.questDesc(q),
+            target: q.target, progress: Math.min(r.progress, q.target), claimed: !!r.claimed_at,
+            xp: q.xp, reward: q.reward(level),
+          };
+        }).filter(Boolean),
+      };
+    };
+    const ctx = statsCtx(ident.id);
+    const unlockedAch = new Set(db.prepare('SELECT ach_key FROM coa_achievements WHERE discord_id = ?').all(ident.id).map((r) => r.ach_key));
     return {
       resources: { money: state.money, steel: state.steel, parts: state.parts, electronics: state.electronics, fuel: state.fuel },
       caps: computeCaps(buildings, mods),
@@ -294,6 +437,32 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       activeManufacture,
       activeResearch,
       activeMissions,
+      offline,
+      progression: {
+        xp, level,
+        title: CFG.LEVEL.title(level),
+        xpThis: CFG.LEVEL.xpFor(level),
+        xpNext: level < CFG.LEVEL.maxLevel ? CFG.LEVEL.xpFor(level + 1) : null,
+      },
+      daily: {
+        available: state.daily_last !== today,
+        streak: state.daily_streak,
+        nextDay,
+        preview: CFG.DAILY_BONUS.rewards(nextDay, level),
+        previewXp: CFG.DAILY_BONUS.xp(nextDay),
+        cycle: CFG.DAILY_BONUS.days.map((_, i) => CFG.DAILY_BONUS.rewards(i + 1, level)),
+      },
+      quests: { daily: questView('daily'), weekly: questView('weekly') },
+      achievements: Object.entries(CFG.ACHIEVEMENTS).map(([key, a]) => ({
+        key, label: a.label, icon: a.icon, desc: a.desc, xp: a.xp, money: a.money,
+        value: a.value, progress: Math.min(ctx[a.stat] || 0, a.value), unlocked: unlockedAch.has(key),
+      })),
+      stats: {
+        upgrades_done: ctx.upgrades_done, vehicles_built: ctx.vehicles_built, vehicles_sold: ctx.vehicles_sold,
+        missions_done: ctx.missions_done, researches_done: ctx.researches_done, total_earned: ctx.total_earned,
+        buildings_count: ctx.buildings_count, employees_count: ctx.employees_count,
+        vehicle_types: ctx.vehicle_types, research_total: ctx.research_total, daily_streak: ctx.daily_streak,
+      },
     };
   }
 
@@ -414,7 +583,8 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     if (!CFG.EMPLOYEES[emp_type]) return res.status(400).json({ error: 'Unbekannter Mitarbeitertyp' });
     const buildings = getBuildings(ident.id);
     const employees = getEmployees(ident.id);
-    if (employees.length >= employeeSlots(buildings)) return res.status(400).json({ error: 'Keine freien Mitarbeiter-Slots' });
+    // Wichtig: Mods mitgeben — die Forschung "Personalwesen" erhöht die Slots
+    if (employees.length >= employeeSlots(buildings, getMods(ident.id))) return res.status(400).json({ error: 'Keine freien Mitarbeiter-Slots' });
     const state = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
     const cost = CFG.empHireCost(employees.length);
     if (state.money < cost) return res.status(400).json({ error: 'Nicht genug Geld' });
@@ -422,6 +592,8 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       deduct(ident.id, state, { money: cost });
       db.prepare('INSERT INTO coa_employees (discord_id, emp_type, level) VALUES (?,?,1)').run(ident.id, emp_type);
     })();
+    questInc(ident.id, 'employee');
+    checkAchievements(ident.id);
     res.json({ ok: true, ...buildView(ident) });
   });
 
@@ -446,6 +618,7 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       deduct(ident.id, state, { money: cost });
       db.prepare('UPDATE coa_employees SET level = level + 1 WHERE id = ?').run(emp.id);
     })();
+    questInc(ident.id, 'employee');
     res.json({ ok: true, ...buildView(ident) });
   });
 
@@ -461,15 +634,18 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     }
     const buildings = getBuildings(ident.id);
     const employees = getEmployees(ident.id);
-    const state = syncResources(ident.id);
-    const caps = computeCaps(buildings, getMods(ident.id));
+    syncResources(ident.id);
     const price = Math.round(vehicle.value * (1 + sellBonusPct(buildings, employees) / 100));
-    const credited = Math.max(0, Math.min(caps.money, state.money + price) - state.money);
     db.transaction(() => {
       db.prepare('UPDATE coa_vehicles SET sold_at = datetime(\'now\') WHERE id = ?').run(vehicle.id);
-      db.prepare('UPDATE coa_state SET money = ?, total_earned = total_earned + ? WHERE discord_id = ?').run(state.money + credited, credited, ident.id);
+      grantResources(ident.id, { money: price });
+      db.prepare('UPDATE coa_state SET vehicles_sold = vehicles_sold + 1 WHERE discord_id = ?').run(ident.id);
     })();
-    res.json({ ok: true, credited, ...buildView(ident) });
+    grantXp(ident.id, CFG.XP.sell(price));
+    questInc(ident.id, 'sell');
+    questInc(ident.id, 'earn', price);
+    checkAchievements(ident.id);
+    res.json({ ok: true, credited: price, ...buildView(ident) });
   });
 
   // ── Einsatz starten: Fahrzeug (>= minTier) fährt die Mission, solange gesperrt ──
@@ -550,9 +726,69 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     res.json({ ok: true, cost, ...buildView(ident) });
   });
 
-  // ── Rangliste ──
+  // ── Täglicher Login-Bonus: 7-Tage-Zyklus, Streak bricht nach einem Fehltag ──
+  router.post('/api/clash-of-acls/daily', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    const s = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
+    const today = CFG.periodKey('daily');
+    if (s.daily_last === today) return res.status(400).json({ error: 'Heute schon abgeholt — morgen wieder!' });
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const streak = s.daily_last === yesterday ? s.daily_streak + 1 : 1;
+    const day = ((streak - 1) % CFG.DAILY_BONUS.cycleDays) + 1;
+    const rewards = CFG.DAILY_BONUS.rewards(day, s.level);
+    const xp = CFG.DAILY_BONUS.xp(day);
+    db.transaction(() => {
+      db.prepare('UPDATE coa_state SET daily_last = ?, daily_streak = ? WHERE discord_id = ?').run(today, streak, ident.id);
+      grantResources(ident.id, rewards);
+    })();
+    grantXp(ident.id, xp);
+    checkAchievements(ident.id);
+    res.json({ ok: true, day, streak, rewards, xp, ...buildView(ident) });
+  });
+
+  // ── Quest-Belohnung abholen ──
+  router.post('/api/clash-of-acls/quest-claim', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    const { period, quest_key } = req.body || {};
+    if (period !== 'daily' && period !== 'weekly') return res.status(400).json({ error: 'Ungültige Periode' });
+    const q = CFG.QUESTS[period][quest_key];
+    if (!q) return res.status(400).json({ error: 'Unbekannte Quest' });
+    const key = ensureQuests(ident.id, period);
+    const row = db.prepare('SELECT * FROM coa_quests WHERE discord_id = ? AND period_key = ? AND quest_key = ?').get(ident.id, key, quest_key);
+    if (!row) return res.status(404).json({ error: 'Quest heute nicht aktiv' });
+    if (row.claimed_at) return res.status(400).json({ error: 'Belohnung schon abgeholt' });
+    if (row.progress < q.target) return res.status(400).json({ error: 'Quest noch nicht abgeschlossen' });
+    const s = db.prepare('SELECT level FROM coa_state WHERE discord_id = ?').get(ident.id);
+    const rewards = q.reward(s.level);
+    db.transaction(() => {
+      db.prepare("UPDATE coa_quests SET claimed_at = datetime('now') WHERE discord_id = ? AND period_key = ? AND quest_key = ?").run(ident.id, key, quest_key);
+      grantResources(ident.id, rewards);
+    })();
+    grantXp(ident.id, q.xp);
+    checkAchievements(ident.id);
+    res.json({ ok: true, rewards, xp: q.xp, ...buildView(ident) });
+  });
+
+  // ── Rangliste: nach XP sortiert, mit Level und eigenem Rang ──
   router.get('/api/clash-of-acls/leaderboard', requireLogin, (req, res) => {
-    res.json(db.prepare('SELECT username, total_earned FROM coa_state WHERE total_earned > 0 ORDER BY total_earned DESC LIMIT 15').all());
+    const ident = coinIdent(req);
+    const rows = db.prepare(`SELECT discord_id, username, total_earned, level, missions_done FROM coa_state
+      WHERE xp > 0 OR total_earned > 0 ORDER BY xp DESC, total_earned DESC LIMIT 25`).all();
+    const all = db.prepare('SELECT discord_id FROM coa_state ORDER BY xp DESC, total_earned DESC').all();
+    const myRank = all.findIndex((r) => r.discord_id === ident.id) + 1;
+    res.json({
+      myRank: myRank || null,
+      list: rows.map((r, i) => ({
+        rank: i + 1, username: r.username, total_earned: r.total_earned,
+        level: r.level, missions_done: r.missions_done, me: r.discord_id === ident.id,
+      })),
+    });
   });
 
   router.finalizeDue = finalizeDueForAll;

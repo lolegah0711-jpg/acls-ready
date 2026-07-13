@@ -85,6 +85,8 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   st = await get('/api/clash-of-acls/state');
   assert.ok(st.resources.money > moneyBeforeSync, 'Ressourcen wachsen mit verstrichener Zeit');
   assert.ok(st.resources.money <= st.caps.money, 'Ressourcen bleiben durch Lagerkapazität gedeckelt');
+  assert.ok(st.offline && st.offline.sec >= 7000, 'Offline-Report nach >30 min Abwesenheit: ' + JSON.stringify(st.offline));
+  assert.ok(st.offline.gains.money > 0, 'Offline-Report enthält Zugewinne');
 
   // ── Fertigung ohne genug Rohstoffe ─────────────────────────
   const garageId = st.buildings.find(b => b.building_key === 'garage').id;
@@ -124,9 +126,11 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   assert.equal(fire.status, 200, 'Entlassen ok');
   assert.equal(fire.json.employees.length, 0, 'Kein Mitarbeiter mehr');
 
-  // ── Rangliste ─────────────────────────────────────────────
+  // ── Rangliste (v2: Objekt mit list + myRank) ───────────────
   const lb = await get('/api/clash-of-acls/leaderboard');
-  assert.ok(lb.some(r => r.username === ME.name), 'Spieler erscheint in der Rangliste');
+  assert.ok(lb.list.some(r => r.username === ME.name), 'Spieler erscheint in der Rangliste');
+  assert.ok(lb.myRank >= 1, 'Eigener Rang wird geliefert');
+  assert.ok(lb.list[0].level >= 1, 'Rangliste enthält Spieler-Level');
 
   // ── Speedup (Stretch-Feature) ───────────────────────────────
   // reifenlager statt dekoration: Bauzeit >30s, sonst greift die "fast fertig"-Sperre sofort
@@ -204,7 +208,82 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
     `Bauzeit um 20 % reduziert (${place3.json.activeBuild.total_sec}s <= ${Math.round(baseTime * 0.8)}s)`);
   assert.equal(place3.json.mods.buildTimePct, 20, 'mods.buildTimePct = 20 im View');
 
-  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS, inkl. Einsätze + Forschung)');
+  // ══ Phase 3: Progression (XP/Level, Erfolge, Statistiken) ══
+  st = await get('/api/clash-of-acls/state');
+  assert.ok(st.progression && st.progression.xp > 0, 'XP durch Aktionen gesammelt: ' + JSON.stringify(st.progression));
+  assert.ok(st.progression.level >= 1 && st.progression.title, 'Level + Titel im View');
+  assert.ok(Array.isArray(st.achievements) && st.achievements.length >= 30, 'Erfolgsliste im View');
+  assert.ok(st.achievements.find(a => a.key === 'fzg1')?.unlocked, 'Erfolg „erstes Fahrzeug" freigeschaltet');
+  assert.ok(st.achievements.find(a => a.key === 'verk1')?.unlocked, 'Erfolg „erster Verkauf" freigeschaltet');
+  assert.ok(st.achievements.find(a => a.key === 'eins1')?.unlocked, 'Erfolg „erster Einsatz" freigeschaltet');
+  assert.ok(notifs.some(n => n.type === 'coa_achievement'), 'Erfolgs-Benachrichtigung erzeugt');
+  assert.equal(st.stats.vehicles_built, 2, 'Statistik: 2 Fahrzeuge gefertigt');
+  assert.equal(st.stats.vehicles_sold, 1, 'Statistik: 1 Fahrzeug verkauft');
+  assert.equal(st.stats.missions_done, 1, 'Statistik: 1 Einsatz abgeschlossen');
+
+  // Level-Up: XP an die nächste Schwelle setzen, dann Bau-Abschluss löst grantXp aus
+  const lvlBefore = st.progression.level;
+  db.prepare('UPDATE coa_state SET xp = ? WHERE discord_id=?').run(CFG2.LEVEL.xpFor(lvlBefore + 1), ME.id);
+  backdateBuild();
+  coaRouter.finalizeDue();
+  st = await get('/api/clash-of-acls/state');
+  assert.ok(st.progression.level >= lvlBefore + 1, `Level-Aufstieg (${lvlBefore} → ${st.progression.level})`);
+  assert.ok(notifs.some(n => n.type === 'coa_levelup'), 'Level-Up-Benachrichtigung erzeugt');
+
+  // ══ Phase 3: Täglicher Login-Bonus ═════════════════════════
+  assert.equal(st.daily.available, true, 'Daily-Bonus verfügbar');
+  const d1 = await post('/api/clash-of-acls/daily');
+  assert.equal(d1.status, 200, 'Daily-Claim ok: ' + JSON.stringify(d1.json.error || ''));
+  assert.equal(d1.json.day, 1, 'Erster Claim = Tag 1');
+  assert.equal(d1.json.streak, 1, 'Streak startet bei 1');
+  assert.ok(d1.json.rewards.money > 0, 'Daily-Belohnung enthält Geld');
+  assert.equal(d1.json.daily.available, false, 'Daily nach Claim nicht mehr verfügbar');
+  const d2 = await post('/api/clash-of-acls/daily');
+  assert.equal(d2.status, 400, 'Doppelter Daily-Claim abgelehnt');
+  db.prepare('UPDATE coa_state SET daily_last = ? WHERE discord_id=?')
+    .run(new Date(Date.now() - 86400000).toISOString().slice(0, 10), ME.id);
+  const d3 = await post('/api/clash-of-acls/daily');
+  assert.equal(d3.status, 200, 'Daily-Claim am Folgetag ok');
+  assert.equal(d3.json.streak, 2, 'Streak zählt weiter');
+  assert.equal(d3.json.day, 2, 'Tag 2 des Zyklus');
+
+  // ══ Phase 3: Quests (täglich + wöchentlich) ════════════════
+  st = await get('/api/clash-of-acls/state');
+  assert.equal(st.quests.daily.list.length, 3, '3 Tages-Quests gelost');
+  assert.equal(st.quests.weekly.list.length, 3, '3 Wochen-Quests gelost');
+  assert.ok(st.quests.daily.resetInSec > 0 && st.quests.daily.resetInSec <= 86400, 'Daily-Reset-Countdown plausibel');
+  assert.ok(st.quests.weekly.resetInSec > 0 && st.quests.weekly.resetInSec <= 7 * 86400, 'Weekly-Reset-Countdown plausibel');
+  const unfinished = st.quests.daily.list.find(q => !q.claimed && q.progress < q.target);
+  if (unfinished) {
+    const notDone = await post('/api/clash-of-acls/quest-claim', { period: 'daily', quest_key: unfinished.quest_key });
+    assert.equal(notDone.status, 400, 'Unfertige Quest nicht abholbar');
+  }
+  const dq = unfinished || st.quests.daily.list.find(q => !q.claimed);
+  assert.ok(dq, 'Mindestens eine unabgeholte Tages-Quest vorhanden');
+  db.prepare('UPDATE coa_quests SET progress = ? WHERE discord_id=? AND period_key=? AND quest_key=?')
+    .run(dq.target, ME.id, CFG2.periodKey('daily'), dq.quest_key);
+  const xpBeforeClaim = st.progression.xp;
+  const claim = await post('/api/clash-of-acls/quest-claim', { period: 'daily', quest_key: dq.quest_key });
+  assert.equal(claim.status, 200, 'Quest-Claim ok: ' + JSON.stringify(claim.json.error || ''));
+  assert.ok(claim.json.xp > 0, 'Quest gibt XP');
+  assert.ok(claim.json.progression.xp > xpBeforeClaim, 'XP nach Quest-Claim gestiegen');
+  assert.ok(claim.json.quests.daily.list.find(q => q.quest_key === dq.quest_key).claimed, 'Quest als abgeholt markiert');
+  const claimTwice = await post('/api/clash-of-acls/quest-claim', { period: 'daily', quest_key: dq.quest_key });
+  assert.equal(claimTwice.status, 400, 'Doppelter Quest-Claim abgelehnt');
+
+  // ══ Phase 3: Bugfix Mitarbeiter-Slots inkl. Forschung ══════
+  // personalwesen Stufe 1 (aus Phase-2-Test) → 2 Basis-Slots + 1 = 3
+  db.prepare('UPDATE coa_state SET money=999999 WHERE discord_id=?').run(ME.id);
+  st = await get('/api/clash-of-acls/state');
+  assert.equal(st.employeeSlots, 3, 'Slots = 2 Basis + 1 Forschung');
+  for (let i = 0; i < 3; i++) {
+    const h = await post('/api/clash-of-acls/hire', { emp_type: 'azubi' });
+    assert.equal(h.status, 200, `Hire ${i + 1}/3 ok (Forschungs-Slot zählt): ` + JSON.stringify(h.json.error || ''));
+  }
+  const h4 = await post('/api/clash-of-acls/hire', { emp_type: 'azubi' });
+  assert.equal(h4.status, 400, 'Vierter Hire ohne freien Slot abgelehnt');
+
+  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS, inkl. Einsätze + Forschung + Progression)');
   finish(0);
 })().catch(e => { console.error('✗ Test fehlgeschlagen:', e.message); finish(1); });
 
