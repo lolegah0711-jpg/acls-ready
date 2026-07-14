@@ -406,6 +406,57 @@
     { key: 'c6_4', chapter: 'legende', title: 'Die Legende von ACLS', icon: '👑', desc: 'Erreiche Spieler-Level 20 und krön dein Imperium.', stat: 'level', value: 20, xp: 500, reward: { money: 8000, steel: 300, parts: 250, electronics: 200, fuel: 200 }, final: true },
   ];
 
+  // ── Gilden (Phase 7): nutzt das bestehende Portal-Club-System (clubs/club_members)
+  // als Mitgliedschaftsgrundlage — Clash of ACLS baut nur eine Spiel-spezifische Schicht
+  // obendrauf (Spendenpunkte → Gildenlevel → passiver Produktionsbonus für alle
+  // CoA-spielenden Mitglieder). Gilden gründen/beitreten/verlassen läuft weiterhin
+  // ausschließlich über die bestehende Club-Seite im Portal, nicht hier neu gebaut. ──
+  const CLAN = {
+    donateWeight: { money: 1, steel: 2, parts: 3, electronics: 4, fuel: 3 },
+    maxLevel: 20,
+    pointsFor: (lvl) => round(2000 * Math.pow(Math.max(0, lvl), 1.6)),
+    fromPoints(points) { let l = 0; while (l < this.maxLevel && points >= this.pointsFor(l + 1)) l++; return l; },
+    bonusPct: (lvl) => lvl, // +1 % Produktion pro Gildenlevel, max. +20 % bei Level 20
+  };
+
+  // ── Gildenkrieg (Phase 7): wöchentlicher Punktewettlauf, ausgelöst durch PvE-Siege
+  // und PvP-Aktionen der Mitglieder. Belohnungen laufen über absolute Punkt-Schwellen
+  // (nicht relativer Rang gegen andere Gilden) — jede aktive Gilde kann eine Stufe
+  // erreichen, ohne dass kleine Gilden gegen riesige chancenlos wären. ──
+  const CLAN_WAR = {
+    raidWinPoints: 2,
+    pvpWinPoints: 4,
+    pvpDefendPoints: 3,
+    tiers: [
+      { min: 50, label: 'Bronze', reward: { money: 500, steel: 40 } },
+      { min: 150, label: 'Silber', reward: { money: 1500, steel: 100, parts: 60 } },
+      { min: 400, label: 'Gold', reward: { money: 4000, steel: 250, parts: 150, electronics: 80 } },
+      { min: 800, label: 'Platin', reward: { money: 9000, steel: 500, parts: 300, electronics: 200, fuel: 150 } },
+    ],
+    bestTier(score) { let t = null; this.tiers.forEach((x) => { if (score >= x.min) t = x; }); return t; },
+    nextTier(score) { return this.tiers.find((x) => x.min > score) || null; },
+  };
+
+  // ── Zeitlich begrenzte Events (Phase 7): config-getriebenes System, mehrere Events
+  // können nacheinander in diesem Array stehen. Eigene Event-Währung pro Event-Key,
+  // verdient über normale Aktionen während des Zeitfensters, einlösbar im Event-Shop. ──
+  const EVENTS = [
+    {
+      key: 'sommer2026', label: 'Sommer-Werkstattfest', icon: '🎪',
+      desc: 'Bringe deine Werkstatt auf Hochglanz und sammle Fest-Marken für exklusive Belohnungen!',
+      startAt: '2026-07-10 00:00:00', endAt: '2026-08-05 00:00:00',
+      currency: 'festmarken', currencyIcon: '🎟️',
+      earn: { mission: 4, raid: 6, pvpWin: 8, buildUpgrade: 3 },
+      shop: [
+        { key: 'bundle1', label: 'Kleines Materialpaket', icon: '📦', cost: 30, reward: { steel: 200, parts: 150 } },
+        { key: 'bundle2', label: 'Großes Materialpaket', icon: '📦', cost: 80, reward: { steel: 600, parts: 450, electronics: 200 } },
+        { key: 'xpboost', label: 'Erfahrungsschub', icon: '✨', cost: 50, reward: {}, xp: 300 },
+        { key: 'goldkiste', label: 'Festkiste', icon: '🎁', cost: 150, reward: { money: 5000, steel: 300, parts: 300, electronics: 150, fuel: 150 } },
+      ],
+    },
+  ];
+  const activeEvent = (now = new Date()) => EVENTS.find((e) => now >= new Date(e.startAt.replace(' ', 'T') + 'Z') && now < new Date(e.endAt.replace(' ', 'T') + 'Z')) || null;
+
   // ── Spieler-Level (Phase 3) ──────────────────────────────────────────────
   // xpFor(l) = Gesamt-XP, um Level l zu ERREICHEN. XP kommen aus abgeschlossenen
   // Aktionen (Bau, Fertigung, Verkauf, Einsatz, Forschung, Quests, Erfolge).
@@ -551,6 +602,7 @@
     pvp1: { label: 'Erste Konfrontation', icon: '⚔️', stat: 'pvp_wins', value: 1, xp: 50, money: 300, desc: 'Gewinne deinen ersten Angriff auf einen anderen Spieler' },
     pvp2: { label: 'Gefürchteter Rivale', icon: '⚔️', stat: 'pvp_wins', value: 10, xp: 180, money: 1200, desc: 'Gewinne 10 PvP-Angriffe' },
     pvp3: { label: 'Uneinnehmbar', icon: '🏯', stat: 'pvp_defends_won', value: 10, xp: 180, money: 1200, desc: 'Wehre 10 Angriffe erfolgreich ab' },
+    clan1: { label: 'Teamplayer', icon: '🤝', stat: 'clan_donated', value: 500, xp: 60, money: 300, desc: 'Spende Ressourcen im Wert von 500 Gildenpunkten' },
   };
 
   // Startkit exakt wie im Auftrag: Büro, Lager, Kleine Garage, Abschlepphof, Tanklager,
@@ -569,6 +621,7 @@
     LEVEL, XP, DAILY_BONUS, QUESTS, questDesc, pickQuests, periodKey, ACHIEVEMENTS,
     UNITS, RAIDS, COMBAT, PVP,
     CAMPAIGN_CHAPTERS, CAMPAIGN,
+    CLAN, CLAN_WAR, EVENTS, activeEvent,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = CONFIG;

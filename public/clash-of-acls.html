@@ -275,6 +275,34 @@
   .pvp-tabs button { flex:1; padding:.4rem; border-radius:9px; border:1px solid var(--line); background:var(--card2); color:var(--mut); font-size:.76rem; font-weight:700; cursor:pointer; }
   .pvp-tabs button.active { background:var(--acc); border-color:var(--acc); color:#1a0a00; }
 
+  /* ── Gilde / Event ── */
+  .clan-head { display:flex; align-items:center; gap:.7rem; background:linear-gradient(145deg,#241c33,#151b27); border:1px solid #5b4b8a; border-radius:14px; padding:.7rem .8rem; margin-bottom:.7rem; }
+  .clan-head .ch-logo { font-size:2.1rem; }
+  .clan-head .ch-name { font-weight:800; font-size:.95rem; }
+  .clan-head .ch-tag { color:var(--mut); font-size:.72rem; }
+  .clan-lvl-bar { height:8px; background:#0d1622; border-radius:99px; overflow:hidden; margin:.35rem 0 .2rem; }
+  .clan-lvl-bar i { display:block; height:100%; background:linear-gradient(90deg,#a855f7,#f472b6); }
+  .clan-donate { display:flex; gap:.45rem; margin-bottom:.8rem; flex-wrap:wrap; }
+  .clan-donate select, .clan-donate input { background:var(--card2); color:var(--txt); border:1px solid var(--line); border-radius:9px; padding:.45rem .5rem; font-size:.82rem; }
+  .clan-donate input { width:100px; }
+  .clan-donate button { border:0; border-radius:9px; padding:.45rem .8rem; font-weight:800; font-size:.8rem; cursor:pointer; background:var(--acc); color:#1a0a00; }
+  .war-card { background:var(--card2); border:1px solid var(--line); border-radius:13px; padding:.7rem .8rem; margin-bottom:.7rem; }
+  .war-tiers { display:flex; gap:.3rem; margin:.5rem 0; }
+  .war-tiers .wt { flex:1; text-align:center; padding:.35rem .2rem; border-radius:8px; background:#0d1622; font-size:.62rem; color:var(--mut); border:1px solid var(--line); }
+  .war-tiers .wt.hit { background:rgba(168,85,247,.18); border-color:#a855f7; color:#e9d5ff; font-weight:700; }
+  .war-track { height:8px; background:#0d1622; border-radius:99px; overflow:hidden; }
+  .war-track i { display:block; height:100%; background:linear-gradient(90deg,#a855f7,#f472b6); }
+  .clan-noclub { text-align:center; padding:1.2rem .8rem; }
+  .clan-noclub a { display:inline-block; margin-top:.7rem; background:var(--acc); color:#1a0a00; border-radius:10px; padding:.55rem 1.1rem; font-weight:800; text-decoration:none; font-size:.85rem; }
+  .event-banner { background:linear-gradient(145deg,#3a1f4d,#241533); border:1px solid #a855f7; border-radius:16px; padding:.8rem .9rem; margin-bottom:.8rem; }
+  .event-banner .eb-top { display:flex; align-items:center; gap:.6rem; }
+  .event-banner .eb-ic { font-size:2rem; }
+  .event-banner .eb-name { font-weight:800; font-size:1rem; }
+  .event-banner .eb-cd { color:#e9d5ff; font-size:.72rem; }
+  .event-banner .eb-desc { color:var(--mut); font-size:.76rem; margin-top:.4rem; }
+  .event-balance { display:flex; align-items:center; gap:.4rem; font-weight:800; font-size:1.1rem; margin-top:.5rem; }
+  .event-shop { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:.6rem; }
+
   /* ── Kampagne / Questline ── */
   .camp-next { display:flex; align-items:center; gap:.65rem; background:linear-gradient(145deg,#2a2617,#1c2433); border:1px solid rgba(251,191,36,.5); border-radius:14px; padding:.65rem .8rem; margin-bottom:.9rem; }
   .camp-next .cn-ic { font-size:1.7rem; }
@@ -330,6 +358,8 @@
   <button class="hud-btn" onclick="openSheet('missions')" title="Einsätze">🚨</button>
   <button class="hud-btn" onclick="openSheet('army')" title="Werkschutz & Überfälle">🛡️</button>
   <button class="hud-btn" id="pvpBtn" onclick="openSheet('pvp')" title="PvP-Angriffe">⚔️</button>
+  <button class="hud-btn" id="clanBtn" onclick="openSheet('clan')" title="Gilde">🏰</button>
+  <button class="hud-btn" id="eventBtn" onclick="openSheet('event')" title="Event" style="display:none">🎪</button>
   <button class="hud-btn" onclick="openSheet('emp')" title="Mitarbeiter">👷</button>
   <button class="hud-btn" onclick="openSheet('veh')" title="Fuhrpark">🚗</button>
   <button class="hud-btn" onclick="openSheet('lb')" title="Rangliste">🏆</button>
@@ -386,7 +416,7 @@
   <div class="sh-body" id="shBody"></div>
 </div>
 
-<script src="/js/clash-of-acls-config.js?v=7"></script>
+<script src="/js/clash-of-acls-config.js?v=8"></script>
 <script>
 const CFG = window.CLASH_OF_ACLS_CONFIG;
 const $ = id => document.getElementById(id);
@@ -705,6 +735,9 @@ function renderHudExtras() {
   $('questBtn').innerHTML = '🎯' + (claimable ? '<span class="dot"></span>' : '');
   const campClaimable = st.campaign.chapters.some(ch => ch.steps.some(s => s.claimable));
   $('campBtn').innerHTML = '🗺️' + (campClaimable ? '<span class="dot"></span>' : '');
+  const clanClaimable = !!(st.clan && st.clan.lastWeek && st.clan.lastWeek.claimable);
+  $('clanBtn').innerHTML = '🏰' + (clanClaimable ? '<span class="dot"></span>' : '');
+  $('eventBtn').style.display = st.event ? '' : 'none';
 }
 
 function renderRes() {
@@ -980,7 +1013,7 @@ function closeSheet() {
   $('sheet').classList.remove('open');
 }
 function renderSheet() {
-  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!', army:'🛡️ Werkschutz & Überfälle', campaign:'🗺️ Kampagne', pvp:'⚔️ PvP-Angriffe' };
+  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!', army:'🛡️ Werkschutz & Überfälle', campaign:'🗺️ Kampagne', pvp:'⚔️ PvP-Angriffe', clan:'🏰 Gilde', event:'🎪 Event' };
   $('shTitle').textContent = titles[sheetType] || '';
   $('shCats').style.display = sheetType === 'shop' ? 'flex' : 'none';
   if (sheetType === 'shop') renderShop();
@@ -998,6 +1031,128 @@ function renderSheet() {
   else if (sheetType === 'army') renderArmy();
   else if (sheetType === 'campaign') renderCampaign();
   else if (sheetType === 'pvp') renderPvp();
+  else if (sheetType === 'clan') renderClan();
+  else if (sheetType === 'event') renderEvent();
+}
+
+/* ── Gilde: nutzt die bestehende Club-Mitgliedschaft aus dem Portal — Beitreten/
+   Gründen läuft weiterhin über /clubs.html, hier nur der CoA-spezifische Aufsatz. ── */
+function renderClan() {
+  const c = st.clan;
+  if (!c) {
+    $('shBody').innerHTML = `<div class="clan-noclub">
+      <div style="font-size:2.4rem">🏰</div>
+      <div class="muted" style="margin-top:.4rem">Du bist noch in keinem Club. Tritt einem bei oder gründe deinen eigenen — jedes Mitglied, das auch Clash of ACLS spielt, profitiert vom gemeinsamen Gildenbonus und Gildenkrieg.</div>
+      <a href="/clubs.html" target="_blank">Zu den Clubs im Portal →</a>
+    </div>`;
+    return;
+  }
+  const span = c.pointsNext ? c.pointsNext - c.pointsThis : 1;
+  const pct = c.pointsNext ? Math.min(100, Math.max(0, (c.points - c.pointsThis) / span * 100)) : 100;
+  const donorsHtml = c.topDonors.length
+    ? c.topDonors.map((d, i) => `<div class="lbrow"><span>#${i + 1} ${esc(d.username || '?')}</span><span>${fmt(d.total)} Pkt.</span></div>`).join('')
+    : '<div class="muted">Noch keine Spenden.</div>';
+
+  const w = c.war;
+  const tierList = ['Bronze', 'Silber', 'Gold', 'Platin'];
+  const tiersHtml = tierList.map(t => `<div class="wt ${w.tier === t ? 'hit' : ''}">${t}</div>`).join('');
+  const warTrackPct = w.nextTier ? Math.min(100, w.score / w.nextTier.min * 100) : 100;
+
+  let lastWeekHtml = '';
+  if (c.lastWeek) {
+    const lw = c.lastWeek;
+    lastWeekHtml = `<div class="war-card"><div style="font-weight:800;margin-bottom:.3rem">📜 Letzte Woche: ${lw.tier ? lw.tier + '-Stufe' : 'Keine Stufe'} (${fmt(lw.score)} Punkte)</div>
+      ${lw.claimable
+        ? `<button class="claimBtn" onclick="claimClanWar()">🎁 Belohnung abholen: ${Object.entries(lw.reward).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' ')}</button>`
+        : `<div class="muted">${lw.claimed ? '✔ Belohnung schon abgeholt' : 'Keine Stufe erreicht — nächste Woche mehr Einsätze/Überfälle/Siege!'}</div>`}
+    </div>`;
+  }
+
+  $('shBody').innerHTML = `
+    <div class="clan-head"><span class="ch-logo">${c.logo}</span><div style="flex:1">
+      <div class="ch-name">${esc(c.name)} <span class="ch-tag">[${esc(c.tag)}]</span></div>
+      <div class="ch-tag">${c.members} Mitglieder · Gildenlevel ${c.level} · +${c.bonusPct}% Produktion für alle</div>
+      <div class="clan-lvl-bar"><i style="width:${pct}%"></i></div>
+      <div class="ch-tag">${fmt(c.points)} Punkte${c.pointsNext ? ` · noch ${fmt(c.pointsNext - c.points)} bis Level ${c.level + 1}` : ' · Maximallevel'}</div>
+    </div></div>
+
+    <div style="font-weight:800;margin-bottom:.4rem">💝 Ressourcen spenden</div>
+    <div class="clan-donate">
+      <select id="donateRes">${CFG.RESOURCES.map(r => `<option value="${r}">${RES_ICON[r]} ${RES_NAME[r]}</option>`).join('')}</select>
+      <input type="number" id="donateAmt" placeholder="Menge" min="1">
+      <button onclick="donateClan()">Spenden</button>
+    </div>
+
+    <div class="war-card">
+      <div style="font-weight:800">⚔️ Gildenkrieg dieser Woche <span class="muted" style="font-weight:400">· Reset in ${fmtDur(w.resetInSec)}</span></div>
+      <div class="war-tiers">${tiersHtml}</div>
+      <div class="war-track"><i style="width:${warTrackPct}%"></i></div>
+      <div class="muted" style="margin-top:.3rem;font-size:.72rem">${fmt(w.score)} Punkte${w.nextTier ? ` · noch ${fmt(w.nextTier.min - w.score)} bis ${w.nextTier.label}` : ' · höchste Stufe erreicht!'} — Punkte gibt's für gewonnene Überfälle und PvP-Angriffe/-Verteidigungen aller Mitglieder.</div>
+    </div>
+    ${lastWeekHtml}
+
+    <div style="font-weight:800;margin:.8rem 0 .4rem">🏅 Top-Spender</div>
+    ${donorsHtml}
+  `;
+}
+async function donateClan() {
+  const resource = $('donateRes').value;
+  const amount = Math.round(Number($('donateAmt').value));
+  if (!amount || amount <= 0) return msg('Gib eine gültige Menge ein');
+  try {
+    const d = await api('/api/clash-of-acls/clan/donate', { method:'POST', body:{ resource, amount } });
+    SFX.coin();
+    $('donateAmt').value = '';
+    msg(`Gespendet! +${d.points} Gildenpunkte`, true);
+    render(d);
+  } catch (e) { msg(e.message); }
+}
+async function claimClanWar() {
+  try {
+    const d = await api('/api/clash-of-acls/clan/war-claim', { method:'POST' });
+    SFX.coin();
+    floatGain(Object.entries(d.reward).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' '));
+    toast('🏆', d.tier + '-Stufe erreicht!', 'Gildenkriegs-Belohnung abgeholt.');
+    render(d);
+  } catch (e) { msg(e.message); }
+}
+
+/* ── Event: zeitlich begrenzt, eigene Marken-Währung, Shop ── */
+function renderEvent() {
+  const e = st.event;
+  if (!e) { $('shBody').innerHTML = '<div class="muted">Gerade läuft kein Event — schau bald wieder vorbei!</div>'; return; }
+  const cards = e.shop.map(it => {
+    const rewStr = Object.entries(it.reward || {}).filter(([, v]) => v > 0).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' ') + (it.xp ? ` ✨${it.xp}XP` : '');
+    const dis = e.balance < it.cost;
+    return `<div class="shop-card ${dis ? 'off' : ''}" data-key="${it.key}">
+      <div class="si">${it.icon}</div>
+      <div class="sn">${esc(it.label)}</div>
+      <div class="sc">${rewStr}</div>
+      <div class="st">${e.currencyIcon}${fmt(it.cost)}</div>
+    </div>`;
+  }).join('');
+  $('shBody').innerHTML = `
+    <div class="event-banner">
+      <div class="eb-top"><span class="eb-ic">${e.icon}</span><div>
+        <div class="eb-name">${esc(e.label)}</div><div class="eb-cd">⏳ Noch ${fmtDur(e.endInSec)}</div>
+      </div></div>
+      <div class="eb-desc">${esc(e.desc)}</div>
+      <div class="event-balance">${e.currencyIcon} ${fmt(e.balance)}</div>
+    </div>
+    <div style="font-weight:800;margin-bottom:.5rem">🛒 Event-Shop</div>
+    <div class="event-shop">${cards}</div>
+  `;
+  $('shBody').querySelectorAll('.shop-card:not(.off)').forEach(el => {
+    el.addEventListener('click', () => buyEvent(el.dataset.key));
+  });
+}
+async function buyEvent(key) {
+  try {
+    const d = await api('/api/clash-of-acls/event-buy', { method:'POST', body:{ item_key: key } });
+    SFX.coin();
+    toast('🎁', 'Eingelöst!', d.item);
+    render(d);
+  } catch (e) { msg(e.message); }
 }
 
 /* ── PvP: Ziele finden, Trupp wählen, angreifen, Berichte einsehen ── */
@@ -1511,6 +1666,8 @@ function renderHelp() {
     step('🔬', 'Forschung', 'Baue das Forschungszentrum und erforsche dauerhafte Boni: schnelleres Bauen, größere Lager, billigere Ausbauten, mehr Produktion und bessere Missionserträge. Stufe N braucht Zentrum-Level N, und es läuft immer eine Forschung gleichzeitig.') +
     step('🛡️', 'Werkschutz & Überfälle', 'Die Sicherheitszentrale schaltet den Kampf frei: Bilde Wachmänner, Wachhunde, Drohnen und Sicherheitstrucks aus und überfalle NPC-Banden — vom Schrottdiebe-Versteck bis zur Syndikat-Zentrale. Je stärker dein Trupp, desto höher die Siegchance (wird live angezeigt). Sieg bringt fette Beute, aber Vorsicht: Einheiten können fallen! Jeder Kampf landet im Kampfbericht.') +
     step('⚔️', 'PvP-Angriffe', 'Über das ⚔️-Symbol greifst du andere Spieler an! Deine Einheiten (sofern nicht gerade auf einem NPC-Überfall) verteidigen automatisch dein Lager — schickst du sie auf Angriffe, bist du selbst verwundbarer. Bei Sieg erbeutest du echte Ressourcen vom Gegner. Fair geregelt: Einsteiger unter Level 3 sind nie angreifbar, jedes Ziel bekommt nach einem Angriff ein 20-Minuten-Schild, und pro Tag sind maximal 12 Angriffe erlaubt.') +
+    step('🏰', 'Gilde', 'Bist du im Portal Mitglied in einem Club, profitierst du hier automatisch: Spende Ressourcen (🏰 oben) für Gildenpunkte — höheres Gildenlevel bedeutet mehr Produktion für ALLE Mitglieder, die Clash of ACLS spielen. Dazu läuft jede Woche ein Gildenkrieg: gewonnene Überfälle und PvP-Kämpfe bringen Punkte, ab bestimmten Schwellen (Bronze bis Platin) gibt es am Wochenende Belohnungen für jedes Mitglied.') +
+    step('🎪', 'Events', 'Zeitlich begrenzte Events (🎪, nur sichtbar wenn gerade eins läuft) bringen eine eigene Marken-Währung, die du beim Abschließen von Einsätzen, Überfällen, PvP-Siegen und Ausbauten zusätzlich verdienst. Tausche die Marken im Event-Shop gegen exklusive Ressourcenpakete — nur für die begrenzte Laufzeit des Events verfügbar!') +
     step('⭐', 'Level & XP', 'Fast alles gibt Erfahrungspunkte: Bauen, Fertigen, Verkaufen, Einsätze, Forschung. Mit jedem Level-Aufstieg gibt es eine Belohnung und einen neuen Titel — dein Fortschritt steckt im ⭐-Chip oben links (antippen = Profil mit Statistiken und allen Erfolgen).') +
     step('🎯', 'Quests & Erfolge', 'Jeden Tag warten 3 Tages-Quests, jede Woche 3 Wochen-Quests (🎯 oben) — abschließen, abholen, kassieren. Dazu gibt es über 40 Erfolge mit XP- und Geld-Belohnungen im Profil.') +
     step('🎁', 'Täglicher Bonus', 'Einmal am Tag wartet ein Login-Bonus (🎁 oben). Wer an 7 Tagen in Folge abholt, knackt den Jackpot — die Beträge wachsen mit deinem Level. Verpasst du einen Tag, startet die Serie neu.') +

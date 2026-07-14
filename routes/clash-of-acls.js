@@ -44,7 +44,14 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       .forEach((r) => { levels[r.tech_key] = r.level; });
     return levels;
   }
-  const getMods = (discordId) => CFG.researchMods(getResearchLevels(discordId));
+  // Gildenbonus fließt direkt in den bestehenden Modifikator-Aggregator ein (prodPct
+  // wird ohnehin schon von computeRatesPerHour verwendet) — kein separater Pfad nötig.
+  const getMods = (discordId) => {
+    const mods = CFG.researchMods(getResearchLevels(discordId));
+    const clanLvl = getMyClanLevel(discordId);
+    if (clanLvl > 0) mods.prodPct += CFG.CLAN.bonusPct(clanLvl);
+    return mods;
+  };
   const NO_MODS = CFG.researchMods({});
 
   function researchCenterLevel(buildings) {
@@ -54,6 +61,38 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
   function securityLevel(buildings) {
     const c = buildings.find((b) => b.building_key === 'sicherheitszentrale');
     return c ? c.level : 0;
+  }
+
+  // ── Phase 7: Gilden — nutzt das bestehende Portal-Club-System (Tabellen clubs/
+  // club_members) als Mitgliedschaftsgrundlage. Beitreten/Gründen/Verlassen läuft
+  // weiterhin ausschließlich über die Club-Seite im Portal. ──
+  const getMyClub = (discordId) => db.prepare(
+    'SELECT c.* FROM club_members m JOIN clubs c ON c.id = m.club_id WHERE m.discord_id = ?'
+  ).get(discordId);
+  const getClanPoints = (clubId) => db.prepare('SELECT points FROM coa_clan WHERE club_id = ?').get(clubId)?.points || 0;
+  function getMyClanLevel(discordId) {
+    const club = getMyClub(discordId);
+    return club ? CFG.CLAN.fromPoints(getClanPoints(club.id)) : 0;
+  }
+  // Gildenkriegspunkte fürs aktuelle Kalenderwoche-Fenster gutschreiben — wer in
+  // keiner Gilde ist, trägt einfach nichts bei (kein Fehler, stiller No-Op).
+  function clanWarInc(discordId, points) {
+    const club = getMyClub(discordId);
+    if (!club) return;
+    const key = CFG.periodKey('weekly');
+    db.prepare(`INSERT INTO coa_clan_war (club_id, period_key, score) VALUES (?,?,?)
+      ON CONFLICT(club_id, period_key) DO UPDATE SET score = score + excluded.score`).run(club.id, key, points);
+  }
+
+  // ── Phase 7: zeitlich begrenzte Events — config-getrieben (CFG.EVENTS), eigene
+  // Marken-Währung pro Event-Key, verdient über normale Spielaktionen im Zeitfenster. ──
+  const activeEvent = () => CFG.activeEvent(new Date());
+  function eventEarn(discordId, actionKey) {
+    const ev = activeEvent();
+    const amount = ev?.earn?.[actionKey];
+    if (!ev || !amount) return;
+    db.prepare(`INSERT INTO coa_event_currency (discord_id, event_key, amount) VALUES (?,?,?)
+      ON CONFLICT(discord_id, event_key) DO UPDATE SET amount = amount + excluded.amount`).run(discordId, ev.key, amount);
   }
   const getUnits = (discordId) => db.prepare('SELECT id, unit_key, raid_id FROM coa_units WHERE discord_id = ?').all(discordId);
   // Einsatz-Slots: bestes (höchstes) Abschlepphof-Level zählt, nicht die Summe.
@@ -320,6 +359,7 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     const def = CFG.BUILDINGS[q.building_key];
     grantXp(q.discord_id, CFG.XP.build(def?.buildTimeSec ? def.buildTimeSec(q.target_level) : 60));
     questInc(q.discord_id, 'build');
+    eventEarn(q.discord_id, 'buildUpgrade');
     checkAchievements(q.discord_id);
     const label = typeof def?.label === 'function' ? def.label(q.target_level) : (def?.label || q.building_key);
     createNotif(q.discord_id, 'coa_build_done', { kind: 'building', building: label, level: q.target_level });
@@ -378,6 +418,7 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     grantXp(m.discord_id, def.xp || 20);
     questInc(m.discord_id, 'mission');
     if (rewards.money) questInc(m.discord_id, 'earn', rewards.money);
+    eventEarn(m.discord_id, 'mission');
     checkAchievements(m.discord_id);
     createNotif(m.discord_id, 'coa_mission_done', { mission: def.label, money: rewards.money || 0 });
     queueNotification('coa_mission_done', m.discord_id, { mission: def.label });
@@ -434,6 +475,7 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     grantXp(r.discord_id, xpGain);
     questInc(r.discord_id, 'raid');
     if (won && loot.money) questInc(r.discord_id, 'earn', loot.money);
+    if (won) { clanWarInc(r.discord_id, CFG.CLAN_WAR.raidWinPoints); eventEarn(r.discord_id, 'raid'); }
     checkAchievements(r.discord_id);
     createNotif(r.discord_id, 'coa_raid_done', { raid: def.label, won, money: loot.money || 0, lost: lost.length });
     queueNotification('coa_raid_done', r.discord_id, { raid: def.label, won });
@@ -480,7 +522,9 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     const buildings = getBuildings(ident.id);
     const employees = getEmployees(ident.id);
     const researchLevels = getResearchLevels(ident.id);
-    const mods = CFG.researchMods(researchLevels);
+    // getMods() statt CFG.researchMods() direkt — sonst fehlt der Gildenbonus in der
+    // angezeigten Produktionsrate, obwohl syncResources() ihn intern schon einrechnet.
+    const mods = getMods(ident.id);
     // on_mission markiert Fahrzeuge, die gerade einen Einsatz fahren (nicht verkaufbar)
     const vehicles = db.prepare(`
       SELECT v.*, CASE WHEN m.id IS NULL THEN 0 ELSE 1 END AS on_mission
@@ -628,6 +672,51 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
         attacksReceived: db.prepare('SELECT * FROM coa_pvp_log WHERE defender_id = ? ORDER BY created_at DESC LIMIT 8').all(ident.id)
           .map((r) => ({ ...r, won: !!r.won, loot: JSON.parse(r.loot), atk_lost: JSON.parse(r.atk_lost), def_lost: JSON.parse(r.def_lost) })),
       },
+      clan: buildClanView(ident.id),
+      event: buildEventView(ident.id),
+    };
+  }
+
+  // ── Phase 7: Gilden-Ansicht — null, wenn der Spieler in keinem Club ist ──
+  function buildClanView(discordId) {
+    const club = getMyClub(discordId);
+    if (!club) return null;
+    const points = getClanPoints(club.id);
+    const level = CFG.CLAN.fromPoints(points);
+    const curWeek = CFG.periodKey('weekly');
+    const curScore = db.prepare('SELECT score FROM coa_clan_war WHERE club_id = ? AND period_key = ?').get(club.id, curWeek)?.score || 0;
+    const lastRow = db.prepare('SELECT * FROM coa_clan_war WHERE club_id = ? AND period_key != ? ORDER BY period_key DESC LIMIT 1').get(club.id, curWeek);
+    const lastTier = lastRow ? CFG.CLAN_WAR.bestTier(lastRow.score) : null;
+    const claimedLast = lastRow ? !!db.prepare('SELECT 1 FROM coa_clan_war_claims WHERE discord_id = ? AND period_key = ?').get(discordId, lastRow.period_key) : false;
+    const memberCount = db.prepare('SELECT COUNT(*) AS c FROM club_members WHERE club_id = ?').get(club.id).c;
+    return {
+      id: club.id, name: club.name, tag: club.tag, logo: club.logo_emoji, members: memberCount,
+      points, level, pointsThis: CFG.CLAN.pointsFor(level), pointsNext: level < CFG.CLAN.maxLevel ? CFG.CLAN.pointsFor(level + 1) : null,
+      bonusPct: CFG.CLAN.bonusPct(level),
+      war: {
+        score: curScore, tier: CFG.CLAN_WAR.bestTier(curScore)?.label || null,
+        nextTier: CFG.CLAN_WAR.nextTier(curScore), resetInSec: secToReset('weekly'),
+      },
+      lastWeek: lastRow ? {
+        periodKey: lastRow.period_key, score: lastRow.score,
+        tier: lastTier?.label || null, reward: lastTier?.reward || null,
+        claimed: claimedLast, claimable: !!lastTier && !claimedLast,
+      } : null,
+      topDonors: db.prepare(`SELECT discord_id, username, SUM(points) AS total FROM coa_clan_donations
+        WHERE club_id = ? GROUP BY discord_id ORDER BY total DESC LIMIT 5`).all(club.id),
+    };
+  }
+
+  // ── Phase 7: Event-Ansicht — null, wenn gerade kein Event läuft ──
+  function buildEventView(discordId) {
+    const ev = activeEvent();
+    if (!ev) return null;
+    const balance = db.prepare('SELECT amount FROM coa_event_currency WHERE discord_id = ? AND event_key = ?').get(discordId, ev.key)?.amount || 0;
+    return {
+      key: ev.key, label: ev.label, icon: ev.icon, desc: ev.desc,
+      currency: ev.currency, currencyIcon: ev.currencyIcon, balance,
+      endInSec: Math.max(0, Math.round((new Date(ev.endAt.replace(' ', 'T') + 'Z').getTime() - Date.now()) / 1000)),
+      shop: ev.shop.map((it) => ({ key: it.key, label: it.label, icon: it.icon, cost: it.cost, reward: it.reward, xp: it.xp || 0 })),
     };
   }
 
@@ -1067,12 +1156,83 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     })();
 
     grantXp(ident.id, won ? CFG.XP.pvpAttack(defPower) : Math.ceil(CFG.XP.pvpAttack(defPower) / 2));
-    if (!won) grantXp(defender_id, CFG.PVP.defenderWinXp);
+    if (won) { clanWarInc(ident.id, CFG.CLAN_WAR.pvpWinPoints); eventEarn(ident.id, 'pvpWin'); }
+    if (!won) { grantXp(defender_id, CFG.PVP.defenderWinXp); clanWarInc(defender_id, CFG.CLAN_WAR.pvpDefendPoints); }
     checkAchievements(ident.id);
     checkAchievements(defender_id);
     createNotif(defender_id, 'coa_pvp_attacked', { attacker: ident.name, won, loot });
     queueNotification('coa_pvp_attacked', defender_id, { attacker: ident.name, won });
     res.json({ ok: true, won, chance: Math.round(winP * 100), atkPower, defPower, loot, atkLost: atkLost.map((u) => u.unit_key), defLost: defLost.map((u) => u.unit_key), ...buildView(ident) });
+  });
+
+  // ── Gilde: Ressourcen spenden (Spendenpunkte → Gildenlevel → Produktionsbonus) ──
+  router.post('/api/clash-of-acls/clan/donate', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    const { resource, amount } = req.body || {};
+    if (!CFG.RESOURCES.includes(resource)) return res.status(400).json({ error: 'Unbekannte Ressource' });
+    const amt = Math.round(Number(amount));
+    if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'Ungültige Menge' });
+    const club = getMyClub(ident.id);
+    if (!club) return res.status(400).json({ error: 'Du bist in keinem Club — tritt im Portal einem bei' });
+    const state = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
+    if ((state[resource] || 0) < amt) return res.status(400).json({ error: 'Nicht genug Ressourcen' });
+    const points = Math.round(amt * (CFG.CLAN.donateWeight[resource] || 1));
+    db.transaction(() => {
+      deduct(ident.id, state, { [resource]: amt });
+      db.prepare(`INSERT INTO coa_clan (club_id, points, updated_at) VALUES (?, ?, datetime('now'))
+        ON CONFLICT(club_id) DO UPDATE SET points = points + excluded.points, updated_at = datetime('now')`).run(club.id, points);
+      db.prepare('INSERT INTO coa_clan_donations (club_id, discord_id, username, points) VALUES (?,?,?,?)').run(club.id, ident.id, ident.name, points);
+      db.prepare('UPDATE coa_state SET clan_donated = clan_donated + ? WHERE discord_id = ?').run(points, ident.id);
+    })();
+    grantXp(ident.id, Math.max(1, Math.round(points / 20)));
+    checkAchievements(ident.id);
+    res.json({ ok: true, points, ...buildView(ident) });
+  });
+
+  // ── Gilde: Belohnung der zuletzt abgeschlossenen Gildenkriegs-Woche abholen ──
+  router.post('/api/clash-of-acls/clan/war-claim', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    const club = getMyClub(ident.id);
+    if (!club) return res.status(400).json({ error: 'Du bist in keinem Club' });
+    const curWeek = CFG.periodKey('weekly');
+    const lastRow = db.prepare('SELECT * FROM coa_clan_war WHERE club_id = ? AND period_key != ? ORDER BY period_key DESC LIMIT 1').get(club.id, curWeek);
+    if (!lastRow) return res.status(400).json({ error: 'Keine abgeschlossene Gildenkriegs-Woche gefunden' });
+    const tier = CFG.CLAN_WAR.bestTier(lastRow.score);
+    if (!tier) return res.status(400).json({ error: 'Eure Gilde hat letzte Woche keine Stufe erreicht' });
+    if (db.prepare('SELECT 1 FROM coa_clan_war_claims WHERE discord_id = ? AND period_key = ?').get(ident.id, lastRow.period_key)) {
+      return res.status(400).json({ error: 'Belohnung schon abgeholt' });
+    }
+    db.transaction(() => {
+      db.prepare('INSERT INTO coa_clan_war_claims (discord_id, period_key) VALUES (?,?)').run(ident.id, lastRow.period_key);
+      grantResources(ident.id, tier.reward);
+    })();
+    res.json({ ok: true, tier: tier.label, reward: tier.reward, ...buildView(ident) });
+  });
+
+  // ── Event: Marken im Event-Shop gegen Belohnungen eintauschen ──
+  router.post('/api/clash-of-acls/event-buy', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    const ev = activeEvent();
+    if (!ev) return res.status(400).json({ error: 'Gerade läuft kein Event' });
+    const item = ev.shop.find((i) => i.key === (req.body || {}).item_key);
+    if (!item) return res.status(400).json({ error: 'Unbekanntes Angebot' });
+    const bal = db.prepare('SELECT amount FROM coa_event_currency WHERE discord_id = ? AND event_key = ?').get(ident.id, ev.key)?.amount || 0;
+    if (bal < item.cost) return res.status(400).json({ error: `Nicht genug ${ev.currency} (${item.cost} nötig)` });
+    db.transaction(() => {
+      db.prepare('UPDATE coa_event_currency SET amount = amount - ? WHERE discord_id = ? AND event_key = ?').run(item.cost, ident.id, ev.key);
+      grantResources(ident.id, item.reward || {});
+    })();
+    if (item.xp) grantXp(ident.id, item.xp);
+    checkAchievements(ident.id);
+    res.json({ ok: true, item: item.label, ...buildView(ident) });
   });
 
   // ── Täglicher Login-Bonus: 7-Tage-Zyklus, Streak bricht nach einem Fehltag ──

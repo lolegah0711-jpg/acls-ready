@@ -444,7 +444,86 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   const newbieTargets = await get('/api/clash-of-acls/pvp/targets');
   assert.ok(!newbieTargets.some((t) => t.discord_id === NEWBIE.id), 'Neuling taucht nicht in der Zielliste auf');
 
-  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne, PvP)');
+  // ══ Phase 7: Gilden (auf dem Club-System) + Events ═════════
+  st = await get('/api/clash-of-acls/state');
+  assert.equal(st.clan, null, 'Ohne Club-Mitgliedschaft ist clan=null');
+
+  // Club direkt in der DB anlegen (routes/clubs.js ist im Test-Harness nicht gemountet)
+  const clubIns = db.prepare("INSERT INTO clubs (name, tag, logo_emoji, founder_did) VALUES ('Testrennstall', 'TRS', '🏎️', ?)").run(ME.id);
+  const clubId = clubIns.lastInsertRowid;
+  db.prepare("INSERT INTO club_members (club_id, discord_id, username, role) VALUES (?,?,?,'president')").run(clubId, ME.id, ME.name);
+
+  const noDonate = await post('/api/clash-of-acls/clan/donate', { resource: 'money', amount: 0 });
+  assert.equal(noDonate.status, 400, 'Spende mit Menge 0 abgelehnt');
+  db.prepare('UPDATE coa_state SET money = 999999 WHERE discord_id=?').run(ME.id);
+  const donate1 = await post('/api/clash-of-acls/clan/donate', { resource: 'money', amount: 1000 });
+  assert.equal(donate1.status, 200, 'Spende ok: ' + JSON.stringify(donate1.json.error || ''));
+  assert.equal(donate1.json.points, 1000, 'Geld hat Gewichtung 1 → 1000 Punkte');
+  assert.ok(donate1.json.clan.points >= 1000, 'Gildenpunkte im View gestiegen');
+  const lvlAfter1000 = donate1.json.clan.level;
+  const prodPctBefore = donate1.json.mods.prodPct;
+
+  const donate2 = await post('/api/clash-of-acls/clan/donate', { resource: 'steel', amount: 500 });
+  assert.equal(donate2.status, 200, 'Zweite Spende (Stahl, Gewichtung 2) ok');
+  assert.equal(donate2.json.clan.points, 1000 + 1000, 'Stahl-Spende bringt 500×2=1000 Punkte, macht 2000 gesamt');
+  assert.ok(donate2.json.clan.level >= lvlAfter1000, 'Gildenlevel steigt mit mehr Punkten nicht rückwärts');
+  assert.equal(donate2.json.clan.level, 1, 'Gildenlevel 1 exakt bei 2000 Punkten (pointsFor(1)=2000)');
+  assert.ok(donate2.json.mods.prodPct === prodPctBefore + CFG2.CLAN.bonusPct(1),
+    `Gildenbonus (+${CFG2.CLAN.bonusPct(1)}%) korrekt in mods.prodPct eingerechnet: ${prodPctBefore} → ${donate2.json.mods.prodPct}`);
+
+  const insufficient = await post('/api/clash-of-acls/clan/donate', { resource: 'fuel', amount: 999999 });
+  assert.equal(insufficient.status, 400, 'Spende ohne genug Ressourcen abgelehnt');
+
+  // Gildenkrieg: frische Einheit + frischer Überfall NACH Club-Beitritt, um den
+  // Punktezuwachs eindeutig zuordnen zu können
+  db.prepare("INSERT INTO coa_units (discord_id, unit_key) VALUES (?, 'sicherheitstruck'), (?, 'sicherheitstruck'), (?, 'sicherheitstruck')").run(ME.id, ME.id, ME.id);
+  const warScoreBefore = (await get('/api/clash-of-acls/state')).clan.war.score;
+  const preRaid = await get('/api/clash-of-acls/state');
+  const freshUnits = preRaid.units.filter(u => !u.raid_id).map(u => u.id);
+  const clanRaid = await post('/api/clash-of-acls/raid', { raid_key: 'schrottdiebe', unit_ids: freshUnits });
+  assert.equal(clanRaid.status, 200, 'Überfall für Gildenkriegs-Test gestartet');
+  const myRaidId = clanRaid.json.activeRaid.id;
+  db.prepare("UPDATE coa_raids SET finish_at = datetime('now','-1 minute') WHERE resolved_at IS NULL").run();
+  st = await get('/api/clash-of-acls/state');
+  // Über die Raid-ID direkt in der DB nachschlagen statt raidReports[0] zu vertrauen —
+  // bei mehreren im selben Sekundenfenster aufgelösten Überfällen (SQLite datetime('now')
+  // hat nur Sekundenauflösung) ist die ORDER-BY-resolved_at-Reihenfolge sonst mehrdeutig.
+  const myRaidRow = db.prepare('SELECT result FROM coa_raids WHERE id = ?').get(myRaidId);
+  const raidWon = JSON.parse(myRaidRow.result).won;
+  const expectedScoreDelta = raidWon ? CFG2.CLAN_WAR.raidWinPoints : 0;
+  assert.equal(st.clan.war.score, warScoreBefore + expectedScoreDelta,
+    `Gildenkriegs-Score korrekt aktualisiert (Überfall ${raidWon ? 'gewonnen' : 'verloren'}): ${warScoreBefore} → ${st.clan.war.score}`);
+
+  // Vergangene Gildenkriegs-Woche simulieren und abholen
+  db.prepare("INSERT INTO coa_clan_war (club_id, period_key, score) VALUES (?, '2020-W01', 200)").run(clubId);
+  st = await get('/api/clash-of-acls/state');
+  assert.ok(st.clan.lastWeek && st.clan.lastWeek.claimable, 'Vergangene Woche mit Silber-Stufe ist claimable: ' + JSON.stringify(st.clan.lastWeek));
+  assert.equal(st.clan.lastWeek.tier, 'Silber', 'Score 200 entspricht Silber-Stufe');
+  const warClaim = await post('/api/clash-of-acls/clan/war-claim');
+  assert.equal(warClaim.status, 200, 'Gildenkriegs-Claim ok: ' + JSON.stringify(warClaim.json.error || ''));
+  assert.equal(warClaim.json.tier, 'Silber', 'Abgeholte Stufe ist Silber');
+  const warClaimTwice = await post('/api/clash-of-acls/clan/war-claim');
+  assert.equal(warClaimTwice.status, 400, 'Doppelter Gildenkriegs-Claim abgelehnt');
+
+  // ── Events ──
+  st = await get('/api/clash-of-acls/state');
+  assert.ok(st.event, 'Sommer-Event ist aktiv (Systemzeit liegt im Fenster): ' + JSON.stringify(st.event));
+  assert.equal(st.event.key, 'sommer2026', 'Richtiges Event aktiv');
+  assert.ok(st.event.balance > 0, 'Event-Marken bereits durch frühere Aktionen (Bau/Einsätze/Überfälle) verdient: ' + st.event.balance);
+
+  const badItem = await post('/api/clash-of-acls/event-buy', { item_key: 'nope' });
+  assert.equal(badItem.status, 400, 'Unbekanntes Event-Item abgelehnt');
+  const cheapest = st.event.shop.reduce((a, b) => (a.cost <= b.cost ? a : b));
+  db.prepare('UPDATE coa_event_currency SET amount = ? WHERE discord_id=? AND event_key=?').run(9999, ME.id, st.event.key);
+  const buy1 = await post('/api/clash-of-acls/event-buy', { item_key: cheapest.key });
+  assert.equal(buy1.status, 200, 'Event-Kauf ok: ' + JSON.stringify(buy1.json.error || ''));
+  assert.equal(buy1.json.event.balance, 9999 - cheapest.cost, 'Marken korrekt abgezogen');
+
+  db.prepare('UPDATE coa_event_currency SET amount = 0 WHERE discord_id=? AND event_key=?').run(ME.id, st.event.key);
+  const poorBuy = await post('/api/clash-of-acls/event-buy', { item_key: cheapest.key });
+  assert.equal(poorBuy.status, 400, 'Kauf ohne genug Marken abgelehnt');
+
+  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne, PvP, Gilden, Events)');
   finish(0);
 })().catch(e => { console.error('✗ Test fehlgeschlagen:', e.message); finish(1); });
 

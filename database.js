@@ -934,6 +934,44 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_coa_pvp_defender ON coa_pvp_log(defender_id, created_at);
   `);
 
+  // ── Clash of ACLS Phase 7: Gilden (auf dem bestehenden clubs-System aufgesetzt) +
+  // zeitlich begrenzte Events ──
+  try { db.exec('ALTER TABLE coa_state ADD COLUMN clan_donated INTEGER NOT NULL DEFAULT 0'); } catch {}
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coa_clan (
+      club_id    INTEGER PRIMARY KEY,
+      points     INTEGER NOT NULL DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS coa_clan_donations (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      club_id    INTEGER NOT NULL,
+      discord_id TEXT NOT NULL,
+      username   TEXT,
+      points     INTEGER NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_clan_donations_club ON coa_clan_donations(club_id, points);
+    CREATE TABLE IF NOT EXISTS coa_clan_war (
+      club_id    INTEGER NOT NULL,
+      period_key TEXT NOT NULL,
+      score      INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (club_id, period_key)
+    );
+    CREATE TABLE IF NOT EXISTS coa_clan_war_claims (
+      discord_id TEXT NOT NULL,
+      period_key TEXT NOT NULL,
+      claimed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (discord_id, period_key)
+    );
+    CREATE TABLE IF NOT EXISTS coa_event_currency (
+      discord_id TEXT NOT NULL,
+      event_key  TEXT NOT NULL,
+      amount     INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (discord_id, event_key)
+    );
+  `);
+
   // ── Clash of ACLS Phase 5: Questline/Kampagne (einmalige, geführte Aufgabenreihe) ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS coa_campaign (

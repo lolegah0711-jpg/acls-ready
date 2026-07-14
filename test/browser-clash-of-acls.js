@@ -164,7 +164,37 @@ const B = 'http://localhost:4013';
   if (await page.locator('#lvlOverlay.show').count()) await page.keyboard.press('Escape');
   await page.click('.sh-close');
 
-  // 12) Himmel/Wolken vorhanden, keine JS-Fehler
+  // 12) Gilde: ohne Club-Mitgliedschaft Hinweis, dann Club seeden + spenden
+  await page.click('button[title="Gilde"]');
+  await page.waitForSelector('.clan-noclub', { timeout: 5000 });
+  ok('Gilde-Sheet zeigt Hinweis ohne Club-Mitgliedschaft');
+  await page.click('.sh-close');
+
+  const clubIns = db.prepare("INSERT INTO clubs (name, tag, logo_emoji, founder_did) VALUES ('Browser Racing', 'BRC', '🏁', ?)").run(ME.id);
+  db.prepare("INSERT INTO club_members (club_id, discord_id, username, role) VALUES (?,?,?,'president')").run(clubIns.lastInsertRowid, ME.id, ME.name);
+  db.prepare('UPDATE coa_state SET money = 50000 WHERE discord_id=?').run(ME.id);
+  await page.reload({ waitUntil: 'networkidle' });
+  if (await page.locator('#lvlOverlay.show').count()) await page.keyboard.press('Escape');
+  if (await page.locator('.claimBtn').count()) await page.click('.sh-close').catch(() => {});
+
+  await page.click('button[title="Gilde"]');
+  await page.waitForSelector('.clan-head', { timeout: 5000 });
+  ok('Gilde-Sheet zeigt Club-Header nach Beitritt');
+  await page.fill('#donateAmt', '500');
+  await page.click('.clan-donate button');
+  await page.waitForFunction(() => st.clan && st.clan.points >= 500, null, { timeout: 5000 });
+  ok('Spende erfolgreich — Gildenpunkte gestiegen');
+  await page.click('.sh-close');
+
+  // 13) Event: Sommer-Werkstattfest sollte laufen (Systemzeit im Fenster), Shop kaufen
+  await page.click('button[title="Event"]');
+  await page.waitForSelector('.event-shop .shop-card', { timeout: 5000 });
+  ok('Event-Sheet mit Shop gerendert');
+  const eventBalance = await page.evaluate(() => st.event.balance);
+  eventBalance > 0 ? ok('Event-Marken bereits verdient: ' + eventBalance) : fail('Keine Event-Marken verdient');
+  await page.click('.sh-close');
+
+  // 14) Himmel/Wolken vorhanden, keine JS-Fehler
   (await page.locator('.cloud').count()) === 3 ? ok('3 Wolken am Himmel') : fail('Wolken fehlen');
   await page.screenshot({ path: path.join(os.tmpdir(), 'coa-phase3.png') });
   console.log('  Screenshot: ' + path.join(os.tmpdir(), 'coa-phase3.png'));
