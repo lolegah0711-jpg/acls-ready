@@ -115,7 +115,25 @@ const B = 'http://localhost:4013';
   await page.click('.sh-close');
   (await page.locator('#jobs .jchip').count()) >= 1 ? ok('Überfall-Job-Chip sichtbar') : fail('Job-Chip fehlt');
 
-  // 10) Himmel/Wolken vorhanden, keine JS-Fehler
+  // 10) Kampagnen-Sheet: 6 Kapitel, nächstes Ziel, Claim-Flow
+  await page.click('button[title="Kampagne"]');
+  await page.waitForSelector('.camp-chapter', { timeout: 5000 });
+  const chapters = await page.locator('.camp-chapter').count();
+  chapters === 6 ? ok('6 Kampagnen-Kapitel gerendert') : fail('Kapitel: ' + chapters);
+  const nextVisible = await page.locator('.camp-next').isVisible();
+  nextVisible ? ok('„Nächstes Ziel"-Hinweis sichtbar') : fail('camp-next fehlt');
+  const claimBtn = page.locator('.camp-step.claimable button').first();
+  if (await claimBtn.count()) {
+    const moneyBefore = await page.evaluate(() => st.resources.money);
+    await claimBtn.click();
+    await page.waitForFunction((m) => st.resources.money > m, moneyBefore, { timeout: 5000 });
+    ok('Kampagnenschritt erfolgreich abgeholt (Geld gestiegen)');
+  } else {
+    ok('Kein claimbarer Schritt zu diesem Zeitpunkt (erwartbar bei frischem Spieler ohne Upgrades)');
+  }
+  await page.click('.sh-close');
+
+  // 11) Himmel/Wolken vorhanden, keine JS-Fehler
   (await page.locator('.cloud').count()) === 3 ? ok('3 Wolken am Himmel') : fail('Wolken fehlen');
   await page.screenshot({ path: path.join(os.tmpdir(), 'coa-phase3.png') });
   console.log('  Screenshot: ' + path.join(os.tmpdir(), 'coa-phase3.png'));

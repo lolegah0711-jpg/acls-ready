@@ -339,6 +339,54 @@
     lossChance: (won, winP) => (won ? 0.08 + 0.22 * (1 - winP) : 0.30 + 0.35 * (1 - winP)),
   };
 
+  // ── Questline / Kampagne (Phase 5) ────────────────────────────────────────
+  // Eine geführte, erzählte Aufgabenreihe quer durch alle Spielsysteme — anders
+  // als die täglichen/wöchentlichen QUESTS (die sich wiederholen) ist jeder
+  // Kampagnenschritt einmalig und dauerhaft. Bedingungen sind monoton (Zähler
+  // steigen nur), daher ist Nachholen in beliebiger Reihenfolge unschädlich.
+  // `stat` prüft gegen statsCtx()[stat], `building`+`level` gegen die höchste
+  // gebaute Stufe dieses Gebäudetyps.
+  const CAMPAIGN_CHAPTERS = [
+    { key: 'grundlagen', title: 'Die kleine Werkstatt', icon: '🔧', flavor: 'Jede Legende beginnt klein. Bring deine Werkstatt auf die Beine.' },
+    { key: 'strasse', title: 'Auf Achse', icon: '🚨', flavor: 'Zeit, das Gelände zu verlassen — deine ersten Aufträge warten.' },
+    { key: 'wissen', title: 'Wissen ist Macht', icon: '🔬', flavor: 'Forschung macht aus einer Werkstatt ein Unternehmen.' },
+    { key: 'schutz', title: 'Schutz der Werkstatt', icon: '🛡️', flavor: 'Erfolg zieht Ärger an — Zeit für einen eigenen Werkschutz.' },
+    { key: 'imperium', title: 'Das Imperium wächst', icon: '🏢', flavor: 'Vom Kleinbetrieb zum Branchenriesen.' },
+    { key: 'legende', title: 'Die Legende von ACLS', icon: '👑', flavor: 'Nur die Besten schreiben Geschichte. Bist du bereit?' },
+  ];
+  const CAMPAIGN = [
+    // Kapitel 1: Die kleine Werkstatt
+    { key: 'c1_1', chapter: 'grundlagen', title: 'Erste Handgriffe', icon: '🔧', desc: 'Baue ein beliebiges Gebäude aus.', stat: 'upgrades_done', value: 1, xp: 25, reward: { money: 250 } },
+    { key: 'c1_2', chapter: 'grundlagen', title: 'Verstärkung', icon: '👷', desc: 'Stelle deinen ersten Mitarbeiter ein.', stat: 'employees_count', value: 1, xp: 25, reward: { money: 250 } },
+    { key: 'c1_3', chapter: 'grundlagen', title: 'Vom Band', icon: '🚗', desc: 'Fertige dein erstes Fahrzeug in der Garage.', stat: 'vehicles_built', value: 1, xp: 30, reward: { steel: 60, parts: 40 } },
+    { key: 'c1_4', chapter: 'grundlagen', title: 'Erster Verkauf', icon: '🏷️', desc: 'Verkaufe dein erstes Fahrzeug im Fuhrpark.', stat: 'vehicles_sold', value: 1, xp: 35, reward: { money: 400 } },
+    // Kapitel 2: Auf Achse
+    { key: 'c2_1', chapter: 'strasse', title: 'Auf Streife', icon: '🚨', desc: 'Schließe deinen ersten Einsatz ab.', stat: 'missions_done', value: 1, xp: 40, reward: { money: 350, fuel: 40 } },
+    { key: 'c2_2', chapter: 'strasse', title: 'Mehr Platz', icon: '🏬', desc: 'Baue das Lager auf Level 2 aus.', building: 'storage', level: 2, xp: 40, reward: { money: 400 } },
+    { key: 'c2_3', chapter: 'strasse', title: 'Größere Zentrale', icon: '🏢', desc: 'Baue das Büro auf Level 3 aus.', building: 'office', level: 3, xp: 60, reward: { money: 600, electronics: 30 } },
+    { key: 'c2_4', chapter: 'strasse', title: 'Routiniert', icon: '⭐', desc: 'Erreiche Spieler-Level 3.', stat: 'level', value: 3, xp: 0, reward: { money: 500 } },
+    // Kapitel 3: Wissen ist Macht
+    { key: 'c3_1', chapter: 'wissen', title: 'Denkfabrik', icon: '🔬', desc: 'Baue ein Forschungszentrum.', building: 'forschungszentrum', level: 1, xp: 50, reward: { money: 700, electronics: 40 } },
+    { key: 'c3_2', chapter: 'wissen', title: 'Erste Erkenntnis', icon: '🧪', desc: 'Schließe deine erste Forschung ab.', stat: 'researches_done', value: 1, xp: 60, reward: { money: 500 } },
+    { key: 'c3_3', chapter: 'wissen', title: 'Wissensdurst', icon: '📚', desc: 'Schließe 3 Forschungen ab.', stat: 'researches_done', value: 3, xp: 120, reward: { money: 1200, electronics: 60 } },
+    { key: 'c3_4', chapter: 'wissen', title: 'Aufsteiger', icon: '⭐', desc: 'Erreiche Spieler-Level 5.', stat: 'level', value: 5, xp: 0, reward: { money: 900 } },
+    // Kapitel 4: Schutz der Werkstatt
+    { key: 'c4_1', chapter: 'schutz', title: 'Auf Nummer sicher', icon: '🛡️', desc: 'Baue eine Sicherheitszentrale.', building: 'sicherheitszentrale', level: 1, xp: 60, reward: { money: 800, steel: 60 } },
+    { key: 'c4_2', chapter: 'schutz', title: 'Erste Rekruten', icon: '💂', desc: 'Bilde deine erste Werkschutz-Einheit aus.', stat: 'units_count', value: 1, xp: 50, reward: { money: 400 } },
+    { key: 'c4_3', chapter: 'schutz', title: 'Erster Sieg', icon: '🏆', desc: 'Gewinne deinen ersten Überfall.', stat: 'raids_won', value: 1, xp: 80, reward: { money: 600, parts: 40 } },
+    { key: 'c4_4', chapter: 'schutz', title: 'Banden-Schreck', icon: '⚔️', desc: 'Gewinne 5 Überfälle.', stat: 'raids_won', value: 5, xp: 150, reward: { money: 1500, steel: 100 } },
+    // Kapitel 5: Das Imperium wächst
+    { key: 'c5_1', chapter: 'imperium', title: 'Guter Chef', icon: '🗂️', desc: 'Baue ein Personalbüro für mehr Mitarbeiter-Slots.', building: 'personalbuero', level: 1, xp: 60, reward: { money: 800 } },
+    { key: 'c5_2', chapter: 'imperium', title: 'Vielfalt', icon: '🚙', desc: 'Fertige 3 verschiedene Fahrzeugtypen.', stat: 'vehicle_types', value: 3, xp: 100, reward: { money: 1000, parts: 80 } },
+    { key: 'c5_3', chapter: 'imperium', title: 'Auf Hochglanz', icon: '🏎️', desc: 'Baue ein Tuningzentrum.', building: 'tuningzentrum', level: 1, xp: 80, reward: { money: 1200, electronics: 60 } },
+    { key: 'c5_4', chapter: 'imperium', title: 'Branchenriese', icon: '⭐', desc: 'Erreiche Spieler-Level 10.', stat: 'level', value: 10, xp: 0, reward: { money: 2000 } },
+    // Kapitel 6: Die Legende von ACLS
+    { key: 'c6_1', chapter: 'legende', title: 'Konzernzentrale', icon: '🏙️', desc: 'Baue das Büro auf Level 6 aus.', building: 'office', level: 6, xp: 150, reward: { money: 2500, steel: 150 } },
+    { key: 'c6_2', chapter: 'legende', title: 'Gut geschützt', icon: '🦾', desc: 'Gewinne 15 Überfälle.', stat: 'raids_won', value: 15, xp: 250, reward: { money: 3000, parts: 150 } },
+    { key: 'c6_3', chapter: 'legende', title: 'Meisterhirn', icon: '🧠', desc: 'Schließe 6 Forschungen ab.', stat: 'researches_done', value: 6, xp: 250, reward: { money: 2500, electronics: 120 } },
+    { key: 'c6_4', chapter: 'legende', title: 'Die Legende von ACLS', icon: '👑', desc: 'Erreiche Spieler-Level 20 und krön dein Imperium.', stat: 'level', value: 20, xp: 500, reward: { money: 8000, steel: 300, parts: 250, electronics: 200, fuel: 200 }, final: true },
+  ];
+
   // ── Spieler-Level (Phase 3) ──────────────────────────────────────────────
   // xpFor(l) = Gesamt-XP, um Level l zu ERREICHEN. XP kommen aus abgeschlossenen
   // Aktionen (Bau, Fertigung, Verkauf, Einsatz, Forschung, Quests, Erfolge).
@@ -497,6 +545,7 @@
     MISSIONS, STARTER_KIT, EMP_MAX_LEVEL, empHireCost, empLevelCost,
     LEVEL, XP, DAILY_BONUS, QUESTS, questDesc, pickQuests, periodKey, ACHIEVEMENTS,
     UNITS, RAIDS, COMBAT,
+    CAMPAIGN_CHAPTERS, CAMPAIGN,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = CONFIG;

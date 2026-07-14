@@ -342,7 +342,44 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   assert.ok(st.units.every(u => !u.raid_id), 'Überlebende Einheiten wieder frei');
   assert.ok(notifs.some(n => n.type === 'coa_raid_done'), 'Überfall-Benachrichtigung erzeugt');
 
-  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem)');
+  // ══ Phase 5: Kampagne / Questline ══════════════════════════
+  st = await get('/api/clash-of-acls/state');
+  assert.equal(st.campaign.total, 24, '24 Kampagnenschritte im View');
+  assert.equal(st.campaign.chapters.length, 6, '6 Kapitel im View');
+  // c1_1 (upgrade), c1_3 (vehicle), c1_4 (sell) sind durch frühere Testschritte längst erfüllt
+  const c1_1 = st.campaign.chapters[0].steps.find(s => s.key === 'c1_1');
+  assert.ok(c1_1.claimable, 'c1_1 (erstes Upgrade) claimable, da Testlauf schon Gebäude ausgebaut hat');
+  const c1_2 = st.campaign.chapters[0].steps.find(s => s.key === 'c1_2');
+  assert.ok(c1_2.claimable, 'c1_2 (Mitarbeiter) claimable — Testlauf hat aktive Mitarbeiter eingestellt');
+
+  const c6_4 = st.campaign.chapters[5].steps.find(s => s.key === 'c6_4');
+  assert.equal(c6_4.claimable, false, 'c6_4 (Level 20) noch nicht erreichbar');
+  const noCond = await post('/api/clash-of-acls/campaign-claim', { step_key: 'c6_4' });
+  assert.equal(noCond.status, 400, 'Claim ohne erfüllte Bedingung abgelehnt');
+  const unknown = await post('/api/clash-of-acls/campaign-claim', { step_key: 'nope' });
+  assert.equal(unknown.status, 400, 'Claim mit unbekanntem Schritt abgelehnt');
+
+  const moneyBeforeCamp = st.resources.money;
+  const claim1 = await post('/api/clash-of-acls/campaign-claim', { step_key: 'c1_1' });
+  assert.equal(claim1.status, 200, 'Kampagnenschritt-Claim ok: ' + JSON.stringify(claim1.json.error || ''));
+  assert.ok(claim1.json.resources.money > moneyBeforeCamp, 'Belohnung gutgeschrieben');
+  assert.equal(claim1.json.campaign.claimedCount, 1, 'claimedCount = 1 nach erstem Claim');
+  const campClaimTwice = await post('/api/clash-of-acls/campaign-claim', { step_key: 'c1_1' });
+  assert.equal(campClaimTwice.status, 400, 'Doppelter Kampagnen-Claim abgelehnt');
+
+  // Nachholen außer der Reihe: Level gezielt auf 5 setzen → c3_4 (Kapitel 3) sofort
+  // claimable, OBWOHL c2_1/c2_2 (Kapitel 2, unabhängige Stats) noch offen sind.
+  db.prepare('UPDATE coa_state SET xp = ?, level = 5 WHERE discord_id=?').run(CFG2.LEVEL.xpFor(5), ME.id);
+  st = await get('/api/clash-of-acls/state');
+  assert.ok(st.progression.level >= 5, 'Level gezielt auf >=5 gesetzt: ' + st.progression.level);
+  const c2_1 = st.campaign.chapters[1].steps.find(s => s.key === 'c2_1');
+  assert.equal(c2_1.claimed, false, 'c2_1 (Kapitel 2) bewusst noch offen gelassen');
+  const c3_4 = st.campaign.chapters[2].steps.find(s => s.key === 'c3_4');
+  assert.ok(c3_4.claimable, 'c3_4 (Level 5, Kapitel 3) claimable trotz offenem Kapitel 2 — Reihenfolge-unabhängig');
+  const claimSkip = await post('/api/clash-of-acls/campaign-claim', { step_key: 'c3_4' });
+  assert.equal(claimSkip.status, 200, 'Nachhol-Claim eines späteren Kapitels ok: ' + JSON.stringify(claimSkip.json.error || ''));
+
+  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne)');
   finish(0);
 })().catch(e => { console.error('✗ Test fehlgeschlagen:', e.message); finish(1); });
 

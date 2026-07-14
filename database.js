@@ -905,6 +905,16 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_coa_raids_did ON coa_raids(discord_id);
   `);
 
+  // ── Clash of ACLS Phase 5: Questline/Kampagne (einmalige, geführte Aufgabenreihe) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coa_campaign (
+      discord_id TEXT NOT NULL,
+      step_key   TEXT NOT NULL,
+      claimed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (discord_id, step_key)
+    );
+  `);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS coa_quests (
       discord_id TEXT NOT NULL,

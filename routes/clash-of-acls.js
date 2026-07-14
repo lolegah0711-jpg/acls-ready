@@ -210,11 +210,14 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     });
   }
 
-  // Statistik-Kontext für Erfolge & Spielerprofil
+  // Statistik-Kontext für Erfolge, Kampagne & Spielerprofil
   function statsCtx(discordId) {
     const s = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(discordId);
     if (!s) return null;
     const buildings = getBuildings(discordId);
+    // höchste gebaute Stufe je Gebäudetyp (nicht-Singletons können mehrfach vorkommen)
+    const buildingLevels = {};
+    buildings.forEach((b) => { buildingLevels[b.building_key] = Math.max(buildingLevels[b.building_key] || 0, b.level); });
     return {
       ...s,
       office_level: officeLevel(buildings),
@@ -223,6 +226,33 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       vehicle_types: db.prepare('SELECT COUNT(DISTINCT vehicle_key) AS c FROM coa_vehicles WHERE discord_id = ?').get(discordId).c,
       research_total: db.prepare('SELECT COALESCE(SUM(level),0) AS s FROM coa_research WHERE discord_id = ?').get(discordId).s,
       units_count: db.prepare('SELECT COUNT(*) AS c FROM coa_units WHERE discord_id = ?').get(discordId).c,
+      buildingLevels,
+    };
+  }
+
+  // Ist ein Kampagnenschritt (unabhängig von der Reihenfolge) inhaltlich erreicht?
+  function campaignStepMet(ctx, step) {
+    if (step.building) return (ctx.buildingLevels[step.building] || 0) >= step.level;
+    return (ctx[step.stat] || 0) >= step.value;
+  }
+
+  // Ansicht der Kampagne: pro Schritt Fortschritt/claimed/claimable, gruppiert nach Kapitel
+  function campaignView(discordId, ctx) {
+    const claimed = new Set(db.prepare('SELECT step_key FROM coa_campaign WHERE discord_id = ?').all(discordId).map((r) => r.step_key));
+    const steps = CFG.CAMPAIGN.map((step) => {
+      const met = campaignStepMet(ctx, step);
+      const cur = step.building ? (ctx.buildingLevels[step.building] || 0) : (ctx[step.stat] || 0);
+      const target = step.building ? step.level : step.value;
+      return {
+        key: step.key, chapter: step.chapter, title: step.title, icon: step.icon, desc: step.desc,
+        xp: step.xp, reward: step.reward, final: !!step.final,
+        progress: Math.min(cur, target), target,
+        claimed: claimed.has(step.key), claimable: met && !claimed.has(step.key),
+      };
+    });
+    return {
+      chapters: CFG.CAMPAIGN_CHAPTERS.map((c) => ({ ...c, steps: steps.filter((s) => s.chapter === c.key) })),
+      claimedCount: claimed.size, total: steps.length,
     };
   }
 
@@ -545,6 +575,7 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
         cycle: CFG.DAILY_BONUS.days.map((_, i) => CFG.DAILY_BONUS.rewards(i + 1, level)),
       },
       quests: { daily: questView('daily'), weekly: questView('weekly') },
+      campaign: campaignView(ident.id, ctx),
       achievements: Object.entries(CFG.ACHIEVEMENTS).map(([key, a]) => ({
         key, label: a.label, icon: a.icon, desc: a.desc, xp: a.xp, money: a.money,
         value: a.value, progress: Math.min(ctx[a.stat] || 0, a.value), unlocked: unlockedAch.has(key),
@@ -878,6 +909,32 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       db.prepare(`UPDATE coa_units SET raid_id = ? WHERE id IN (${ph})`).run(raid.lastInsertRowid, ...unitIds);
     })();
     res.json({ ok: true, ...buildView(ident) });
+  });
+
+  // ── Kampagnenschritt abholen: Bedingung ist ordnungsunabhängig (monotone
+  // Zähler), Nachholen mehrerer bereits erreichter Schritte in einer Sitzung
+  // ist also erlaubt und beabsichtigt (kein Fortschritt geht verloren). ──
+  router.post('/api/clash-of-acls/campaign-claim', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    const { step_key } = req.body || {};
+    const step = CFG.CAMPAIGN.find((s) => s.key === step_key);
+    if (!step) return res.status(400).json({ error: 'Unbekannter Kampagnenschritt' });
+    if (db.prepare('SELECT 1 FROM coa_campaign WHERE discord_id = ? AND step_key = ?').get(ident.id, step_key)) {
+      return res.status(400).json({ error: 'Belohnung schon abgeholt' });
+    }
+    const ctx = statsCtx(ident.id);
+    if (!campaignStepMet(ctx, step)) return res.status(400).json({ error: 'Bedingung noch nicht erfüllt' });
+    db.transaction(() => {
+      db.prepare('INSERT INTO coa_campaign (discord_id, step_key) VALUES (?,?)').run(ident.id, step_key);
+      grantResources(ident.id, step.reward);
+    })();
+    if (step.xp) grantXp(ident.id, step.xp);
+    createNotif(ident.id, 'coa_campaign_step', { title: step.title, final: !!step.final });
+    queueNotification('coa_campaign_step', ident.id, { title: step.title, final: !!step.final });
+    res.json({ ok: true, reward: step.reward, xp: step.xp, final: !!step.final, ...buildView(ident) });
   });
 
   // ── Täglicher Login-Bonus: 7-Tage-Zyklus, Streak bricht nach einem Fehltag ──

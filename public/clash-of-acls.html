@@ -255,6 +255,40 @@
   .ach .atrack i { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#fbbf24); }
   .ach .ac { font-size:.62rem; color:var(--mut); margin-top:.2rem; font-variant-numeric:tabular-nums; }
 
+  /* ── Kampagne / Questline ── */
+  .camp-next { display:flex; align-items:center; gap:.65rem; background:linear-gradient(145deg,#2a2617,#1c2433); border:1px solid rgba(251,191,36,.5); border-radius:14px; padding:.65rem .8rem; margin-bottom:.9rem; }
+  .camp-next .cn-ic { font-size:1.7rem; }
+  .camp-next .cn-l { color:var(--mut); font-size:.66rem; text-transform:uppercase; letter-spacing:.05em; }
+  .camp-next .cn-t { font-weight:800; font-size:.88rem; margin-top:.05rem; }
+  .camp-progress-all { display:flex; align-items:center; gap:.5rem; margin-bottom:1rem; font-size:.74rem; color:var(--mut); }
+  .camp-progress-all .cpa-bar { flex:1; height:6px; background:#0d1622; border-radius:99px; overflow:hidden; }
+  .camp-progress-all .cpa-bar i { display:block; height:100%; background:linear-gradient(90deg,#fbbf24,#f97316); }
+  .camp-chapter { margin-bottom:1.1rem; }
+  .camp-chapter .ch-head { display:flex; align-items:center; gap:.55rem; margin-bottom:.5rem; }
+  .camp-chapter .ch-ic { font-size:1.5rem; }
+  .camp-chapter .ch-title { font-weight:800; font-size:.92rem; }
+  .camp-chapter .ch-flavor { color:var(--mut); font-size:.7rem; font-style:italic; margin-top:.05rem; }
+  .camp-chapter.locked { opacity:.4; }
+  .camp-steps { position:relative; padding-left:1.4rem; }
+  .camp-steps::before { content:''; position:absolute; left:.42rem; top:.4rem; bottom:.4rem; width:2px; background:var(--line); }
+  .camp-step { position:relative; padding:.5rem 0 .5rem .5rem; display:flex; align-items:center; gap:.6rem; }
+  .camp-step::before { content:''; position:absolute; left:-1.4rem; top:50%; transform:translateY(-50%); width:11px; height:11px; border-radius:50%; background:var(--card2); border:2px solid var(--line); }
+  .camp-step.claimed::before { background:var(--good); border-color:var(--good); }
+  .camp-step.claimable::before { background:#fbbf24; border-color:#fbbf24; box-shadow:0 0 8px rgba(251,191,36,.6); }
+  .camp-step .cs-ic { font-size:1.3rem; opacity:.9; }
+  .camp-step.claimed .cs-ic { filter:grayscale(.3); }
+  .camp-step .cs-body { flex:1; min-width:0; }
+  .camp-step .cs-t { font-weight:700; font-size:.82rem; }
+  .camp-step.claimed .cs-t { color:var(--mut); text-decoration:line-through; text-decoration-color:rgba(139,151,169,.5); }
+  .camp-step .cs-d { color:var(--mut); font-size:.7rem; margin-top:.1rem; }
+  .camp-step .cs-track { width:70px; height:4px; background:#0d1622; border-radius:99px; overflow:hidden; margin-top:.3rem; }
+  .camp-step .cs-track i { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#22c55e); }
+  .camp-step .cs-rew { font-size:.66rem; color:var(--mut); margin-top:.15rem; }
+  .camp-step button { border:0; border-radius:9px; padding:.4rem .65rem; font-weight:800; font-size:.74rem; cursor:pointer; background:#fbbf24; color:#1a0f00; white-space:nowrap; }
+  .camp-step button:disabled { background:var(--card2); color:var(--mut); opacity:.55; cursor:default; }
+  .camp-step.final button { background:linear-gradient(145deg,#f472b6,#a855f7); color:#fff; }
+  .camp-step.final button:disabled { background:var(--card2); color:var(--mut); opacity:.55; }
+
   /* ── Anleitung ── */
   .hstep { display:flex; gap:.7rem; padding:.55rem 0; border-bottom:1px solid var(--line); align-items:flex-start; }
   .hstep:last-of-type { border-bottom:0; }
@@ -272,6 +306,7 @@
   <span id="resBar" style="display:contents"></span>
   <button class="hud-btn" id="dailyBtn" onclick="openSheet('daily')" title="Täglicher Bonus" style="display:none">🎁</button>
   <button class="hud-btn" id="questBtn" onclick="openSheet('quests')" title="Quests">🎯</button>
+  <button class="hud-btn" id="campBtn" onclick="openSheet('campaign')" title="Kampagne">🗺️</button>
   <button class="hud-btn" onclick="openSheet('missions')" title="Einsätze">🚨</button>
   <button class="hud-btn" onclick="openSheet('army')" title="Werkschutz & Überfälle">🛡️</button>
   <button class="hud-btn" onclick="openSheet('emp')" title="Mitarbeiter">👷</button>
@@ -330,7 +365,7 @@
   <div class="sh-body" id="shBody"></div>
 </div>
 
-<script src="/js/clash-of-acls-config.js?v=5"></script>
+<script src="/js/clash-of-acls-config.js?v=6"></script>
 <script>
 const CFG = window.CLASH_OF_ACLS_CONFIG;
 const $ = id => document.getElementById(id);
@@ -640,6 +675,8 @@ function renderHudExtras() {
   $('dailyBtn').style.display = st.daily.available ? '' : 'none';
   const claimable = [...st.quests.daily.list, ...st.quests.weekly.list].some(q => !q.claimed && q.progress >= q.target);
   $('questBtn').innerHTML = '🎯' + (claimable ? '<span class="dot"></span>' : '');
+  const campClaimable = st.campaign.chapters.some(ch => ch.steps.some(s => s.claimable));
+  $('campBtn').innerHTML = '🗺️' + (campClaimable ? '<span class="dot"></span>' : '');
 }
 
 function renderRes() {
@@ -915,7 +952,7 @@ function closeSheet() {
   $('sheet').classList.remove('open');
 }
 function renderSheet() {
-  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!', army:'🛡️ Werkschutz & Überfälle' };
+  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!', army:'🛡️ Werkschutz & Überfälle', campaign:'🗺️ Kampagne' };
   $('shTitle').textContent = titles[sheetType] || '';
   $('shCats').style.display = sheetType === 'shop' ? 'flex' : 'none';
   if (sheetType === 'shop') renderShop();
@@ -931,6 +968,62 @@ function renderSheet() {
   else if (sheetType === 'daily') renderDaily();
   else if (sheetType === 'offline') renderOffline();
   else if (sheetType === 'army') renderArmy();
+  else if (sheetType === 'campaign') renderCampaign();
+}
+
+/* ── Kampagne / Questline: geführte, erzählte Aufgabenreihe quer durchs Spiel ── */
+function renderCampaign() {
+  const camp = st.campaign;
+  // erster nicht abgeholter Schritt über alle Kapitel hinweg = "nächstes Ziel"
+  let next = null;
+  for (const ch of camp.chapters) { next = ch.steps.find(s => !s.claimed); if (next) break; }
+
+  let html = `<div class="camp-progress-all"><span>${camp.claimedCount}/${camp.total}</span><div class="cpa-bar"><i style="width:${camp.claimedCount / camp.total * 100}%"></i></div></div>`;
+
+  if (next) {
+    html += `<div class="camp-next"><span class="cn-ic">${next.icon}</span><div><div class="cn-l">${next.claimable ? 'Bereit zum Abholen' : 'Nächstes Ziel'}</div><div class="cn-t">${esc(next.title)} — ${esc(next.desc)}</div></div></div>`;
+  } else {
+    html += `<div class="camp-next"><span class="cn-ic">👑</span><div><div class="cn-l">Kampagne abgeschlossen</div><div class="cn-t">Du hast die Legende von ACLS geschrieben!</div></div></div>`;
+  }
+
+  html += camp.chapters.map(ch => {
+    const done = ch.steps.filter(s => s.claimed).length;
+    const chLocked = done === 0 && ch.steps.every(s => !s.claimable);
+    const steps = ch.steps.map(s => {
+      const cls = s.claimed ? 'claimed' : s.claimable ? 'claimable' : '';
+      const rew = Object.entries(s.reward).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' ');
+      const action = s.claimed
+        ? '<span style="color:var(--good);font-size:1.1rem">✔</span>'
+        : `<button ${s.claimable ? '' : 'disabled'} onclick="claimCampaign('${s.key}')">Abholen</button>`;
+      return `<div class="camp-step ${cls}${s.final ? ' final' : ''}">
+        <span class="cs-ic">${s.icon}</span>
+        <div class="cs-body"><div class="cs-t">${esc(s.title)}</div><div class="cs-d">${esc(s.desc)}</div>
+          <div class="cs-track"><i style="width:${Math.min(100, s.progress / s.target * 100)}%"></i></div>
+          <div class="cs-rew">${fmt(s.progress)}/${fmt(s.target)} · 🎁 ${rew}${s.xp ? ' · ✨' + s.xp + ' XP' : ''}</div>
+        </div>${action}</div>`;
+    }).join('');
+    return `<div class="camp-chapter ${chLocked ? 'locked' : ''}">
+      <div class="ch-head"><span class="ch-ic">${ch.icon}</span><div><div class="ch-title">${esc(ch.title)} <span class="muted" style="font-weight:400">· ${done}/${ch.steps.length}</span></div><div class="ch-flavor">${esc(ch.flavor)}</div></div></div>
+      <div class="camp-steps">${steps}</div>
+    </div>`;
+  }).join('');
+
+  $('shBody').innerHTML = html;
+}
+async function claimCampaign(key) {
+  try {
+    const d = await api('/api/clash-of-acls/campaign-claim', { method:'POST', body:{ step_key: key } });
+    SFX.coin();
+    floatGain('+✨' + (d.xp || 0) + ' XP ' + Object.entries(d.reward).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' '));
+    if (d.final) {
+      toast('👑', 'Kampagne abgeschlossen!', 'Du hast die Legende von ACLS geschrieben.');
+      burstAt(innerWidth / 2, innerHeight / 2 - 60, 30);
+      SFX.levelup();
+    } else {
+      msg('Kampagnenschritt abgeschlossen!', true);
+    }
+    render(d);
+  } catch (e) { msg(e.message); }
 }
 
 /* ── Werkschutz: Ausbildung, Trupp-Auswahl, Überfälle, Kampfberichte ── */
@@ -1284,6 +1377,7 @@ function renderHelp() {
     `<div class="hstep"><span class="hic">${icon}</span><div><div class="hti">${title}</div><div class="htx">${text}</div></div></div>`;
   $('shBody').innerHTML =
     step('🎯', 'Dein Ziel', 'Baue aus einer kleinen Werkstatt dein eigenes Werkstatt-Imperium: Gelände erweitern, Fahrzeuge produzieren, verkaufen und in der Rangliste aufsteigen.') +
+    step('🗺️', 'Die Kampagne', 'Nicht sicher, wo du anfangen sollst? Die Kampagne (🗺️ oben) führt dich in 6 Kapiteln und 24 Schritten durch das ganze Spiel — vom ersten Ausbau bis zur „Legende von ACLS". Jeder Schritt zeigt genau, was zu tun ist, und bringt beim Abholen eine Belohnung. Perfekt als roter Faden!') +
     step('💰', 'Ressourcen', 'Geld, Stahl, Ersatzteile, Elektronik und Treibstoff werden von deinen Gebäuden automatisch produziert — auch während du offline bist! Aber: Volle Lager produzieren nicht weiter. Baue das Lager aus, um mehr zu bunkern.') +
     step('🔨', 'Bauen', 'Tippe auf den Hammer-Button unten rechts, wähle ein Gebäude und tippe dann auf einen gelb markierten Bauplatz. Es kann immer nur <b>ein</b> Bauauftrag gleichzeitig laufen — der Fortschritt läuft unten links.') +
     step('🏢', 'Das Büro', 'Dein wichtigstes Gebäude (wie das Rathaus): Jedes Büro-Level schaltet neue Bauplätze frei und erlaubt höhere Level für alle anderen Gebäude. Der dunkle Wald ist noch gesperrtes Gelände.') +

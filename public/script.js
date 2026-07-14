@@ -2718,7 +2718,7 @@ window.toggleNotifPanel = async function() {
   const badge = $('notifBadge');
   if (badge) badge.style.display = 'none';
 
-  const ICONS = { badge: '🏅', transfer_in: '🪙', guestbook: '✏️', coa_build_done: '🏗️', coa_mission_done: '🚨', coa_research_done: '🔬', coa_levelup: '⭐', coa_achievement: '🏆', coa_raid_done: '🛡️' };
+  const ICONS = { badge: '🏅', transfer_in: '🪙', guestbook: '✏️', coa_build_done: '🏗️', coa_mission_done: '🚨', coa_research_done: '🔬', coa_levelup: '⭐', coa_achievement: '🏆', coa_raid_done: '🛡️', coa_campaign_step: '🗺️' };
 
   const panel = document.createElement('div');
   panel.id = 'notifPanel';
@@ -2762,6 +2762,10 @@ window.toggleNotifPanel = async function() {
         text = d.won
           ? `Überfall <b style="color:#22c55e">gewonnen</b>: <b>${esc(d.raid)}</b> — die Beute liegt im Lager`
           : `Überfall auf <b>${esc(d.raid)}</b> <b style="color:#ef4444">gescheitert</b> — Kampfbericht ansehen`;
+      } else if (n.type === 'coa_campaign_step') {
+        text = d.final
+          ? `🎉 Kampagne abgeschlossen: <b>${esc(d.title)}</b> — du hast die Legende von ACLS geschrieben!`
+          : `Kampagnenschritt geschafft: <b>${esc(d.title)}</b>`;
       }
       const dot = n.is_read ? '' : `<span style="width:7px;height:7px;min-width:7px;border-radius:50%;background:#ef4444;margin-top:.3rem"></span>`;
       return `<div onclick="openNotif(${i})" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='${n.is_read ? 'transparent' : 'var(--surface2)'}'" style="display:flex;align-items:flex-start;gap:.65rem;padding:.75rem 1rem;border-bottom:1px solid var(--border);font-size:.82rem;cursor:pointer${n.is_read ? '' : ';background:var(--surface2)'}">
@@ -2811,7 +2815,7 @@ window.openNotif = function(i) {
   } else if (n.type === 'guestbook') {
     if (currentUser && currentUser.id) openProfileModal(currentUser.id);
     else navigate('dashboard');
-  } else if (n.type === 'coa_build_done' || n.type === 'coa_mission_done' || n.type === 'coa_research_done' || n.type === 'coa_levelup' || n.type === 'coa_achievement' || n.type === 'coa_raid_done') {
+  } else if (n.type === 'coa_build_done' || n.type === 'coa_mission_done' || n.type === 'coa_research_done' || n.type === 'coa_levelup' || n.type === 'coa_achievement' || n.type === 'coa_raid_done' || n.type === 'coa_campaign_step') {
     window.open('/clash-of-acls.html', '_blank');
   }
 };
