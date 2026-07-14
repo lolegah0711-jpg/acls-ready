@@ -230,6 +230,35 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     };
   }
 
+  // ── Phase 6: PvP-Überfälle (Angriff/Verteidigung zwischen Spielern) ────────
+
+  // Nur Einheiten, die gerade nicht auf einem NPC-Überfall unterwegs sind,
+  // zählen zur Verteidigungsstärke bzw. sind für einen Angriff wählbar.
+  const availableUnits = (discordId) => getUnits(discordId).filter((u) => !u.raid_id);
+  const defensePower = (discordId) => availableUnits(discordId).reduce((s, u) => s + (CFG.UNITS[u.unit_key]?.def || 0), 0);
+
+  function todayKey() { return CFG.periodKey('daily'); }
+  function resetDailyAttackCount(state) {
+    if (state.pvp_atk_date === todayKey()) return state.pvp_atk_count;
+    db.prepare('UPDATE coa_state SET pvp_atk_date = ?, pvp_atk_count = 0 WHERE discord_id = ?').run(todayKey(), state.discord_id);
+    return 0;
+  }
+  function shieldRemainingSec(state) {
+    if (!state.shield_until) return 0;
+    return Math.max(0, Math.round((asDate(state.shield_until).getTime() - Date.now()) / 1000));
+  }
+
+  // Löst einen Loot-Betrag pro Ressource: Prozentsatz des aktuellen Bestands,
+  // gedeckelt durch lootCapFactor × Lagerkapazität — verhindert Kahlschlag bei Whales.
+  function computeLoot(defenderState) {
+    const loot = {};
+    CFG.RESOURCES.forEach((r) => {
+      const cap = Math.round((CFG.BASE_CAP[r] || 0) * CFG.PVP.lootCapFactor);
+      loot[r] = Math.max(0, Math.min(cap, Math.round((defenderState[r] || 0) * CFG.PVP.lootPct)));
+    });
+    return loot;
+  }
+
   // Ist ein Kampagnenschritt (unabhängig von der Reihenfolge) inhaltlich erreicht?
   function campaignStepMet(ctx, step) {
     if (step.building) return (ctx.buildingLevels[step.building] || 0) >= step.level;
@@ -586,6 +615,18 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
         buildings_count: ctx.buildings_count, employees_count: ctx.employees_count,
         vehicle_types: ctx.vehicle_types, research_total: ctx.research_total, daily_streak: ctx.daily_streak,
         raids_done: ctx.raids_done, raids_won: ctx.raids_won, units_count: ctx.units_count,
+        pvp_wins: ctx.pvp_wins, pvp_losses: ctx.pvp_losses, pvp_defends_won: ctx.pvp_defends_won,
+      },
+      pvp: {
+        shieldRemainingSec: shieldRemainingSec(state),
+        attacksToday: resetDailyAttackCount(state),
+        attacksLimit: CFG.PVP.dailyAttackLimit,
+        defensePower: defensePower(ident.id),
+        wins: ctx.pvp_wins, losses: ctx.pvp_losses, defendsWon: ctx.pvp_defends_won,
+        attacksMade: db.prepare('SELECT * FROM coa_pvp_log WHERE attacker_id = ? ORDER BY created_at DESC LIMIT 8').all(ident.id)
+          .map((r) => ({ ...r, won: !!r.won, loot: JSON.parse(r.loot), atk_lost: JSON.parse(r.atk_lost), def_lost: JSON.parse(r.def_lost) })),
+        attacksReceived: db.prepare('SELECT * FROM coa_pvp_log WHERE defender_id = ? ORDER BY created_at DESC LIMIT 8').all(ident.id)
+          .map((r) => ({ ...r, won: !!r.won, loot: JSON.parse(r.loot), atk_lost: JSON.parse(r.atk_lost), def_lost: JSON.parse(r.def_lost) })),
       },
     };
   }
@@ -935,6 +976,103 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     createNotif(ident.id, 'coa_campaign_step', { title: step.title, final: !!step.final });
     queueNotification('coa_campaign_step', ident.id, { title: step.title, final: !!step.final });
     res.json({ ok: true, reward: step.reward, xp: step.xp, final: !!step.final, ...buildView(ident) });
+  });
+
+  // ── PvP: mögliche Ziele finden (Level-Band, kein Schild, kein frischer Cooldown,
+  // Einsteigerschutz unter minDefenderLevel). Zufällige Auswahl bei jedem Aufruf. ──
+  router.get('/api/clash-of-acls/pvp/targets', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    getOrCreateState(ident);
+    const me = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
+    const rows = db.prepare(`
+      SELECT s.discord_id, s.username, s.level FROM coa_state s
+      WHERE s.discord_id != ?
+        AND s.level >= ?
+        AND s.level BETWEEN ? AND ?
+        AND (s.shield_until IS NULL OR s.shield_until <= datetime('now'))
+        AND NOT EXISTS (
+          SELECT 1 FROM coa_pvp_log l
+          WHERE l.attacker_id = ? AND l.defender_id = s.discord_id
+            AND l.created_at > datetime('now', '-${CFG.PVP.cooldownMinutes} minutes')
+        )
+      ORDER BY RANDOM() LIMIT 5
+    `).all(ident.id, CFG.PVP.minDefenderLevel, me.level - CFG.PVP.levelBandDown, me.level + CFG.PVP.levelBandUp, ident.id);
+    res.json(rows.map((r) => ({ discord_id: r.discord_id, username: r.username, level: r.level, def_power: defensePower(r.discord_id) })));
+  });
+
+  // ── PvP: Angriff löst sofort auf (kein Anmarschweg) — Trupp-Stärke der gewählten
+  // eigenen Einheiten gegen die Verteidigungsstärke der NICHT-verreisten Einheiten
+  // des Ziels. Sieg: Loot wird dem Verteidiger real abgezogen (Zero-Sum). Verluste
+  // auf beiden Seiten werden unabhängig gewürfelt, Verteidiger bekommt danach ein
+  // Schild — unabhängig vom Ausgang, damit niemand sofort nachgetreten wird. ──
+  router.post('/api/clash-of-acls/pvp-attack', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    const { defender_id } = req.body || {};
+    const unitIds = Array.isArray(req.body?.unit_ids) ? req.body.unit_ids.map(Number).filter(Number.isInteger) : [];
+    if (defender_id === ident.id) return res.status(400).json({ error: 'Du kannst dich nicht selbst angreifen' });
+    if (securityLevel(getBuildings(ident.id)) < 1) return res.status(400).json({ error: 'Du brauchst eine fertige Sicherheitszentrale für Angriffe' });
+    if (!unitIds.length) return res.status(400).json({ error: 'Wähle mindestens eine Einheit' });
+
+    const attackerState = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
+    if (!db.prepare('SELECT 1 FROM coa_state WHERE discord_id = ?').get(defender_id)) return res.status(404).json({ error: 'Ziel nicht gefunden' });
+    // Ressourcen des Ziels erst auf den aktuellen Stand bringen (Offline-Produktion
+    // nachrechnen) — sonst würde die Beute auf veralteten Werten basieren.
+    const defenderState = syncResources(defender_id);
+    if (defenderState.level < CFG.PVP.minDefenderLevel) return res.status(400).json({ error: 'Dieser Spieler steht unter Einsteigerschutz' });
+    if (defenderState.level < attackerState.level - CFG.PVP.levelBandDown || defenderState.level > attackerState.level + CFG.PVP.levelBandUp) {
+      return res.status(400).json({ error: 'Levelunterschied zu groß' });
+    }
+    if (shieldRemainingSec(defenderState) > 0) return res.status(400).json({ error: 'Dieses Ziel steht gerade unter Schutz' });
+    const onCooldown = db.prepare(`SELECT 1 FROM coa_pvp_log WHERE attacker_id = ? AND defender_id = ? AND created_at > datetime('now', '-${CFG.PVP.cooldownMinutes} minutes')`).get(ident.id, defender_id);
+    if (onCooldown) return res.status(400).json({ error: 'Dieses Ziel hast du erst kürzlich angegriffen' });
+    const attacksToday = resetDailyAttackCount(attackerState);
+    if (attacksToday >= CFG.PVP.dailyAttackLimit) return res.status(400).json({ error: `Tageslimit von ${CFG.PVP.dailyAttackLimit} Angriffen erreicht` });
+
+    const ph = unitIds.map(() => '?').join(',');
+    const attackUnits = db.prepare(`SELECT * FROM coa_units WHERE discord_id = ? AND raid_id IS NULL AND id IN (${ph})`).all(ident.id, ...unitIds);
+    if (attackUnits.length !== new Set(unitIds).size) return res.status(400).json({ error: 'Einheit nicht verfügbar' });
+    const defendUnits = availableUnits(defender_id);
+
+    const atkPower = attackUnits.reduce((s, u) => s + (CFG.UNITS[u.unit_key]?.atk || 0), 0);
+    const defPower = defendUnits.reduce((s, u) => s + (CFG.UNITS[u.unit_key]?.def || 0), 0);
+    const winP = CFG.COMBAT.winChance(atkPower, defPower);
+    const won = Math.random() < winP;
+    const atkLossP = CFG.COMBAT.lossChance(won, winP);
+    const defLossP = CFG.COMBAT.lossChance(!won, 1 - winP);
+    const atkLost = attackUnits.filter(() => Math.random() < atkLossP);
+    const defLost = defendUnits.filter(() => Math.random() < defLossP);
+    const loot = won ? computeLoot(defenderState) : {};
+
+    db.transaction(() => {
+      atkLost.forEach((u) => db.prepare('DELETE FROM coa_units WHERE id = ?').run(u.id));
+      defLost.forEach((u) => db.prepare('DELETE FROM coa_units WHERE id = ?').run(u.id));
+      if (won) {
+        grantResources(ident.id, loot);
+        Object.entries(loot).forEach(([r, v]) => { if (v > 0) db.prepare(`UPDATE coa_state SET ${r} = MAX(0, ${r} - ?) WHERE discord_id = ?`).run(v, defender_id); });
+      }
+      const shieldAt = toSqliteUTC(Date.now() + CFG.PVP.shieldMinutes * 60000);
+      db.prepare(`UPDATE coa_state SET pvp_atk_count = ?, pvp_wins = pvp_wins + ?, pvp_losses = pvp_losses + ? WHERE discord_id = ?`)
+        .run(attacksToday + 1, won ? 1 : 0, won ? 0 : 1, ident.id);
+      db.prepare(`UPDATE coa_state SET shield_until = ?, pvp_defends_won = pvp_defends_won + ? WHERE discord_id = ?`)
+        .run(shieldAt, won ? 0 : 1, defender_id);
+      db.prepare(`INSERT INTO coa_pvp_log (attacker_id, attacker_name, defender_id, defender_name, atk_power, def_power, chance, won, loot, atk_lost, def_lost)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+        ident.id, ident.name, defender_id, defenderState.username,
+        atkPower, defPower, Math.round(winP * 100), won ? 1 : 0,
+        JSON.stringify(loot), JSON.stringify(atkLost.map((u) => u.unit_key)), JSON.stringify(defLost.map((u) => u.unit_key)),
+      );
+    })();
+
+    grantXp(ident.id, won ? CFG.XP.pvpAttack(defPower) : Math.ceil(CFG.XP.pvpAttack(defPower) / 2));
+    if (!won) grantXp(defender_id, CFG.PVP.defenderWinXp);
+    checkAchievements(ident.id);
+    checkAchievements(defender_id);
+    createNotif(defender_id, 'coa_pvp_attacked', { attacker: ident.name, won, loot });
+    queueNotification('coa_pvp_attacked', defender_id, { attacker: ident.name, won });
+    res.json({ ok: true, won, chance: Math.round(winP * 100), atkPower, defPower, loot, atkLost: atkLost.map((u) => u.unit_key), defLost: defLost.map((u) => u.unit_key), ...buildView(ident) });
   });
 
   // ── Täglicher Login-Bonus: 7-Tage-Zyklus, Streak bricht nach einem Fehltag ──

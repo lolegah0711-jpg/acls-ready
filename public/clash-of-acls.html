@@ -255,6 +255,26 @@
   .ach .atrack i { display:block; height:100%; background:linear-gradient(90deg,#f59e0b,#fbbf24); }
   .ach .ac { font-size:.62rem; color:var(--mut); margin-top:.2rem; font-variant-numeric:tabular-nums; }
 
+  /* ── PvP ── */
+  .pvp-shield { display:flex; align-items:center; gap:.6rem; background:linear-gradient(145deg,#173226,#151b27); border:1px solid rgba(34,197,94,.5); border-radius:14px; padding:.6rem .8rem; margin-bottom:.7rem; font-size:.8rem; }
+  .pvp-limit { display:flex; align-items:center; justify-content:space-between; font-size:.74rem; color:var(--mut); margin-bottom:.7rem; }
+  .pvp-target { background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:.6rem .7rem; margin-bottom:.55rem; }
+  .pvp-target .pt-head { display:flex; align-items:center; gap:.55rem; }
+  .pvp-target .pt-ava { font-size:1.4rem; }
+  .pvp-target .pt-name { font-weight:800; font-size:.85rem; }
+  .pvp-target .pt-lvl { color:var(--mut); font-size:.7rem; }
+  .pvp-target .pt-chance { margin-left:auto; font-weight:800; font-size:.85rem; }
+  .pvp-target button { margin-top:.5rem; width:100%; border:0; border-radius:9px; padding:.5rem; font-weight:800; font-size:.78rem; cursor:pointer; background:linear-gradient(145deg,#f87171,#dc2626); color:#fff; }
+  .pvp-target button:disabled { background:var(--card); color:var(--mut); opacity:.5; cursor:default; }
+  .pvp-report { background:var(--card2); border-radius:11px; padding:.55rem .7rem; margin-bottom:.5rem; border:1px solid var(--line); }
+  .pvp-report.won { border-color:rgba(34,197,94,.4); }
+  .pvp-report.lost { border-color:rgba(239,68,68,.4); }
+  .pvp-report .pr-head { display:flex; align-items:center; gap:.5rem; font-size:.82rem; font-weight:700; }
+  .pvp-report .pr-meta { color:var(--mut); font-size:.68rem; margin-top:.2rem; }
+  .pvp-tabs { display:flex; gap:.4rem; margin:.8rem 0 .5rem; }
+  .pvp-tabs button { flex:1; padding:.4rem; border-radius:9px; border:1px solid var(--line); background:var(--card2); color:var(--mut); font-size:.76rem; font-weight:700; cursor:pointer; }
+  .pvp-tabs button.active { background:var(--acc); border-color:var(--acc); color:#1a0a00; }
+
   /* ── Kampagne / Questline ── */
   .camp-next { display:flex; align-items:center; gap:.65rem; background:linear-gradient(145deg,#2a2617,#1c2433); border:1px solid rgba(251,191,36,.5); border-radius:14px; padding:.65rem .8rem; margin-bottom:.9rem; }
   .camp-next .cn-ic { font-size:1.7rem; }
@@ -309,6 +329,7 @@
   <button class="hud-btn" id="campBtn" onclick="openSheet('campaign')" title="Kampagne">🗺️</button>
   <button class="hud-btn" onclick="openSheet('missions')" title="Einsätze">🚨</button>
   <button class="hud-btn" onclick="openSheet('army')" title="Werkschutz & Überfälle">🛡️</button>
+  <button class="hud-btn" id="pvpBtn" onclick="openSheet('pvp')" title="PvP-Angriffe">⚔️</button>
   <button class="hud-btn" onclick="openSheet('emp')" title="Mitarbeiter">👷</button>
   <button class="hud-btn" onclick="openSheet('veh')" title="Fuhrpark">🚗</button>
   <button class="hud-btn" onclick="openSheet('lb')" title="Rangliste">🏆</button>
@@ -365,7 +386,7 @@
   <div class="sh-body" id="shBody"></div>
 </div>
 
-<script src="/js/clash-of-acls-config.js?v=6"></script>
+<script src="/js/clash-of-acls-config.js?v=7"></script>
 <script>
 const CFG = window.CLASH_OF_ACLS_CONFIG;
 const $ = id => document.getElementById(id);
@@ -664,6 +685,13 @@ function render(d) {
       SFX.err();
     }
   }
+  // Neuer PvP-Angriff gegen mich seit letztem Poll (id-Vergleich, damit es nur einmal auffällt)
+  if (prev && d.pvp && (d.pvp.attacksReceived[0]?.id) && d.pvp.attacksReceived[0].id !== prev.pvp?.attacksReceived[0]?.id) {
+    const r = d.pvp.attacksReceived[0];
+    if (r.won) toast('🚨', 'Du wurdest angegriffen!', `${r.attacker_name || '?'} hat gewonnen — kleine Verluste im Lager.`);
+    else toast('🛡️', 'Angriff abgewehrt!', `${r.attacker_name || '?'} ist gescheitert — dein Werkschutz hat gehalten.`);
+    SFX[r.won ? 'err' : 'ach']();
+  }
 }
 
 function renderHudExtras() {
@@ -952,7 +980,7 @@ function closeSheet() {
   $('sheet').classList.remove('open');
 }
 function renderSheet() {
-  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!', army:'🛡️ Werkschutz & Überfälle', campaign:'🗺️ Kampagne' };
+  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!', army:'🛡️ Werkschutz & Überfälle', campaign:'🗺️ Kampagne', pvp:'⚔️ PvP-Angriffe' };
   $('shTitle').textContent = titles[sheetType] || '';
   $('shCats').style.display = sheetType === 'shop' ? 'flex' : 'none';
   if (sheetType === 'shop') renderShop();
@@ -969,6 +997,101 @@ function renderSheet() {
   else if (sheetType === 'offline') renderOffline();
   else if (sheetType === 'army') renderArmy();
   else if (sheetType === 'campaign') renderCampaign();
+  else if (sheetType === 'pvp') renderPvp();
+}
+
+/* ── PvP: Ziele finden, Trupp wählen, angreifen, Berichte einsehen ── */
+let pvpTargets = null, pvpSel = new Set(), pvpTab = 'made';
+async function loadPvpTargets() {
+  try { pvpTargets = await api('/api/clash-of-acls/pvp/targets'); }
+  catch (e) { pvpTargets = []; }
+  if (sheetType === 'pvp') renderPvp();
+}
+function refreshPvpTargets() { pvpTargets = null; renderPvp(); }
+function togglePvpSel(id) { pvpSel.has(id) ? pvpSel.delete(id) : pvpSel.add(id); renderPvp(); }
+function pvpTabSwitch(t) { pvpTab = t; renderPvp(); }
+
+function pvpReportRow(r, mine) {
+  const won = mine ? r.won : !r.won; // aus MEINER Sicht: bei "gegen mich" ist mein Erfolg = Angreifer verlor
+  const opp = mine ? r.defender_name : r.attacker_name;
+  const lostMine = mine ? r.atk_lost : r.def_lost;
+  const lootStr = Object.entries(r.loot || {}).filter(([, v]) => v > 0).map(([res, v]) => RES_ICON[res] + fmt(v)).join(' ') || '—';
+  const lostStr = (lostMine || []).map(k => CFG.UNITS[k]?.icon || '💂').join('') || 'keine';
+  return `<div class="pvp-report ${won ? 'won' : 'lost'}">
+    <div class="pr-head"><span>${mine ? (r.won ? '🏆' : '💥') : (r.won ? '🚨' : '🛡️')}</span>
+      <span>${mine ? (r.won ? 'Sieg gegen' : 'Niederlage gegen') : (r.won ? 'Angegriffen von' : 'Verteidigt gegen')} ${esc(opp || '?')}</span></div>
+    <div class="pr-meta">⚔️ ${r.atk_power} vs. 🛡️ ${r.def_power} · Chance ${r.chance}% · ${mine && r.won ? 'Beute ' + lootStr + ' · ' : ''}Verluste: ${lostStr}</div>
+  </div>`;
+}
+
+function renderPvp() {
+  if (pvpTargets === null) { $('shBody').innerHTML = '<div class="muted">Lädt Ziele…</div>'; loadPvpTargets(); return; }
+  const p = st.pvp;
+  const myUnits = (st.units || []).filter(u => !u.raid_id);
+  pvpSel = new Set([...pvpSel].filter(id => myUnits.some(u => u.id === id)));
+  const selAtk = myUnits.reduce((s, u) => s + (pvpSel.has(u.id) ? (CFG.UNITS[u.unit_key]?.atk || 0) : 0), 0);
+
+  let html = '';
+  if (p.shieldRemainingSec > 0) {
+    html += `<div class="pvp-shield"><span style="font-size:1.4rem">🛡️</span><div>Du stehst unter Schutz — niemand kann dich angreifen. Noch <b>${fmtDur(p.shieldRemainingSec)}</b>.</div></div>`;
+  }
+  html += `<div class="pvp-limit"><span>Angriffe heute: <b style="color:var(--txt)">${p.attacksToday}/${p.attacksLimit}</b></span><span>🛡️ Deine Verteidigung: <b style="color:var(--txt)">${p.defensePower}</b></span></div>`;
+
+  if (st.security.level < 1) {
+    html += '<div class="muted">🛡️ Baue zuerst eine Sicherheitszentrale, um Angriffe starten zu können.</div>';
+  } else {
+    html += `<div style="font-weight:800;margin-bottom:.45rem">⚔️ Trupp wählen <span class="rd" style="font-weight:400;color:var(--mut)">· Stärke: <b style="color:var(--acc)">${selAtk}</b></span></div>`;
+    if (!myUnits.length) {
+      html += '<div class="muted" style="margin-bottom:.7rem">Keine verfügbaren Einheiten — bilde welche in der Sicherheitszentrale aus oder warte, bis sie von einem Überfall zurück sind.</div>';
+    } else {
+      html += '<div style="margin-bottom:.7rem">' + myUnits.map(u => {
+        const d = CFG.UNITS[u.unit_key] || {};
+        return `<div class="row"><div class="rl"><span class="ric">${d.icon || '💂'}</span><div><div class="rn">${esc(d.label || u.unit_key)}</div><div class="rd">⚔️ ${d.atk} · 🛡️ ${d.def}</div></div></div>
+          <input type="checkbox" style="width:19px;height:19px;accent-color:var(--acc);cursor:pointer" ${pvpSel.has(u.id) ? 'checked' : ''} onchange="togglePvpSel(${u.id})"></div>`;
+      }).join('') + '</div>';
+    }
+
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.45rem"><span style="font-weight:800">🎯 Mögliche Ziele</span><button style="background:var(--card2);color:var(--acc);border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem;font-size:.72rem;font-weight:700;cursor:pointer" onclick="refreshPvpTargets()">🔄 Neu suchen</button></div>`;
+    if (!pvpTargets.length) {
+      html += '<div class="muted">Gerade keine passenden Ziele in deiner Levelspanne gefunden — versuch es später erneut.</div>';
+    } else {
+      html += pvpTargets.map(t => {
+        const chance = Math.round(CFG.COMBAT.winChance(selAtk, t.def_power) * 100);
+        const col = chance >= 70 ? 'var(--good)' : chance >= 40 ? '#fbbf24' : 'var(--bad)';
+        const dis = !pvpSel.size || p.attacksToday >= p.attacksLimit;
+        return `<div class="pvp-target">
+          <div class="pt-head"><span class="pt-ava">🧑‍🔧</span><div><div class="pt-name">${esc(t.username || '?')}</div><div class="pt-lvl">⭐ Level ${t.level} · 🛡️ Verteidigung ${t.def_power}</div></div>
+          <span class="pt-chance" style="color:${col}">${pvpSel.size ? chance + '%' : '—'}</span></div>
+          <button ${dis ? 'disabled' : ''} onclick="attackPvp('${t.discord_id}')">⚔️ Angreifen</button>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  html += `<div class="pvp-tabs"><button class="${pvpTab === 'made' ? 'active' : ''}" onclick="pvpTabSwitch('made')">Meine Angriffe</button><button class="${pvpTab === 'received' ? 'active' : ''}" onclick="pvpTabSwitch('received')">Gegen mich</button></div>`;
+  const list = pvpTab === 'made' ? p.attacksMade : p.attacksReceived;
+  html += list.length ? list.map(r => pvpReportRow(r, pvpTab === 'made')).join('') : '<div class="muted">Noch keine Einträge.</div>';
+
+  $('shBody').innerHTML = html;
+}
+async function attackPvp(defenderId) {
+  if (!pvpSel.size) return msg('Wähle zuerst Einheiten für den Angriff');
+  try {
+    const d = await api('/api/clash-of-acls/pvp-attack', { method:'POST', body:{ defender_id: defenderId, unit_ids: [...pvpSel] } });
+    pvpSel.clear();
+    pvpTargets = (pvpTargets || []).filter(t => t.discord_id !== defenderId);
+    const lootStr = Object.entries(d.loot || {}).filter(([, v]) => v > 0).map(([r, v]) => RES_ICON[r] + fmt(v)).join(' ');
+    if (d.won) {
+      toast('🏆', 'Angriff erfolgreich!', `Beute: ${lootStr || '—'}${d.atkLost.length ? ' · ' + d.atkLost.length + ' Verlust(e)' : ''}`);
+      if (lootStr) floatGain('+' + lootStr);
+      burstAt(innerWidth / 2, innerHeight / 3, 18);
+      SFX.ach();
+    } else {
+      toast('💥', 'Angriff gescheitert', `${d.atkLost.length} Einheit(en) verloren — stärkerer Trupp nötig!`);
+      SFX.err();
+    }
+    render(d);
+  } catch (e) { msg(e.message); }
 }
 
 /* ── Kampagne / Questline: geführte, erzählte Aufgabenreihe quer durchs Spiel ── */
@@ -1387,6 +1510,7 @@ function renderHelp() {
     step('🚨', 'Einsätze', 'Schicke deine Fahrzeuge auf Missionen (🚨 oben oder Abschlepphof antippen) — vom 10-Minuten-Abschleppauftrag bis zur 8-Stunden-Flottenwartung. Das Fahrzeug ist solange unterwegs, dafür gibt es Geld und Material. Der Abschlepphof schaltet mit höherem Level mehr gleichzeitige Einsätze frei.') +
     step('🔬', 'Forschung', 'Baue das Forschungszentrum und erforsche dauerhafte Boni: schnelleres Bauen, größere Lager, billigere Ausbauten, mehr Produktion und bessere Missionserträge. Stufe N braucht Zentrum-Level N, und es läuft immer eine Forschung gleichzeitig.') +
     step('🛡️', 'Werkschutz & Überfälle', 'Die Sicherheitszentrale schaltet den Kampf frei: Bilde Wachmänner, Wachhunde, Drohnen und Sicherheitstrucks aus und überfalle NPC-Banden — vom Schrottdiebe-Versteck bis zur Syndikat-Zentrale. Je stärker dein Trupp, desto höher die Siegchance (wird live angezeigt). Sieg bringt fette Beute, aber Vorsicht: Einheiten können fallen! Jeder Kampf landet im Kampfbericht.') +
+    step('⚔️', 'PvP-Angriffe', 'Über das ⚔️-Symbol greifst du andere Spieler an! Deine Einheiten (sofern nicht gerade auf einem NPC-Überfall) verteidigen automatisch dein Lager — schickst du sie auf Angriffe, bist du selbst verwundbarer. Bei Sieg erbeutest du echte Ressourcen vom Gegner. Fair geregelt: Einsteiger unter Level 3 sind nie angreifbar, jedes Ziel bekommt nach einem Angriff ein 20-Minuten-Schild, und pro Tag sind maximal 12 Angriffe erlaubt.') +
     step('⭐', 'Level & XP', 'Fast alles gibt Erfahrungspunkte: Bauen, Fertigen, Verkaufen, Einsätze, Forschung. Mit jedem Level-Aufstieg gibt es eine Belohnung und einen neuen Titel — dein Fortschritt steckt im ⭐-Chip oben links (antippen = Profil mit Statistiken und allen Erfolgen).') +
     step('🎯', 'Quests & Erfolge', 'Jeden Tag warten 3 Tages-Quests, jede Woche 3 Wochen-Quests (🎯 oben) — abschließen, abholen, kassieren. Dazu gibt es über 40 Erfolge mit XP- und Geld-Belohnungen im Profil.') +
     step('🎁', 'Täglicher Bonus', 'Einmal am Tag wartet ein Login-Bonus (🎁 oben). Wer an 7 Tagen in Folge abholt, knackt den Jackpot — die Beträge wachsen mit deinem Level. Verpasst du einen Tag, startet die Serie neu.') +

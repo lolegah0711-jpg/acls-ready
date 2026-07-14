@@ -5,6 +5,7 @@
 const os = require('os'), path = require('path'), fs = require('fs');
 const express = require('express');
 const { initDb } = require('../database');
+const CFG_MOD = require('../public/js/clash-of-acls-config.js');
 
 const PLAYWRIGHT = process.argv[2] || 'playwright';
 const { chromium } = require(PLAYWRIGHT);
@@ -133,7 +134,37 @@ const B = 'http://localhost:4013';
   }
   await page.click('.sh-close');
 
-  // 11) Himmel/Wolken vorhanden, keine JS-Fehler
+  // 11) PvP-Sheet: zweiten Spieler seeden, Trupp wählen, Ziel finden, angreifen
+  // (die 3 Einheiten aus Schritt 9 hängen noch im nie aufgelösten aktiven Überfall fest,
+  // also braucht ME frische, garantiert verfügbare Einheiten für den Angriffstest)
+  db.prepare("INSERT INTO coa_units (discord_id, unit_key) VALUES (?, 'sicherheitstruck')").run(ME.id);
+  const THEM_ID = 'BROWSER2';
+  db.prepare("INSERT INTO coa_state (discord_id, username, level, xp) VALUES (?, 'RivalePlayer', 3, 0)").run(THEM_ID);
+  const insBuilding = db.prepare('INSERT INTO coa_buildings (discord_id, building_key, x, y, level) VALUES (?,?,?,?,1)');
+  CFG_MOD.STARTER_KIT.forEach((b) => insBuilding.run(THEM_ID, b.key, b.x, b.y));
+  db.prepare("INSERT INTO coa_buildings (discord_id, building_key, x, y, level) VALUES (?, 'sicherheitszentrale', 9, 0, 3)").run(THEM_ID);
+  db.prepare("INSERT INTO coa_units (discord_id, unit_key) VALUES (?, 'wachmann')").run(THEM_ID);
+  await page.reload({ waitUntil: 'networkidle' });
+
+  await page.click('button[title="PvP-Angriffe"]');
+  await page.waitForSelector('.pvp-target', { timeout: 8000 });
+  const pvpTargetsCount = await page.locator('.pvp-target').count();
+  pvpTargetsCount >= 1 ? ok(pvpTargetsCount + ' PvP-Ziel(e) gefunden') : fail('Keine PvP-Ziele gefunden');
+  const pvpBoxes = await page.locator('#shBody input[type="checkbox"]').count();
+  pvpBoxes >= 1 ? ok(pvpBoxes + ' eigene Einheit(en) für PvP wählbar') : fail('Keine eigenen Einheiten wählbar');
+  await page.locator('#shBody input[type="checkbox"]').first().check();
+  await page.waitForFunction(() => document.querySelector('.pt-chance').textContent.includes('%'), null, { timeout: 5000 });
+  ok('Live-Siegchance gegen PvP-Ziel angezeigt');
+  const moneyBeforePvp = await page.evaluate(() => st.resources.money);
+  await page.locator('.pvp-target button').first().click();
+  await page.waitForFunction((m) => st.pvp.attacksToday === 1, moneyBeforePvp, { timeout: 8000 });
+  ok('PvP-Angriff aufgelöst (attacksToday = 1)');
+  // Der Angriff kann genug XP für einen Level-Aufstieg geben — dann blockiert das
+  // Level-Up-Overlay den nächsten Klick, also erst wegklicken falls vorhanden.
+  if (await page.locator('#lvlOverlay.show').count()) await page.keyboard.press('Escape');
+  await page.click('.sh-close');
+
+  // 12) Himmel/Wolken vorhanden, keine JS-Fehler
   (await page.locator('.cloud').count()) === 3 ? ok('3 Wolken am Himmel') : fail('Wolken fehlen');
   await page.screenshot({ path: path.join(os.tmpdir(), 'coa-phase3.png') });
   console.log('  Screenshot: ' + path.join(os.tmpdir(), 'coa-phase3.png'));

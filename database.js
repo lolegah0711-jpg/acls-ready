@@ -905,6 +905,35 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_coa_raids_did ON coa_raids(discord_id);
   `);
 
+  // ── Clash of ACLS Phase 6: PvP-Überfälle (Angriff/Verteidigung zwischen Spielern) ──
+  [
+    'pvp_wins INTEGER NOT NULL DEFAULT 0',
+    'pvp_losses INTEGER NOT NULL DEFAULT 0',
+    'pvp_defends_won INTEGER NOT NULL DEFAULT 0',
+    'shield_until DATETIME',
+    'pvp_atk_date TEXT',
+    'pvp_atk_count INTEGER NOT NULL DEFAULT 0',
+  ].forEach((col) => { try { db.exec(`ALTER TABLE coa_state ADD COLUMN ${col}`); } catch {} });
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coa_pvp_log (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      attacker_id   TEXT NOT NULL,
+      attacker_name TEXT,
+      defender_id   TEXT NOT NULL,
+      defender_name TEXT,
+      atk_power     INTEGER NOT NULL,
+      def_power     INTEGER NOT NULL,
+      chance        INTEGER NOT NULL,
+      won           INTEGER NOT NULL,
+      loot          TEXT NOT NULL DEFAULT '{}',
+      atk_lost      TEXT NOT NULL DEFAULT '[]',
+      def_lost      TEXT NOT NULL DEFAULT '[]',
+      created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_pvp_attacker ON coa_pvp_log(attacker_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_coa_pvp_defender ON coa_pvp_log(defender_id, created_at);
+  `);
+
   // ── Clash of ACLS Phase 5: Questline/Kampagne (einmalige, geführte Aufgabenreihe) ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS coa_campaign (

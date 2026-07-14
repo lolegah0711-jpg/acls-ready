@@ -333,10 +333,29 @@
   };
 
   // Kampfformeln — identisch für Server (Auflösung) und Client (Chancen-Anzeige).
-  // winChance: Trupp-Stärke gegen Lager-Stärke; lossChance: Risiko PRO Einheit.
+  // winChance: Trupp-Stärke gegen Lager-/Verteidigungs-Stärke; lossChance: Risiko PRO Einheit
+  // aus Sicht der angreifenden Seite — für die Verteidiger-Seite wird dieselbe Formel mit
+  // vertauschter Perspektive aufgerufen: lossChance(!won, 1 - winP).
   const COMBAT = {
     winChance: (atk, power) => Math.max(0.05, Math.min(0.95, (0.75 * atk) / Math.max(1, power))),
     lossChance: (won, winP) => (won ? 0.08 + 0.22 * (1 - winP) : 0.30 + 0.35 * (1 - winP)),
+  };
+
+  // ── PvP-Überfälle (Phase 6): Spieler greifen sich gegenseitig an, Verteidigung
+  // läuft passiv über die def-Werte der Einheiten, die gerade NICHT auf einem
+  // NPC-Überfall unterwegs sind — wer seine Truppen ausschickt, schwächt also die
+  // eigene Verteidigung (bewusste Risiko/Belohnungs-Spannung). Zero-Sum: Beute wird
+  // dem Verteidiger abgezogen, nicht aus dem Nichts erzeugt (anders als PvE-Missionen).
+  const PVP = {
+    shieldMinutes: 20,      // Schutz nach jedem Angriff (Sieg oder Niederlage) für den Verteidiger
+    cooldownMinutes: 20,    // Sperre, dasselbe Ziel erneut anzugreifen
+    dailyAttackLimit: 12,   // Angriffe pro Kalendertag (UTC)
+    minDefenderLevel: 3,    // Einsteigerschutz: unter Level 3 nie angreifbar
+    levelBandDown: 4,       // Ziel darf bis zu 4 Level UNTER dem Angreifer liegen
+    levelBandUp: 6,         // ... oder bis zu 6 Level DARÜBER
+    lootPct: 0.12,          // Anteil jeder Ressource, der bei Sieg erbeutet wird
+    lootCapFactor: 0.5,     // Deckel pro Ressource: max. 50 % von BASE_CAP[r]
+    defenderWinXp: 15,      // XP für erfolgreiche Verteidigung
   };
 
   // ── Questline / Kampagne (Phase 5) ────────────────────────────────────────
@@ -409,6 +428,7 @@
     sell: (price) => round(price / 25),
     research: (sec) => 20 + round(sec / 40),
     unit: (atk) => 5 + round(atk / 2),
+    pvpAttack: (defPower) => 15 + round(defPower / 4),
   };
 
   // ── Täglicher Login-Bonus (Phase 3): 7-Tage-Zyklus, skaliert mit Spieler-Level ──
@@ -528,6 +548,9 @@
     kampf4: { label: 'Stadt-Beschützer', icon: '🦾', stat: 'raids_won', value: 75, xp: 500, money: 4000, desc: 'Gewinne 75 Überfälle' },
     armee1: { label: 'Kleine Truppe', icon: '💂', stat: 'units_count', value: 5, xp: 60, money: 300, desc: 'Unterhalte 5 Werkschutz-Einheiten gleichzeitig' },
     armee2: { label: 'Privatarmee', icon: '🚔', stat: 'units_count', value: 12, xp: 200, money: 1200, desc: 'Unterhalte 12 Werkschutz-Einheiten gleichzeitig' },
+    pvp1: { label: 'Erste Konfrontation', icon: '⚔️', stat: 'pvp_wins', value: 1, xp: 50, money: 300, desc: 'Gewinne deinen ersten Angriff auf einen anderen Spieler' },
+    pvp2: { label: 'Gefürchteter Rivale', icon: '⚔️', stat: 'pvp_wins', value: 10, xp: 180, money: 1200, desc: 'Gewinne 10 PvP-Angriffe' },
+    pvp3: { label: 'Uneinnehmbar', icon: '🏯', stat: 'pvp_defends_won', value: 10, xp: 180, money: 1200, desc: 'Wehre 10 Angriffe erfolgreich ab' },
   };
 
   // Startkit exakt wie im Auftrag: Büro, Lager, Kleine Garage, Abschlepphof, Tanklager,
@@ -544,7 +567,7 @@
     GRID, cellIndex, isUnlocked, RESOURCES, BASE_CAP, BUILDINGS, EMPLOYEES, VEHICLES, RESEARCH, researchMods,
     MISSIONS, STARTER_KIT, EMP_MAX_LEVEL, empHireCost, empLevelCost,
     LEVEL, XP, DAILY_BONUS, QUESTS, questDesc, pickQuests, periodKey, ACHIEVEMENTS,
-    UNITS, RAIDS, COMBAT,
+    UNITS, RAIDS, COMBAT, PVP,
     CAMPAIGN_CHAPTERS, CAMPAIGN,
   };
 

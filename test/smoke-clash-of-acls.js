@@ -10,7 +10,8 @@ process.env.DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'acls-')),
 const db = initDb();
 
 const ME = { id: 'TESTER1', name: 'Tester' };
-const coinIdent = () => ({ id: ME.id, name: ME.name });
+let currentUser = ME; // umschaltbar für Phase-6-PvP-Test (zweiter simulierter Spieler)
+const coinIdent = () => ({ id: currentUser.id, name: currentUser.name });
 
 function addCoins(did, name, amt) {
   const cur = db.prepare('SELECT balance FROM coin_balances WHERE discord_id=?').get(did)?.balance ?? 0;
@@ -379,7 +380,71 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   const claimSkip = await post('/api/clash-of-acls/campaign-claim', { step_key: 'c3_4' });
   assert.equal(claimSkip.status, 200, 'Nachhol-Claim eines späteren Kapitels ok: ' + JSON.stringify(claimSkip.json.error || ''));
 
-  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne)');
+  // ══ Phase 6: PvP-Angriffe (zweiter simulierter Spieler) ═══
+  const THEM = { id: 'TESTER2', name: 'Rivale' };
+  currentUser = THEM;
+  const stThem = await get('/api/clash-of-acls/state');
+  assert.equal(stThem.buildings.length, 5, 'Zweiter Spieler startet mit Startkit');
+  db.prepare('UPDATE coa_state SET level = 5, xp = ? WHERE discord_id=?').run(CFG2.LEVEL.xpFor(5), THEM.id);
+  db.prepare("INSERT INTO coa_buildings (discord_id, building_key, x, y, level) VALUES (?, 'sicherheitszentrale', 9, 0, 4)").run(THEM.id);
+  db.prepare("INSERT INTO coa_units (discord_id, unit_key) VALUES (?, 'wachmann')").run(THEM.id);
+  currentUser = ME;
+
+  // ME braucht garantiert verfügbare Einheiten (unabhängig vom RNG-Ausgang der Phase-4-Überfälle)
+  db.prepare("INSERT INTO coa_units (discord_id, unit_key) VALUES (?, 'sicherheitstruck'), (?, 'sicherheitstruck')").run(ME.id, ME.id);
+
+  const noSelfAttack = await post('/api/clash-of-acls/pvp-attack', { defender_id: ME.id, unit_ids: [] });
+  assert.equal(noSelfAttack.status, 400, 'Selbstangriff abgelehnt');
+
+  const targets = await get('/api/clash-of-acls/pvp/targets');
+  assert.ok(Array.isArray(targets), 'Ziel-Liste ist ein Array');
+  assert.ok(targets.some(t => t.discord_id === THEM.id), 'Zweiter Spieler erscheint als PvP-Ziel: ' + JSON.stringify(targets));
+
+  st = await get('/api/clash-of-acls/state');
+  const myAvailUnits = st.units.filter(u => !u.raid_id);
+  assert.ok(myAvailUnits.length >= 2, 'Mindestens 2 verfügbare Einheiten für den Angriffstest: ' + myAvailUnits.length);
+  const atkIds = myAvailUnits.map(u => u.id);
+  // Erwartete Trupp-Stärke dynamisch berechnen — die genaue Zusammensetzung hängt vom
+  // RNG-Ausgang des früheren Phase-4-Überfalltests ab (welche Einheiten dort überlebt haben).
+  const expectedAtk = myAvailUnits.reduce((s, u) => s + (CFG2.UNITS[u.unit_key]?.atk || 0), 0);
+
+  const noUnitsAtk = await post('/api/clash-of-acls/pvp-attack', { defender_id: THEM.id, unit_ids: [] });
+  assert.equal(noUnitsAtk.status, 400, 'Angriff ohne Einheiten abgelehnt');
+
+  const atk1 = await post('/api/clash-of-acls/pvp-attack', { defender_id: THEM.id, unit_ids: atkIds });
+  assert.equal(atk1.status, 200, 'PvP-Angriff ok: ' + JSON.stringify(atk1.json.error || ''));
+  assert.ok(typeof atk1.json.won === 'boolean' && atk1.json.atkPower === expectedAtk && atk1.json.defPower === 14,
+    'Angriffsergebnis plausibel: ' + JSON.stringify({ won: atk1.json.won, atk: atk1.json.atkPower, expectedAtk, def: atk1.json.defPower }));
+  assert.equal(atk1.json.pvp.attacksToday, 1, 'Tageszähler erhöht');
+
+  const cdAtk = await post('/api/clash-of-acls/pvp-attack', { defender_id: THEM.id, unit_ids: atkIds });
+  assert.equal(cdAtk.status, 400, 'Cooldown auf dasselbe Ziel greift sofort danach');
+
+  currentUser = THEM;
+  const stThemAfter = await get('/api/clash-of-acls/state');
+  assert.ok(stThemAfter.pvp.shieldRemainingSec > 0, 'Verteidiger hat nach dem Angriff ein Schild: ' + stThemAfter.pvp.shieldRemainingSec);
+  assert.equal(stThemAfter.pvp.attacksReceived.length, 1, 'Angriff im „Gegen mich"-Bericht des Verteidigers');
+  currentUser = ME;
+
+  if (atk1.json.won) {
+    assert.ok(Object.values(atk1.json.loot).some((v) => v > 0), 'Beute bei Sieg > 0');
+    assert.equal(atk1.json.pvp.wins, 1, 'Sieg-Zähler erhöht');
+  } else {
+    assert.equal(atk1.json.pvp.losses, 1, 'Niederlagen-Zähler erhöht');
+    assert.deepEqual(atk1.json.loot, {}, 'Keine Beute bei Niederlage');
+  }
+
+  // Einsteigerschutz: frischer Spieler (Level 1) ist nie angreifbar
+  const NEWBIE = { id: 'TESTER3', name: 'Neuling' };
+  currentUser = NEWBIE;
+  await get('/api/clash-of-acls/state');
+  currentUser = ME;
+  const newbieAtk = await post('/api/clash-of-acls/pvp-attack', { defender_id: NEWBIE.id, unit_ids: atkIds });
+  assert.equal(newbieAtk.status, 400, 'Einsteigerschutz greift (Level < 3)');
+  const newbieTargets = await get('/api/clash-of-acls/pvp/targets');
+  assert.ok(!newbieTargets.some((t) => t.discord_id === NEWBIE.id), 'Neuling taucht nicht in der Zielliste auf');
+
+  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne, PvP)');
   finish(0);
 })().catch(e => { console.error('✗ Test fehlgeschlagen:', e.message); finish(1); });
 
