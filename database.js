@@ -972,6 +972,30 @@ function initDb() {
     );
   `);
 
+  // ── Clash of ACLS Phase 8: Prestige (Werkstatt-Reset gegen dauerhafte Boni) +
+  // Liga/Saison (wöchentlicher Auf-/Abstieg nach gesammelten Liga-Punkten) ──
+  [
+    'league_tier INTEGER NOT NULL DEFAULT 0',
+    'league_points INTEGER NOT NULL DEFAULT 0',
+    'league_period TEXT',
+    'league_peak_tier INTEGER NOT NULL DEFAULT 0',
+    'total_earned_at_last_prestige INTEGER NOT NULL DEFAULT 0',
+  ].forEach((col) => { try { db.exec(`ALTER TABLE coa_state ADD COLUMN ${col}`); } catch {} });
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coa_prestige (
+      discord_id TEXT PRIMARY KEY,
+      points     INTEGER NOT NULL DEFAULT 0,
+      resets     INTEGER NOT NULL DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS coa_prestige_upgrades (
+      discord_id  TEXT NOT NULL,
+      upgrade_key TEXT NOT NULL,
+      level       INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (discord_id, upgrade_key)
+    );
+  `);
+
   // ── Clash of ACLS Phase 5: Questline/Kampagne (einmalige, geführte Aufgabenreihe) ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS coa_campaign (

@@ -199,6 +199,44 @@ const B = 'http://localhost:4013';
   await page.screenshot({ path: path.join(os.tmpdir(), 'coa-phase3.png') });
   console.log('  Screenshot: ' + path.join(os.tmpdir(), 'coa-phase3.png'));
 
+  // 15) Liga: Badge im Level-Chip, Liga-Tab in der Rangliste
+  const chipHtml = await page.locator('#lvlChip').innerHTML();
+  chipHtml.includes('🪵') ? ok('Liga-Abzeichen (Holz) im Level-Chip sichtbar') : fail('Liga-Abzeichen fehlt: ' + chipHtml);
+  await page.click('button[title="Rangliste"]');
+  await page.waitForSelector('.pvp-tabs', { timeout: 5000 });
+  await page.click('.pvp-tabs button:has-text("Liga")');
+  await page.waitForFunction(() => document.querySelector('#shBody').innerText.includes('Deine Liga'), null, { timeout: 5000 });
+  ok('Liga-Tab in der Rangliste zeigt eigene Liga-Stufe');
+  await page.click('.sh-close');
+
+  // 16) Prestige: Büro auf Level 8 + genug frisch verdientes Geld seeden, Sheet öffnen,
+  // Reset bestätigen, danach ein Upgrade kaufen
+  const officeRowB = db.prepare("SELECT id FROM coa_buildings WHERE discord_id=? AND building_key='office'").get(ME.id);
+  db.prepare('UPDATE coa_buildings SET level = 8 WHERE id = ?').run(officeRowB.id);
+  db.prepare('UPDATE coa_state SET total_earned = 999999999, total_earned_at_last_prestige = 0 WHERE discord_id=?').run(ME.id);
+  await page.reload({ waitUntil: 'networkidle' });
+  if (await page.locator('#lvlOverlay.show').count()) await page.keyboard.press('Escape');
+
+  (await page.locator('#prestigeBtn').isVisible()) ? ok('🔁-Prestige-Button sichtbar (Büro Lv 8)') : fail('Prestige-Button nicht sichtbar');
+  await page.click('#prestigeBtn');
+  await page.waitForSelector('.row', { timeout: 5000 });
+  const preBuildings = await page.evaluate(() => st.buildings.length);
+  await page.click('button:has-text("🔁 Prestige starten")');
+  await page.waitForSelector('button:has-text("Ja, zurücksetzen")', { timeout: 5000 });
+  ok('Bestätigungs-Dialog vor dem Reset angezeigt');
+  await page.click('button:has-text("Ja, zurücksetzen")');
+  await page.waitForFunction((n) => st.buildings.length < n, preBuildings, { timeout: 5000 });
+  ok(`Werkstatt nach Prestige zurückgesetzt (${preBuildings} → ${await page.evaluate(() => st.buildings.length)} Gebäude)`);
+  const ptsBefore = await page.evaluate(() => st.prestige.points);
+  ptsBefore > 0 ? ok('Prestige-Punkte gutgeschrieben: ' + ptsBefore) : fail('Keine Prestige-Punkte erhalten');
+  const upgradeBtn = page.locator('.row button:not([disabled])').first();
+  if (await upgradeBtn.count()) {
+    await upgradeBtn.click();
+    await page.waitForFunction((p) => st.prestige.points < p, ptsBefore, { timeout: 5000 });
+    ok('Prestige-Upgrade gekauft — Punkte gesunken');
+  }
+  await page.click('.sh-close');
+
   if (errors.length) fail('JS-Fehler auf der Seite:\n' + errors.join('\n'));
   else ok('Keine JS-Fehler in der Konsole');
 

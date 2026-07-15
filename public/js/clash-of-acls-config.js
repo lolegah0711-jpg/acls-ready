@@ -605,6 +605,72 @@
     clan1: { label: 'Teamplayer', icon: '🤝', stat: 'clan_donated', value: 500, xp: 60, money: 300, desc: 'Spende Ressourcen im Wert von 500 Gildenpunkten' },
   };
 
+  // ── Prestige (Phase 8): Werkstatt zurücksetzen gegen dauerhafte Prestige-Punkte.
+  // Punkte kommen aus dem verdienten Geld SEIT dem letzten Prestige (Wurzelkurve —
+  // stark abnehmender Ertrag, jeder weitere Reset braucht einen deutlich größeren
+  // Lauf). Reset betrifft NUR die "physische" Werkstatt (Gebäude/Mitarbeiter/
+  // Fahrzeuge/Forschung/Einheiten/Ressourcen) — Level/XP, Erfolge, Kampagne, Quests,
+  // Gilde, Event- und PvP-Historie bleiben bewusst unangetastet (kein Fortschritt,
+  // der schon "verdient" wurde, geht verloren). `mod:null` (Startkapital) ist kein
+  // Prozent-Modifikator, sondern ein fixer Bonus auf die Startressourcen nach Reset.
+  const PRESTIGE = {
+    minOfficeLevel: 8,
+    pointsFor: (delta) => Math.floor(Math.pow(Math.max(0, delta), 0.5) / 45),
+    UPGRADES: {
+      produktivitaet: {
+        label: 'Erfahrene Stammbelegschaft', icon: '⚡', maxLevel: 15, mod: 'prodPct', perLevel: 2,
+        desc: 'Jeder Neustart bringt erfahrenere Leute mit — dauerhaft mehr Produktion.',
+        cost: lvl => round(2 * Math.pow(1.55, lvl - 1)),
+      },
+      einkaufsmacht: {
+        label: 'Einkaufsmacht', icon: '🧾', maxLevel: 10, mod: 'buildCostPct', perLevel: 1,
+        desc: 'Alte Kontakte zu Lieferanten senken dauerhaft die Baukosten.',
+        cost: lvl => round(2 * Math.pow(1.55, lvl - 1)),
+      },
+      fliessband: {
+        label: 'Erprobte Fertigungslinie', icon: '🏭', maxLevel: 10, mod: 'manuTimePct', perLevel: 2,
+        desc: 'Eingespielte Abläufe — Fahrzeuge werden nach jedem Neustart schneller gefertigt.',
+        cost: lvl => round(2 * Math.pow(1.55, lvl - 1)),
+      },
+      markenname: {
+        label: 'Etablierter Markenname', icon: '✨', maxLevel: 12, mod: 'vehicleValuePct', perLevel: 2,
+        desc: 'Dein Name hat sich rumgesprochen — neue Fahrzeuge sind von Anfang an mehr wert.',
+        cost: lvl => round(2 * Math.pow(1.55, lvl - 1)),
+      },
+      startkapital: {
+        label: 'Startkapital', icon: '💼', maxLevel: 10, mod: null, perLevel: 500,
+        desc: 'Nach jedem Neustart wartet zusätzliches Bargeld in der Kasse.',
+        cost: lvl => round(2 * Math.pow(1.55, lvl - 1)),
+      },
+    },
+    upgradeMods(levels) {
+      const m = { prodPct: 0, buildCostPct: 0, manuTimePct: 0, vehicleValuePct: 0 };
+      Object.entries(levels || {}).forEach(([key, lvl]) => {
+        const u = this.UPGRADES[key];
+        if (u && u.mod && lvl > 0) m[u.mod] += u.perLevel * Math.min(lvl, u.maxLevel);
+      });
+      return m;
+    },
+  };
+
+  // ── Liga/Saison (Phase 8): wöchentlicher Auf-/Abstieg zwischen 8 Stufen. Punkte
+  // kommen 1:1 aus jeder XP-Gutschrift (siehe grantXp im Server) und resetten jede
+  // Woche (periodKey('weekly')). Aufstieg bringt eine einmalige Ressourcen-Belohnung,
+  // Abstieg kostet nichts außer der Stufe selbst — das Spiel bestraft Pausen nicht,
+  // es belohnt nur Aktivität. `promote:Infinity` markiert die höchste Stufe. ──
+  const LEAGUE = {
+    TIERS: [
+      { key: 'holz', label: 'Holz', icon: '🪵', promote: 120, demote: 0, reward: { money: 400 } },
+      { key: 'bronze', label: 'Bronze', icon: '🥉', promote: 280, demote: 40, reward: { money: 900, steel: 60 } },
+      { key: 'silber', label: 'Silber', icon: '🥈', promote: 500, demote: 100, reward: { money: 1800, steel: 120, parts: 60 } },
+      { key: 'gold', label: 'Gold', icon: '🥇', promote: 850, demote: 200, reward: { money: 3200, steel: 200, parts: 120, electronics: 60 } },
+      { key: 'platin', label: 'Platin', icon: '💠', promote: 1300, demote: 350, reward: { money: 5500, steel: 320, parts: 220, electronics: 120, fuel: 100 } },
+      { key: 'diamant', label: 'Diamant', icon: '💎', promote: 1900, demote: 550, reward: { money: 9000, steel: 500, parts: 350, electronics: 220, fuel: 180 } },
+      { key: 'meister', label: 'Meister', icon: '👑', promote: 2700, demote: 850, reward: { money: 15000, steel: 800, parts: 550, electronics: 380, fuel: 300 } },
+      { key: 'champion', label: 'Champion', icon: '🏆', promote: Infinity, demote: 1400, reward: { money: 25000, steel: 1200, parts: 900, electronics: 650, fuel: 500 } },
+    ],
+  };
+
   // Startkit exakt wie im Auftrag: Büro, Lager, Kleine Garage, Abschlepphof, Tanklager,
   // alle Level 1, in Zeile y=0 platziert (Index < 24 = initial freigeschaltet).
   const STARTER_KIT = [
@@ -622,6 +688,7 @@
     UNITS, RAIDS, COMBAT, PVP,
     CAMPAIGN_CHAPTERS, CAMPAIGN,
     CLAN, CLAN_WAR, EVENTS, activeEvent,
+    PRESTIGE, LEAGUE,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = CONFIG;

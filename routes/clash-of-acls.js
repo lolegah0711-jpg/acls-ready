@@ -44,12 +44,29 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       .forEach((r) => { levels[r.tech_key] = r.level; });
     return levels;
   }
-  // Gildenbonus fließt direkt in den bestehenden Modifikator-Aggregator ein (prodPct
-  // wird ohnehin schon von computeRatesPerHour verwendet) — kein separater Pfad nötig.
+  // ── Phase 8: Prestige — abgeschlossene Upgrade-Stufen → Modifikator-Objekt ──
+  function getPrestigeUpgradeLevels(discordId) {
+    const levels = {};
+    db.prepare('SELECT upgrade_key, level FROM coa_prestige_upgrades WHERE discord_id = ?').all(discordId)
+      .forEach((r) => { levels[r.upgrade_key] = r.level; });
+    return levels;
+  }
+  function getPrestige(discordId) {
+    return db.prepare('SELECT points, resets FROM coa_prestige WHERE discord_id = ?').get(discordId) || { points: 0, resets: 0 };
+  }
+
+  // Gildenbonus + Prestige-Upgrades fließen direkt in den bestehenden Modifikator-
+  // Aggregator ein (prodPct wird ohnehin schon von computeRatesPerHour verwendet)
+  // — kein separater Pfad nötig, siehe Phase-7-Lehre in buildView() unten.
   const getMods = (discordId) => {
     const mods = CFG.researchMods(getResearchLevels(discordId));
     const clanLvl = getMyClanLevel(discordId);
     if (clanLvl > 0) mods.prodPct += CFG.CLAN.bonusPct(clanLvl);
+    const pMods = CFG.PRESTIGE.upgradeMods(getPrestigeUpgradeLevels(discordId));
+    mods.prodPct += pMods.prodPct;
+    mods.buildCostPct += pMods.buildCostPct;
+    mods.manuTimePct += pMods.manuTimePct;
+    mods.vehicleValuePct += pMods.vehicleValuePct;
     return mods;
   };
   const NO_MODS = CFG.researchMods({});
@@ -205,9 +222,46 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     db.prepare(`UPDATE coa_state SET ${sets.join(', ')} WHERE discord_id = ?`).run(...vals, discordId);
   }
 
+  // ── Phase 8: Liga/Saison — Liga-Punkte kommen 1:1 aus jeder XP-Gutschrift (siehe
+  // grantXp unten), damit JEDE bestehende Aktion automatisch auch zur Liga beiträgt,
+  // ohne an jeder einzelnen Fundstelle einen eigenen Hook zu brauchen. Wöchentlicher
+  // Rollover läuft lazy (wie ensureQuests/Daily-Bonus): beim ersten Touch NACH
+  // Wochenwechsel wird anhand der bis dahin gesammelten Punkte auf-/abgestiegen,
+  // danach beginnt die neue Woche bei 0 Punkten. addPoints=0 (aus buildView) hält
+  // die Anzeige auch für inaktive Spieler aktuell, ohne selbst zu werten.
+  function leagueTouch(discordId, addPoints = 0) {
+    const s = db.prepare('SELECT league_tier, league_points, league_period FROM coa_state WHERE discord_id = ?').get(discordId);
+    if (!s) return;
+    const curWeek = CFG.periodKey('weekly');
+    if (s.league_period === curWeek) {
+      if (addPoints) db.prepare('UPDATE coa_state SET league_points = league_points + ? WHERE discord_id = ?').run(Math.round(addPoints), discordId);
+      return;
+    }
+    if (!s.league_period) {
+      // Brandneuer Spieler: still initialisieren, kein Auf-/Abstieg ohne Vorwoche
+      db.prepare('UPDATE coa_state SET league_period = ?, league_points = ? WHERE discord_id = ?').run(curWeek, Math.round(addPoints), discordId);
+      return;
+    }
+    const tiers = CFG.LEAGUE.TIERS;
+    let tier = s.league_tier;
+    const cur = tiers[tier];
+    let promoted = false;
+    if (cur.promote !== Infinity && s.league_points >= cur.promote && tier < tiers.length - 1) { tier++; promoted = true; }
+    else if (s.league_points < cur.demote && tier > 0) { tier--; }
+    db.prepare(`UPDATE coa_state SET league_tier = ?, league_points = ?, league_period = ?,
+      league_peak_tier = MAX(league_peak_tier, ?) WHERE discord_id = ?`).run(tier, Math.round(addPoints), curWeek, tier, discordId);
+    if (promoted) {
+      const t = tiers[tier];
+      grantResources(discordId, t.reward);
+      createNotif(discordId, 'coa_league_promo', { tier: t.label, icon: t.icon });
+      queueNotification('coa_league_promo', discordId, { tier: t.label });
+    }
+  }
+
   // XP gutschreiben; bei Level-Aufstieg Belohnung + Benachrichtigung
   function grantXp(discordId, amount) {
     if (!amount || amount <= 0) return;
+    leagueTouch(discordId, amount);
     const s = db.prepare('SELECT xp, level FROM coa_state WHERE discord_id = ?').get(discordId);
     if (!s) return;
     const xp = s.xp + Math.round(amount);
@@ -512,6 +566,10 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
 
   function buildView(ident) {
     finalizeDueForAll();
+    // Lazy Liga-Rollover (addPoints=0): hält Tier/Punkte auch für inaktive Spieler
+    // aktuell. syncResources() unten liest coa_state danach neu ein, daher sind die
+    // Liga-Felder in `state` bereits der Post-Rollover-Stand — kein Extra-Query nötig.
+    leagueTouch(ident.id);
     // Offline-Report: war der Spieler >30 min weg, zeigen wir was sich angesammelt hat
     const before = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
     const awaySec = before ? Math.max(0, (Date.now() - asDate(before.last_tick_at).getTime()) / 1000) : 0;
@@ -674,6 +732,35 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       },
       clan: buildClanView(ident.id),
       event: buildEventView(ident.id),
+      prestige: buildPrestigeView(ident.id, offLvl, state),
+      league: buildLeagueView(state),
+    };
+  }
+
+  // ── Phase 8: Prestige-Ansicht — Punktepotential aus Geld verdient SEIT dem
+  // letzten Reset (nicht lifetime total_earned, sonst wäre mehrfaches Prestige
+  // für dasselbe Geld möglich). ──
+  function buildPrestigeView(discordId, offLvl, state) {
+    const pr = getPrestige(discordId);
+    const delta = Math.max(0, state.total_earned - (state.total_earned_at_last_prestige || 0));
+    return {
+      points: pr.points, resets: pr.resets,
+      minOfficeLevel: CFG.PRESTIGE.minOfficeLevel, officeLevel: offLvl,
+      eligible: offLvl >= CFG.PRESTIGE.minOfficeLevel,
+      potentialPoints: CFG.PRESTIGE.pointsFor(delta),
+      upgrades: getPrestigeUpgradeLevels(discordId),
+    };
+  }
+
+  // ── Phase 8: Liga-Ansicht — `state` kommt bereits aus syncResources() NACH dem
+  // leagueTouch()-Rollover in buildView(), enthält also die aktuellen Werte. ──
+  function buildLeagueView(state) {
+    const tiers = CFG.LEAGUE.TIERS;
+    const t = tiers[state.league_tier];
+    return {
+      tier: state.league_tier, key: t.key, label: t.label, icon: t.icon,
+      points: state.league_points, promoteAt: t.promote, demoteAt: t.demote,
+      peakTier: state.league_peak_tier, resetInSec: secToReset('weekly'),
     };
   }
 
@@ -1287,7 +1374,7 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
   // ── Rangliste: nach XP sortiert, mit Level und eigenem Rang ──
   router.get('/api/clash-of-acls/leaderboard', requireLogin, (req, res) => {
     const ident = coinIdent(req);
-    const rows = db.prepare(`SELECT discord_id, username, total_earned, level, missions_done FROM coa_state
+    const rows = db.prepare(`SELECT discord_id, username, total_earned, level, missions_done, league_tier FROM coa_state
       WHERE xp > 0 OR total_earned > 0 ORDER BY xp DESC, total_earned DESC LIMIT 25`).all();
     const all = db.prepare('SELECT discord_id FROM coa_state ORDER BY xp DESC, total_earned DESC').all();
     const myRank = all.findIndex((r) => r.discord_id === ident.id) + 1;
@@ -1295,9 +1382,93 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       myRank: myRank || null,
       list: rows.map((r, i) => ({
         rank: i + 1, username: r.username, total_earned: r.total_earned,
-        level: r.level, missions_done: r.missions_done, me: r.discord_id === ident.id,
+        level: r.level, missions_done: r.missions_done, league_tier: r.league_tier, me: r.discord_id === ident.id,
       })),
     });
+  });
+
+  // ── Liga-Rangliste: eigene Sortierung nach Liga-Stufe + Punkten dieser Woche ──
+  router.get('/api/clash-of-acls/league/leaderboard', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    getOrCreateState(ident);
+    leagueTouch(ident.id);
+    const rows = db.prepare(`SELECT discord_id, username, league_tier, league_points FROM coa_state
+      WHERE league_tier > 0 OR league_points > 0 ORDER BY league_tier DESC, league_points DESC LIMIT 25`).all();
+    const all = db.prepare('SELECT discord_id FROM coa_state ORDER BY league_tier DESC, league_points DESC').all();
+    const myRank = all.findIndex((r) => r.discord_id === ident.id) + 1;
+    res.json({
+      myRank: myRank || null,
+      list: rows.map((r, i) => ({
+        rank: i + 1, username: r.username, tier: r.league_tier, points: r.league_points, me: r.discord_id === ident.id,
+      })),
+    });
+  });
+
+  // ── Prestige: Werkstatt zurücksetzen gegen dauerhafte Prestige-Punkte. Reset
+  // betrifft nur Gebäude/Mitarbeiter/Fahrzeuge/Forschung/Einheiten/Ressourcen —
+  // Level/XP, Erfolge, Kampagne, Quests, Gilde und PvP-Historie bleiben erhalten. ──
+  router.post('/api/clash-of-acls/prestige', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 5, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    if (!(req.body || {}).confirm) return res.status(400).json({ error: 'Bestätigung erforderlich' });
+    const buildings = getBuildings(ident.id);
+    const offLvl = officeLevel(buildings);
+    if (offLvl < CFG.PRESTIGE.minOfficeLevel) {
+      return res.status(400).json({ error: `Büro muss mindestens Level ${CFG.PRESTIGE.minOfficeLevel} sein` });
+    }
+    const state = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
+    const delta = Math.max(0, state.total_earned - (state.total_earned_at_last_prestige || 0));
+    const gained = CFG.PRESTIGE.pointsFor(delta);
+    if (gained < 1) return res.status(400).json({ error: 'Seit dem letzten Prestige noch nicht genug verdient' });
+
+    const upLevels = getPrestigeUpgradeLevels(ident.id);
+    const startBonus = (upLevels.startkapital || 0) * CFG.PRESTIGE.UPGRADES.startkapital.perLevel;
+
+    db.transaction(() => {
+      db.prepare('DELETE FROM coa_buildings WHERE discord_id = ?').run(ident.id);
+      const insBuilding = db.prepare('INSERT INTO coa_buildings (discord_id, building_key, x, y, level) VALUES (?,?,?,?,1)');
+      CFG.STARTER_KIT.forEach((b) => insBuilding.run(ident.id, b.key, b.x, b.y));
+      db.prepare('DELETE FROM coa_build_queue WHERE discord_id = ?').run(ident.id);
+      db.prepare('DELETE FROM coa_manufacture_queue WHERE discord_id = ?').run(ident.id);
+      db.prepare('DELETE FROM coa_vehicles WHERE discord_id = ?').run(ident.id);
+      db.prepare('DELETE FROM coa_missions WHERE discord_id = ?').run(ident.id);
+      db.prepare('DELETE FROM coa_research WHERE discord_id = ?').run(ident.id);
+      db.prepare('DELETE FROM coa_research_queue WHERE discord_id = ?').run(ident.id);
+      db.prepare('DELETE FROM coa_units WHERE discord_id = ?').run(ident.id);
+      db.prepare('DELETE FROM coa_unit_queue WHERE discord_id = ?').run(ident.id);
+      db.prepare('DELETE FROM coa_raids WHERE discord_id = ? AND resolved_at IS NULL').run(ident.id);
+      db.prepare(`UPDATE coa_state SET money=?, steel=100, parts=50, electronics=20, fuel=100,
+        total_earned_at_last_prestige = total_earned WHERE discord_id=?`).run(1000 + startBonus, ident.id);
+      db.prepare(`INSERT INTO coa_prestige (discord_id, points, resets, updated_at) VALUES (?, ?, 1, datetime('now'))
+        ON CONFLICT(discord_id) DO UPDATE SET points = points + excluded.points, resets = resets + 1, updated_at = datetime('now')`)
+        .run(ident.id, gained);
+    })();
+    createNotif(ident.id, 'coa_prestige', { points: gained });
+    queueNotification('coa_prestige', ident.id, { points: gained });
+    res.json({ ok: true, gainedPoints: gained, ...buildView(ident) });
+  });
+
+  // ── Prestige-Upgrade: dauerhafte Boni mit gesammelten Prestige-Punkten kaufen ──
+  router.post('/api/clash-of-acls/prestige-upgrade', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    const { upgrade_key } = req.body || {};
+    const up = CFG.PRESTIGE.UPGRADES[upgrade_key];
+    if (!up) return res.status(400).json({ error: 'Unbekanntes Prestige-Upgrade' });
+    const cur = getPrestigeUpgradeLevels(ident.id)[upgrade_key] || 0;
+    if (cur >= up.maxLevel) return res.status(400).json({ error: 'Maximales Level erreicht' });
+    const cost = up.cost(cur + 1);
+    const points = getPrestige(ident.id).points;
+    if (points < cost) return res.status(400).json({ error: `Nicht genug Prestige-Punkte (${cost} nötig)` });
+    db.transaction(() => {
+      db.prepare('UPDATE coa_prestige SET points = points - ? WHERE discord_id = ?').run(cost, ident.id);
+      db.prepare(`INSERT INTO coa_prestige_upgrades (discord_id, upgrade_key, level) VALUES (?,?,1)
+        ON CONFLICT(discord_id, upgrade_key) DO UPDATE SET level = level + 1`).run(ident.id, upgrade_key);
+    })();
+    res.json({ ok: true, ...buildView(ident) });
   });
 
   router.finalizeDue = finalizeDueForAll;

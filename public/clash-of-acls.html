@@ -360,6 +360,7 @@
   <button class="hud-btn" id="pvpBtn" onclick="openSheet('pvp')" title="PvP-Angriffe">⚔️</button>
   <button class="hud-btn" id="clanBtn" onclick="openSheet('clan')" title="Gilde">🏰</button>
   <button class="hud-btn" id="eventBtn" onclick="openSheet('event')" title="Event" style="display:none">🎪</button>
+  <button class="hud-btn" id="prestigeBtn" onclick="openSheet('prestige')" title="Prestige" style="display:none">🔁</button>
   <button class="hud-btn" onclick="openSheet('emp')" title="Mitarbeiter">👷</button>
   <button class="hud-btn" onclick="openSheet('veh')" title="Fuhrpark">🚗</button>
   <button class="hud-btn" onclick="openSheet('lb')" title="Rangliste">🏆</button>
@@ -416,7 +417,7 @@
   <div class="sh-body" id="shBody"></div>
 </div>
 
-<script src="/js/clash-of-acls-config.js?v=8"></script>
+<script src="/js/clash-of-acls-config.js?v=9"></script>
 <script>
 const CFG = window.CLASH_OF_ACLS_CONFIG;
 const $ = id => document.getElementById(id);
@@ -715,6 +716,17 @@ function render(d) {
       SFX.err();
     }
   }
+  // Liga-Auf-/Abstieg seit letztem Poll (wöchentlicher Rollover kann bei jedem
+  // Request passieren, nicht nur direkt nach einer Aktion)
+  if (prev && prev.league && d.league.tier !== prev.league.tier) {
+    if (d.league.tier > prev.league.tier) {
+      toast(d.league.icon, 'Aufstieg in die ' + d.league.label + '-Liga!', 'Weiter so — nächste Woche geht es weiter.');
+      burstAt(innerWidth / 2, innerHeight / 3, 18);
+      SFX.levelup();
+    } else {
+      toast(d.league.icon, 'Abstieg in die ' + d.league.label + '-Liga', 'Sammle diese Woche wieder Punkte für den Wiederaufstieg.');
+    }
+  }
   // Neuer PvP-Angriff gegen mich seit letztem Poll (id-Vergleich, damit es nur einmal auffällt)
   if (prev && d.pvp && (d.pvp.attacksReceived[0]?.id) && d.pvp.attacksReceived[0].id !== prev.pvp?.attacksReceived[0]?.id) {
     const r = d.pvp.attacksReceived[0];
@@ -728,8 +740,9 @@ function renderHudExtras() {
   const p = st.progression;
   const span = p.xpNext ? p.xpNext - p.xpThis : 1;
   const pct = p.xpNext ? Math.min(100, Math.max(0, (p.xp - p.xpThis) / span * 100)) : 100;
-  $('lvlChip').innerHTML = `<div class="lc-top">⭐ ${p.level}</div><div class="lc-bar"><i class="lc-fill" style="width:${pct}%"></i></div>`;
-  $('lvlChip').title = `${p.title} · ${fmt(p.xp)} XP` + (p.xpNext ? ` — noch ${fmt(p.xpNext - p.xp)} bis Level ${p.level + 1}` : '');
+  $('lvlChip').innerHTML = `<div class="lc-top">⭐ ${p.level} <span title="Liga: ${esc(st.league.label)}">${st.league.icon}</span></div><div class="lc-bar"><i class="lc-fill" style="width:${pct}%"></i></div>`;
+  $('lvlChip').title = `${p.title} · ${fmt(p.xp)} XP` + (p.xpNext ? ` — noch ${fmt(p.xpNext - p.xp)} bis Level ${p.level + 1}` : '')
+    + ` · Liga ${st.league.label} (${fmt(st.league.points)} Punkte diese Woche)`;
   $('dailyBtn').style.display = st.daily.available ? '' : 'none';
   const claimable = [...st.quests.daily.list, ...st.quests.weekly.list].some(q => !q.claimed && q.progress >= q.target);
   $('questBtn').innerHTML = '🎯' + (claimable ? '<span class="dot"></span>' : '');
@@ -738,6 +751,8 @@ function renderHudExtras() {
   const clanClaimable = !!(st.clan && st.clan.lastWeek && st.clan.lastWeek.claimable);
   $('clanBtn').innerHTML = '🏰' + (clanClaimable ? '<span class="dot"></span>' : '');
   $('eventBtn').style.display = st.event ? '' : 'none';
+  $('prestigeBtn').style.display = (st.prestige.eligible || st.prestige.resets > 0) ? '' : 'none';
+  $('prestigeBtn').innerHTML = '🔁' + (st.prestige.eligible ? '<span class="dot" style="background:#a855f7"></span>' : '');
 }
 
 function renderRes() {
@@ -975,6 +990,7 @@ function renderInfoBar() {
   if (b.building_key === 'towyard') btns.push(`<button class="mk" onclick="openSheet('missions')">🚨 Einsätze</button>`);
   if (b.building_key === 'forschungszentrum') btns.push(`<button class="mk" onclick="openSheet('research')">🔬 Forschung</button>`);
   if (b.building_key === 'sicherheitszentrale') btns.push(`<button class="mk" onclick="openSheet('army')">🛡️ Werkschutz & Überfälle</button>`);
+  if (b.building_key === 'office' && (st.prestige.eligible || st.prestige.resets > 0)) btns.push(`<button class="mk" style="background:linear-gradient(145deg,#c084fc,#a855f7);color:#fff" onclick="openSheet('prestige')">🔁 Prestige</button>`);
   $('iBtns').innerHTML = btns.join('');
 }
 function deselect() {
@@ -1013,7 +1029,7 @@ function closeSheet() {
   $('sheet').classList.remove('open');
 }
 function renderSheet() {
-  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!', army:'🛡️ Werkschutz & Überfälle', campaign:'🗺️ Kampagne', pvp:'⚔️ PvP-Angriffe', clan:'🏰 Gilde', event:'🎪 Event' };
+  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!', army:'🛡️ Werkschutz & Überfälle', campaign:'🗺️ Kampagne', pvp:'⚔️ PvP-Angriffe', clan:'🏰 Gilde', event:'🎪 Event', prestige:'🔁 Prestige' };
   $('shTitle').textContent = titles[sheetType] || '';
   $('shCats').style.display = sheetType === 'shop' ? 'flex' : 'none';
   if (sheetType === 'shop') renderShop();
@@ -1033,6 +1049,7 @@ function renderSheet() {
   else if (sheetType === 'pvp') renderPvp();
   else if (sheetType === 'clan') renderClan();
   else if (sheetType === 'event') renderEvent();
+  else if (sheetType === 'prestige') renderPrestige();
 }
 
 /* ── Gilde: nutzt die bestehende Club-Mitgliedschaft aus dem Portal — Beitreten/
@@ -1465,6 +1482,8 @@ function renderProfile() {
       ${stat('👷 ' + fmt(s.employees_count), 'Mitarbeiter')}
       ${stat('🛡️ ' + fmt(s.raids_won) + '/' + fmt(s.raids_done), 'Überfälle gewonnen')}
       ${stat('🔥 ' + fmt(s.daily_streak), 'Login-Serie')}
+      ${stat('🔁 ' + fmt(st.prestige.resets), 'Prestige-Resets')}
+      ${stat((CFG.LEAGUE.TIERS[st.league.peakTier]?.icon || '🪵') + ' ' + esc(CFG.LEAGUE.TIERS[st.league.peakTier]?.label || 'Holz'), 'Beste Liga')}
     </div>
     <div style="font-weight:800;margin:.8rem 0 .5rem">🏆 Erfolge <span class="muted" style="font-weight:400">· ${unlocked}/${st.achievements.length} freigeschaltet</span></div>
     <div class="ach-grid">${st.achievements.map(a => `
@@ -1618,15 +1637,31 @@ function renderResearch() {
   tickCdEls();
 }
 
+let lbTab = 'overall';
+function lbTabSwitch(t) { lbTab = t; renderLb(); }
 async function renderLb() {
-  $('shBody').innerHTML = '<div class="muted">Lädt…</div>';
+  const tabsHtml = `<div class="pvp-tabs">
+    <button class="${lbTab === 'overall' ? 'active' : ''}" onclick="lbTabSwitch('overall')">🏆 Gesamt</button>
+    <button class="${lbTab === 'league' ? 'active' : ''}" onclick="lbTabSwitch('league')">⚔️ Liga diese Woche</button>
+  </div>`;
+  $('shBody').innerHTML = tabsHtml + '<div class="muted">Lädt…</div>';
   try {
-    const l = await api('/api/clash-of-acls/leaderboard');
-    $('shBody').innerHTML =
-      (l.myRank ? `<div class="muted" style="margin-bottom:.55rem">Dein Rang: <b style="color:var(--acc)">#${l.myRank}</b></div>` : '') +
-      (l.list.length
-        ? l.list.map(x => `<div class="lbrow"${x.me ? ' style="color:var(--acc)"' : ''}><span>#${x.rank} ${esc(x.username || '?')} <span class="muted">· ⭐ ${x.level}</span></span><span>💰 ${fmt(x.total_earned)}</span></div>`).join('')
-        : '<div class="muted">Noch keine Einträge.</div>');
+    if (lbTab === 'league') {
+      const l = await api('/api/clash-of-acls/league/leaderboard');
+      $('shBody').innerHTML = tabsHtml +
+        `<div class="muted" style="margin:.5rem 0">Deine Liga: <b style="color:var(--acc)">${st.league.icon} ${esc(st.league.label)}</b> · ${fmt(st.league.points)} Punkte · Reset in ${fmtDur(st.league.resetInSec)}</div>` +
+        (l.myRank ? `<div class="muted" style="margin-bottom:.55rem">Dein Rang in der Liga: <b style="color:var(--acc)">#${l.myRank}</b></div>` : '') +
+        (l.list.length
+          ? l.list.map(x => `<div class="lbrow"${x.me ? ' style="color:var(--acc)"' : ''}><span>#${x.rank} ${CFG.LEAGUE.TIERS[x.tier]?.icon || ''} ${esc(x.username || '?')}</span><span>${fmt(x.points)} Pkt.</span></div>`).join('')
+          : '<div class="muted">Noch keine Einträge diese Woche.</div>');
+    } else {
+      const l = await api('/api/clash-of-acls/leaderboard');
+      $('shBody').innerHTML = tabsHtml +
+        (l.myRank ? `<div class="muted" style="margin:.5rem 0 .55rem">Dein Rang: <b style="color:var(--acc)">#${l.myRank}</b></div>` : '') +
+        (l.list.length
+          ? l.list.map(x => `<div class="lbrow"${x.me ? ' style="color:var(--acc)"' : ''}><span>#${x.rank} ${CFG.LEAGUE.TIERS[x.league_tier]?.icon || ''} ${esc(x.username || '?')} <span class="muted">· ⭐ ${x.level}</span></span><span>💰 ${fmt(x.total_earned)}</span></div>`).join('')
+          : '<div class="muted">Noch keine Einträge.</div>');
+    }
   } catch (e) { $('shBody').innerHTML = '<div class="muted">Konnte nicht geladen werden.</div>'; }
 }
 
@@ -1650,6 +1685,74 @@ function renderManu() {
   }).join('');
   $('shBody').innerHTML = `<div class="muted" style="margin-bottom:.6rem">Kosten pro Fahrzeug: ${Object.entries(cost).map(([r, a]) => RES_ICON[r] + fmt(a)).join(' ')} · ⏱ ${fmtDur(mManu(def.effect.manufactureTimeSec(b.level)))}</div>` + rows;
 }
+/* ── Prestige: Werkstatt zurücksetzen gegen dauerhafte Boni ── */
+let prestigeArmed = false;
+function renderPrestige() {
+  const p = st.prestige;
+  let html = `<div class="war-card" style="border-color:rgba(168,85,247,.5)">
+    <div style="font-weight:800;font-size:1rem">💜 ${fmt(p.points)} Prestige-Punkte${p.resets ? ` · ${p.resets}× zurückgesetzt` : ''}</div>
+    <div class="muted" style="margin-top:.3rem">Setze deine Werkstatt zurück (Gebäude, Mitarbeiter, Fahrzeuge, Forschung, Werkschutz) und erhalte dauerhafte Prestige-Punkte, die du unten in permanente Boni investierst. <b style="color:var(--txt)">Level, Erfolge, Kampagne, Quests, Gilde und PvP-Historie bleiben erhalten</b> — nichts, was du dir schon verdient hast, geht verloren.</div>
+  </div>`;
+
+  if (!p.eligible) {
+    html += `<div class="muted" style="text-align:center;padding:.6rem">🔒 Büro muss mindestens Level ${p.minOfficeLevel} sein (aktuell ${p.officeLevel}), um zu prestigen.</div>`;
+  } else {
+    html += `<div class="war-card">
+      <div style="font-weight:800">🔁 Werkstatt zurücksetzen</div>
+      <div class="muted" style="margin:.3rem 0">Bei einem Reset jetzt erhältst du: <b style="color:#e9d5ff">💜 ${fmt(p.potentialPoints)} Prestige-Punkte</b></div>
+      ${p.potentialPoints < 1
+        ? '<div class="muted">Verdiene seit deinem letzten Prestige mehr Geld, um Punkte zu sammeln.</div>'
+        : prestigeArmed
+          ? `<div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.5);border-radius:11px;padding:.6rem;margin-top:.4rem">
+              <div style="font-weight:700;color:var(--bad);margin-bottom:.4rem">⚠️ Wirklich zurücksetzen? Gebäude, Mitarbeiter, Fahrzeuge, Forschung und Werkschutz gehen verloren!</div>
+              <div style="display:flex;gap:.5rem">
+                <button style="flex:1;background:var(--bad);color:#fff;border:0;border-radius:9px;padding:.5rem;font-weight:800;cursor:pointer" onclick="doPrestige()">Ja, zurücksetzen</button>
+                <button style="flex:1;background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:.5rem;font-weight:700;cursor:pointer" onclick="prestigeArmed=false;renderPrestige()">Abbrechen</button>
+              </div>
+            </div>`
+          : `<button class="claimBtn" style="background:linear-gradient(145deg,#c084fc,#a855f7);color:#fff" onclick="prestigeArmed=true;renderPrestige()">🔁 Prestige starten</button>`
+      }
+    </div>`;
+  }
+
+  html += '<div style="font-weight:800;margin:.9rem 0 .5rem">💜 Permanente Upgrades</div>';
+  html += Object.entries(CFG.PRESTIGE.UPGRADES).map(([key, u]) => {
+    const lvl = p.upgrades[key] || 0;
+    const maxed = lvl >= u.maxLevel;
+    const cost = maxed ? null : u.cost(lvl + 1);
+    const dis = maxed || p.points < cost;
+    const sign = (u.mod === 'buildCostPct' || u.mod === 'manuTimePct') ? '−' : '+';
+    const effNow = u.mod ? `${sign}${u.perLevel * lvl}%` : `+${fmt(u.perLevel * lvl)} 💰 Start-Bonus`;
+    const effNext = maxed ? null : (u.mod ? `${sign}${u.perLevel * (lvl + 1)}%` : `+${fmt(u.perLevel * (lvl + 1))} 💰 Start-Bonus`);
+    return `<div class="row" style="flex-wrap:wrap"><div class="rl"><span class="ric">${u.icon}</span><div>
+      <div class="rn">${esc(u.label)} <span class="rd">· Stufe ${lvl}/${u.maxLevel}</span></div>
+      <div class="rd">${esc(u.desc)}</div>
+      <div class="rd">Jetzt: <b>${effNow}</b>${maxed ? '' : ` → <b style="color:var(--good)">${effNext}</b>`}</div>
+    </div></div>
+    <button ${dis ? 'disabled' : ''} onclick="buyPrestigeUpgrade('${key}')">${maxed ? '✔ Max' : `💜${fmt(cost)}`}</button></div>`;
+  }).join('');
+
+  $('shBody').innerHTML = html;
+}
+async function doPrestige() {
+  try {
+    const d = await api('/api/clash-of-acls/prestige', { method:'POST', body:{ confirm: true } });
+    prestigeArmed = false;
+    SFX.levelup();
+    toast('🔁', 'Prestige!', `+${d.gainedPoints} Prestige-Punkte — deine Werkstatt startet neu.`);
+    burstAt(innerWidth / 2, innerHeight / 2 - 60, 26);
+    render(d);
+  } catch (e) { msg(e.message); }
+}
+async function buyPrestigeUpgrade(key) {
+  try {
+    const d = await api('/api/clash-of-acls/prestige-upgrade', { method:'POST', body:{ upgrade_key: key } });
+    SFX.coin();
+    msg('Upgrade verbessert!', true);
+    render(d);
+  } catch (e) { msg(e.message); }
+}
+
 function renderHelp() {
   const step = (icon, title, text) =>
     `<div class="hstep"><span class="hic">${icon}</span><div><div class="hti">${title}</div><div class="htx">${text}</div></div></div>`;
@@ -1671,6 +1774,8 @@ function renderHelp() {
     step('⭐', 'Level & XP', 'Fast alles gibt Erfahrungspunkte: Bauen, Fertigen, Verkaufen, Einsätze, Forschung. Mit jedem Level-Aufstieg gibt es eine Belohnung und einen neuen Titel — dein Fortschritt steckt im ⭐-Chip oben links (antippen = Profil mit Statistiken und allen Erfolgen).') +
     step('🎯', 'Quests & Erfolge', 'Jeden Tag warten 3 Tages-Quests, jede Woche 3 Wochen-Quests (🎯 oben) — abschließen, abholen, kassieren. Dazu gibt es über 40 Erfolge mit XP- und Geld-Belohnungen im Profil.') +
     step('🎁', 'Täglicher Bonus', 'Einmal am Tag wartet ein Login-Bonus (🎁 oben). Wer an 7 Tagen in Folge abholt, knackt den Jackpot — die Beträge wachsen mit deinem Level. Verpasst du einen Tag, startet die Serie neu.') +
+    step('⚔️', 'Liga', 'Jede Woche läufst du in einer von 8 Liga-Stufen (Holz bis Champion) — dein ⭐-Chip zeigt dein aktuelles Abzeichen. Fast jede Aktion bringt Liga-Punkte; genug Punkte am Wochenende bedeuten Aufstieg (mit Belohnung), zu wenige Abstieg. Verpasste Wochen kosten aber nichts außer der Stufe — jederzeit wieder einsteigbar. Die Liga-Rangliste findest du unter 🏆 oben.') +
+    step('🔁', 'Prestige', 'Ab Büro-Level 8 (🔁 oben, auch übers Büro erreichbar) kannst du deine Werkstatt zurücksetzen: Gebäude, Mitarbeiter, Fahrzeuge, Forschung und Werkschutz starten neu — dafür gibt es dauerhafte Prestige-Punkte für permanente Boni (mehr Produktion, günstigeres Bauen, schnellere Fertigung, wertvollere Fahrzeuge, mehr Startkapital). Level, Erfolge, Kampagne, Quests, Gilde und PvP-Historie bleiben unangetastet — nichts Verdientes geht verloren.') +
     step('🔍', 'Karte bedienen', 'Zoome mit dem Mausrad, zwei Fingern oder den ＋/−-Buttons rechts. Ziehe die Karte mit gedrückter Maustaste oder dem Finger, um dich umzusehen. ⌂ setzt die Ansicht zurück.') +
     step('⚡', 'Tipp', 'Zu ungeduldig? Laufende Bauaufträge kannst du mit ACLS-Coins sofort abschließen (⚡-Button). Und du bekommst eine Benachrichtigung im Portal, sobald etwas fertig ist.') +
     `<button class="hgo" onclick="closeSheet()">Los geht's! 🔧</button>`;

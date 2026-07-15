@@ -523,7 +523,92 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   const poorBuy = await post('/api/clash-of-acls/event-buy', { item_key: cheapest.key });
   assert.equal(poorBuy.status, 400, 'Kauf ohne genug Marken abgelehnt');
 
-  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne, PvP, Gilden, Events)');
+  // ══ Phase 8: Liga/Saison (wöchentlicher Auf-/Abstieg) ══════
+  st = await get('/api/clash-of-acls/state');
+  assert.ok(st.league && typeof st.league.tier === 'number', 'Liga-Objekt im View: ' + JSON.stringify(st.league));
+  assert.equal(st.league.tier, 0, 'Startet in Liga-Stufe 0 (Holz)');
+  assert.ok(st.league.points > 0, 'Liga-Punkte bereits durch frühere XP-Aktionen gesammelt: ' + st.league.points);
+
+  // Wochenwechsel simulieren (alte Periode + genug Punkten für Aufstieg nach Bronze)
+  const moneyBeforePromo = st.resources.money;
+  db.prepare("UPDATE coa_state SET league_period = '2020-W01', league_points = 500 WHERE discord_id=?").run(ME.id);
+  st = await get('/api/clash-of-acls/state');
+  assert.equal(st.league.tier, 1, 'Aufstieg nach Rollover mit genug Punkten (Bronze): ' + JSON.stringify(st.league));
+  assert.equal(st.league.points, 0, 'Punkte nach Rollover für neue Woche zurückgesetzt');
+  assert.ok(st.resources.money > moneyBeforePromo, 'Aufstiegs-Belohnung gutgeschrieben');
+  assert.ok(notifs.some(n => n.type === 'coa_league_promo'), 'Liga-Aufstiegs-Benachrichtigung erzeugt');
+  assert.equal(st.league.peakTier, 1, 'league_peak_tier auf 1 aktualisiert');
+
+  // Abstieg simulieren: alte Periode + zu wenige Punkte für die aktuelle (Bronze-)Stufe
+  db.prepare("UPDATE coa_state SET league_period = '2020-W02', league_points = 10 WHERE discord_id=?").run(ME.id);
+  st = await get('/api/clash-of-acls/state');
+  assert.equal(st.league.tier, 0, 'Abstieg nach Rollover mit zu wenig Punkten (zurück zu Holz)');
+  assert.equal(st.league.peakTier, 1, 'league_peak_tier bleibt trotz Abstieg bei 1 (bestbewertete Stufe)');
+
+  const lgLb = await get('/api/clash-of-acls/league/leaderboard');
+  assert.ok(Array.isArray(lgLb.list), 'Liga-Rangliste ist ein Array');
+  assert.ok(lgLb.myRank === null || lgLb.myRank >= 1, 'Eigener Liga-Rang plausibel (0 Punkte diese Woche können außerhalb der Top 25 liegen)');
+
+  // ══ Phase 8: Prestige (Werkstatt-Reset gegen dauerhafte Boni) ══
+  const noConfirm = await post('/api/clash-of-acls/prestige', {});
+  assert.equal(noConfirm.status, 400, 'Prestige ohne Bestätigung abgelehnt');
+  const noOffice = await post('/api/clash-of-acls/prestige', { confirm: true });
+  assert.equal(noOffice.status, 400, 'Prestige mit zu niedrigem Büro-Level abgelehnt (Büro ist noch Level 1)');
+
+  // Büro direkt auf Level 8 heben (Bauzeit im Test überspringen, wie an anderer Stelle üblich)
+  const officeRow = db.prepare("SELECT id FROM coa_buildings WHERE discord_id=? AND building_key='office'").get(ME.id);
+  db.prepare('UPDATE coa_buildings SET level = 8 WHERE id = ?').run(officeRow.id);
+
+  // Delta seit letztem Prestige künstlich auf 0 setzen → "noch nicht genug verdient"
+  const s0 = db.prepare('SELECT total_earned FROM coa_state WHERE discord_id=?').get(ME.id);
+  db.prepare('UPDATE coa_state SET total_earned_at_last_prestige = ? WHERE discord_id=?').run(s0.total_earned, ME.id);
+  const tooSoon = await post('/api/clash-of-acls/prestige', { confirm: true });
+  assert.equal(tooSoon.status, 400, 'Prestige ohne genug frisch verdientes Geld abgelehnt');
+
+  // Reichlich frisch verdientes Geld seit dem letzten Prestige simulieren
+  db.prepare('UPDATE coa_state SET total_earned = 999999999, total_earned_at_last_prestige = 0 WHERE discord_id=?').run(ME.id);
+  st = await get('/api/clash-of-acls/state');
+  assert.ok(st.prestige.eligible, 'Prestige jetzt möglich (Büro Level 8): ' + JSON.stringify(st.prestige));
+  assert.ok(st.prestige.potentialPoints > 0, 'Punktepotential > 0: ' + st.prestige.potentialPoints);
+
+  const vehiclesBeforePrestige = st.stats.vehicles_built; // Lifetime-Statistik — darf sich NICHT zurücksetzen
+  const levelBeforePrestige = st.progression.level;
+  const achBeforePrestige = st.achievements.filter(a => a.unlocked).length;
+
+  const doPr = await post('/api/clash-of-acls/prestige', { confirm: true });
+  assert.equal(doPr.status, 200, 'Prestige ok: ' + JSON.stringify(doPr.json.error || ''));
+  assert.ok(doPr.json.gainedPoints > 0, 'Prestige-Punkte gewonnen: ' + doPr.json.gainedPoints);
+  assert.equal(doPr.json.buildings.length, 5, 'Nach Prestige wieder Startkit (5 Gebäude)');
+  assert.ok(doPr.json.buildings.every(b => b.level === 1), 'Startkit-Gebäude nach Prestige auf Level 1');
+  assert.equal(doPr.json.vehicles.length, 0, 'Fuhrpark nach Prestige geleert');
+  assert.equal(Object.keys(doPr.json.researchLevels).length, 0, 'Forschung nach Prestige zurückgesetzt');
+  assert.equal(doPr.json.units.length, 0, 'Werkschutz nach Prestige zurückgesetzt');
+  assert.equal(doPr.json.progression.level, levelBeforePrestige, 'Spieler-Level bleibt nach Prestige erhalten (kein Reset)');
+  assert.equal(doPr.json.stats.vehicles_built, vehiclesBeforePrestige, 'Lifetime-Statistik (Fahrzeuge gefertigt) bleibt erhalten');
+  assert.equal(doPr.json.achievements.filter(a => a.unlocked).length, achBeforePrestige, 'Erfolge bleiben nach Prestige erhalten');
+  assert.ok(notifs.some(n => n.type === 'coa_prestige'), 'Prestige-Benachrichtigung erzeugt');
+
+  const prAfter = doPr.json.prestige;
+  assert.equal(prAfter.resets, 1, 'Reset-Zähler = 1');
+  assert.equal(prAfter.points, doPr.json.gainedPoints, 'Prestige-Punkte im View korrekt');
+
+  // Prestige-Upgrades kaufen
+  const unknownUp = await post('/api/clash-of-acls/prestige-upgrade', { upgrade_key: 'nope' });
+  assert.equal(unknownUp.status, 400, 'Unbekanntes Prestige-Upgrade abgelehnt');
+
+  const prodPctBeforeUp = doPr.json.mods.prodPct;
+  const upBuy1 = await post('/api/clash-of-acls/prestige-upgrade', { upgrade_key: 'produktivitaet' });
+  assert.equal(upBuy1.status, 200, 'Prestige-Upgrade-Kauf ok: ' + JSON.stringify(upBuy1.json.error || ''));
+  assert.equal(upBuy1.json.prestige.upgrades.produktivitaet, 1, 'Upgrade-Level 1 eingetragen');
+  assert.equal(upBuy1.json.mods.prodPct, prodPctBeforeUp + 2, 'Prestige-Produktionsbonus fließt in mods.prodPct ein');
+  assert.ok(upBuy1.json.prestige.points < prAfter.points, 'Prestige-Punkte nach Kauf verringert');
+
+  // Ohne genug Punkte abgelehnt
+  db.prepare('UPDATE coa_prestige SET points = 0 WHERE discord_id=?').run(ME.id);
+  const poorUp = await post('/api/clash-of-acls/prestige-upgrade', { upgrade_key: 'markenname' });
+  assert.equal(poorUp.status, 400, 'Prestige-Upgrade ohne genug Punkte abgelehnt');
+
+  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne, PvP, Gilden, Events, Liga, Prestige)');
   finish(0);
 })().catch(e => { console.error('✗ Test fehlgeschlagen:', e.message); finish(1); });
 
