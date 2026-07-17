@@ -75,13 +75,10 @@
 
   <!-- Leaflet, Chart.js & jsPDF werden bei Bedarf nachgeladen (script.js) -->
 
-  <!-- Icons + Font -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <!-- Icons + Font (selbst-gehostet, DSGVO-konform) -->
+  <link href="/fonts/inter.css" rel="stylesheet">
+  <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+  <link rel="stylesheet" href="styles.css?v=8" />
   <link rel="preload" as="image" href="/landingpage.webp" />
 </head>
 <body>
@@ -427,7 +424,7 @@
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
   </script>
-  <script src="script.js?v=18"></script>
+  <script src="script.js?v=19"></script>
   <script src="/js/social.js?v=2"></script>
   <script src="/js/acls-plus.js?v=2"></script>
   <script>init();</script>

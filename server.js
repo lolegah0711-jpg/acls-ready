@@ -112,11 +112,14 @@ app.use((req, res, next) => {
   if (process.env.NODE_ENV === 'production') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
+  // Fonts, Icons (Font Awesome), Hammer.js, Leaflet, Chart.js und jsPDF werden
+  // selbst-gehostet ausgeliefert (public/fonts, public/vendor) — keine externen
+  // Script/Style/Font-Origins mehr nötig (DSGVO: keine IP-Übertragung an Dritte).
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://unpkg.com",
-    "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
     "img-src 'self' data: https://cdn.discordapp.com https://i.pravatar.cc https://via.placeholder.com https://i.imgur.com https://imgur.com",
     "connect-src 'self'",
     "frame-src 'none'",
@@ -169,6 +172,40 @@ function sendHtmlWithBase(req, res, file, transform) {
   res.send(html);
 }
 app.get('/', (req, res) => sendHtmlWithBase(req, res, 'index.html'));
+
+// ── SEO: robots.txt + sitemap.xml (absolute URLs je nach Domain) ──────────
+app.get('/robots.txt', (req, res) => {
+  const base = siteBaseUrl(req);
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send([
+    'User-agent: *',
+    'Disallow: /api/',
+    'Disallow: /auth/',
+    'Disallow: /uploads/',
+    'Allow: /',
+    '',
+    `Sitemap: ${base}/sitemap.xml`,
+    '',
+  ].join('\n'));
+});
+app.get('/sitemap.xml', (req, res) => {
+  const base = siteBaseUrl(req);
+  const today = new Date().toISOString().slice(0, 10);
+  const pages = [
+    { loc: '/',       freq: 'daily',  prio: '1.0' },
+    { loc: '/preise', freq: 'weekly', prio: '0.8' },
+    { loc: '/team',   freq: 'weekly', prio: '0.6' },
+  ];
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    pages.map(p => `  <url><loc>${base}${p.loc}</loc><lastmod>${today}</lastmod><changefreq>${p.freq}</changefreq><priority>${p.prio}</priority></url>`).join('\n') +
+    '\n</urlset>\n'
+  );
+});
 
 app.use('/uploads', express.static(UPLOADS_DIR));
 // Caching-Strategie:

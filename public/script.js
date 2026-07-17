@@ -315,9 +315,9 @@ async function api(url, options = {}) {
 // diese Funktion lädt sie erst, wenn eine Seite sie wirklich braucht.
 const _libPromises = {};
 const LIBS = {
-  leaflet: { js: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', css: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', ready: () => window.L },
-  chart:   { js: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js', ready: () => window.Chart },
-  jspdf:   { js: 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',    ready: () => window.jspdf },
+  leaflet: { js: '/vendor/leaflet/leaflet.js', css: '/vendor/leaflet/leaflet.css', ready: () => window.L },
+  chart:   { js: '/vendor/chart/chart.umd.min.js', ready: () => window.Chart },
+  jspdf:   { js: '/vendor/jspdf/jspdf.umd.min.js', ready: () => window.jspdf },
 };
 function loadLib(name) {
   const lib = LIBS[name];
