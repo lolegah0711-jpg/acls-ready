@@ -287,6 +287,7 @@ const PAGES = {
   profil:       { title: 'Mein Profil',           sub: 'Profilbild, Bio & Kosmetika' },
   meinacls:     { title: 'Mein ACLS',             sub: 'Dein persönlicher Hub – Fortschritt, Aufgaben & mehr' },
   finanzen:     { title: 'Meine Finanzen',        sub: 'Kontostand, Einnahmen & Ausgaben im Überblick' },
+  auftragsboard:{ title: 'Auftragsboard',         sub: 'Werkstattaufträge im Kanban – von angenommen bis abgeholt' },
   dokumente:    { title: 'Dokumente',             sub: 'Werkstattaufträge, Rechnungen, TÜV-Berichte & Zertifikate' },
   fahrzeugakte: { title: 'Fahrzeugakten',         sub: 'Fahrzeug-Historie, Wartungsheft & Dokumente pro Kennzeichen' },
   karriere:     { title: 'Karriere',              sub: 'Werkstatt-Rang, Zertifikate, Tagesaufgaben & Gutscheine' },
@@ -2840,6 +2841,7 @@ window.openNotif = function(i) {
 const SEARCH_PAGES = [
   { page: 'dashboard',    label: 'Dashboard',               icon: 'fa-th-large',       kw: 'übersicht start home' },
   { page: 'werkstatt',    label: 'Werkstatt-Hub',           icon: 'fa-wrench',         kw: 'reparatur tuning service aufträge auftrag' },
+  { page: 'auftragsboard',label: 'Auftragsboard',           icon: 'fa-columns',        kw: 'kanban board auftrag aufträge werkstatt tafel status offen fertig abgeholt' },
   { page: 'prices',       label: 'Preisliste',              icon: 'fa-tags',           kw: 'preise kosten tarife' },
   { page: 'map',          label: 'Abschlepphöfe',           icon: 'fa-map-marked-alt', kw: 'karte map abschleppen bergung standorte' },
   { page: 'meinacls',     label: 'Mein Hub',                icon: 'fa-home',           kw: 'mein acls persönlich' },

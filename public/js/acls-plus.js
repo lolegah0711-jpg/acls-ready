@@ -99,8 +99,10 @@
       items: { label: 'Einzelschäden', cols: [{ k: 'bez', l: 'Schaden / Bauteil' }, { k: 'preis', l: 'Kosten ($)', num: 1 }] },
     },
   };
-  const STATUS_LABELS = { offen: 'Offen', in_arbeit: 'In Arbeit', fertig: 'Fertig', storniert: 'Storniert' };
-  const STATUS_COLORS = { offen: '#38bdf8', in_arbeit: '#fbbf24', fertig: '#22c55e', storniert: '#6b7280' };
+  const STATUS_LABELS = { offen: 'Offen', in_arbeit: 'In Arbeit', wartet_auf_teile: 'Wartet auf Teile', fertig: 'Fertig', abgeholt: 'Abgeholt', storniert: 'Storniert' };
+  const STATUS_COLORS = { offen: '#38bdf8', in_arbeit: '#fbbf24', wartet_auf_teile: '#f97316', fertig: '#22c55e', abgeholt: '#a855f7', storniert: '#6b7280' };
+  // Reihenfolge des Auftrags-Kanbans (storniert steht außerhalb des Flusses)
+  const BOARD_FLOW = ['offen', 'in_arbeit', 'wartet_auf_teile', 'fertig', 'abgeholt'];
 
   const money = n => (isFinite(+n) ? (+n).toLocaleString('de-DE', { minimumFractionDigits: 0 }) : '0') + ' $';
 
@@ -178,6 +180,100 @@
     const r = await api('/api/documents/' + id, { method: 'DELETE' });
     if (r) { toast('Gelöscht', 'ok'); dokumente(); }
   };
+
+  // ═══════════════════════════════════════════════════════════════
+  //  SEITE: AUFTRAGSBOARD (Kanban)
+  // ═══════════════════════════════════════════════════════════════
+  // Zeigt alle Werkstattaufträge (documents type='auftrag') als Kanban-Board,
+  // gruppiert nach status. Karten wandern über ◀/▶ durch den Ablauf — jeder
+  // Zug ist ein PUT /api/documents/:id {status}. Kein neues Datenmodell.
+  function boardCard(d, status) {
+    const idx = BOARD_FLOW.indexOf(status);
+    const prev = idx > 0 ? BOARD_FLOW[idx - 1] : null;
+    const next = idx >= 0 && idx < BOARD_FLOW.length - 1 ? BOARD_FLOW[idx + 1] : null;
+    const cancelled = status === 'storniert';
+    const midBtns = `
+      <button class="btn btn-ghost btn-sm" onclick="openDocument(${d.id})" aria-label="Auftrag ${esc(d.doc_no)} öffnen" title="Öffnen"><i class="fas fa-eye"></i></button>
+      ${cancelled
+        ? `<button class="ab-mv" onclick="moveAuftrag(${d.id},'offen')" aria-label="Auftrag wieder aktivieren" title="Wieder aktivieren"><i class="fas fa-rotate-left"></i></button>`
+        : `<button class="ab-mv ab-cancel" onclick="moveAuftrag(${d.id},'storniert')" aria-label="Auftrag stornieren" title="Stornieren"><i class="fas fa-xmark"></i></button>`}`;
+    return `<div class="ab-card">
+      <div class="ab-card-no">${esc(d.doc_no)}</div>
+      <div class="ab-card-title">${esc(d.title || d.citizen_name || 'Werkstattauftrag')}</div>
+      <div class="ab-card-meta">
+        ${d.citizen_name ? `<span><i class="fas fa-user" aria-hidden="true"></i> ${esc(d.citizen_name)}</span>` : ''}
+        ${d.kennzeichen ? `<span class="ab-kz">${esc(d.kennzeichen)}</span>` : ''}
+      </div>
+      <div class="ab-card-actions">
+        ${prev ? `<button class="ab-mv" onclick="moveAuftrag(${d.id},'${prev}')" aria-label="Zurück nach ${STATUS_LABELS[prev]}" title="Zurück: ${STATUS_LABELS[prev]}"><i class="fas fa-chevron-left"></i></button>` : '<span class="ab-mv-sp" aria-hidden="true"></span>'}
+        <span class="ab-card-mid">${midBtns}</span>
+        ${next ? `<button class="ab-mv" onclick="moveAuftrag(${d.id},'${next}')" aria-label="Weiter nach ${STATUS_LABELS[next]}" title="Weiter: ${STATUS_LABELS[next]}"><i class="fas fa-chevron-right"></i></button>` : '<span class="ab-mv-sp" aria-hidden="true"></span>'}
+      </div>
+    </div>`;
+  }
+
+  async function auftragsboard() {
+    const docs = await api('/api/documents?type=auftrag&limit=300');
+    if (!docs) return;
+    const cols = [...BOARD_FLOW, 'storniert'];
+    const byStatus = {};
+    cols.forEach(c => (byStatus[c] = []));
+    docs.forEach(d => { (byStatus[d.status] || (byStatus[d.status] = [])).push(d); });
+    const activeCount = docs.filter(d => d.status !== 'storniert' && d.status !== 'abgeholt').length;
+
+    const colHtml = cols.map(status => {
+      const list = byStatus[status] || [];
+      const color = STATUS_COLORS[status];
+      return `<section class="ab-col" aria-label="${STATUS_LABELS[status]}: ${list.length} Aufträge">
+        <div class="ab-col-head" style="border-bottom-color:${color}">
+          <span class="ab-dot" style="background:${color}" aria-hidden="true"></span>
+          <span class="ab-col-title">${STATUS_LABELS[status]}</span>
+          <span class="ab-count">${list.length}</span>
+        </div>
+        <div class="ab-col-body">${list.length ? list.map(d => boardCard(d, status)).join('') : '<div class="ab-empty">Keine Aufträge</div>'}</div>
+      </section>`;
+    }).join('');
+
+    $('pageContent').innerHTML = `
+      <div class="pg-header">
+        <div class="pg-header-left"><h2>Auftragsboard</h2><p>${activeCount} aktive Aufträge · ${docs.length} gesamt</p></div>
+        <button class="btn btn-primary" onclick="openDocForm('auftrag')"><i class="fas fa-plus"></i> Neuer Auftrag</button>
+      </div>
+      <div class="ab-board" role="list">${colHtml}</div>`;
+    injectBoardCss();
+  }
+
+  window.moveAuftrag = async (id, status) => {
+    const r = await api('/api/documents/' + id, { method: 'PUT', body: { status } });
+    if (r) { toast('Auftrag: ' + (STATUS_LABELS[status] || status), 'ok'); auftragsboard(); }
+  };
+
+  function injectBoardCss() {
+    if (document.getElementById('ab-css')) return;
+    const st = document.createElement('style');
+    st.id = 'ab-css';
+    st.textContent = `
+      .ab-board{display:flex;gap:.7rem;overflow-x:auto;padding-bottom:.6rem;-webkit-overflow-scrolling:touch}
+      .ab-col{flex:0 0 250px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rl);display:flex;flex-direction:column;max-height:calc(100vh - 210px)}
+      .ab-col-head{display:flex;align-items:center;gap:.45rem;padding:.6rem .7rem;border-bottom:2px solid var(--border);position:sticky;top:0;background:var(--surface2);border-radius:var(--rl) var(--rl) 0 0;z-index:1}
+      .ab-dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+      .ab-col-title{font-weight:700;font-size:.82rem}
+      .ab-count{margin-left:auto;font-family:monospace;font-size:.72rem;color:var(--muted);background:var(--input);border-radius:20px;padding:.1rem .5rem}
+      .ab-col-body{padding:.5rem;display:flex;flex-direction:column;gap:.5rem;overflow-y:auto}
+      .ab-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:.55rem .6rem}
+      .ab-card-no{font-family:monospace;font-size:.7rem;color:var(--muted)}
+      .ab-card-title{font-weight:700;font-size:.85rem;margin:.15rem 0 .35rem;line-height:1.3}
+      .ab-card-meta{display:flex;flex-wrap:wrap;gap:.3rem;font-size:.72rem;color:var(--muted);margin-bottom:.5rem}
+      .ab-card-meta .ab-kz{font-family:monospace;background:var(--input);padding:.05rem .35rem;border-radius:4px;color:var(--text)}
+      .ab-card-actions{display:flex;align-items:center;gap:.25rem}
+      .ab-card-mid{display:flex;gap:.25rem;margin:0 auto}
+      .ab-mv{flex:0 0 auto;width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--input);color:var(--text);cursor:pointer;font-size:.78rem;display:inline-flex;align-items:center;justify-content:center}
+      .ab-mv:hover{border-color:var(--orange);color:var(--orange)}
+      .ab-mv.ab-cancel:hover{border-color:var(--red);color:var(--red)}
+      .ab-mv-sp{width:28px;flex:0 0 auto}
+      .ab-empty{color:var(--muted);text-align:center;font-size:.78rem;padding:1.1rem 0;opacity:.5}`;
+    document.head.appendChild(st);
+  }
 
   // ── Neues Dokument: Typ-Auswahl ─────────────────────────────────
   window.openNewDocPicker = (preset = {}) => {
@@ -806,5 +902,5 @@
   };
 
   // ── Seiten registrieren ──────────────────────────────────────────
-  window.ACLSPlusPages = { dokumente, fahrzeugakte, karriere };
+  window.ACLSPlusPages = { dokumente, fahrzeugakte, karriere, auftragsboard };
 })();

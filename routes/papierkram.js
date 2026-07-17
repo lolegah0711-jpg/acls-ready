@@ -21,7 +21,10 @@ module.exports = function makePapierkramRouter({ db, requireAuth, requireAdmin, 
     wartung:      'WH',   // Wartungsheft-Eintrag
     gutachten:    'SG',   // Schadensgutachten
   };
-  const DOC_STATUS = ['offen', 'in_arbeit', 'fertig', 'storniert'];
+  // Werkstatt-Auftragsablauf (Kanban): offen → in_arbeit → wartet_auf_teile →
+  // fertig → abgeholt; storniert ist der Abbruch-Zustand. Andere Dokumenttypen
+  // (Rechnung, TÜV …) nutzen faktisch nur offen/in_arbeit/fertig/storniert.
+  const DOC_STATUS = ['offen', 'in_arbeit', 'wartet_auf_teile', 'fertig', 'abgeholt', 'storniert'];
 
   function nextDocNo(type) {
     const year = new Date().getFullYear();

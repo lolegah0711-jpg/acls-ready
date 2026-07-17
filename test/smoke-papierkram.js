@@ -67,6 +67,17 @@ const req = async (method, p, body) => {
   assert.equal(upd.status, 200, 'Status-Update ok');
   assert.equal((await get('/api/documents/' + docId)).status, 'fertig', 'Status gespeichert');
 
+  // ── Kanban-Auftragsablauf: alle Werkstatt-Status akzeptiert ───
+  for (const st of ['offen', 'in_arbeit', 'wartet_auf_teile', 'abgeholt', 'storniert']) {
+    const r = await req('PUT', '/api/documents/' + docId, { status: st });
+    assert.equal(r.status, 200, `Kanban-Status '${st}' akzeptiert`);
+    assert.equal((await get('/api/documents/' + docId)).status, st, `Kanban-Status '${st}' gespeichert`);
+  }
+  const badStatus = await req('PUT', '/api/documents/' + docId, { status: 'quatsch' });
+  assert.equal(badStatus.status, 400, 'Ungültiger Status abgelehnt (keine Änderung)');
+  await req('PUT', '/api/documents/' + docId, { status: 'fertig' }); // Ausgangszustand für Folgetests
+  assert.equal((await get('/api/documents/' + docId)).status, 'fertig', 'docId wieder auf fertig gesetzt');
+
   // Zweites Dokument → Nummer zählt hoch
   const c2 = await req('POST', '/api/documents', { type: 'auftrag', payload: {} });
   assert.equal(c2.json.doc_no, `WA-${year}-0002`, 'Zweite Nummer = 0002');
@@ -139,7 +150,7 @@ const req = async (method, p, body) => {
   assert.equal(signCert.earned, true, 'Verkehrs-Zertifikat freigeschaltet (9000 ≥ 8000)');
   assert.equal(certs.find(c => c.game === 'obd').earned, false, 'OBD-Zertifikat noch gesperrt');
 
-  console.log('✓ Alle Papierkram/Karriere-Smoke-Tests bestanden (33 Assertions)');
+  console.log('✓ Alle Papierkram/Karriere-Smoke-Tests bestanden (45 Assertions, inkl. Kanban-Auftragsablauf)');
   server.close();
   db.close();
   process.exitCode = 0;
