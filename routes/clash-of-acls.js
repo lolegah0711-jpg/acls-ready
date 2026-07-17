@@ -620,6 +620,12 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       FROM coa_vehicles v LEFT JOIN coa_missions m ON m.vehicle_id = v.id
       WHERE v.discord_id = ? AND v.sold_at IS NULL ORDER BY v.created_at DESC
     `).all(ident.id);
+    // Kompendium: Lebenszeit-Stückzahl je Fahrzeugtyp (inkl. verkaufter — sold_at ist ein
+    // Soft-Delete, die Zeile bleibt bestehen). Nur die Zähler gehen über die Leitung,
+    // Label/Icon/Tier/Rarity liest der Client aus dem bereits geladenen CFG.VEHICLES.
+    const vehicleCodex = {};
+    db.prepare('SELECT vehicle_key, COUNT(*) AS n FROM coa_vehicles WHERE discord_id = ? GROUP BY vehicle_key')
+      .all(ident.id).forEach((r) => { vehicleCodex[r.vehicle_key] = r.n; });
     const offLvl = officeLevel(buildings);
     // remaining_sec/total_sec server-seitig mitliefern: der Client soll SQLite-Timestamps
     // nie selbst parsen ('YYYY-MM-DD HH:MM:SS' ist kein valides Date-Format in Safari/Firefox)
@@ -708,6 +714,7 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       employeeSlots: employeeSlots(buildings, mods),
       missionSlots: missionSlots(buildings),
       vehicles,
+      vehicleCodex,
       activeBuild,
       activeManufacture,
       activeResearch,

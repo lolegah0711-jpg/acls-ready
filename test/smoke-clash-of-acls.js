@@ -114,6 +114,7 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   assert.ok(sell.json.credited > 0, 'Verkaufserlös > 0');
   assert.ok(sell.json.resources.money > moneyBeforeSell, 'Guthaben nach Verkauf gestiegen');
   assert.equal(sell.json.vehicles.length, 0, 'Fuhrpark nach Verkauf leer');
+  assert.equal(sell.json.vehicleCodex.abschleppwagen, 1, 'Kompendium-Zähler bleibt nach Verkauf erhalten (Lebenszeit-Stückzahl)');
 
   // ── Mitarbeiter ───────────────────────────────────────────
   const hire = await post('/api/clash-of-acls/hire', { emp_type: 'mechaniker' });

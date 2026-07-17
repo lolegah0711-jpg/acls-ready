@@ -1582,12 +1582,35 @@ function renderEmp() {
     `<div style="font-weight:800;margin:.8rem 0 .5rem">Einstellen</div>` + hire;
 }
 
+let vehTab = 'fleet';
+function vehTabSwitch(t) { vehTab = t; renderVeh(); }
 function renderVeh() {
-  $('shBody').innerHTML = st.vehicles.length ? st.vehicles.map(v => {
+  const tabsHtml = `<div class="pvp-tabs">
+    <button class="${vehTab === 'fleet' ? 'active' : ''}" onclick="vehTabSwitch('fleet')">🚗 Fuhrpark</button>
+    <button class="${vehTab === 'codex' ? 'active' : ''}" onclick="vehTabSwitch('codex')">📖 Kompendium</button>
+  </div>`;
+  if (vehTab === 'codex') {
+    const garage = st.buildings.find(b => b.building_key === 'garage');
+    const unlockedTier = CFG.BUILDINGS.garage.effect.unlockedTier(garage ? garage.level : 0);
+    const owned = Object.values(st.vehicleCodex || {}).filter(n => n > 0).length;
+    const total = Object.keys(CFG.VEHICLES).length;
+    $('shBody').innerHTML = tabsHtml +
+      `<div class="muted" style="margin-bottom:.6rem">Gesammelt: <b style="color:var(--acc)">${owned}/${total}</b> Fahrzeugtypen — jemals gefertigt, auch bereits verkaufte zählen.</div>` +
+      Object.entries(CFG.VEHICLES).map(([key, d]) => {
+        const count = (st.vehicleCodex || {})[key] || 0;
+        const locked = d.tier > unlockedTier;
+        return `<div class="row" style="${locked ? 'opacity:.45' : ''}"><div class="rl"><span class="ric">${d.icon}</span><div>
+          <div class="rn">${esc(d.label)}</div>
+          <div class="rd">${esc(d.rarity)} · Tier ${d.tier} · Basiswert 💰${fmt(d.baseValue)}${locked ? ' · 🔒 Garage Lv ' + (d.tier * 4 - 3) + '+' : ''}</div></div></div>
+          <span class="rd" style="white-space:nowrap">${count > 0 ? `✅ ${count}× gefertigt` : '— noch keins'}</span></div>`;
+      }).join('');
+    return;
+  }
+  $('shBody').innerHTML = tabsHtml + (st.vehicles.length ? st.vehicles.map(v => {
     const d = CFG.VEHICLES[v.vehicle_key] || {};
     return `<div class="row"><div class="rl"><span class="ric">${d.icon || '🚗'}</span><div><div class="rn">${esc(d.label || v.vehicle_key)}${v.on_mission ? ' <span style="color:var(--acc)">🚨 im Einsatz</span>' : ''}</div><div class="rd">${esc(v.rarity)} · Tier ${d.tier || 1} · Wert 💰${fmt(v.value)}</div></div></div>
       <button ${v.on_mission ? 'disabled' : ''} onclick="sell(${v.id})">Verkaufen</button></div>`;
-  }).join('') : '<div class="muted">Noch keine Fahrzeuge — fertige welche in der Garage (Garage antippen → Fahrzeuge).</div>';
+  }).join('') : '<div class="muted">Noch keine Fahrzeuge — fertige welche in der Garage (Garage antippen → Fahrzeuge).</div>');
 }
 
 /* ── Einsätze (PvE-Missionen) ── */
