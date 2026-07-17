@@ -222,6 +222,32 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     db.prepare(`UPDATE coa_state SET ${sets.join(', ')} WHERE discord_id = ?`).run(...vals, discordId);
   }
 
+  // ── Cutover: Auto Empire + Werkstatt-Tycoon (game12) laufen zugunsten von Clash
+  // of ACLS aus. Einmaliger Willkommensbonus aus dem alten Lebenszeit-Fortschritt,
+  // damit investierte Zeit nicht ins Leere läuft — bewusst KEINE 1:1-Umrechnung
+  // (ae_cash/idle-Gold/Clash-Ressourcen sind ökonomisch nicht vergleichbar),
+  // sondern eine gedeckelte Wurzel-Skalierung wie beim Prestige-Punkte-Muster.
+  // retro_migrated garantiert Idempotenz: läuft nur beim jeweils ersten buildView().
+  const RETRO_CAP = 5000;
+  const retroBonusFor = (v) => (v > 0 ? Math.round(Math.sqrt(v) * 5) : 0);
+  function applyRetroMigration(discordId) {
+    const s = db.prepare('SELECT retro_migrated FROM coa_state WHERE discord_id = ?').get(discordId);
+    if (!s || s.retro_migrated) return null;
+    db.prepare('UPDATE coa_state SET retro_migrated = 1 WHERE discord_id = ?').run(discordId);
+
+    const ae     = db.prepare('SELECT total_produced FROM ae_state WHERE discord_id = ?').get(discordId);
+    const user   = db.prepare('SELECT id FROM users WHERE discord_id = ?').get(discordId);
+    const tycoon = user ? db.prepare('SELECT total_earned FROM idle_saves WHERE user_id = ?').get(user.id) : null;
+
+    const fromEmpire = retroBonusFor(ae?.total_produced || 0);
+    const fromTycoon = retroBonusFor(tycoon?.total_earned || 0);
+    const money = Math.min(RETRO_CAP, fromEmpire + fromTycoon);
+    if (money <= 0) return null;
+
+    grantResources(discordId, { money });
+    return { money, fromEmpire: fromEmpire > 0, fromTycoon: fromTycoon > 0 };
+  }
+
   // ── Phase 8: Liga/Saison — Liga-Punkte kommen 1:1 aus jeder XP-Gutschrift (siehe
   // grantXp unten), damit JEDE bestehende Aktion automatisch auch zur Liga beiträgt,
   // ohne an jeder einzelnen Fundstelle einen eigenen Hook zu brauchen. Wöchentlicher
@@ -570,6 +596,9 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     // aktuell. syncResources() unten liest coa_state danach neu ein, daher sind die
     // Liga-Felder in `state` bereits der Post-Rollover-Stand — kein Extra-Query nötig.
     leagueTouch(ident.id);
+    // Cutover-Migration vor dem Offline-Snapshot anwenden, damit der Willkommensbonus
+    // nicht fälschlich als Offline-Produktion in der Diff-Anzeige auftaucht.
+    const retro = applyRetroMigration(ident.id);
     // Offline-Report: war der Spieler >30 min weg, zeigen wir was sich angesammelt hat
     const before = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
     const awaySec = before ? Math.max(0, (Date.now() - asDate(before.last_tick_at).getTime()) / 1000) : 0;
@@ -691,6 +720,7 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
       activeRaid,
       raidReports,
       offline,
+      retroBonus: retro,
       progression: {
         xp, level,
         title: CFG.LEVEL.title(level),

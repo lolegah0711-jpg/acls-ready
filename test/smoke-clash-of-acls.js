@@ -608,7 +608,25 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   const poorUp = await post('/api/clash-of-acls/prestige-upgrade', { upgrade_key: 'markenname' });
   assert.equal(poorUp.status, 400, 'Prestige-Upgrade ohne genug Punkte abgelehnt');
 
-  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne, PvP, Gilden, Events, Liga, Prestige)');
+  // ── Cutover: Willkommensbonus aus Auto Empire / Werkstatt-Tycoon ────────────
+  const MIGRANT = { id: 'TESTER4', name: 'Alt-Spieler' };
+  currentUser = MIGRANT;
+  db.prepare('INSERT INTO ae_state (discord_id, total_produced) VALUES (?,?)').run(MIGRANT.id, 40000);
+  db.prepare('INSERT INTO users (discord_id, username) VALUES (?,?)').run(MIGRANT.id, MIGRANT.name);
+  const migrantUserId = db.prepare('SELECT id FROM users WHERE discord_id=?').get(MIGRANT.id).id;
+  db.prepare('INSERT INTO idle_saves (user_id, total_earned) VALUES (?,?)').run(migrantUserId, 10000);
+
+  const firstVisit = await get('/api/clash-of-acls/state');
+  assert.deepEqual(firstVisit.retroBonus, { money: 1500, fromEmpire: true, fromTycoon: true },
+    'Willkommensbonus aus beiden Altsystemen korrekt berechnet (√40000·5 + √10000·5 = 1000 + 500)');
+  assert.equal(firstVisit.resources.money, 1000 + 1500, 'Bonus wurde dem Startguthaben gutgeschrieben');
+
+  const secondVisit = await get('/api/clash-of-acls/state');
+  assert.equal(secondVisit.retroBonus, null, 'Bonus wird beim zweiten Aufruf nicht erneut gewährt (retro_migrated)');
+  assert.equal(secondVisit.resources.money, firstVisit.resources.money, 'Kein doppelter Bonus im Kontostand');
+  currentUser = ME;
+
+  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne, PvP, Gilden, Events, Liga, Prestige, Cutover-Migration)');
   finish(0);
 })().catch(e => { console.error('✗ Test fehlgeschlagen:', e.message); finish(1); });
 

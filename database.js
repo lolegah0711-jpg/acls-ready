@@ -996,6 +996,11 @@ function initDb() {
     );
   `);
 
+  // ── Cutover: Auto Empire + Werkstatt-Tycoon (game12) laufen zugunsten von
+  // Clash of ACLS aus. retro_migrated markiert, ob der einmalige Willkommensbonus
+  // aus altem Fortschritt (ae_state/idle_saves) bereits gutgeschrieben wurde.
+  try { db.exec('ALTER TABLE coa_state ADD COLUMN retro_migrated INTEGER NOT NULL DEFAULT 0'); } catch {}
+
   // ── Clash of ACLS Phase 5: Questline/Kampagne (einmalige, geführte Aufgabenreihe) ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS coa_campaign (

@@ -1782,11 +1782,17 @@ function renderHelp() {
 }
 
 /* ── Aktionen ── */
-let tutorialChecked = false, welcomed = false;
+let tutorialChecked = false, welcomed = false, retroShown = false;
 async function load() {
   try {
     const d = await api('/api/clash-of-acls/state');
     render(d);
+    if (d.retroBonus && !retroShown) {
+      retroShown = true;
+      const src = d.retroBonus.fromEmpire && d.retroBonus.fromTycoon ? 'Auto Empire & Werkstatt-Tycoon'
+        : d.retroBonus.fromEmpire ? 'Auto Empire' : 'Werkstatt-Tycoon';
+      toast('🎁', 'Willkommensbonus verbucht!', `+${d.retroBonus.money} Geld aus deinem Fortschritt in ${src} — die Spiele wurden hier zusammengeführt.`);
+    }
     if (!tutorialChecked) {
       tutorialChecked = true;
       if (!localStorage.getItem('coa-tutorial')) {

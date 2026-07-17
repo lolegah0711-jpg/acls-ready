@@ -1896,7 +1896,6 @@ const GAME_CATALOG = [
   { id: 'towerdefense', name: 'Tower Defense',       url: '/game9',  icon: 'fa-shield-alt',   color: '#f97316', desc: 'Verteidige den Abschlepphof',                voter: true },
   { id: '2048',         name: '2048',                url: '/game10', icon: 'fa-th',           color: '#f59e0b', desc: 'Zahlen schieben bis 2048',                   voter: true },
   { id: 'quiz',         name: 'Quiz Survival',       url: '/game11', icon: 'fa-brain',        color: '#c084fc', desc: 'Wie viele Fragen überlebst du?',             voter: true },
-  { id: 'idle',         name: 'Werkstatt-Tycoon',    url: '/game12', icon: 'fa-wrench',       color: '#fb923c', desc: 'Mechaniker einstellen, forschen, aufsteigen', voter: true },
   { id: 'rpg',          name: 'Dungeon RPG',         url: '/game13', icon: 'fa-dungeon',      color: '#818cf8', desc: 'Loot, Level & Bosskämpfe',                   voter: true },
   { id: 'tow',          name: 'Abschlepp-Simulator', url: '/game14', icon: 'fa-truck-pickup', color: '#fbbf24', desc: 'Fahrzeuge bergen wie ein Profi',             voter: true },
   { id: 'memory',       name: 'Memory',              url: '/game16', icon: 'fa-clone',        color: '#22d3ee', desc: 'Kartenpaare finden auf Zeit',                voter: false },
@@ -1911,7 +1910,6 @@ const GAME_CATALOG = [
 const FREIZEIT_CATALOG = [
   { id: 'spielbank', name: 'Spielbank',    url: '/spielbank',      icon: 'fa-dice',     color: '#fbbf24', desc: 'Slots, Blackjack, Roulette, Mines & mehr', voter: true },
   { id: 'automarkt', name: 'AutoMarkt Pro', url: '/automarkt.html', icon: 'fa-car-side', color: '#f97316', desc: 'Handeln, verhandeln, Sammlung aufbauen',   voter: false },
-  { id: 'empire',    name: 'Auto Empire',   url: '/empire.html',    icon: 'fa-industry', color: '#94a3b8', desc: 'Baue dein Werkstatt-Imperium auf',         voter: false },
   { id: 'clashofacls', name: 'Clash of ACLS', url: '/clash-of-acls.html', icon: 'fa-city', color: '#fb7185', desc: 'Gelände ausbauen, Fahrzeuge fertigen, Mitarbeiter einstellen', voter: true },
 ];
 
@@ -2874,8 +2872,7 @@ const SEARCH_PAGES = [
   { href: '/spielbank',      label: 'Spielbank',            icon: 'fa-dice',           kw: 'casino blackjack roulette poker slots' },
   { href: '/clubs.html',     label: 'Clubs & Gilden',       icon: 'fa-shield-alt',     kw: 'club gilde verein gruppe kasse' },
   { href: '/automarkt.html', label: 'AutoMarkt Pro',        icon: 'fa-car-side',       kw: 'automarkt handel fahrzeuge' },
-  { href: '/empire.html',    label: 'Auto Empire',          icon: 'fa-industry',       kw: 'empire tycoon firma imperium' },
-  { href: '/clash-of-acls.html', label: 'Clash of ACLS',    icon: 'fa-city',        kw: 'werkstatt aufbau gelände gebäude bauen aufbauspiel clash' },
+  { href: '/clash-of-acls.html', label: 'Clash of ACLS',    icon: 'fa-city',        kw: 'werkstatt aufbau gelände gebäude bauen aufbauspiel clash empire tycoon imperium' },
 ];
 
 function searchPages(q) {
