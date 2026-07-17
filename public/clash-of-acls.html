@@ -186,6 +186,18 @@
   .cloud::before { content:''; position:absolute; left:34px; top:-19px; width:80px; height:46px; border-radius:50%; background:rgba(255,255,255,.15); }
   @keyframes cloudMove { from { transform:translateX(-260px); } to { transform:translateX(calc(100vw + 260px)); } }
 
+  /* ── Wettereffekt: Regen als eigenes Overlay (Geschwister von #world, kein
+     Filter/Opacity auf #board/.tile — sonst greift die CSS-3D-Grouping-Falle) ── */
+  #rain { position:absolute; inset:0; pointer-events:none; z-index:6; opacity:0; transition:opacity 2.5s linear;
+    background-image:repeating-linear-gradient(107deg, transparent 0 5px, rgba(190,215,255,.32) 5px 6px, transparent 6px 60px);
+    background-size:100% 140px; animation:rainFall .4s linear infinite; }
+  #rain.on { opacity:.55; }
+  @keyframes rainFall { from { background-position:0 0; } to { background-position:0 140px; } }
+  @media (prefers-reduced-motion: reduce) {
+    .cloud, #rain { animation:none !important; }
+    #rain.on { opacity:.3; }
+  }
+
   /* ── Schwebende Gewinn-Texte + Konfetti-Burst ── */
   .fgain { position:fixed; z-index:130; font-weight:800; font-size:.95rem; color:#fde047; text-shadow:0 2px 6px rgba(0,0,0,.7); pointer-events:none; animation:fgain 1.3s ease-out forwards; white-space:nowrap; }
   @keyframes fgain { 0% { opacity:0; transform:translateY(8px); } 15% { opacity:1; } 100% { opacity:0; transform:translateY(-52px); } }
@@ -374,7 +386,7 @@
 
 <div id="scene">
   <div id="world"><div id="boardShadow"></div><div id="board"></div></div>
-  <div id="skyTint"></div><div id="stars"></div>
+  <div id="skyTint"></div><div id="stars"></div><div id="rain"></div>
   <div class="cloud" style="top:9%;animation-duration:95s;animation-delay:-20s"></div>
   <div class="cloud" style="top:38%;width:220px;animation-duration:140s;animation-delay:-75s;opacity:.7"></div>
   <div class="cloud" style="top:68%;width:130px;animation-duration:115s;animation-delay:-50s;opacity:.55"></div>
@@ -655,6 +667,18 @@ function applySky() {
 }
 applySky();
 setInterval(applySky, 60000);
+
+/* ── Wettereffekt: rein kosmetisch, deterministisch pro 20-Minuten-Fenster (kein
+   echter Zufall bei jedem Tick — sonst würde der Regen ständig an/aus flackern) ── */
+function applyWeather() {
+  const slot = Math.floor(Date.now() / (20 * 60000));
+  let x = (slot ^ 0x9e3779b9) >>> 0;
+  x ^= x << 13; x ^= x >>> 17; x ^= x << 5; x >>>= 0;
+  const raining = (x / 4294967296) < 0.18; // ~18 % der Zeitfenster
+  $('rain')?.classList.toggle('on', raining);
+}
+applyWeather();
+setInterval(applyWeather, 60000);
 
 let st = null;
 let placing = null;      // building_key im Platzierungs-Modus

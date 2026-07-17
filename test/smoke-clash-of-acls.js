@@ -624,9 +624,27 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   const secondVisit = await get('/api/clash-of-acls/state');
   assert.equal(secondVisit.retroBonus, null, 'Bonus wird beim zweiten Aufruf nicht erneut gewährt (retro_migrated)');
   assert.equal(secondVisit.resources.money, firstVisit.resources.money, 'Kein doppelter Bonus im Kontostand');
+
+  // ── Endgame-Inhalte: Tier-4-Freischaltung & generische Direktion-Produktion ──
+  const CFG3 = require('../public/js/clash-of-acls-config.js');
+  assert.equal(CFG3.BUILDINGS.garage.effect.unlockedTier(12), 3, 'Garage Lv12 schaltet noch nur Tier 3 frei');
+  assert.equal(CFG3.BUILDINGS.garage.effect.unlockedTier(13), 4, 'Garage-Maximallevel (13) schaltet Tier 4 (Hypercar) frei');
+  assert.equal(CFG3.BUILDINGS.sicherheitszentrale.effect.unlockedUnitTier(9), 3, 'Zentrale Lv9 schaltet noch nur Tier 3 frei');
+  assert.equal(CFG3.BUILDINGS.sicherheitszentrale.effect.unlockedUnitTier(10), 4, 'Zentrale-Maximallevel (10) schaltet Tier 4 (Elite-Kommando) frei');
+  assert.equal(CFG3.VEHICLES.hypercar.tier, 4, 'Hypercar ist Tier 4');
+  assert.equal(CFG3.UNITS.elitekommando.tier, 4, 'Elite-Kommando ist Tier 4');
+
+  // Direktion nutzt denselben globalProdPct-Effekt wie Generator — computeRatesPerHour
+  // muss das generisch aufgreifen, nicht nur für building_key 'generator'.
+  const baselineRates = await get('/api/clash-of-acls/state');
+  assert.equal(baselineRates.ratesPerHour.money, 40, 'Startkit ohne Direktion: nur Abschlepphof Lv1 produziert Geld (40/h)');
+  db.prepare("INSERT INTO coa_buildings (discord_id, building_key, x, y, level) VALUES (?,?,?,?,?)").run(MIGRANT.id, 'direktion', 6, 0, 2);
+  const withDirektion = await get('/api/clash-of-acls/state');
+  assert.ok(Math.abs(withDirektion.ratesPerHour.money - 42.4) < 0.01,
+    `Direktion Lv2 (+6% globale Produktion) wirkt generisch: erwartet 42.4, erhalten ${withDirektion.ratesPerHour.money}`);
   currentUser = ME;
 
-  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne, PvP, Gilden, Events, Liga, Prestige, Cutover-Migration)');
+  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne, PvP, Gilden, Events, Liga, Prestige, Cutover-Migration, Endgame-Inhalte)');
   finish(0);
 })().catch(e => { console.error('✗ Test fehlgeschlagen:', e.message); finish(1); });
 

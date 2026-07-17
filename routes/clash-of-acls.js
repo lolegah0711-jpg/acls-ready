@@ -136,11 +136,13 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
   // nur auf ihr verknüpftes Gebäude — Bonus ist additiv auf die Basisrate.
   function computeRatesPerHour(buildings, employees, mods = NO_MODS) {
     const rates = { money: 0, steel: 0, parts: 0, electronics: 0, fuel: 0 };
+    // Generisch statt auf 'generator' hartkodiert: JEDES Gebäude mit einem
+    // globalProdPct-Effekt zählt (z. B. auch die Direktion).
     let generatorPct = 0;
     buildings.forEach((b) => {
-      if (b.level >= 1 && b.building_key === 'generator') {
-        generatorPct += CFG.BUILDINGS.generator.effect.globalProdPct(b.level);
-      }
+      if (b.level < 1) return;
+      const bonus = CFG.BUILDINGS[b.building_key]?.effect?.globalProdPct?.(b.level);
+      if (bonus) generatorPct += bonus;
     });
     buildings.forEach((b) => {
       if (b.level < 1) return;

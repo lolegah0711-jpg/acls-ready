@@ -38,12 +38,12 @@
       effect: { perHour: lvl => ({ money: 40 * lvl }), missionSlots: lvl => 1 + Math.floor(lvl / 4) },
     },
     garage: {
-      label: lvl => (lvl < 5 ? 'Kleine Garage' : 'Große Garage'), icon: '🔧', cat: 'spezial', maxLevel: 10,
-      desc: 'Produziert Fahrzeuge aus Rohstoffen.',
+      label: lvl => (lvl < 5 ? 'Kleine Garage' : lvl < 13 ? 'Große Garage' : 'Flaggschiff-Garage'), icon: '🔧', cat: 'spezial', maxLevel: 13,
+      desc: 'Produziert Fahrzeuge aus Rohstoffen. Erst am Maximallevel schaltet sie legendäre Fahrzeuge frei.',
       cost: lvl => ({ money: round(600 * Math.pow(1.65, lvl - 1)), parts: round(30 * Math.pow(1.3, lvl - 1)) }),
       buildTimeSec: lvl => Math.min(21600, round(120 * Math.pow(1.5, lvl - 1))),
       effect: {
-        unlockedTier: lvl => Math.min(3, Math.ceil(lvl / 4)),
+        unlockedTier: lvl => Math.min(4, Math.ceil(lvl / 4)),
         manufactureTimeSec: lvl => Math.max(180, 1800 - lvl * 120),
       },
       manufactureCost: { steel: 100, parts: 60, electronics: 30, fuel: 40 },
@@ -134,10 +134,10 @@
     },
     sicherheitszentrale: {
       label: 'Sicherheitszentrale', icon: '🛡️', singleton: true, cat: 'spezial', maxLevel: 10,
-      desc: 'Schaltet den Werkschutz frei: bilde Einheiten aus und überfalle NPC-Banden. Höhere Level erlauben größere Trupps und stärkere Einheiten.',
+      desc: 'Schaltet den Werkschutz frei: bilde Einheiten aus und überfalle NPC-Banden. Höhere Level erlauben größere Trupps und stärkere Einheiten — die Elite-Einheit gibt es erst am Maximallevel.',
       cost: lvl => ({ money: round(850 * Math.pow(1.7, lvl - 1)), steel: round(50 * Math.pow(1.35, lvl - 1)) }),
       buildTimeSec: lvl => Math.min(28800, round(140 * Math.pow(1.5, lvl - 1))),
-      effect: { unitCap: lvl => 4 + 2 * lvl, unlockedUnitTier: lvl => Math.min(3, Math.ceil(lvl / 3)) },
+      effect: { unitCap: lvl => 4 + 2 * lvl, unlockedUnitTier: lvl => Math.min(4, Math.ceil(lvl / 3)) },
     },
     dekoration: {
       label: 'Dekoration', icon: '🌳', cat: 'deko', maxLevel: 5, cosmetic: true,
@@ -145,6 +145,27 @@
       cost: lvl => ({ money: round(150 * Math.pow(1.4, lvl - 1)) }),
       buildTimeSec: lvl => Math.min(3600, round(20 * Math.pow(1.3, lvl - 1))),
       effect: {},
+    },
+    // ── Endgame-Gebäude: Statussymbol für Werkstätten an der Spitze. Bewusst
+    // ohne künstliche Gebäude-Voraussetzung (das System kennt keine Cross-
+    // Building-Prereqs) — der hohe Preis ist die eigentliche Hürde, wie schon
+    // bei Forschungszentrum/Sicherheitszentrale. Nutzt NUR bereits bestehende
+    // Effekt-Typen (globalProdPct, capBonus), damit keine neue Modifikator-
+    // Mechanik nötig ist.
+    direktion: {
+      label: 'Direktion', icon: '👑', singleton: true, cat: 'spezial', maxLevel: 5,
+      desc: 'Der Sitz der Geschäftsführung — nur Werkstätten an der Spitze der Branche leisten sich das. Steigert Produktion und Lagerkapazität gleichzeitig.',
+      cost: lvl => ({
+        money: round(6000 * Math.pow(2.1, lvl - 1)),
+        steel: round(300 * Math.pow(1.6, lvl - 1)),
+        parts: round(300 * Math.pow(1.6, lvl - 1)),
+        electronics: round(300 * Math.pow(1.6, lvl - 1)),
+      }),
+      buildTimeSec: lvl => Math.min(43200, round(1800 * Math.pow(1.6, lvl - 1))),
+      effect: {
+        globalProdPct: lvl => lvl * 3,
+        capBonus: lvl => ({ money: 600 * lvl, steel: 200 * lvl, parts: 200 * lvl, electronics: 150 * lvl, fuel: 180 * lvl }),
+      },
     },
   };
 
@@ -166,6 +187,7 @@
     suv: { label: 'SUV', icon: '🚙', tier: 2, rarity: 'uncommon', baseValue: 380 },
     musclecar: { label: 'Muscle Car', icon: '🚗', tier: 2, rarity: 'rare', baseValue: 520 },
     sportwagen: { label: 'Sportwagen', icon: '🏎️', tier: 3, rarity: 'epic', baseValue: 900 },
+    hypercar: { label: 'ACLS Hypercar', icon: '🏆', tier: 4, rarity: 'legendary', baseValue: 1700 },
   };
 
   // ── Forschungsbaum (Phase 2) ─────────────────────────────────────────────
@@ -296,6 +318,11 @@
       cost: { money: 1200, steel: 120, fuel: 80 },
       desc: 'Gepanzertes Schwergewicht — das Rückgrat jedes großen Überfalls.',
     },
+    elitekommando: {
+      label: 'Elite-Kommando', icon: '🕶️', tier: 4, atk: 105, def: 85, trainTimeSec: 2700,
+      cost: { money: 2800, steel: 150, electronics: 100, fuel: 60 },
+      desc: 'Bestens ausgebildete Spezialkräfte — nur die Sicherheitszentrale am Maximallevel kann sie ausbilden.',
+    },
   };
 
   // NPC-Ziele: power = nötige Trupp-Stärke für gute Chancen, loot = volle Beute bei Sieg.
@@ -327,8 +354,13 @@
     },
     syndikat: {
       label: 'Auto-Syndikat-Zentrale', icon: '🏰', power: 900, durationSec: 28800, xp: 450,
-      desc: 'Der Endgegner: das große Syndikat hinter allen Banden der Stadt.',
+      desc: 'Das große Syndikat hinter allen Banden der Stadt — bislang ungeschlagen, bis auf eine einzige Ausnahme.',
       loot: { money: 4500, steel: 250, parts: 200, electronics: 120, fuel: 150 },
+    },
+    kartell_boss: {
+      label: 'Der Pate von Los Santos', icon: '👑', power: 1400, durationSec: 43200, xp: 700,
+      desc: 'Der wahre Endgegner. Nur ein Trupp aus Elite-Kommandos hat überhaupt eine Chance.',
+      loot: { money: 7000, steel: 400, parts: 300, electronics: 200, fuel: 250 },
     },
   };
 
@@ -468,7 +500,7 @@
     titles: [
       [1, 'Schrauber-Lehrling'], [3, 'Hobbyschrauber'], [5, 'Geselle'], [8, 'Mechaniker'],
       [12, 'Werkstattleiter'], [16, 'KFZ-Meister'], [20, 'Unternehmer'], [25, 'Flotten-Boss'],
-      [30, 'Auto-Tycoon'], [40, 'Werkstatt-Legende'], [50, 'ACLS-Ikone'],
+      [30, 'Auto-Tycoon'], [40, 'Werkstatt-Legende'], [50, 'ACLS-Ikone'], [60, 'Legende von Los Santos'],
     ],
     title(lvl) { let t = this.titles[0][1]; this.titles.forEach(([l, name]) => { if (lvl >= l) t = name; }); return t; },
   };
@@ -592,7 +624,7 @@
     streak1: { label: 'Stammgast', icon: '📅', stat: 'daily_streak', value: 7, xp: 120, money: 600, desc: 'Hole den Login-Bonus an 7 Tagen in Folge' },
     streak2: { label: 'Eiserne Routine', icon: '🔥', stat: 'daily_streak', value: 30, xp: 500, money: 3000, desc: 'Hole den Login-Bonus an 30 Tagen in Folge' },
     samml1: { label: 'Sammler I', icon: '🚙', stat: 'vehicle_types', value: 4, xp: 100, money: 500, desc: 'Fertige 4 verschiedene Fahrzeugtypen' },
-    samml2: { label: 'Vollsortiment', icon: '🏎️', stat: 'vehicle_types', value: 7, xp: 300, money: 2000, desc: 'Fertige alle 7 Fahrzeugtypen' },
+    samml2: { label: 'Vollsortiment', icon: '🏎️', stat: 'vehicle_types', value: 8, xp: 300, money: 2000, desc: 'Fertige alle 8 Fahrzeugtypen' },
     kampf1: { label: 'Erster Schlag', icon: '🛡️', stat: 'raids_won', value: 1, xp: 40, money: 200, desc: 'Gewinne deinen ersten Überfall' },
     kampf2: { label: 'Banden-Jäger I', icon: '🛡️', stat: 'raids_won', value: 10, xp: 120, money: 600, desc: 'Gewinne 10 Überfälle' },
     kampf3: { label: 'Banden-Jäger II', icon: '⚔️', stat: 'raids_won', value: 30, xp: 250, money: 1500, desc: 'Gewinne 30 Überfälle' },
