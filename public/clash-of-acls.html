@@ -375,6 +375,7 @@
   <button class="hud-btn" id="prestigeBtn" onclick="openSheet('prestige')" title="Prestige" style="display:none">🔁</button>
   <button class="hud-btn" onclick="openSheet('emp')" title="Mitarbeiter">👷</button>
   <button class="hud-btn" onclick="openSheet('veh')" title="Fuhrpark">🚗</button>
+  <button class="hud-btn" onclick="openSheet('auction')" title="Auktionshaus">🏛️</button>
   <button class="hud-btn" onclick="openSheet('lb')" title="Rangliste">🏆</button>
   <button class="hud-btn" onclick="openSheet('help')" title="Anleitung">❓</button>
   <button class="hud-btn" id="sndBtn" onclick="toggleSound()" title="Sound an/aus">🔊</button>
@@ -1053,12 +1054,13 @@ function closeSheet() {
   $('sheet').classList.remove('open');
 }
 function renderSheet() {
-  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!', army:'🛡️ Werkschutz & Überfälle', campaign:'🗺️ Kampagne', pvp:'⚔️ PvP-Angriffe', clan:'🏰 Gilde', event:'🎪 Event', prestige:'🔁 Prestige' };
+  const titles = { shop:'🔨 Baumenü', emp:'👷 Mitarbeiter', veh:'🚗 Fuhrpark', lb:'🏆 Rangliste', manu:'🚗 Fahrzeug fertigen', help:'📖 Anleitung', missions:'🚨 Einsätze', research:'🔬 Forschung', quests:'🎯 Quests', profile:'⭐ Spielerprofil', daily:'🎁 Täglicher Bonus', offline:'🌙 Willkommen zurück!', army:'🛡️ Werkschutz & Überfälle', campaign:'🗺️ Kampagne', pvp:'⚔️ PvP-Angriffe', clan:'🏰 Gilde', event:'🎪 Event', prestige:'🔁 Prestige', auction:'🏛️ Auktionshaus' };
   $('shTitle').textContent = titles[sheetType] || '';
   $('shCats').style.display = sheetType === 'shop' ? 'flex' : 'none';
   if (sheetType === 'shop') renderShop();
   else if (sheetType === 'emp') renderEmp();
   else if (sheetType === 'veh') renderVeh();
+  else if (sheetType === 'auction') renderAuction();
   else if (sheetType === 'lb') renderLb();
   else if (sheetType === 'manu') renderManu();
   else if (sheetType === 'help') renderHelp();
@@ -1611,6 +1613,104 @@ function renderVeh() {
     return `<div class="row"><div class="rl"><span class="ric">${d.icon || '🚗'}</span><div><div class="rn">${esc(d.label || v.vehicle_key)}${v.on_mission ? ' <span style="color:var(--acc)">🚨 im Einsatz</span>' : ''}</div><div class="rd">${esc(v.rarity)} · Tier ${d.tier || 1} · Wert 💰${fmt(v.value)}</div></div></div>
       <button ${v.on_mission ? 'disabled' : ''} onclick="sell(${v.id})">Verkaufen</button></div>`;
   }).join('') : '<div class="muted">Noch keine Fahrzeuge — fertige welche in der Garage (Garage antippen → Fahrzeuge).</div>');
+}
+
+/* ── Auktionshaus: Fahrzeuge per Gebot statt Fixpreis handeln ── */
+let auctionTab = 'browse', auctionList = [], auctionAnchor = 0;
+function auctionTabSwitch(t) { auctionTab = t; renderAuction(); }
+function auctionTabsHtml() {
+  return `<div class="pvp-tabs">
+    <button class="${auctionTab === 'browse' ? 'active' : ''}" onclick="auctionTabSwitch('browse')">🔎 Durchsuchen</button>
+    <button class="${auctionTab === 'selling' ? 'active' : ''}" onclick="auctionTabSwitch('selling')">🏷️ Meine Angebote</button>
+    <button class="${auctionTab === 'bidding' ? 'active' : ''}" onclick="auctionTabSwitch('bidding')">💰 Meine Gebote</button>
+  </div>`;
+}
+async function renderAuction() {
+  $('shBody').innerHTML = auctionTabsHtml() + '<div class="muted">Lädt…</div>';
+  try {
+    const d = await api('/api/clash-of-acls/auctions');
+    auctionList = d.list; auctionAnchor = Date.now();
+    renderAuctionBody();
+  } catch (e) { $('shBody').innerHTML = auctionTabsHtml() + '<div class="muted">Konnte nicht geladen werden.</div>'; }
+}
+const auctionCdAttr = a => `data-cde="${auctionAnchor + a.remaining_sec * 1000}"`;
+function renderAuctionRow(a, mode) {
+  const d = CFG.VEHICLES[a.vehicle_key] || {};
+  const priceLine = a.bidder_name
+    ? `Aktuelles Gebot: 💰${fmt(a.current_bid)} von <b>${esc(a.bidder_name)}</b>`
+    : `Startpreis: 💰${fmt(a.start_price)} — noch kein Gebot`;
+  let action = '';
+  if (mode === 'browse') {
+    action = a.isMine
+      ? `<span class="muted">Dein Angebot</span>`
+      : `<div class="clan-donate" style="margin:.4rem 0 0"><input type="number" id="bid-${a.id}" placeholder="min. ${fmt(a.minNextBid)}" min="${a.minNextBid}" style="width:110px"><button onclick="placeBid(${a.id})">Bieten</button></div>`;
+  } else if (mode === 'selling') {
+    action = a.bidder_name ? '<span class="muted">Gebot liegt vor</span>' : `<button class="ghost" onclick="cancelAuction(${a.id})">Zurückziehen</button>`;
+  } else {
+    action = '<span class="muted" style="color:var(--good)">Du führst!</span>';
+  }
+  return `<div class="row" style="flex-wrap:wrap"><div class="rl"><span class="ric">${d.icon || '🚗'}</span><div>
+    <div class="rn">${esc(d.label || a.vehicle_key)} <span class="rd">· ${esc(a.rarity)} · Verkäufer ${esc(a.seller_name || '?')}</span></div>
+    <div class="rd">${priceLine}</div>
+    <div class="rd" ${auctionCdAttr(a)}></div>
+  </div></div>${action}</div>`;
+}
+function renderAuctionBody() {
+  let rows;
+  if (auctionTab === 'selling') {
+    const mine = auctionList.filter(a => a.isMine);
+    const eligible = st.vehicles.filter(v => !v.on_mission && !v.in_auction);
+    const formHtml = `<div style="font-weight:800;margin-bottom:.4rem">🏷️ Fahrzeug einstellen</div>
+      <div class="clan-donate">
+        <select id="aucVeh">${eligible.length ? eligible.map(v => { const vd = CFG.VEHICLES[v.vehicle_key] || {}; return `<option value="${v.id}">${vd.icon || '🚗'} ${esc(vd.label || v.vehicle_key)} (💰${fmt(v.value)})</option>`; }).join('') : '<option value="">Kein Fahrzeug verfügbar</option>'}</select>
+        <input type="number" id="aucPrice" placeholder="Startpreis" min="${CFG.AUCTION.minStartPrice}" style="width:110px">
+        <select id="aucDur">${CFG.AUCTION.durations.map(dd => `<option value="${dd.key}">${dd.label}</option>`).join('')}</select>
+        <button onclick="submitListing()">Einstellen</button>
+      </div>
+      <div class="muted" style="margin-bottom:.6rem">Einstellgebühr: ${CFG.AUCTION.listingFeePct}% des Startpreises, sofort fällig — unabhängig davon, ob am Ende jemand mitbietet.</div>`;
+    rows = formHtml + (mine.length ? mine.map(a => renderAuctionRow(a, 'selling')).join('') : '<div class="muted">Du hast aktuell keine Fahrzeuge im Auktionshaus.</div>');
+  } else if (auctionTab === 'bidding') {
+    const mine = auctionList.filter(a => a.isMyBid);
+    rows = mine.length ? mine.map(a => renderAuctionRow(a, 'bidding')).join('') : '<div class="muted">Du bietest aktuell auf nichts.</div>';
+  } else {
+    rows = auctionList.length ? auctionList.map(a => renderAuctionRow(a, 'browse')).join('') : '<div class="muted">Aktuell steht kein Fahrzeug zur Auktion.</div>';
+  }
+  $('shBody').innerHTML = auctionTabsHtml() + rows;
+  tickCdEls();
+}
+async function submitListing() {
+  const vehicle_id = Number($('aucVeh').value);
+  const start_price = Math.round(Number($('aucPrice').value));
+  const duration_key = $('aucDur').value;
+  if (!vehicle_id) return msg('Kein Fahrzeug ausgewählt');
+  if (!start_price || start_price < CFG.AUCTION.minStartPrice) return msg(`Startpreis muss mindestens ${CFG.AUCTION.minStartPrice} betragen`);
+  try {
+    const d = await api('/api/clash-of-acls/auctions', { method: 'POST', body: { vehicle_id, start_price, duration_key } });
+    SFX.tap(); msg('Fahrzeug eingestellt!', true);
+    render(d); auctionList = d.list; auctionAnchor = Date.now();
+    renderAuctionBody();
+  } catch (e) { msg(e.message); }
+}
+async function placeBid(id) {
+  const input = $('bid-' + id);
+  const amount = Math.round(Number(input ? input.value : 0));
+  const a = auctionList.find(x => x.id === id);
+  const minNext = a ? a.minNextBid : 1;
+  if (!amount || amount < minNext) return msg(`Gib ein gültiges Gebot ein (mind. ${fmt(minNext)})`);
+  try {
+    const d = await api(`/api/clash-of-acls/auctions/${id}/bid`, { method: 'POST', body: { amount } });
+    SFX.coin(); msg('Gebot abgegeben!', true);
+    render(d); auctionList = d.list; auctionAnchor = Date.now();
+    renderAuctionBody();
+  } catch (e) { msg(e.message); }
+}
+async function cancelAuction(id) {
+  try {
+    const d = await api(`/api/clash-of-acls/auctions/${id}/cancel`, { method: 'POST' });
+    msg('Angebot zurückgezogen', true);
+    render(d); auctionList = d.list; auctionAnchor = Date.now();
+    renderAuctionBody();
+  } catch (e) { msg(e.message); }
 }
 
 /* ── Einsätze (PvE-Missionen) ── */

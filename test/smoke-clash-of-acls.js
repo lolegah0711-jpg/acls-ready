@@ -643,9 +643,100 @@ const backdateManufacture = () => db.prepare("UPDATE coa_manufacture_queue SET f
   const withDirektion = await get('/api/clash-of-acls/state');
   assert.ok(Math.abs(withDirektion.ratesPerHour.money - 42.4) < 0.01,
     `Direktion Lv2 (+6% globale Produktion) wirkt generisch: erwartet 42.4, erhalten ${withDirektion.ratesPerHour.money}`);
+
+  // ── Auktionshaus (Phase 9) ──────────────────────────────────────────────
+  const SELLER = { id: 'TESTER5', name: 'Verkäufer' };
+  const BIDDER = { id: 'TESTER6', name: 'Bieter' };
+  const RIVAL  = { id: 'TESTER7', name: 'Rivale' };
+
+  currentUser = SELLER;
+  let s = await get('/api/clash-of-acls/state');
+  const sellerGarageId = s.buildings.find(b => b.building_key === 'garage').id;
+  db.prepare('UPDATE coa_state SET steel=500, parts=500, electronics=500, fuel=500 WHERE discord_id=?').run(SELLER.id);
+  await post('/api/clash-of-acls/manufacture', { building_id: sellerGarageId, vehicle_key: 'abschleppwagen' });
+  backdateManufacture();
+  s = await get('/api/clash-of-acls/state');
+  const aucVehicleId = s.vehicles[0].id;
+  const sellerMoneyBefore = s.resources.money;
+
+  // Zu niedriger Startpreis abgelehnt
+  const listTooLow = await post('/api/clash-of-acls/auctions', { vehicle_id: aucVehicleId, start_price: 1, duration_key: '24h' });
+  assert.equal(listTooLow.status, 400, 'Startpreis unter Minimum abgelehnt');
+
+  // Einstellen: Gebühr (2 % von 100 = 2) wird sofort fällig
+  const listing = await post('/api/clash-of-acls/auctions', { vehicle_id: aucVehicleId, start_price: 100, duration_key: '24h' });
+  assert.equal(listing.status, 200, 'Einstellen ok: ' + JSON.stringify(listing.json));
+  assert.equal(listing.json.resources.money, sellerMoneyBefore - 2, 'Einstellgebühr (2) sofort abgebucht');
+  const auctionId = listing.json.list.find(a => a.vehicle_key === 'abschleppwagen').id;
+  assert.equal(listing.json.vehicles[0].in_auction, 1, 'Fahrzeug im Fuhrpark als "in_auction" markiert');
+
+  // Verkauf/Einsatz während laufender Auktion blockiert
+  const sellBlocked = await post('/api/clash-of-acls/sell/' + aucVehicleId);
+  assert.equal(sellBlocked.status, 400, 'Verkauf eines versteigerten Fahrzeugs abgelehnt');
+
+  // Verkäufer darf nicht auf eigenes Angebot bieten
+  const selfBid = await post(`/api/clash-of-acls/auctions/${auctionId}/bid`, { amount: 150 });
+  assert.equal(selfBid.status, 400, 'Gebot auf eigenes Angebot abgelehnt');
+
+  currentUser = BIDDER;
+  await get('/api/clash-of-acls/state');
+  db.prepare('UPDATE coa_state SET money=1000 WHERE discord_id=?').run(BIDDER.id);
+
+  // Gebot unter Startpreis abgelehnt
+  const bidTooLow = await post(`/api/clash-of-acls/auctions/${auctionId}/bid`, { amount: 50 });
+  assert.equal(bidTooLow.status, 400, 'Gebot unter Startpreis abgelehnt');
+
+  // Gültiges Erstgebot — Geld wird per Eskrow sofort abgebucht
+  const bid1 = await post(`/api/clash-of-acls/auctions/${auctionId}/bid`, { amount: 120 });
+  assert.equal(bid1.status, 200, 'Erstgebot ok: ' + JSON.stringify(bid1.json));
+  assert.equal(bid1.json.resources.money, 1000 - 120, 'Gebot (120) sofort per Eskrow abgebucht');
+  let row = bid1.json.list.find(a => a.id === auctionId);
+  assert.equal(row.current_bid, 120, 'Aktuelles Gebot im Listing korrekt');
+  assert.equal(row.minNextBid, 126, 'Mindest-Folgegebot = 120 + 5 % (aufgerundet) = 126');
+
+  currentUser = RIVAL;
+  await get('/api/clash-of-acls/state');
+  db.prepare('UPDATE coa_state SET money=1000 WHERE discord_id=?').run(RIVAL.id);
+  const bidTooSmallIncrement = await post(`/api/clash-of-acls/auctions/${auctionId}/bid`, { amount: 121 });
+  assert.equal(bidTooSmallIncrement.status, 400, 'Gebot unter Mindest-Aufschlag abgelehnt');
+
+  const bid2 = await post(`/api/clash-of-acls/auctions/${auctionId}/bid`, { amount: 126 });
+  assert.equal(bid2.status, 200, 'Überbieten ok: ' + JSON.stringify(bid2.json));
+  assert.equal(bid2.json.resources.money, 1000 - 126, 'Neues Gebot (126) abgebucht');
+  const bidderRefunded = db.prepare('SELECT money FROM coa_state WHERE discord_id=?').get(BIDDER.id).money;
+  assert.equal(bidderRefunded, 1000, 'Überbotener Bieter wurde voll erstattet (120 zurück)');
+  assert.ok(notifs.some(n => n.discordId === BIDDER.id && n.type === 'coa_auction_outbid'), 'Überboten-Benachrichtigung an alten Höchstbietenden gesendet');
+
+  // Auktion ablaufen lassen und automatisch abschließen (finalizeDueForAll läuft am Anfang jedes Requests)
+  db.prepare("UPDATE coa_auctions SET ends_at = datetime('now','-1 minute') WHERE id=?").run(auctionId);
+  const afterEnd = await get('/api/clash-of-acls/state'); // als RIVAL — triggert finalizeDueForAll
+  assert.ok(afterEnd.vehicles.some(v => v.id === aucVehicleId), 'Fahrzeug ist jetzt im Fuhrpark des Gewinners (RIVAL)');
+  const wonVehicle = afterEnd.vehicles.find(v => v.id === aucVehicleId);
+  assert.equal(wonVehicle.in_auction, 0, 'Fahrzeug nicht mehr als versteigert markiert');
+  const sellerPayout = db.prepare('SELECT money FROM coa_state WHERE discord_id=?').get(SELLER.id).money;
+  assert.equal(sellerPayout, sellerMoneyBefore - 2 + Math.round(126 * 0.92), 'Verkäufer erhält Erlös minus 8 % Auktionsgebühr');
+  assert.ok(notifs.some(n => n.discordId === RIVAL.id && n.type === 'coa_auction_won'), 'Gewinn-Benachrichtigung an Gewinner gesendet');
+  assert.ok(notifs.some(n => n.discordId === SELLER.id && n.type === 'coa_auction_sold'), 'Verkauft-Benachrichtigung an Verkäufer gesendet');
+  const activeAfterEnd = (await get('/api/clash-of-acls/auctions')).list;
+  assert.ok(!activeAfterEnd.some(a => a.id === auctionId), 'Beendete Auktion verschwindet aus der aktiven Liste');
+
+  // Stornieren: ohne Gebot jederzeit möglich, mit Gebot nicht mehr
+  currentUser = SELLER;
+  db.prepare('UPDATE coa_state SET steel=500, parts=500, electronics=500, fuel=500 WHERE discord_id=?').run(SELLER.id);
+  await post('/api/clash-of-acls/manufacture', { building_id: sellerGarageId, vehicle_key: 'abschleppwagen' });
+  backdateManufacture();
+  const s2 = await get('/api/clash-of-acls/state');
+  const aucVehicleId2 = s2.vehicles.find(v => v.id !== aucVehicleId).id;
+  const listing2 = await post('/api/clash-of-acls/auctions', { vehicle_id: aucVehicleId2, start_price: 50, duration_key: '6h' });
+  const auctionId2 = listing2.json.list.find(a => a.id !== auctionId).id;
+  const cancelOk = await post(`/api/clash-of-acls/auctions/${auctionId2}/cancel`);
+  assert.equal(cancelOk.status, 200, 'Stornieren ohne Gebot erlaubt');
+  const afterCancel = (await get('/api/clash-of-acls/auctions')).list;
+  assert.ok(!afterCancel.some(a => a.id === auctionId2), 'Stornierte Auktion verschwindet aus der Liste');
+
   currentUser = ME;
 
-  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne, PvP, Gilden, Events, Liga, Prestige, Cutover-Migration, Endgame-Inhalte)');
+  console.log('✓ Alle Smoke-Tests bestanden (Clash of ACLS: Kernschleife, Einsätze, Forschung, Progression, Kampfsystem, Kampagne, PvP, Gilden, Events, Liga, Prestige, Cutover-Migration, Endgame-Inhalte, Auktionshaus)');
   finish(0);
 })().catch(e => { console.error('✗ Test fehlgeschlagen:', e.message); finish(1); });
 

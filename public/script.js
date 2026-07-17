@@ -2716,7 +2716,7 @@ window.toggleNotifPanel = async function() {
   const badge = $('notifBadge');
   if (badge) badge.style.display = 'none';
 
-  const ICONS = { badge: '🏅', transfer_in: '🪙', guestbook: '✏️', coa_build_done: '🏗️', coa_mission_done: '🚨', coa_research_done: '🔬', coa_levelup: '⭐', coa_achievement: '🏆', coa_raid_done: '🛡️', coa_campaign_step: '🗺️', coa_pvp_attacked: '⚔️', coa_prestige: '🔁', coa_league_promo: '🏆' };
+  const ICONS = { badge: '🏅', transfer_in: '🪙', guestbook: '✏️', coa_build_done: '🏗️', coa_mission_done: '🚨', coa_research_done: '🔬', coa_levelup: '⭐', coa_achievement: '🏆', coa_raid_done: '🛡️', coa_campaign_step: '🗺️', coa_pvp_attacked: '⚔️', coa_prestige: '🔁', coa_league_promo: '🏆', coa_auction_outbid: '📤', coa_auction_won: '🏛️', coa_auction_sold: '🏷️' };
 
   const panel = document.createElement('div');
   panel.id = 'notifPanel';
@@ -2772,6 +2772,12 @@ window.toggleNotifPanel = async function() {
         text = `Prestige in Clash of ACLS: <b>+${d.points} Prestige-Punkte</b> — deine Werkstatt ist neu gestartet`;
       } else if (n.type === 'coa_league_promo') {
         text = `Liga-Aufstieg in Clash of ACLS: <b>${esc(d.tier)}</b>-Liga erreicht!`;
+      } else if (n.type === 'coa_auction_outbid') {
+        text = `Du wurdest überboten: <b>${esc(d.vehicle)}</b> — aktuelles Gebot <b>${d.newBid} 🪙</b>`;
+      } else if (n.type === 'coa_auction_won') {
+        text = `Auktion gewonnen: <b>${esc(d.vehicle)}</b> für <b>${d.price} 🪙</b> ersteigert!`;
+      } else if (n.type === 'coa_auction_sold') {
+        text = `Fahrzeug versteigert: <b>${esc(d.vehicle)}</b> für <b>${d.price} 🪙</b> verkauft`;
       }
       const dot = n.is_read ? '' : `<span style="width:7px;height:7px;min-width:7px;border-radius:50%;background:#ef4444;margin-top:.3rem"></span>`;
       return `<div onclick="openNotif(${i})" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='${n.is_read ? 'transparent' : 'var(--surface2)'}'" style="display:flex;align-items:flex-start;gap:.65rem;padding:.75rem 1rem;border-bottom:1px solid var(--border);font-size:.82rem;cursor:pointer${n.is_read ? '' : ';background:var(--surface2)'}">
@@ -2821,7 +2827,7 @@ window.openNotif = function(i) {
   } else if (n.type === 'guestbook') {
     if (currentUser && currentUser.id) openProfileModal(currentUser.id);
     else navigate('dashboard');
-  } else if (n.type === 'coa_build_done' || n.type === 'coa_mission_done' || n.type === 'coa_research_done' || n.type === 'coa_levelup' || n.type === 'coa_achievement' || n.type === 'coa_raid_done' || n.type === 'coa_campaign_step' || n.type === 'coa_pvp_attacked' || n.type === 'coa_prestige' || n.type === 'coa_league_promo') {
+  } else if (n.type === 'coa_build_done' || n.type === 'coa_mission_done' || n.type === 'coa_research_done' || n.type === 'coa_levelup' || n.type === 'coa_achievement' || n.type === 'coa_raid_done' || n.type === 'coa_campaign_step' || n.type === 'coa_pvp_attacked' || n.type === 'coa_prestige' || n.type === 'coa_league_promo' || n.type === 'coa_auction_outbid' || n.type === 'coa_auction_won' || n.type === 'coa_auction_sold') {
     window.open('/clash-of-acls.html', '_blank');
   }
 };

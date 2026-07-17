@@ -1001,6 +1001,28 @@ function initDb() {
   // aus altem Fortschritt (ae_state/idle_saves) bereits gutgeschrieben wurde.
   try { db.exec('ALTER TABLE coa_state ADD COLUMN retro_migrated INTEGER NOT NULL DEFAULT 0'); } catch {}
 
+  // ── Clash of ACLS Phase 9: Auktionshaus (Fahrzeug-Gebote statt Fixpreis) ──
+  // Kein eigenes UNIQUE(vehicle_id) — wie bei coa_missions wird "schon versteigert?"
+  // per Anwendungs-Query (WHERE vehicle_id=? AND resolved_at IS NULL) geprüft, damit
+  // ein Fahrzeug nach einer abgeschlossenen Auktion erneut eingestellt werden kann.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coa_auctions (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      vehicle_id   INTEGER NOT NULL,
+      seller_id    TEXT NOT NULL,
+      seller_name  TEXT,
+      start_price  INTEGER NOT NULL,
+      current_bid  INTEGER NOT NULL DEFAULT 0,
+      bidder_id    TEXT,
+      bidder_name  TEXT,
+      ends_at      DATETIME NOT NULL,
+      created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+      resolved_at  DATETIME
+    );
+    CREATE INDEX IF NOT EXISTS idx_coa_auctions_vehicle ON coa_auctions(vehicle_id, resolved_at);
+    CREATE INDEX IF NOT EXISTS idx_coa_auctions_active ON coa_auctions(resolved_at, ends_at);
+  `);
+
   // ── Clash of ACLS Phase 5: Questline/Kampagne (einmalige, geführte Aufgabenreihe) ──
   db.exec(`
     CREATE TABLE IF NOT EXISTS coa_campaign (

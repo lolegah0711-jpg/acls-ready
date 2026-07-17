@@ -703,6 +703,29 @@
     ],
   };
 
+  // ── Auktionshaus (Phase 9): Spieler-zu-Spieler-Fahrzeughandel per Gebot statt
+  // Fixpreis (im Unterschied zum bestehenden Marktplatz-Modul für Ausrüstung).
+  // Gebote werden sofort abgebucht (Eskrow) und beim Überbieten voll erstattet —
+  // deshalb braucht es keine eigene Buchhaltungstabelle, nur current_bid+bidder_id
+  // auf der Auktion selbst. feePct ist eine reine Geld-Senke (verfällt), keine
+  // neue Einnahme für irgendwen — genau wie andere Coin-Sinks im Spiel.
+  const AUCTION = {
+    durations: [
+      { key: '6h', label: '6 Stunden', sec: 6 * 3600 },
+      { key: '24h', label: '24 Stunden', sec: 24 * 3600 },
+      { key: '48h', label: '48 Stunden', sec: 48 * 3600 },
+    ],
+    minStartPrice: 10,
+    maxStartPrice: 200000,
+    listingFeePct: 2,   // sofort fällig beim Einstellen, unabhängig vom Ausgang
+    feePct: 8,           // vom Enderlös des Verkäufers bei erfolgreichem Verkauf
+    minIncrementPct: 5,  // Mindest-Aufschlag ggü. dem aktuellen Gebot
+    minNextBid(currentBid, startPrice) {
+      if (!currentBid) return startPrice;
+      return currentBid + Math.max(1, Math.ceil(currentBid * this.minIncrementPct / 100));
+    },
+  };
+
   // Startkit exakt wie im Auftrag: Büro, Lager, Kleine Garage, Abschlepphof, Tanklager,
   // alle Level 1, in Zeile y=0 platziert (Index < 24 = initial freigeschaltet).
   const STARTER_KIT = [
@@ -720,7 +743,7 @@
     UNITS, RAIDS, COMBAT, PVP,
     CAMPAIGN_CHAPTERS, CAMPAIGN,
     CLAN, CLAN_WAR, EVENTS, activeEvent,
-    PRESTIGE, LEAGUE,
+    PRESTIGE, LEAGUE, AUCTION,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = CONFIG;

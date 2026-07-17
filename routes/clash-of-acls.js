@@ -563,6 +563,26 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     queueNotification('coa_raid_done', r.discord_id, { raid: def.label, won });
   }
 
+  // ── Auktionshaus: Abschluss einer abgelaufenen Auktion. Gebote sind bereits per
+  // Eskrow abgebucht (siehe /auctions/:id/bid) — bei einem Gewinner wandert das
+  // Fahrzeug zum Höchstbietenden, der Verkäufer bekommt den Erlös minus feePct
+  // (reine Geld-Senke). Ohne Gebot bleibt das Fahrzeug einfach beim Verkäufer.
+  function finalizeOneAuction(a) {
+    db.prepare("UPDATE coa_auctions SET resolved_at = datetime('now') WHERE id = ?").run(a.id);
+    if (!a.bidder_id) return;
+    const vehicle = db.prepare('SELECT * FROM coa_vehicles WHERE id = ?').get(a.vehicle_id);
+    const label = (CFG.VEHICLES[vehicle?.vehicle_key] || {}).label || vehicle?.vehicle_key || 'Fahrzeug';
+    const payout = Math.round(a.current_bid * (1 - CFG.AUCTION.feePct / 100));
+    db.transaction(() => {
+      db.prepare('UPDATE coa_vehicles SET discord_id = ? WHERE id = ?').run(a.bidder_id, a.vehicle_id);
+      grantResources(a.seller_id, { money: payout });
+    })();
+    createNotif(a.bidder_id, 'coa_auction_won', { vehicle: label, price: a.current_bid });
+    queueNotification('coa_auction_won', a.bidder_id, { vehicle: label, price: a.current_bid });
+    createNotif(a.seller_id, 'coa_auction_sold', { vehicle: label, price: payout });
+    queueNotification('coa_auction_sold', a.seller_id, { vehicle: label, price: payout });
+  }
+
   // Wird pro Request UND von einem minütlichen Cron-Sweep in server.js aufgerufen,
   // damit fällige Aufträge auch abgeschlossen werden, wenn der Spieler offline ist.
   function finalizeDueForAll() {
@@ -580,6 +600,7 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     db.prepare("SELECT * FROM coa_missions WHERE finish_at <= datetime('now')").all().forEach(finalizeOneMission);
     db.prepare("SELECT * FROM coa_unit_queue WHERE finish_at <= datetime('now')").all().forEach(finalizeOneTraining);
     db.prepare("SELECT * FROM coa_raids WHERE resolved_at IS NULL AND finish_at <= datetime('now')").all().forEach(finalizeOneRaid);
+    db.prepare("SELECT * FROM coa_auctions WHERE resolved_at IS NULL AND ends_at <= datetime('now')").all().forEach(finalizeOneAuction);
   }
 
   function canAfford(state, cost) {
@@ -616,8 +637,10 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     const mods = getMods(ident.id);
     // on_mission markiert Fahrzeuge, die gerade einen Einsatz fahren (nicht verkaufbar)
     const vehicles = db.prepare(`
-      SELECT v.*, CASE WHEN m.id IS NULL THEN 0 ELSE 1 END AS on_mission
+      SELECT v.*, CASE WHEN m.id IS NULL THEN 0 ELSE 1 END AS on_mission,
+        CASE WHEN au.id IS NULL THEN 0 ELSE 1 END AS in_auction
       FROM coa_vehicles v LEFT JOIN coa_missions m ON m.vehicle_id = v.id
+        LEFT JOIN coa_auctions au ON au.vehicle_id = v.id AND au.resolved_at IS NULL
       WHERE v.discord_id = ? AND v.sold_at IS NULL ORDER BY v.created_at DESC
     `).all(ident.id);
     // Kompendium: Lebenszeit-Stückzahl je Fahrzeugtyp (inkl. verkaufter — sold_at ist ein
@@ -1012,6 +1035,9 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     if (db.prepare('SELECT 1 FROM coa_missions WHERE vehicle_id = ?').get(vehicle.id)) {
       return res.status(400).json({ error: 'Fahrzeug ist gerade im Einsatz' });
     }
+    if (db.prepare('SELECT 1 FROM coa_auctions WHERE vehicle_id = ? AND resolved_at IS NULL').get(vehicle.id)) {
+      return res.status(400).json({ error: 'Fahrzeug wird gerade im Auktionshaus versteigert' });
+    }
     const buildings = getBuildings(ident.id);
     const employees = getEmployees(ident.id);
     syncResources(ident.id);
@@ -1026,6 +1052,104 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     questInc(ident.id, 'earn', price);
     checkAchievements(ident.id);
     res.json({ ok: true, credited: price, ...buildView(ident) });
+  });
+
+  // ── Auktionshaus (Phase 9): Fahrzeuge per Gebot statt Fixpreis handeln ──
+  function buildAuctionsList(viewerId) {
+    const rows = db.prepare(`
+      SELECT a.*, v.vehicle_key, v.rarity, v.value,
+        CAST(strftime('%s', a.ends_at) AS INTEGER) - CAST(strftime('%s', 'now') AS INTEGER)      AS remaining_sec,
+        CAST(strftime('%s', a.ends_at) AS INTEGER) - CAST(strftime('%s', a.created_at) AS INTEGER) AS total_sec
+      FROM coa_auctions a JOIN coa_vehicles v ON v.id = a.vehicle_id
+      WHERE a.resolved_at IS NULL ORDER BY a.ends_at ASC
+    `).all();
+    return rows.map((a) => ({
+      id: a.id, vehicle_key: a.vehicle_key, rarity: a.rarity, value: a.value,
+      seller_name: a.seller_name, bidder_name: a.bidder_name,
+      start_price: a.start_price, current_bid: a.current_bid,
+      priceNow: a.current_bid || a.start_price,
+      minNextBid: CFG.AUCTION.minNextBid(a.current_bid, a.start_price),
+      remaining_sec: a.remaining_sec, total_sec: a.total_sec,
+      isMine: a.seller_id === viewerId, isMyBid: a.bidder_id === viewerId,
+    }));
+  }
+
+  router.get('/api/clash-of-acls/auctions', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    finalizeDueForAll();
+    res.json({ list: buildAuctionsList(ident.id) });
+  });
+
+  router.post('/api/clash-of-acls/auctions', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    const { vehicle_id, start_price, duration_key } = req.body || {};
+    const dur = CFG.AUCTION.durations.find((d) => d.key === duration_key);
+    if (!dur) return res.status(400).json({ error: 'Unbekannte Laufzeit' });
+    const price = Math.round(Number(start_price));
+    if (!Number.isFinite(price) || price < CFG.AUCTION.minStartPrice || price > CFG.AUCTION.maxStartPrice) {
+      return res.status(400).json({ error: `Startpreis muss zwischen ${CFG.AUCTION.minStartPrice} und ${CFG.AUCTION.maxStartPrice} liegen` });
+    }
+    const vehicle = db.prepare('SELECT * FROM coa_vehicles WHERE id = ? AND discord_id = ? AND sold_at IS NULL').get(vehicle_id, ident.id);
+    if (!vehicle) return res.status(404).json({ error: 'Fahrzeug nicht gefunden' });
+    if (db.prepare('SELECT 1 FROM coa_missions WHERE vehicle_id = ?').get(vehicle.id)) {
+      return res.status(400).json({ error: 'Fahrzeug ist gerade im Einsatz' });
+    }
+    if (db.prepare('SELECT 1 FROM coa_auctions WHERE vehicle_id = ? AND resolved_at IS NULL').get(vehicle.id)) {
+      return res.status(400).json({ error: 'Fahrzeug ist bereits im Auktionshaus eingestellt' });
+    }
+    const state = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
+    const listingFee = Math.max(1, Math.round(price * CFG.AUCTION.listingFeePct / 100));
+    if (!canAfford(state, { money: listingFee })) return res.status(400).json({ error: `Einstellgebühr (${listingFee} 🪙) kann nicht bezahlt werden` });
+    const finishAt = toSqliteUTC(Date.now() + dur.sec * 1000);
+    db.transaction(() => {
+      deduct(ident.id, state, { money: listingFee });
+      db.prepare('INSERT INTO coa_auctions (vehicle_id, seller_id, seller_name, start_price, ends_at) VALUES (?,?,?,?,?)')
+        .run(vehicle.id, ident.id, ident.name, price, finishAt);
+    })();
+    res.json({ ok: true, list: buildAuctionsList(ident.id), ...buildView(ident) });
+  });
+
+  router.post('/api/clash-of-acls/auctions/:id/bid', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    if (rateLimit(`coa-act:${ident.id}`, 30, 10_000)) return res.status(429).json({ error: 'Zu schnell' });
+    getOrCreateState(ident);
+    finalizeDueForAll();
+    const auction = db.prepare('SELECT * FROM coa_auctions WHERE id = ? AND resolved_at IS NULL').get(req.params.id);
+    if (!auction) return res.status(404).json({ error: 'Auktion nicht gefunden oder bereits beendet' });
+    if (auction.seller_id === ident.id) return res.status(400).json({ error: 'Du kannst nicht auf dein eigenes Angebot bieten' });
+    const minNext = CFG.AUCTION.minNextBid(auction.current_bid, auction.start_price);
+    const amount = Math.round(Number((req.body || {}).amount));
+    if (!Number.isFinite(amount) || amount < minNext) {
+      return res.status(400).json({ error: `Mindestgebot: ${minNext} 🪙` });
+    }
+    const state = db.prepare('SELECT * FROM coa_state WHERE discord_id = ?').get(ident.id);
+    if (!canAfford(state, { money: amount })) return res.status(400).json({ error: 'Nicht genug Geld für dieses Gebot' });
+    db.transaction(() => {
+      deduct(ident.id, state, { money: amount });
+      if (auction.bidder_id) grantResources(auction.bidder_id, { money: auction.current_bid });
+      db.prepare('UPDATE coa_auctions SET current_bid = ?, bidder_id = ?, bidder_name = ? WHERE id = ?')
+        .run(amount, ident.id, ident.name, auction.id);
+    })();
+    if (auction.bidder_id) {
+      const v = db.prepare('SELECT vehicle_key FROM coa_vehicles WHERE id = ?').get(auction.vehicle_id);
+      const label = (CFG.VEHICLES[v?.vehicle_key] || {}).label || v?.vehicle_key || 'Fahrzeug';
+      createNotif(auction.bidder_id, 'coa_auction_outbid', { vehicle: label, newBid: amount });
+      queueNotification('coa_auction_outbid', auction.bidder_id, { vehicle: label, newBid: amount });
+    }
+    res.json({ ok: true, list: buildAuctionsList(ident.id), ...buildView(ident) });
+  });
+
+  router.post('/api/clash-of-acls/auctions/:id/cancel', requireLogin, (req, res) => {
+    const ident = coinIdent(req);
+    finalizeDueForAll();
+    const auction = db.prepare('SELECT * FROM coa_auctions WHERE id = ? AND seller_id = ? AND resolved_at IS NULL').get(req.params.id, ident.id);
+    if (!auction) return res.status(404).json({ error: 'Auktion nicht gefunden' });
+    if (auction.bidder_id) return res.status(400).json({ error: 'Es liegt bereits ein Gebot vor — die Auktion kann nicht mehr zurückgezogen werden' });
+    db.prepare("UPDATE coa_auctions SET resolved_at = datetime('now') WHERE id = ?").run(auction.id);
+    res.json({ ok: true, list: buildAuctionsList(ident.id), ...buildView(ident) });
   });
 
   // ── Einsatz starten: Fahrzeug (>= minTier) fährt die Mission, solange gesperrt ──
@@ -1046,6 +1170,9 @@ module.exports = function ({ db, requireLogin, coinIdent, addCoins, createNotif,
     if (!vehicle) return res.status(404).json({ error: 'Fahrzeug nicht gefunden' });
     if (db.prepare('SELECT 1 FROM coa_missions WHERE vehicle_id = ?').get(vehicle.id)) {
       return res.status(400).json({ error: 'Dieses Fahrzeug ist bereits im Einsatz' });
+    }
+    if (db.prepare('SELECT 1 FROM coa_auctions WHERE vehicle_id = ? AND resolved_at IS NULL').get(vehicle.id)) {
+      return res.status(400).json({ error: 'Fahrzeug wird gerade im Auktionshaus versteigert' });
     }
     const tier = CFG.VEHICLES[vehicle.vehicle_key]?.tier || 1;
     if (tier < def.minTier) return res.status(400).json({ error: `Dieser Einsatz benötigt ein Tier-${def.minTier}-Fahrzeug` });
