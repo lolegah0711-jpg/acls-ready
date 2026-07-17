@@ -275,6 +275,126 @@
     document.head.appendChild(st);
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  SEITE: BETRIEBS-DASHBOARD
+  // ═══════════════════════════════════════════════════════════════
+  // Operativer Überblick aus vorhandenen Daten (GET /api/werkstatt/dashboard):
+  // KPI-Kacheln, Wochenumsatz-Chart, Auftrags-Pipeline, Feed und Warnungen.
+  async function betrieb() {
+    const [d, sessions] = await Promise.all([
+      api('/api/werkstatt/dashboard'),
+      api('/api/active-sessions').catch(() => []),
+    ]);
+    if (!d) return;
+    const onDuty = Array.isArray(sessions) ? sessions.length : 0;
+
+    const kpi = (icon, color, val, label, onclick) =>
+      `<button class="wd-kpi"${onclick ? ` onclick="${onclick}"` : ' disabled aria-disabled="true"'}>
+        <span class="wd-kpi-ic" style="background:${color}22;color:${color}"><i class="fas ${icon}" aria-hidden="true"></i></span>
+        <span class="wd-kpi-txt"><span class="wd-kpi-val">${val}</span><span class="wd-kpi-lbl">${label}</span></span>
+      </button>`;
+
+    // Umsatz-Chart (7 Tage) — dependency-freie CSS-Balken
+    const rev = d.revenueByDay;
+    const max = Math.max(1, ...rev.map(r => r.total));
+    const dayName = ds => new Date(ds + 'T12:00:00Z').toLocaleDateString('de-DE', { weekday: 'short' });
+    const bars = rev.map((r, i) => {
+      const h = (r.total / max) * 100, today = i === rev.length - 1;
+      return `<div class="wd-bar-wrap" title="${dayName(r.date)}: ${money(r.total)}">
+        <div class="wd-bar" style="height:${Math.max(2, h)}%;opacity:${today ? 1 : .5}"></div></div>`;
+    }).join('');
+    const dayLabels = rev.map(r => `<span>${dayName(r.date)}</span>`).join('');
+
+    const pipeline = BOARD_FLOW.map(s =>
+      `<button class="wd-pipe" onclick="navigate('auftragsboard')" title="${STATUS_LABELS[s]}: ${d.pipeline[s]} Aufträge">
+        <span class="wd-pipe-dot" style="background:${STATUS_COLORS[s]}" aria-hidden="true"></span>
+        <span class="wd-pipe-n">${d.pipeline[s]}</span><span class="wd-pipe-l">${STATUS_LABELS[s]}</span>
+      </button>`).join('<i class="fas fa-chevron-right wd-arrow" aria-hidden="true"></i>');
+
+    const feed = d.recent.length ? d.recent.map(a =>
+      `<button class="wd-feed-row" onclick="openDocument(${a.id})" aria-label="Auftrag ${esc(a.doc_no)} öffnen">
+        <span class="wd-feed-no">${esc(a.doc_no)}</span>
+        <span class="wd-feed-cust">${esc(a.citizen_name || '—')}${a.kennzeichen ? ` · ${esc(a.kennzeichen)}` : ''}</span>
+        <span class="wd-chip" style="background:${STATUS_COLORS[a.status]}22;color:${STATUS_COLORS[a.status]}">${STATUS_LABELS[a.status] || esc(a.status)}</span>
+      </button>`).join('') : '<div class="wd-empty">Noch keine Aufträge angelegt.</div>';
+
+    const warns = [];
+    if (d.ready > 0) warns.push(`<div class="wd-warn"><i class="fas fa-box" style="color:#22c55e" aria-hidden="true"></i><span><b>${d.ready}</b> ${d.ready === 1 ? 'Auftrag ist' : 'Aufträge sind'} abholbereit</span></div>`);
+    d.stuck.forEach(s => warns.push(`<div class="wd-warn"><i class="fas fa-triangle-exclamation" style="color:#fbbf24" aria-hidden="true"></i><span><b>${esc(s.doc_no)}</b> wartet seit über 3 Tagen auf Teile${s.citizen_name ? ' · ' + esc(s.citizen_name) : ''}</span></div>`));
+    const warnHtml = warns.length ? warns.join('') : '<div class="wd-empty" style="color:var(--green)"><i class="fas fa-check-circle" aria-hidden="true"></i> Alles im grünen Bereich.</div>';
+
+    $('pageContent').innerHTML = `
+      <div class="wd-kpis">
+        ${kpi('fa-clipboard-list', '#38bdf8', d.activeOrders, 'Aktive Aufträge', "navigate('auftragsboard')")}
+        ${kpi('fa-hourglass-half', '#f97316', d.pipeline.wartet_auf_teile, 'Wartet auf Teile', "navigate('auftragsboard')")}
+        ${kpi('fa-box', '#22c55e', d.ready, 'Abholbereit', "navigate('auftragsboard')")}
+        ${kpi('fa-coins', '#fbbf24', money(d.revenueWeek), 'Umsatz (7 Tage)', "navigate('dokumente')")}
+        ${kpi('fa-user-clock', '#a855f7', onDuty, 'Im Dienst', null)}
+      </div>
+      <div class="wd-grid">
+        <div class="card">
+          <div class="card-head"><div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-chart-column" style="color:#fbbf24"></i></div><div><div class="card-title">Umsatz — letzte 7 Tage</div><div class="card-sub">${money(d.revenueWeek)} gesamt · aus Rechnungen</div></div></div>
+          <div class="wd-chart" role="img" aria-label="Umsatz der letzten 7 Tage, insgesamt ${money(d.revenueWeek)}">${bars}</div>
+          <div class="wd-chart-labels">${dayLabels}</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-head-icon" style="background:rgba(251,191,36,.15)"><i class="fas fa-bell" style="color:#fbbf24"></i></div><div><div class="card-title">Warnungen</div><div class="card-sub">Was Aufmerksamkeit braucht</div></div></div>
+          <div class="wd-warns">${warnHtml}</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-diagram-project"></i></div><div><div class="card-title">Auftrags-Pipeline</div><div class="card-sub">${d.docsWeek} Dokumente diese Woche</div></div><button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="navigate('auftragsboard')">Zum Board</button></div>
+        <div class="wd-pipeline">${pipeline}</div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-head-icon orange"><i class="fas fa-list"></i></div><div><div class="card-title">Neueste Aufträge</div><div class="card-sub">Zuletzt angelegt</div></div><button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openDocForm('auftrag')"><i class="fas fa-plus"></i> Neuer Auftrag</button></div>
+        <div class="wd-feed">${feed}</div>
+      </div>`;
+    injectDashCss();
+  }
+
+  function injectDashCss() {
+    if (document.getElementById('wd-css')) return;
+    const st = document.createElement('style');
+    st.id = 'wd-css';
+    st.textContent = `
+      .wd-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.7rem;margin-bottom:1rem}
+      .wd-kpi{display:flex;align-items:center;gap:.65rem;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:.75rem .85rem;cursor:pointer;font:inherit;color:inherit}
+      .wd-kpi[disabled]{cursor:default}
+      .wd-kpi:not([disabled]):hover{border-color:var(--orange)}
+      .wd-kpi-ic{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1rem;flex:0 0 auto}
+      .wd-kpi-txt{display:flex;flex-direction:column;min-width:0}
+      .wd-kpi-val{font-size:1.35rem;font-weight:800;line-height:1.1}
+      .wd-kpi-lbl{font-size:.74rem;color:var(--muted)}
+      .wd-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:1rem;margin-bottom:1rem}
+      @media(max-width:760px){.wd-grid{grid-template-columns:1fr}}
+      .wd-chart{display:flex;align-items:flex-end;gap:.45rem;height:140px;padding:.5rem 0 .2rem}
+      .wd-bar-wrap{flex:1;display:flex;align-items:flex-end;height:100%}
+      .wd-bar{width:100%;background:var(--orange);border-radius:5px 5px 0 0;min-height:2px}
+      .wd-chart-labels{display:flex;gap:.45rem;font-size:.68rem;color:var(--muted)}
+      .wd-chart-labels span{flex:1;text-align:center}
+      .wd-warns{display:flex;flex-direction:column;gap:.5rem}
+      .wd-warn{display:flex;gap:.55rem;align-items:flex-start;font-size:.82rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:.5rem .65rem}
+      .wd-warn i{margin-top:.15rem}
+      .wd-empty{color:var(--muted);font-size:.85rem;text-align:center;padding:1rem 0}
+      .wd-pipeline{display:flex;align-items:stretch;gap:.3rem;overflow-x:auto;padding:.2rem 0}
+      .wd-pipe{flex:1;min-width:92px;display:flex;flex-direction:column;align-items:center;gap:.15rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:.6rem .4rem;cursor:pointer;font:inherit;color:inherit}
+      .wd-pipe:hover{border-color:var(--orange)}
+      .wd-pipe-dot{width:9px;height:9px;border-radius:50%}
+      .wd-pipe-n{font-size:1.3rem;font-weight:800;line-height:1}
+      .wd-pipe-l{font-size:.68rem;color:var(--muted);text-align:center}
+      .wd-arrow{align-self:center;color:var(--muted);font-size:.7rem;flex:0 0 auto}
+      @media(max-width:640px){.wd-arrow{display:none}}
+      .wd-feed{display:flex;flex-direction:column}
+      .wd-feed-row{display:flex;align-items:center;gap:.6rem;padding:.55rem .3rem;border-bottom:1px solid var(--border);background:none;border-left:0;border-right:0;border-top:0;cursor:pointer;font:inherit;color:inherit;text-align:left;width:100%}
+      .wd-feed-row:last-child{border-bottom:0}
+      .wd-feed-row:hover{background:var(--surface2)}
+      .wd-feed-no{font-family:monospace;font-size:.76rem;color:var(--muted);flex:0 0 auto}
+      .wd-feed-cust{flex:1;font-size:.85rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .wd-chip{font-size:.7rem;font-weight:700;padding:.12rem .5rem;border-radius:20px;flex:0 0 auto}`;
+    document.head.appendChild(st);
+  }
+
   // ── Neues Dokument: Typ-Auswahl ─────────────────────────────────
   window.openNewDocPicker = (preset = {}) => {
     openModal(`
@@ -902,5 +1022,5 @@
   };
 
   // ── Seiten registrieren ──────────────────────────────────────────
-  window.ACLSPlusPages = { dokumente, fahrzeugakte, karriere, auftragsboard };
+  window.ACLSPlusPages = { dokumente, fahrzeugakte, karriere, auftragsboard, betrieb };
 })();

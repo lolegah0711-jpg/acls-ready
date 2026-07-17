@@ -129,6 +129,65 @@ module.exports = function makePapierkramRouter({ db, requireAuth, requireAdmin, 
     res.json({ ok: true });
   });
 
+  // ── Betriebs-Dashboard: aggregierte Werkstatt-Kennzahlen ────────
+  // Speist sich vollständig aus vorhandenen Daten (documents): Auftrags-
+  // Pipeline nach status, Wochenumsatz aus Rechnungen (Positionen × Preis,
+  // minus Rabatt), 7-Tage-Reihe, letzte Aufträge und Warnungen.
+  function invoiceTotal(payloadStr) {
+    try {
+      const p = JSON.parse(payloadStr);
+      let sum = 0;
+      (p.items || []).forEach(it => { sum += (parseFloat(it.menge) || 1) * (parseFloat(it.preis) || 0); });
+      const rabatt = Math.min(Math.max(parseFloat(p.rabatt) || 0, 0), 100);
+      return Math.round(sum * (1 - rabatt / 100));
+    } catch { return 0; }
+  }
+
+  router.get('/api/werkstatt/dashboard', requireAuth, (req, res) => {
+    const pipeline = { offen: 0, in_arbeit: 0, wartet_auf_teile: 0, fertig: 0, abgeholt: 0, storniert: 0 };
+    db.prepare("SELECT status, COUNT(*) AS c FROM documents WHERE type = 'auftrag' GROUP BY status")
+      .all().forEach(r => { if (r.status in pipeline) pipeline[r.status] = r.c; });
+
+    const recent = db.prepare(`
+      SELECT id, doc_no, citizen_name, kennzeichen, status, created_at, creator_name
+      FROM documents WHERE type = 'auftrag' ORDER BY created_at DESC LIMIT 8
+    `).all();
+
+    // Umsatz der letzten 7 Tage aus Rechnungen
+    const invoices = db.prepare(`
+      SELECT payload, date(created_at) AS d FROM documents
+      WHERE type = 'rechnung' AND created_at >= datetime('now', '-6 days', 'start of day')
+    `).all();
+    const dayMap = {};
+    let revenueWeek = 0;
+    invoices.forEach(inv => {
+      const t = invoiceTotal(inv.payload);
+      revenueWeek += t;
+      dayMap[inv.d] = (dayMap[inv.d] || 0) + t;
+    });
+    const revenueByDay = [];
+    for (let i = 6; i >= 0; i--) {
+      const dt = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      revenueByDay.push({ date: dt, total: dayMap[dt] || 0 });
+    }
+
+    const docsWeek = db.prepare("SELECT COUNT(*) AS c FROM documents WHERE created_at >= datetime('now', '-6 days', 'start of day')").get().c;
+
+    // Warnungen: Aufträge, die seit >3 Tagen auf Teile warten (updated_at = letzter Statuswechsel)
+    const stuck = db.prepare(`
+      SELECT id, doc_no, citizen_name, updated_at FROM documents
+      WHERE type = 'auftrag' AND status = 'wartet_auf_teile' AND updated_at < datetime('now', '-3 days')
+      ORDER BY updated_at ASC LIMIT 5
+    `).all();
+
+    res.json({
+      pipeline,
+      activeOrders: pipeline.offen + pipeline.in_arbeit + pipeline.wartet_auf_teile,
+      ready: pipeline.fertig,
+      recent, revenueWeek, revenueByDay, docsWeek, stuck,
+    });
+  });
+
   // ── Fahrzeugakten ───────────────────────────────────────────────
 
   router.get('/api/vehicles', requireAuth, (req, res) => {

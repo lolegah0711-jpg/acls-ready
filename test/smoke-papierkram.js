@@ -150,7 +150,22 @@ const req = async (method, p, body) => {
   assert.equal(signCert.earned, true, 'Verkehrs-Zertifikat freigeschaltet (9000 ≥ 8000)');
   assert.equal(certs.find(c => c.game === 'obd').earned, false, 'OBD-Zertifikat noch gesperrt');
 
-  console.log('✓ Alle Papierkram/Karriere-Smoke-Tests bestanden (45 Assertions, inkl. Kanban-Auftragsablauf)');
+  // ── Betriebs-Dashboard-Aggregat ───────────────────────────────
+  // Bestand an Aufträgen an dieser Stelle: docId (fertig) + c2 (offen).
+  await req('POST', '/api/documents', {
+    type: 'rechnung', citizen_name: 'Max Muster',
+    payload: { items: [{ bez: 'Ölwechsel', menge: '2', preis: '100' }, { bez: 'Filter', menge: '1', preis: '50' }], rabatt: '10' },
+  });
+  const dash = await get('/api/werkstatt/dashboard');
+  assert.equal(dash.revenueWeek, 225, 'Wochenumsatz aus Rechnung: (2·100 + 1·50)·0,9 = 225');
+  assert.equal(dash.revenueByDay.length, 7, '7-Tage-Umsatzreihe');
+  assert.equal(dash.revenueByDay[6].total, 225, 'Heutiger Umsatz = 225');
+  assert.equal(dash.pipeline.offen, 1, 'Pipeline: 1 offener Auftrag');
+  assert.equal(dash.pipeline.fertig, 1, 'Pipeline: 1 fertiger Auftrag');
+  assert.equal(dash.activeOrders, 1, 'Aktive Aufträge = 1');
+  assert.equal(dash.ready, 1, 'Abholbereit = 1');
+
+  console.log('✓ Alle Papierkram/Karriere-Smoke-Tests bestanden (52 Assertions, inkl. Kanban + Betriebs-Dashboard)');
   server.close();
   db.close();
   process.exitCode = 0;
