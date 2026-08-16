@@ -4628,7 +4628,7 @@ async function prices() {
         <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.6rem;display:flex;align-items:center;gap:.6rem">${esc(cat)}<div style="flex:1;height:1px;background:var(--border)"></div></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.7rem">
           ${items.map(i => `
-          <div class="card" style="padding:.9rem .6rem;text-align:center;position:relative">
+          <div style="padding:.9rem .6rem;text-align:center;position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rl)">
             ${canEdit ? `
             <div style="position:absolute;top:.35rem;right:.35rem;display:flex;gap:.2rem">
               <button class="btn btn-ghost btn-sm" title="Bearbeiten" onclick="openEditTuning(${i.id})"><i class="fas fa-pen" style="font-size:.65rem"></i></button>
