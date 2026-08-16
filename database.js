@@ -272,6 +272,19 @@ function initDb() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS tuning_items (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      category       TEXT NOT NULL DEFAULT 'Anbauteile',
+      name           TEXT NOT NULL,
+      icon           TEXT,
+      image          TEXT,
+      shop_price     INTEGER NOT NULL DEFAULT 0,
+      customer_price INTEGER NOT NULL DEFAULT 0,
+      note           TEXT,
+      sort_order     INTEGER DEFAULT 0,
+      created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS bot_notifications (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       type        TEXT NOT NULL,
@@ -1322,6 +1335,77 @@ function initDb() {
       pi.run('Kundenpreise', 'Reifenzustand / Ölwechsel',      '2.000$',          'Jeweils, bar auf Hand',       7);
     });
     seed();
+  }
+
+  // Seed Tuning-Items für den Kostenrechner (nur wenn Tabelle leer).
+  // shop_price = Ingame-Einkaufspreis (klein in Klammern), customer_price = Endpreis für den Kunden.
+  if (db.prepare('SELECT COUNT(*) as c FROM tuning_items').get().c === 0) {
+    const ti = db.prepare('INSERT INTO tuning_items (category, name, icon, shop_price, customer_price, note, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    const seedTuning = db.transaction(() => {
+      let o = 0;
+      // Karosserie
+      ti.run('Karosserie', 'Frontstoßstange',    '🚧', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Heckstoßstange',     '🚧', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Seitenschweller',    '📏', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Dach',               '🧢', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Motorhaube',         '🚗', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Spoiler',            '🪁', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Auspuff',            '💨', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Käfig',              '⛓️', 800, 1000, null, ++o);
+      ti.run('Karosserie', 'Linker Kotflügel',   '🪽', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Rechter Kotflügel',  '🪽', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Kühlergrill',        '🔳', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Streben',            '🏗️', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Radkastenabdeckung', '🛞', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Kofferraum',         '🧳', 450, 1000, null, ++o);
+      ti.run('Karosserie', 'Tank',               '⛽', 300, 1000, null, ++o);
+      ti.run('Karosserie', 'Fenster',            '🪟', 300, 1000, null, ++o);
+      // Innenraum
+      o = 0;
+      ti.run('Innenraum', 'Sitze',              '💺', 450, 1000, null, ++o);
+      ti.run('Innenraum', 'Lenkrad',            '🛞', 450, 1000, null, ++o);
+      ti.run('Innenraum', 'Schalthebel',        '🕹️', 450, 1000, null, ++o);
+      ti.run('Innenraum', 'Innenraum',          '🛋️', 450, 1000, null, ++o);
+      ti.run('Innenraum', 'Innenverkleidung B', '🚪', 300, 1000, null, ++o);
+      ti.run('Innenraum', 'Armaturenbrett',     '🎛️', 450, 1000, null, ++o);
+      ti.run('Innenraum', 'Tachoscheibe',       '⏱️', 450, 1000, null, ++o);
+      ti.run('Innenraum', 'Lautsprecher',       '🔊', 450, 1000, null, ++o);
+      ti.run('Innenraum', 'Türlautsprecher',    '🔉', 450, 1000, null, ++o);
+      ti.run('Innenraum', 'Hupe',               '📣', 300, 1000, null, ++o);
+      // Leistung & Technik
+      o = 0;
+      ti.run('Leistung & Technik', 'Motor',      '⚙️', 800, 1000, null, ++o);
+      ti.run('Leistung & Technik', 'Motorblock', '🗜️', 800, 1000, null, ++o);
+      ti.run('Leistung & Technik', 'Turbo',      '🌀', 800, 1000, null, ++o);
+      ti.run('Leistung & Technik', 'Getriebe',   '🔄', 800, 1000, null, ++o);
+      ti.run('Leistung & Technik', 'Fahrwerk',   '🔩', 800, 1000, null, ++o);
+      ti.run('Leistung & Technik', 'Bremsen',    '🛑', 800, 1000, null, ++o);
+      ti.run('Leistung & Technik', 'Hydraulik',  '↕️', 450, 1000, null, ++o);
+      ti.run('Leistung & Technik', 'Luftfilter', '🌬️', 300, 1000, null, ++o);
+      // Optik & Anbau
+      o = 0;
+      ti.run('Optik & Anbau', 'Felgen',             '🛞', 300, 1000, null, ++o);
+      ti.run('Optik & Anbau', 'Felgenfarbe',        '🎨', 300, 1000, null, ++o);
+      ti.run('Optik & Anbau', 'Xenon Scheinwerfer', '💡', 300, 1000, null, ++o);
+      ti.run('Optik & Anbau', 'Xenon-Farbe',        '🔦', 400, 1000, null, ++o);
+      ti.run('Optik & Anbau', 'Unterboden (Neon)',  '🌈', 500, 1000, null, ++o);
+      ti.run('Optik & Anbau', 'Scheibentönung',     '🕶️', 300, 1000, null, ++o);
+      ti.run('Optik & Anbau', 'Aufkleber',          '🏷️', 300, 1000, null, ++o);
+      ti.run('Optik & Anbau', 'Plaketten',          '🏅', 300, 1000, null, ++o);
+      ti.run('Optik & Anbau', 'Zierplakette',       '🎖️', 300, 1000, null, ++o);
+      ti.run('Optik & Anbau', 'Ornamente',          '💠', 300, 1000, null, ++o);
+      ti.run('Optik & Anbau', 'Kennzeichen Rahmen', '🔲', 300, 1000, null, ++o);
+      ti.run('Optik & Anbau', 'Kennzeichenhalter',  '🔖', 300, 1000, null, ++o);
+      ti.run('Optik & Anbau', 'Antennen',           '📡', 300, 1000, null, ++o);
+      // Lack & Spezial – Ausnahmen von der 1.000$-Regel
+      o = 0;
+      ti.run('Lack & Spezial', 'Lackierung',       '🎨', 3500, 3500, null, ++o);
+      ti.run('Lack & Spezial', 'Perlglanz-Lack',   '✨', 2500, 2500, null, ++o);
+      ti.run('Lack & Spezial', 'Autoschloss',      '🔒', 1, 1, null, ++o);
+      ti.run('Lack & Spezial', 'Lagerhausschloss', '🔐', 1, 1, null, ++o);
+      ti.run('Lack & Spezial', 'Panzerung',        '🛡️', 1000, 1000, 'Nur Leaderfahrzeuge', ++o);
+    });
+    seedTuning();
   }
 
   // ── Schwarzmarkt: tägliche 3 Angebote (rotieren um Mitternacht) ──

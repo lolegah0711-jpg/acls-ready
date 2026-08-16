@@ -3,170 +3,366 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Preisliste – Werkstatt &amp; Fahrschule | ACLS Los Santos (ColdRP)</title>
-  <meta name="description" content="Alle aktuellen Preise des ACLS Automobil-Club Los Santos: Werkstatt-Leistungen, Führerscheine & Service – transparent und täglich aktuell.">
+  <title>Preisliste &amp; Kostenrechner – Tuning | ACLS Los Santos (ColdRP)</title>
+  <meta name="description" content="Tuning & Anbauteile beim ACLS Automobil-Club Los Santos: alle Endpreise auf einen Blick – mit Kostenrechner für deine Wunsch-Konfiguration.">
   <link rel="canonical" href="__BASE_URL__/preise">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="ACLS Automobil-Club Los Santos">
-  <meta property="og:title" content="Preisliste – Werkstatt & Fahrschule | ACLS Los Santos">
-  <meta property="og:description" content="Werkstatt, Führerscheine & Service: alle Preise auf einen Blick – transparent und täglich aktuell.">
+  <meta property="og:title" content="Preisliste & Kostenrechner – Tuning | ACLS Los Santos">
+  <meta property="og:description" content="Tuning & Anbauteile: alle Endpreise auf einen Blick – rechne dir deine Wunsch-Konfiguration zusammen.">
   <meta property="og:url" content="__BASE_URL__/preise">
   <meta property="og:image" content="__BASE_URL__/icon-512.png">
   <link href="/fonts/inter.css" rel="stylesheet">
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
-    body{background:#080c14;font-family:'Inter',sans-serif;color:#e5e7eb;min-height:100vh;padding:24px 16px 48px;}
+    body{background:#080c14;font-family:'Inter',sans-serif;color:#e5e7eb;min-height:100vh;padding:24px 16px 110px;}
 
-    .header{max-width:720px;margin:0 auto 32px;text-align:center;padding-top:16px;}
+    .header{max-width:980px;margin:0 auto 20px;text-align:center;padding-top:16px;}
     .logo{font-size:13px;font-weight:700;letter-spacing:.2em;color:#6b7280;text-transform:uppercase;margin-bottom:8px;}
     h1{font-size:clamp(24px,5vw,36px);font-weight:800;color:#f9fafb;margin-bottom:6px;}
     .subtitle{font-size:14px;color:#6b7280;}
+    .admin-actions{margin-top:12px;display:none;gap:8px;justify-content:center;flex-wrap:wrap;}
+    .admin-actions.show{display:flex;}
 
-    .grid{max-width:720px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;}
+    .toolbar{max-width:980px;margin:0 auto 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center;}
+    .search{background:#0f1623;border:1px solid #1e2a3a;border-radius:10px;padding:9px 14px;color:#e5e7eb;font-family:inherit;font-size:.85rem;width:220px;outline:none;}
+    .search:focus{border-color:#f97316;}
+    .chip{background:#0f1623;border:1px solid #1e2a3a;border-radius:999px;padding:7px 14px;color:#9ca3af;font-size:.78rem;font-weight:600;cursor:pointer;transition:.15s;font-family:inherit;}
+    .chip:hover{border-color:#f97316;color:#f97316;}
+    .chip.on{background:rgba(249,115,22,.15);border-color:#f97316;color:#f97316;}
 
-    .card{background:#0f1623;border:1px solid #1e2a3a;border-radius:14px;overflow:hidden;}
-    .card-head{padding:16px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #1e2a3a;}
-    .cat-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
-    .cat-title{font-weight:700;font-size:.95rem;}
-    .cat-sub{font-size:.72rem;color:#6b7280;margin-top:2px;}
+    .cat-title{max-width:980px;margin:22px auto 10px;font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#6b7280;display:flex;align-items:center;gap:10px;}
+    .cat-title::after{content:'';flex:1;height:1px;background:#1e2a3a;}
 
-    .items{padding:12px 0;}
-    .item{display:flex;align-items:center;gap:12px;padding:9px 20px;}
-    .item:not(:last-child){border-bottom:1px solid #111827;}
-    .item-name{flex:1;font-size:.875rem;font-weight:500;}
-    .item-note{font-size:.72rem;color:#6b7280;margin-top:2px;}
-    .item-price{font-size:.9rem;font-weight:800;white-space:nowrap;}
+    .grid{max-width:980px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;}
 
-    .empty{text-align:center;padding:40px;color:#6b7280;font-size:14px;}
+    .pcard{position:relative;background:#0f1623;border:1px solid #1e2a3a;border-radius:14px;padding:18px 12px 14px;text-align:center;cursor:pointer;transition:.15s;user-select:none;}
+    .pcard:hover{border-color:#f9731688;transform:translateY(-2px);}
+    .pcard.sel{border-color:#f97316;background:rgba(249,115,22,.08);}
+    .pcard-icon{height:52px;display:flex;align-items:center;justify-content:center;font-size:40px;line-height:1;margin-bottom:10px;}
+    .pcard-icon img{max-height:52px;max-width:80px;object-fit:contain;}
+    .pcard-name{font-size:.83rem;font-weight:700;color:#f3f4f6;margin-bottom:2px;}
+    .pcard-note{font-size:.66rem;color:#eab308;font-weight:600;margin-bottom:2px;}
+    .pcard-price{font-size:.95rem;font-weight:800;color:#f97316;margin-top:4px;font-variant-numeric:tabular-nums;}
+    .pcard-shop{font-size:.66rem;color:#6b7280;margin-top:2px;font-variant-numeric:tabular-nums;}
+    .pcard-check{position:absolute;top:8px;right:8px;width:20px;height:20px;border-radius:50%;background:#f97316;color:#0a0a0a;font-size:.7rem;font-weight:800;display:none;align-items:center;justify-content:center;}
+    .pcard.sel .pcard-check{display:flex;}
+    .pcard-edit{position:absolute;top:8px;left:8px;width:24px;height:24px;border-radius:7px;border:1px solid #1e2a3a;background:#131c2b;color:#9ca3af;font-size:.7rem;cursor:pointer;display:none;align-items:center;justify-content:center;}
+    .pcard-edit:hover{border-color:#f97316;color:#f97316;}
+    body.editing .pcard-edit{display:flex;}
+    .pcard.add-card{border-style:dashed;color:#6b7280;display:none;}
+    .pcard.add-card:hover{color:#f97316;}
+    body.editing .pcard.add-card{display:block;}
 
-    .footer{max-width:720px;margin:28px auto 0;text-align:center;font-size:12px;color:#374151;}
+    .empty{text-align:center;padding:40px;color:#6b7280;font-size:14px;max-width:980px;margin:0 auto;}
+    .hint{max-width:980px;margin:18px auto 0;text-align:center;font-size:12px;color:#4b5563;}
+    .footer{max-width:980px;margin:10px auto 0;text-align:center;font-size:12px;color:#374151;}
 
-    /* ── Kostenrechner ── */
-    .add-btn{width:26px;height:26px;border-radius:7px;border:1px solid #1e2a3a;background:#131c2b;color:#9ca3af;font-weight:800;cursor:pointer;flex-shrink:0;font-size:.9rem;line-height:1;transition:.15s}
-    .add-btn:hover{border-color:#f97316;color:#f97316}
-    .add-btn.on{background:rgba(249,115,22,.18);border-color:#f97316;color:#f97316}
-    .calcbar{position:fixed;left:0;right:0;bottom:0;background:rgba(10,14,22,.96);backdrop-filter:blur(8px);border-top:1px solid #1e2a3a;padding:12px 16px;display:none;z-index:50}
-    .calcbar.show{display:block}
-    .calcbar-inner{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-    .calc-sum{font-size:1.15rem;font-weight:800;color:#f97316;font-variant-numeric:tabular-nums}
-    .calc-count{font-size:.75rem;color:#6b7280}
-    .calc-btn{background:#f97316;color:#0a0a0a;font-weight:800;border:none;border-radius:9px;padding:9px 16px;cursor:pointer;font-size:.82rem;font-family:inherit}
-    .calc-btn.ghost{background:transparent;color:#9ca3af;border:1px solid #1e2a3a}
-    .hint{max-width:720px;margin:10px auto 0;text-align:center;font-size:12px;color:#4b5563}
+    .btn{background:#f97316;color:#0a0a0a;font-weight:800;border:none;border-radius:9px;padding:9px 16px;cursor:pointer;font-size:.82rem;font-family:inherit;transition:.15s;}
+    .btn.ghost{background:transparent;color:#9ca3af;border:1px solid #1e2a3a;}
+    .btn.ghost:hover{border-color:#f97316;color:#f97316;}
+    .btn.danger{background:transparent;color:#ef4444;border:1px solid #ef444455;}
 
-    @media(max-width:480px){.grid{grid-template-columns:1fr;}}
+    .calcbar{position:fixed;left:0;right:0;bottom:0;background:rgba(10,14,22,.96);backdrop-filter:blur(8px);border-top:1px solid #1e2a3a;padding:12px 16px;display:none;z-index:50;}
+    .calcbar.show{display:block;}
+    .calcbar-inner{max-width:980px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+    .calc-sum{font-size:1.15rem;font-weight:800;color:#f97316;font-variant-numeric:tabular-nums;}
+    .calc-count{font-size:.75rem;color:#6b7280;}
+
+    /* Modal (Leader-Bearbeitung) */
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;}
+    .overlay.show{display:flex;}
+    .modal{background:#0f1623;border:1px solid #1e2a3a;border-radius:16px;padding:22px;width:100%;max-width:440px;}
+    .modal h2{font-size:1.05rem;margin-bottom:16px;}
+    .fld{margin-bottom:12px;}
+    .fld label{display:block;font-size:.72rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;}
+    .fld input{width:100%;background:#131c2b;border:1px solid #1e2a3a;border-radius:9px;padding:9px 12px;color:#e5e7eb;font-family:inherit;font-size:.85rem;outline:none;}
+    .fld input:focus{border-color:#f97316;}
+    .fld-row{display:flex;gap:10px;}
+    .fld-row .fld{flex:1;}
+    .img-preview{margin-top:8px;display:flex;align-items:center;gap:10px;}
+    .img-preview img{height:44px;border-radius:8px;}
+    .modal-btns{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;}
+    .modal-btns .spacer{flex:1;}
+
+    @media(max-width:480px){.grid{grid-template-columns:repeat(2,1fr);}}
   </style>
 </head>
 <body>
 
 <div class="header">
   <div class="logo">Automobil-Club Los Santos</div>
-  <h1>💰 Preisliste</h1>
-  <div class="subtitle">Aktuelle Preise für Fahrschule &amp; Serviceleistungen</div>
+  <h1>🧮 Preisliste &amp; Kostenrechner</h1>
+  <div class="subtitle">Tuning &amp; Anbauteile – tippe Teile an und sieh sofort deinen Endpreis</div>
+  <div class="admin-actions" id="adminActions">
+    <button class="btn ghost" id="editToggle" onclick="toggleEdit()">🛠️ Bearbeiten: AUS</button>
+  </div>
 </div>
 
-<div class="grid" id="grid">
-  <div class="empty">Laden…</div>
+<div class="toolbar">
+  <input class="search" id="search" type="search" placeholder="🔍 Teil suchen…" oninput="query=this.value;render()">
+  <div id="chips" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"></div>
 </div>
 
-<div class="hint">💡 Tipp: Klicke auf <b>＋</b> neben einer Leistung, um dir unten deine Kosten zusammenzurechnen.</div>
-<div class="footer">Alle Preise in GTA$ · Stand: täglich aktuell</div>
+<div id="content"><div class="empty">Laden…</div></div>
+
+<div class="hint">💡 Tipp: Tippe auf ein Teil, um es zu deiner Rechnung hinzuzufügen. Der kleine Preis in Klammern ist der Ingame-Teilepreis (Einkauf).</div>
+<div class="footer">Alle Preise in GTA$ · Endpreis inkl. Einbau &amp; Service</div>
 
 <div class="calcbar" id="calcbar">
   <div class="calcbar-inner">
     <div>
       <div class="calc-sum" id="calcSum">0 $</div>
-      <div class="calc-count" id="calcCount">0 Leistungen gewählt</div>
+      <div class="calc-count" id="calcCount">0 Teile gewählt</div>
     </div>
     <div style="flex:1"></div>
-    <button class="calc-btn ghost" onclick="clearCalc()">Leeren</button>
-    <button class="calc-btn" onclick="copyCalc()">📋 Anfrage kopieren</button>
+    <button class="btn ghost" onclick="clearCalc()">Leeren</button>
+    <button class="btn" onclick="copyCalc()">📋 Anfrage kopieren</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h2 id="mTitle">Teil bearbeiten</h2>
+    <div class="fld"><label>Name</label><input id="mName" placeholder="z.B. Spoiler"></div>
+    <div class="fld"><label>Kategorie</label><input id="mCat" list="catList" placeholder="z.B. Karosserie"><datalist id="catList"></datalist></div>
+    <div class="fld-row">
+      <div class="fld"><label>Einkauf (Ingame) $</label><input id="mShop" type="number" min="0" step="1"></div>
+      <div class="fld"><label>Endpreis Kunde $</label><input id="mCust" type="number" min="0" step="1"></div>
+    </div>
+    <div class="fld-row">
+      <div class="fld"><label>Emoji-Icon</label><input id="mIcon" placeholder="z.B. 🛞" maxlength="8"></div>
+      <div class="fld"><label>Hinweis (optional)</label><input id="mNote" placeholder="z.B. Nur Leaderfahrzeuge"></div>
+    </div>
+    <div class="fld">
+      <label>Bild (optional, ersetzt Emoji)</label>
+      <input id="mImg" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+      <div class="img-preview" id="mImgPreview" style="display:none">
+        <img id="mImgTag" alt="Vorschau">
+        <button class="btn ghost" type="button" onclick="removeImage()">Bild entfernen</button>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn danger" id="mDelete" onclick="deleteItem()">🗑️ Löschen</button>
+      <div class="spacer"></div>
+      <button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveItem()">💾 Speichern</button>
+    </div>
   </div>
 </div>
 
 <script>
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const fmt = n => Number(n).toLocaleString('de-DE') + ' $';
 
-// ── Kostenrechner ──────────────────────────────────────────────
-// Preis-Text → Zahl ("1.500 $" → 1500). Nicht parsebare Preise sind nicht wählbar.
-const priceNum = t => {
-  const m = String(t).replace(/\./g,'').replace(/,/g,'.').match(/(\d+(?:\.\d+)?)/);
-  return m ? parseFloat(m[1]) : null;
-};
-let cart = []; // { name, price }
+let ITEMS = [], IS_LEADER = false, editMode = false;
+let cart = new Set();          // gewählte Item-IDs
+let activeCat = 'Alle', query = '';
 
-function toggleCalc(btn, name, price){
-  const i = cart.findIndex(c => c.name === name);
-  if (i >= 0) { cart.splice(i, 1); btn.classList.remove('on'); btn.textContent = '＋'; }
-  else        { cart.push({ name, price }); btn.classList.add('on'); btn.textContent = '✓'; }
-  renderCalc();
-}
-function renderCalc(){
-  const bar = document.getElementById('calcbar');
-  if (!cart.length) { bar.classList.remove('show'); return; }
-  bar.classList.add('show');
-  const sum = cart.reduce((s, c) => s + c.price, 0);
-  document.getElementById('calcSum').textContent = sum.toLocaleString('de-DE') + ' $';
-  document.getElementById('calcCount').textContent = cart.length + ' Leistung' + (cart.length > 1 ? 'en' : '') + ' gewählt';
-}
-function clearCalc(){
-  cart = [];
-  document.querySelectorAll('.add-btn.on').forEach(b => { b.classList.remove('on'); b.textContent = '＋'; });
-  renderCalc();
-}
-async function copyCalc(){
-  const sum = cart.reduce((s, c) => s + c.price, 0);
-  const txt = 'Anfrage an den ACLS:\n' +
-    cart.map(c => `• ${c.name} – ${c.price.toLocaleString('de-DE')} $`).join('\n') +
-    `\nGesamt (ca.): ${sum.toLocaleString('de-DE')} $`;
-  try { await navigator.clipboard.writeText(txt); alert('Anfrage kopiert! Füge sie im Discord oder IC ein.'); }
-  catch { prompt('Kopiere deine Anfrage:', txt); }
-}
-const CAT_META = {
-  'Werkstatt':    { icon:'🔧', bg:'rgba(249,115,22,.15)', col:'#f97316', sub:'Reparatur, Tuning & Abschleppdienst' },
-  'Fahrschule':   { icon:'🎓', bg:'rgba(34,197,94,.12)',  col:'#22c55e', sub:'Rechnungspreis – automatischer Kontoabzug' },
-  'Kundenpreise': { icon:'🤝', bg:'rgba(56,189,248,.12)', col:'#38bdf8', sub:'Bar auf Hand' },
-};
+// ── Bearbeiten-Modal-State ──
+let editId = null;             // null = neues Teil
+let pendingImage = null;       // frisch gewähltes Bild (dataURL)
+let imageRemoved = false;
 
 async function load() {
   try {
-    const res = await fetch('/api/prices');
-    const rows = await res.json();
-    if (!rows.length) { document.getElementById('grid').innerHTML = '<div class="empty">Keine Preise hinterlegt.</div>'; return; }
-
-    const cats = {};
-    rows.forEach(r => { if (!cats[r.category]) cats[r.category] = []; cats[r.category].push(r); });
-
-    document.getElementById('grid').innerHTML = Object.entries(cats).map(([cat, items]) => {
-      const m = CAT_META[cat] || { icon:'🏷️', bg:'rgba(107,114,128,.12)', col:'#6b7280', sub:'' };
-      return `
-      <div class="card">
-        <div class="card-head">
-          <div class="cat-icon" style="background:${m.bg}">${m.icon}</div>
-          <div>
-            <div class="cat-title">${cat}</div>
-            ${m.sub ? `<div class="cat-sub">${m.sub}</div>` : ''}
-          </div>
-        </div>
-        <div class="items">
-          ${items.map(item => {
-            const num = priceNum(item.price);
-            return `
-          <div class="item">
-            <div style="flex:1;min-width:0">
-              <div class="item-name">${esc(item.name)}</div>
-              ${item.notes ? `<div class="item-note">${esc(item.notes)}</div>` : ''}
-            </div>
-            <div class="item-price" style="color:${m.col}">${esc(item.price)}</div>
-            ${num !== null ? `<button class="add-btn" title="Zum Rechner hinzufügen" onclick="toggleCalc(this, ${JSON.stringify(esc(item.name))}, ${num})">＋</button>` : ''}
-          </div>`;}).join('')}
-        </div>
-      </div>`;
-    }).join('');
-  } catch(e) {
-    document.getElementById('grid').innerHTML = '<div class="empty">Fehler beim Laden der Preise.</div>';
+    const [items, me] = await Promise.all([
+      fetch('/api/tuning-items').then(r => r.json()),
+      fetch('/auth/me').then(r => r.json()).catch(() => null),
+    ]);
+    ITEMS = Array.isArray(items) ? items : [];
+    IS_LEADER = !!(me && me.role === 'admin');
+    if (IS_LEADER) document.getElementById('adminActions').classList.add('show');
+    render();
+  } catch {
+    document.getElementById('content').innerHTML = '<div class="empty">Fehler beim Laden der Preise.</div>';
   }
 }
+
+function categories() {
+  const seen = [];
+  ITEMS.forEach(i => { if (!seen.includes(i.category)) seen.push(i.category); });
+  return seen;
+}
+
+function render() {
+  // Kategorie-Chips
+  const cats = categories();
+  document.getElementById('chips').innerHTML =
+    ['Alle', ...cats].map(c =>
+      `<button class="chip ${activeCat === c ? 'on' : ''}" data-cat="${esc(c)}" onclick="activeCat=this.dataset.cat;render()">${esc(c)}</button>`
+    ).join('');
+
+  const q = query.trim().toLowerCase();
+  const filtered = ITEMS.filter(i =>
+    (activeCat === 'Alle' || i.category === activeCat) &&
+    (!q || i.name.toLowerCase().includes(q)));
+
+  if (!ITEMS.length) {
+    document.getElementById('content').innerHTML = `<div class="empty">Keine Teile hinterlegt.</div><div class="grid">${addCardHtml()}</div>`;
+    renderCalc(); return;
+  }
+  if (!filtered.length) {
+    document.getElementById('content').innerHTML = '<div class="empty">Nichts gefunden.</div>';
+    renderCalc(); return;
+  }
+
+  const byCat = {};
+  filtered.forEach(i => { (byCat[i.category] ??= []).push(i); });
+
+  document.getElementById('content').innerHTML = Object.entries(byCat).map(([cat, items]) => `
+    <div class="cat-title">${esc(cat)}</div>
+    <div class="grid">
+      ${items.map(cardHtml).join('')}
+    </div>`).join('') + (editMode ? `<div class="grid" style="margin-top:14px">${addCardHtml()}</div>` : '');
+
+  renderCalc();
+}
+
+function cardHtml(i) {
+  const iconHtml = i.image
+    ? `<img src="${esc(i.image)}" alt="" loading="lazy">`
+    : esc(i.icon || '🔧');
+  return `
+  <div class="pcard ${cart.has(i.id) ? 'sel' : ''}" onclick="cardClick(${i.id})">
+    <div class="pcard-check">✓</div>
+    <button class="pcard-edit" title="Bearbeiten" onclick="event.stopPropagation();openEdit(${i.id})">✏️</button>
+    <div class="pcard-icon">${iconHtml}</div>
+    <div class="pcard-name">${esc(i.name)}</div>
+    ${i.note ? `<div class="pcard-note">${esc(i.note)}</div>` : ''}
+    <div class="pcard-price">${fmt(i.customer_price)}</div>
+    <div class="pcard-shop">(Einkauf: ${fmt(i.shop_price)})</div>
+  </div>`;
+}
+
+function addCardHtml() {
+  return `
+  <div class="pcard add-card" onclick="openEdit(null)">
+    <div class="pcard-icon">＋</div>
+    <div class="pcard-name">Neues Teil</div>
+    <div class="pcard-shop">hinzufügen</div>
+  </div>`;
+}
+
+// ── Kostenrechner ──────────────────────────────────────────────
+function cardClick(id) {
+  if (editMode) { openEdit(id); return; }
+  if (cart.has(id)) cart.delete(id); else cart.add(id);
+  render();
+}
+
+function renderCalc() {
+  const bar = document.getElementById('calcbar');
+  const chosen = ITEMS.filter(i => cart.has(i.id));
+  if (!chosen.length) { bar.classList.remove('show'); return; }
+  bar.classList.add('show');
+  const sum = chosen.reduce((s, i) => s + i.customer_price, 0);
+  document.getElementById('calcSum').textContent = fmt(sum);
+  document.getElementById('calcCount').textContent = chosen.length + (chosen.length === 1 ? ' Teil gewählt' : ' Teile gewählt');
+}
+
+function clearCalc() { cart.clear(); render(); }
+
+async function copyCalc() {
+  const chosen = ITEMS.filter(i => cart.has(i.id));
+  const sum = chosen.reduce((s, i) => s + i.customer_price, 0);
+  const txt = 'Tuning-Anfrage an den ACLS:\n' +
+    chosen.map(i => `• ${i.name} – ${fmt(i.customer_price)}`).join('\n') +
+    `\nGesamt: ${fmt(sum)}`;
+  try { await navigator.clipboard.writeText(txt); alert('Anfrage kopiert! Füge sie im Discord oder IC ein.'); }
+  catch { prompt('Kopiere deine Anfrage:', txt); }
+}
+
+// ── Leader-Bearbeitung ─────────────────────────────────────────
+function toggleEdit() {
+  editMode = !editMode;
+  document.body.classList.toggle('editing', editMode);
+  document.getElementById('editToggle').textContent = editMode ? '🛠️ Bearbeiten: AN' : '🛠️ Bearbeiten: AUS';
+  render();
+}
+
+function openEdit(id) {
+  editId = id;
+  pendingImage = null;
+  imageRemoved = false;
+  const i = id === null ? null : ITEMS.find(x => x.id === id);
+  document.getElementById('mTitle').textContent = i ? `„${i.name}" bearbeiten` : 'Neues Teil hinzufügen';
+  document.getElementById('mName').value = i?.name || '';
+  document.getElementById('mCat').value  = i?.category || (activeCat !== 'Alle' ? activeCat : '');
+  document.getElementById('mShop').value = i ? i.shop_price : '';
+  document.getElementById('mCust').value = i ? i.customer_price : 1000;
+  document.getElementById('mIcon').value = i?.icon || '';
+  document.getElementById('mNote').value = i?.note || '';
+  document.getElementById('mImg').value = '';
+  document.getElementById('mDelete').style.display = i ? '' : 'none';
+  document.getElementById('catList').innerHTML = categories().map(c => `<option value="${esc(c)}">`).join('');
+  updateImgPreview(i?.image || null);
+  document.getElementById('overlay').classList.add('show');
+}
+
+function updateImgPreview(src) {
+  const wrap = document.getElementById('mImgPreview');
+  if (src) { wrap.style.display = ''; document.getElementById('mImgTag').src = src; }
+  else wrap.style.display = 'none';
+}
+
+document.getElementById('mImg').addEventListener('change', function() {
+  const f = this.files[0];
+  if (!f) return;
+  if (f.size > 1_500_000) { alert('Bild zu groß (max 1,5 MB)'); this.value = ''; return; }
+  const rd = new FileReader();
+  rd.onload = () => { pendingImage = rd.result; imageRemoved = false; updateImgPreview(pendingImage); };
+  rd.readAsDataURL(f);
+});
+
+function removeImage() {
+  pendingImage = null;
+  imageRemoved = true;
+  document.getElementById('mImg').value = '';
+  updateImgPreview(null);
+}
+
+function closeModal() { document.getElementById('overlay').classList.remove('show'); }
+
+async function saveItem() {
+  const body = {
+    name:           document.getElementById('mName').value.trim(),
+    category:       document.getElementById('mCat').value.trim() || 'Anbauteile',
+    shop_price:     document.getElementById('mShop').value,
+    customer_price: document.getElementById('mCust').value,
+    icon:           document.getElementById('mIcon').value.trim(),
+    note:           document.getElementById('mNote').value.trim(),
+  };
+  if (!body.name) { alert('Name fehlt'); return; }
+  if (body.shop_price === '' || body.customer_price === '') { alert('Bitte beide Preise angeben'); return; }
+  if (pendingImage) body.image_data = pendingImage;
+  if (imageRemoved) body.remove_image = true;
+
+  const url    = editId === null ? '/api/tuning-items' : `/api/tuning-items/${editId}`;
+  const method = editId === null ? 'POST' : 'PATCH';
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
+  const data = res ? await res.json().catch(() => null) : null;
+  if (!res || !res.ok) { alert((data && data.error) || 'Fehler beim Speichern'); return; }
+  closeModal();
+  await reloadItems();
+}
+
+async function deleteItem() {
+  if (editId === null) return;
+  const i = ITEMS.find(x => x.id === editId);
+  if (!confirm(`„${i?.name || 'Teil'}" wirklich löschen?`)) return;
+  const res = await fetch(`/api/tuning-items/${editId}`, { method: 'DELETE' }).catch(() => null);
+  if (!res || !res.ok) { alert('Fehler beim Löschen'); return; }
+  cart.delete(editId);
+  closeModal();
+  await reloadItems();
+}
+
+async function reloadItems() {
+  ITEMS = await fetch('/api/tuning-items').then(r => r.json()).catch(() => ITEMS);
+  render();
+}
+
 load();
 </script>
 </body>

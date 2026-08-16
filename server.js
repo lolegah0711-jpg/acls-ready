@@ -2095,32 +2095,65 @@ app.post('/api/bot-notifications/:id/sent', (req, res) => {
 //  SPA fallback
 // ════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════
-//  PREISLISTE
+//  PREISLISTE / KOSTENRECHNER (Tuning & Anbauteile)
 // ════════════════════════════════════════════════════════════════
-app.get('/api/prices', (req, res) => {
-  res.json(db.prepare('SELECT * FROM price_items ORDER BY category, sort_order, id').all());
+// shop_price = Ingame-Einkaufspreis, customer_price = Endpreis für den Kunden.
+app.get('/api/tuning-items', (req, res) => {
+  res.json(db.prepare('SELECT * FROM tuning_items ORDER BY category, sort_order, id').all());
 });
 
-app.post('/api/prices', requireAdmin, (req, res) => {
-  const { category, name, price, notes } = req.body;
-  if (!category?.trim() || !name?.trim() || !price?.trim()) return res.status(400).json({ error: 'Fehlende Felder' });
-  const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM price_items WHERE category = ?').get(category.trim()).m;
-  const r = db.prepare('INSERT INTO price_items (category, name, price, notes, sort_order) VALUES (?, ?, ?, ?, ?)')
-    .run(category.trim(), name.trim(), price.trim(), notes?.trim() || null, maxOrder + 1);
+function validTuningImage(image_data) {
+  if (!image_data) return true;
+  return /^data:image\/(jpeg|png|webp|gif);base64,/.test(image_data) && image_data.length <= 2_000_000;
+}
+
+app.post('/api/tuning-items', requireAdmin, (req, res) => {
+  const { category, name, icon, image_data, shop_price, customer_price, note } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: 'Name fehlt' });
+  const shop = Math.round(+shop_price), cust = Math.round(+customer_price);
+  if (!Number.isFinite(shop) || shop < 0 || !Number.isFinite(cust) || cust < 0)
+    return res.status(400).json({ error: 'Ungültiger Preis' });
+  if (!validTuningImage(image_data)) return res.status(400).json({ error: 'Ungültiges Bild (JPEG/PNG/WebP/GIF, max 1.5 MB)' });
+  const cat = category?.trim() || 'Anbauteile';
+  const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order),0) as m FROM tuning_items WHERE category = ?').get(cat).m;
+  const image = saveCarImage(image_data, null);
+  const r = db.prepare('INSERT INTO tuning_items (category, name, icon, image, shop_price, customer_price, note, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(cat, name.trim(), icon?.trim() || null, image, shop, cust, note?.trim() || null, maxOrder + 1);
+  auditLog(req, 'tuning_item_add', `${name.trim()} (Einkauf ${shop}$ / Kunde ${cust}$)`);
   res.json({ id: r.lastInsertRowid });
 });
 
-app.patch('/api/prices/:id', requireAdmin, (req, res) => {
-  const { category, name, price, notes } = req.body;
-  const item = db.prepare('SELECT id FROM price_items WHERE id = ?').get(+req.params.id);
+app.patch('/api/tuning-items/:id', requireAdmin, (req, res) => {
+  const item = db.prepare('SELECT * FROM tuning_items WHERE id = ?').get(+req.params.id);
   if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
-  db.prepare('UPDATE price_items SET category=?, name=?, price=?, notes=? WHERE id=?')
-    .run(category.trim(), name.trim(), price.trim(), notes?.trim() || null, +req.params.id);
+  const { category, name, icon, image_data, remove_image, shop_price, customer_price, note } = req.body;
+  const shop = shop_price     === undefined ? item.shop_price     : Math.round(+shop_price);
+  const cust = customer_price === undefined ? item.customer_price : Math.round(+customer_price);
+  if (!Number.isFinite(shop) || shop < 0 || !Number.isFinite(cust) || cust < 0)
+    return res.status(400).json({ error: 'Ungültiger Preis' });
+  if (!validTuningImage(image_data)) return res.status(400).json({ error: 'Ungültiges Bild (JPEG/PNG/WebP/GIF, max 1.5 MB)' });
+  let image = item.image;
+  if (remove_image && image?.startsWith('/uploads/')) {
+    try { fs.unlinkSync(path.join(__dirname, image)); } catch {}
+    image = null;
+  }
+  if (image_data) image = saveCarImage(image_data, image);
+  db.prepare('UPDATE tuning_items SET category=?, name=?, icon=?, image=?, shop_price=?, customer_price=?, note=? WHERE id=?')
+    .run(category?.trim() || item.category, name?.trim() || item.name,
+         icon !== undefined ? (icon?.trim() || null) : item.icon, image,
+         shop, cust, note !== undefined ? (note?.trim() || null) : item.note, item.id);
+  auditLog(req, 'tuning_item_edit', `#${item.id} ${name?.trim() || item.name} (Einkauf ${shop}$ / Kunde ${cust}$)`);
   res.json({ ok: true });
 });
 
-app.delete('/api/prices/:id', requireAdmin, (req, res) => {
-  db.prepare('DELETE FROM price_items WHERE id = ?').run(+req.params.id);
+app.delete('/api/tuning-items/:id', requireAdmin, (req, res) => {
+  const item = db.prepare('SELECT * FROM tuning_items WHERE id = ?').get(+req.params.id);
+  if (!item) return res.status(404).json({ error: 'Nicht gefunden' });
+  if (item.image?.startsWith('/uploads/')) {
+    try { fs.unlinkSync(path.join(__dirname, item.image)); } catch {}
+  }
+  db.prepare('DELETE FROM tuning_items WHERE id = ?').run(item.id);
+  auditLog(req, 'tuning_item_delete', `#${item.id} ${item.name}`);
   res.json({ ok: true });
 });
 
@@ -5028,6 +5061,7 @@ ensureChangelog('3.9.2', 'feature', 'Clash of ACLS: Auktionshaus', 'Handel unter
 ensureChangelog('3.9.3', 'improvement', 'Datenschutz & schnellere Ladezeiten', 'Unter der Haube: Schriften, Icons und alle Hilfsbibliotheken (Karte, Diagramme, PDF-Export) werden jetzt direkt von unserem eigenen Server ausgeliefert statt von externen Anbietern. Das ist deutlich datenschutzfreundlicher — beim Seitenaufruf werden keine Daten mehr an Dritte übertragen — und macht die Seite spürbar schneller. Dazu neu: eine Sitemap für Suchmaschinen und bessere Lesbarkeit durch stärkere Kontraste.', '2026-07-18 10:00:00');
 ensureChangelog('3.9.4', 'feature', 'Auftragsboard – Kanban für Werkstattaufträge', 'Behalte alle Werkstattaufträge im Blick: Das neue Auftragsboard zeigt jeden Auftrag als Karte in Spalten von „Offen" über „In Arbeit" und „Wartet auf Teile" bis „Fertig" und „Abgeholt". Per Klick schiebst du einen Auftrag eine Stufe weiter oder zurück — so sieht das ganze Team auf einen Blick, was gerade ansteht und was auf Teile wartet. Zu finden in der Sidebar unter Werkstatt.', '2026-07-18 12:00:00');
 ensureChangelog('3.9.5', 'feature', 'Betriebs-Dashboard', 'Der ganze Werkstattbetrieb auf einen Blick: Das neue Betriebs-Dashboard bündelt die wichtigsten Kennzahlen — aktive Aufträge, wie viele auf Teile warten, abholbereite Fahrzeuge, den Wochenumsatz aus deinen Rechnungen und wer gerade im Dienst ist. Dazu ein 7-Tage-Umsatzdiagramm, die Auftrags-Pipeline mit einem Klick zum Board, die neuesten Aufträge und Warnungen — etwa Fahrzeuge, die seit über drei Tagen auf Teile warten. Zu finden in der Sidebar unter Werkstatt.', '2026-07-18 14:00:00');
+ensureChangelog('3.10.0', 'feature', 'Neue Preisliste: Tuning-Teile mit Kostenrechner', 'Die Preisliste wurde komplett erneuert und zeigt jetzt alle 52 Tuning- & Anbauteile aus dem Ingame-Shop — von Sitzen über Turbo bis Panzerung, übersichtlich nach Kategorien sortiert. Jedes Teil zeigt den Endpreis für Kunden groß und den Ingame-Einkaufspreis klein in Klammern darunter. Auf der öffentlichen Preisseite (/preise) tippst du Teile einfach an und siehst sofort deinen Gesamtpreis — die fertige Anfrage lässt sich mit einem Klick kopieren. Leader können Preise direkt auf der Seite ändern, neue Teile anlegen und sogar eigene Bilder für die Teile hochladen. Die Rechnung-erstellen-Funktion nutzt automatisch die neuen Endpreise.', '2026-08-16 12:00:00');
 ensureChangelog('3.8.0', 'feature', 'Clash of ACLS: Gilden & das Sommer-Werkstattfest', 'Zwei neue Systeme! Gilden (🏰): Bist du im Portal Mitglied in einem Club, profitierst du davon jetzt auch in Clash of ACLS — spende Ressourcen für Gildenpunkte, jedes Level erhöht die Produktion für ALLE spielenden Mitglieder um 1 % (bis zu +20 % bei Level 20). Dazu läuft jede Woche ein Gildenkrieg: Gewonnene Überfälle und PvP-Kämpfe bringen der Gilde Punkte, ab Bronze- bis Platin-Schwellen gibt es für jedes Mitglied Belohnungen — unabhängig davon, ob die eigene Gilde groß oder klein ist. Events (🎪): Das Sommer-Werkstattfest ist jetzt live! Verdiene Fest-Marken durch Einsätze, Überfälle, PvP-Siege und Ausbauten, tausche sie im Event-Shop gegen exklusive Ressourcenpakete und Erfahrungsschübe — nur für begrenzte Zeit. Das Event-System ist so gebaut, dass künftige Events einfach ergänzt werden können.', '2026-07-15 18:00:00');
 ensureChangelog('3.7.0', 'feature', 'Clash of ACLS: PvP-Angriffe — Verteidige deine Werkstatt', 'Das erste Spieler-gegen-Spieler-Update! Über das neue ⚔️-Symbol greifst du andere Werkstätten an: Wähle Einheiten aus deinem Werkschutz und schicke sie gegen ein Ziel — je stärker dein Trupp im Vergleich zur Verteidigung des Gegners, desto höher die live angezeigte Siegchance. Bei Sieg erbeutest du echte Ressourcen (kein Freibetrag, sie werden dem Gegner wirklich abgezogen), bei Niederlage drohen Verluste. Und die Verteidigung ist jetzt kein reiner Nebeneffekt mehr: Einheiten, die gerade nicht auf einem NPC-Überfall unterwegs sind, verteidigen automatisch dein Lager mit ihrem 🛡️-Wert — wer seine ganze Truppe auf Angriffe schickt, riskiert also die eigene Sicherheit. Fair und ohne Frust: Spieler unter Level 3 sind niemals angreifbar, jedes angegriffene Ziel bekommt danach 20 Minuten Schutzschild, dasselbe Ziel kann man erst nach 20 Minuten erneut angreifen, und pro Tag sind maximal 12 Angriffe erlaubt. Zwei neue Erfolge fürs Angreifen, einer fürs erfolgreiche Verteidigen. Kampfberichte (eigene Angriffe & erlittene Angriffe) sind jederzeit einsehbar, Verteidiger bekommen eine Benachrichtigung.', '2026-07-15 12:00:00');
 ensureChangelog('3.6.0', 'feature', 'Clash of ACLS: Die Kampagne — 24 Schritte durch dein Imperium', 'Neu: eine geführte Questline! Über das 🗺️-Symbol öffnest du die Kampagne — 6 Kapitel mit je 4 Aufgaben, die dich Schritt für Schritt durch das ganze Spiel führen: „Die kleine Werkstatt" (erstes Upgrade, erster Mitarbeiter, erstes Fahrzeug, erster Verkauf), „Auf Achse" (erster Einsatz, Lager- und Büro-Ausbau), „Wissen ist Macht" (Forschungszentrum und erste Forschungen), „Schutz der Werkstatt" (Sicherheitszentrale, erste Einheit, erster Sieg), „Das Imperium wächst" (Personalbüro, Fahrzeug-Vielfalt, Tuningzentrum) und das große Finale „Die Legende von ACLS". Jeder Schritt zeigt live seinen Fortschritt, bringt beim Abholen Ressourcen und XP, und die Ansicht zeigt immer dein nächstes Ziel ganz oben — perfekt für Einsteiger und als roter Faden für alle, die nicht wissen, was als Nächstes ansteht. Die Kampagne holt automatisch nach: Wer schon weiter ist, kann bereits erreichte Schritte in beliebiger Reihenfolge abholen.', '2026-07-14 10:00:00');

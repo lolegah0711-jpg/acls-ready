@@ -253,7 +253,7 @@ const PAGES = {
   factions:     { title: 'Fraktionsfarben',        sub: 'Fahrzeugfarben der Fraktionen' },
   map:          { title: 'Abschlepphöfe',          sub: 'Interaktive GTA V Karte' },
   iczeit:       { title: 'IC-Zeit Tracking',       sub: 'Discord Voice-Kanal Anwesenheit' },
-  prices:       { title: 'Preisliste',             sub: 'Fahrschule & Servicepreise' },
+  prices:       { title: 'Preisliste',             sub: 'Tuning & Anbauteile – Kostenrechner' },
   carmarket:    { title: 'Fahrzeugmarkt',          sub: 'Private Fahrzeuginserate' },
   organigramm:  { title: 'Unser Team',             sub: 'Klicke auf einen Mitarbeiter für den Steckbrief' },
   applications: { title: 'Bewerbungen',            sub: 'Eingehende Bewerbungen verwalten' },
@@ -717,7 +717,7 @@ async function bootVoterApp() {
 
 const _voterPageMeta = {
   werkstatt: { title: 'Werkstatt',        sub: 'Reparatur, Tuning & Abschleppdienst – Auftrag anfragen' },
-  price:     { title: 'Preisliste',       sub: 'Aktuelle Fahrschul- & Servicepreise' },
+  price:     { title: 'Preisliste',       sub: 'Tuning & Anbauteile – Endpreise' },
   vote:      { title: 'MdW-Abstimmung',   sub: 'Mitarbeiter der Woche wählen' },
   ticketpub: { title: 'Support-Ticket',   sub: 'Fragen, Bugs & Beschwerden einreichen' },
   market:    { title: 'Fahrzeugmarkt',    sub: 'Private Fahrzeuginserate von Bürgern' },
@@ -1463,40 +1463,28 @@ async function loadVoterFaq() {
 async function loadVoterPrices() {
   const el = document.getElementById('voterPrices');
   if (!el || el.dataset.loaded) return;
-  const rows = await fetch('/api/prices').then(r => r.json()).catch(() => []);
+  const rows = await fetch('/api/tuning-items').then(r => r.json()).catch(() => []);
   if (!rows.length) { el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--muted)">Keine Preise hinterlegt.</div>'; return; }
 
-  const CAT_META = {
-    'Werkstatt':    { icon: 'fa-wrench', col: '#f97316', sub: 'Reparatur, Tuning & Abschleppdienst' },
-    'Fahrschule':   { icon: 'fa-graduation-cap', col: '#22c55e', sub: 'Automatischer Kontoabzug' },
-    'Kundenpreise': { icon: 'fa-hand-holding-usd', col: '#38bdf8', sub: 'Bar auf Hand' },
-  };
   const cats = {};
   rows.forEach(r => { if (!cats[r.category]) cats[r.category] = []; cats[r.category].push(r); });
 
-  el.innerHTML = Object.entries(cats).map(([cat, items]) => {
-    const m = CAT_META[cat] || { icon: 'fa-tag', col: '#6b7280', sub: '' };
-    return `
+  el.innerHTML = `
+  <div style="font-size:.75rem;color:var(--muted);margin-bottom:.75rem">Endpreis inkl. Einbau &amp; Service · in Klammern der Ingame-Teilepreis (Einkauf) · <a href="/preise" target="_blank" style="color:var(--orange)">Zum Kostenrechner →</a></div>
+  ` + Object.entries(cats).map(([cat, items]) => `
     <div style="background:var(--surface2);border-radius:10px;padding:.85rem;margin-bottom:.75rem">
-      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.65rem;padding-bottom:.55rem;border-bottom:1px solid var(--border)">
-        <div style="width:30px;height:30px;border-radius:8px;background:${m.col}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <i class="fas ${m.icon}" style="color:${m.col};font-size:.85rem"></i>
-        </div>
-        <div>
-          <div style="font-weight:700;font-size:.9rem">${cat}</div>
-          ${m.sub ? `<div style="font-size:.68rem;color:var(--muted)">${m.sub}</div>` : ''}
-        </div>
+      <div style="font-weight:700;font-size:.9rem;margin-bottom:.65rem;padding-bottom:.55rem;border-bottom:1px solid var(--border)">${esc(cat)}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.5rem">
+        ${items.map(i => `
+        <div style="text-align:center;padding:.6rem .4rem;border-radius:8px;background:var(--surface)">
+          <div style="height:36px;display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:.3rem">${i.image ? `<img src="${esc(i.image)}" style="max-height:36px;max-width:60px;object-fit:contain" loading="lazy" alt="">` : esc(i.icon || '🔧')}</div>
+          <div style="font-size:.76rem;font-weight:600">${esc(i.name)}</div>
+          ${i.note ? `<div style="font-size:.62rem;color:#eab308;font-weight:600">${esc(i.note)}</div>` : ''}
+          <div style="font-size:.82rem;font-weight:800;color:var(--orange);margin-top:.15rem">${(+i.customer_price).toLocaleString('de-DE')} $</div>
+          <div style="font-size:.62rem;color:var(--muted)">(Einkauf: ${(+i.shop_price).toLocaleString('de-DE')} $)</div>
+        </div>`).join('')}
       </div>
-      ${items.map(item => `
-      <div style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;${items.indexOf(item) < items.length-1 ? 'border-bottom:1px solid var(--border)' : ''}">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:.83rem;font-weight:600">${esc(item.name)}</div>
-          ${item.notes ? `<div style="font-size:.7rem;color:var(--muted)">${esc(item.notes)}</div>` : ''}
-        </div>
-        <div style="font-size:.88rem;font-weight:800;color:${m.col};white-space:nowrap">${item.price}</div>
-      </div>`).join('')}
-    </div>`;
-  }).join('');
+    </div>`).join('');
   el.dataset.loaded = '1';
 }
 
@@ -2844,7 +2832,7 @@ const SEARCH_PAGES = [
   { page: 'werkstatt',    label: 'Werkstatt-Hub',           icon: 'fa-wrench',         kw: 'reparatur tuning service aufträge auftrag' },
   { page: 'betrieb',      label: 'Betriebs-Dashboard',      icon: 'fa-gauge-high',     kw: 'dashboard betrieb umsatz kennzahlen kpi auslastung pipeline warnungen übersicht' },
   { page: 'auftragsboard',label: 'Auftragsboard',           icon: 'fa-columns',        kw: 'kanban board auftrag aufträge werkstatt tafel status offen fertig abgeholt' },
-  { page: 'prices',       label: 'Preisliste',              icon: 'fa-tags',           kw: 'preise kosten tarife' },
+  { page: 'prices',       label: 'Preisliste',              icon: 'fa-tags',           kw: 'preise kosten tarife tuning anbauteile kostenrechner' },
   { page: 'map',          label: 'Abschlepphöfe',           icon: 'fa-map-marked-alt', kw: 'karte map abschleppen bergung standorte' },
   { page: 'meinacls',     label: 'Mein Hub',                icon: 'fa-home',           kw: 'mein acls persönlich' },
   { page: 'profil',       label: 'Mein Profil',             icon: 'fa-user-circle',    kw: 'steckbrief account konto einstellungen avatar' },
@@ -4616,66 +4604,48 @@ window.deleteBan = async id => {
 //  PREISLISTE
 // ════════════════════════════════════════════════════════════════
 async function prices() {
-  const rows = await api('/api/prices');
+  const rows = await api('/api/tuning-items');
   if (!rows) return;
 
   const cats = {};
   rows.forEach(r => { if (!cats[r.category]) cats[r.category] = []; cats[r.category].push(r); });
 
-  const CAT_META = {
-    'Werkstatt':    { icon: 'fa-wrench', col: '#f97316', sub: 'Reparatur, Tuning & Abschleppdienst' },
-    'Fahrschule':   { icon: 'fa-graduation-cap', col: '#22c55e', sub: 'Rechnungspreis – wird automatisch vom Konto abgezogen' },
-    'Kundenpreise': { icon: 'fa-hand-holding-usd', col: '#38bdf8', sub: 'Bar auf Hand' },
-  };
+  // Leader (= Admins) dürfen Preise ändern und neue Teile anlegen
+  const canEdit = isAdmin();
 
-  const canEdit = isAdmin() || currentUser?.role === 'member' || currentUser?.role === 'ausbilder';
-
-  window._priceRows = rows;
+  window._tuningRows = rows;
 
   $('pageContent').innerHTML = `
     <div class="pg-header">
-      <div class="pg-header-left"><h2>Preisliste</h2><p>${rows.length} Einträge in ${Object.keys(cats).length} Kategorien</p></div>
+      <div class="pg-header-left"><h2>Preisliste – Tuning & Anbauteile</h2><p>${rows.length} Teile · Endpreis für Kunden, in Klammern der Ingame-Einkauf · <a href="/preise" target="_blank" style="color:var(--orange)">Öffentlicher Kostenrechner →</a></p></div>
       <div style="display:flex;gap:.5rem">
         <button class="btn btn-ghost" onclick="openRechnungModal()" style="color:#22c55e;border-color:rgba(34,197,94,.3)"><i class="fas fa-file-invoice" style="margin-right:.4rem"></i>Rechnung erstellen</button>
-        ${canEdit ? `<button class="btn btn-primary" onclick="openAddPrice()"><i class="fas fa-plus"></i> Preis hinzufügen</button>` : ''}
+        ${canEdit ? `<button class="btn btn-primary" onclick="openAddTuning()"><i class="fas fa-plus"></i> Teil hinzufügen</button>` : ''}
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem">
-      ${Object.entries(cats).map(([cat, items]) => {
-        const m = CAT_META[cat] || { icon: 'fa-tag', col: '#6b7280', sub: '' };
-        return `
-        <div class="card">
-          <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;padding-bottom:.75rem;border-bottom:1px solid var(--border)">
-            <div style="width:38px;height:38px;border-radius:10px;background:${m.col}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              <i class="fas ${m.icon}" style="color:${m.col};font-size:1rem"></i>
-            </div>
-            <div>
-              <div style="font-weight:700;font-size:.98rem">${cat}</div>
-              ${m.sub ? `<div style="font-size:.72rem;color:var(--muted)">${m.sub}</div>` : ''}
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:.5rem">
-            ${items.map(item => `
-            <div style="display:flex;align-items:center;gap:.75rem;padding:.55rem .65rem;border-radius:8px;background:var(--surface2);transition:background .15s" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">
-              <div style="flex:1;min-width:0">
-                <div style="font-weight:600;font-size:.88rem">${esc(item.name)}</div>
-                ${item.notes ? `<div style="font-size:.72rem;color:var(--muted);margin-top:.1rem">${esc(item.notes)}</div>` : ''}
-              </div>
-              <div style="font-size:.95rem;font-weight:800;color:${m.col};white-space:nowrap">${esc(item.price)}</div>
-              ${canEdit ? `
-              <div style="display:flex;gap:.3rem;flex-shrink:0">
-                <button class="btn btn-ghost btn-sm" title="Bearbeiten" onclick="openEditPrice(${item.id},'${encodeURIComponent(JSON.stringify(item))}')"><i class="fas fa-pen" style="font-size:.7rem"></i></button>
-                <button class="btn btn-danger btn-sm" title="Löschen" onclick="deletePrice(${item.id})"><i class="fas fa-trash" style="font-size:.7rem"></i></button>
-              </div>` : ''}
-            </div>`).join('')}
-          </div>
-        </div>`;
-      }).join('')}
-    </div>`;
+    ${Object.entries(cats).map(([cat, items]) => `
+      <div style="margin-bottom:1.5rem">
+        <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.6rem;display:flex;align-items:center;gap:.6rem">${esc(cat)}<div style="flex:1;height:1px;background:var(--border)"></div></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.7rem">
+          ${items.map(i => `
+          <div class="card" style="padding:.9rem .6rem;text-align:center;position:relative">
+            ${canEdit ? `
+            <div style="position:absolute;top:.35rem;right:.35rem;display:flex;gap:.2rem">
+              <button class="btn btn-ghost btn-sm" title="Bearbeiten" onclick="openEditTuning(${i.id})"><i class="fas fa-pen" style="font-size:.65rem"></i></button>
+              <button class="btn btn-danger btn-sm" title="Löschen" onclick="deleteTuning(${i.id})"><i class="fas fa-trash" style="font-size:.65rem"></i></button>
+            </div>` : ''}
+            <div style="height:46px;display:flex;align-items:center;justify-content:center;font-size:34px;margin-bottom:.5rem">${i.image ? `<img src="${esc(i.image)}" style="max-height:46px;max-width:72px;object-fit:contain" loading="lazy" alt="">` : esc(i.icon || '🔧')}</div>
+            <div style="font-weight:700;font-size:.82rem">${esc(i.name)}</div>
+            ${i.note ? `<div style="font-size:.64rem;color:#eab308;font-weight:600">${esc(i.note)}</div>` : ''}
+            <div style="font-weight:800;font-size:.92rem;color:var(--orange);margin-top:.25rem">${(+i.customer_price).toLocaleString('de-DE')} $</div>
+            <div style="font-size:.64rem;color:var(--muted)">(Einkauf: ${(+i.shop_price).toLocaleString('de-DE')} $)</div>
+          </div>`).join('')}
+        </div>
+      </div>`).join('')}`;
 }
 
 window.openRechnungModal = () => {
-  const rows = window._priceRows || [];
+  const rows = window._tuningRows || [];
   const cats = {};
   rows.forEach(r => { if (!cats[r.category]) cats[r.category] = []; cats[r.category].push(r); });
 
@@ -4686,12 +4656,12 @@ window.openRechnungModal = () => {
       </div>
       ${items.map(item => `
       <label style="display:flex;align-items:center;gap:.65rem;padding:.45rem .6rem;border-radius:8px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
-        <input type="checkbox" class="rech-check" data-id="${item.id}" data-name="${item.name.replace(/"/g,'&quot;')}" data-price="${item.price}" data-notes="${(item.notes||'').replace(/"/g,'&quot;')}" data-cat="${cat.replace(/"/g,'&quot;')}" onchange="rechUpdateTotal()" style="width:16px;height:16px;accent-color:var(--orange);flex-shrink:0">
+        <input type="checkbox" class="rech-check" data-id="${item.id}" data-name="${item.name.replace(/"/g,'&quot;')}" data-price="${(+item.customer_price).toLocaleString('de-DE')} $" data-notes="${(item.note||'').replace(/"/g,'&quot;')}" data-cat="${cat.replace(/"/g,'&quot;')}" onchange="rechUpdateTotal()" style="width:16px;height:16px;accent-color:var(--orange);flex-shrink:0">
         <div style="flex:1;min-width:0">
           <div style="font-size:.85rem;font-weight:600">${esc(item.name)}</div>
-          ${item.notes ? `<div style="font-size:.7rem;color:var(--muted)">${esc(item.notes)}</div>` : ''}
+          ${item.note ? `<div style="font-size:.7rem;color:var(--muted)">${esc(item.note)}</div>` : ''}
         </div>
-        <span style="font-size:.85rem;font-weight:700;color:#22c55e;white-space:nowrap">${esc(item.price)}</span>
+        <span style="font-size:.85rem;font-weight:700;color:#22c55e;white-space:nowrap">${(+item.customer_price).toLocaleString('de-DE')} $</span>
         <input type="number" class="rech-qty form-control" data-id="${item.id}" value="1" min="1" max="99"
           style="width:52px;padding:.2rem .35rem;font-size:.82rem;text-align:center;display:none"
           oninput="rechUpdateTotal()" onclick="event.stopPropagation()">
@@ -5004,91 +4974,106 @@ window.generateRechnung = async () => {
   toast('PDF erstellt!', 'ok');
 };
 
-window.openAddPrice = () => {
-  openModal(`
+// Formular für Tuning-Teile (Neu & Bearbeiten), inkl. Emoji + optionalem Bild
+function tuningFormHtml(i) {
+  const catOptions = [...new Set((window._tuningRows || []).map(r => r.category))]
+    .map(c => `<option value="${esc(c)}">`).join('');
+  return `
     <div class="modal-head">
-      <div class="modal-title"><i class="fas fa-tags" style="color:var(--orange);margin-right:.5rem"></i>Preis hinzufügen</div>
+      <div class="modal-title"><i class="fas ${i ? 'fa-pen' : 'fa-plus'}" style="color:var(--orange);margin-right:.5rem"></i>${i ? 'Teil bearbeiten' : 'Teil hinzufügen'}</div>
       <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
     </div>
-    <form onsubmit="submitPrice(event)">
+    <form onsubmit="submitTuning(event,${i ? i.id : 'null'})">
       <div class="form-row">
-        <div class="form-group"><label>Kategorie</label>
-          <select class="form-control" id="pCat">
-            <option>Werkstatt</option>
-            <option>Fahrschule</option>
-            <option>Kundenpreise</option>
-            <option value="__custom__">Neue Kategorie…</option>
-          </select>
-        </div>
-        <div class="form-group" id="pCatCustomWrap" style="display:none"><label>Kategoriename</label>
-          <input class="form-control" id="pCatCustom" placeholder="z.B. Sonderleistungen">
-        </div>
+        <div class="form-group"><label>Bezeichnung</label><input class="form-control" id="tName" value="${esc(i?.name || '')}" placeholder="z.B. Spoiler" required></div>
+        <div class="form-group"><label>Kategorie</label><input class="form-control" id="tCat" list="tCatList" value="${esc(i?.category || '')}" placeholder="z.B. Karosserie"><datalist id="tCatList">${catOptions}</datalist></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Bezeichnung</label><input class="form-control" id="pName" placeholder="z.B. PKW" required></div>
-        <div class="form-group"><label>Preis</label><input class="form-control" id="pPrice" placeholder="z.B. 1.000$" required></div>
+        <div class="form-group"><label>Einkauf (Ingame) $</label><input class="form-control" id="tShop" type="number" min="0" step="1" value="${i ? i.shop_price : ''}" required></div>
+        <div class="form-group"><label>Endpreis Kunde $</label><input class="form-control" id="tCust" type="number" min="0" step="1" value="${i ? i.customer_price : 1000}" required></div>
       </div>
-      <div class="form-group"><label>Hinweis (optional)</label><input class="form-control" id="pNotes" placeholder="z.B. Bar auf Hand"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Emoji-Icon</label><input class="form-control" id="tIcon" value="${esc(i?.icon || '')}" placeholder="z.B. 🛞" maxlength="8"></div>
+        <div class="form-group"><label>Hinweis (optional)</label><input class="form-control" id="tNote" value="${esc(i?.note || '')}" placeholder="z.B. Nur Leaderfahrzeuge"></div>
+      </div>
+      <div class="form-group">
+        <label>Bild (optional, ersetzt Emoji)</label>
+        <input class="form-control" id="tImg" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+        <div id="tImgPrev" style="display:none;margin-top:.5rem;align-items:center;gap:.6rem">
+          <img id="tImgTag" style="height:40px;border-radius:8px" alt="Vorschau">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="removeTuningImage()">Bild entfernen</button>
+        </div>
+      </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
         <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
       </div>
-    </form>`);
-  document.getElementById('pCat').addEventListener('change', function() {
-    const wrap = document.getElementById('pCatCustomWrap');
-    wrap.style.display = this.value === '__custom__' ? '' : 'none';
+    </form>`;
+}
+
+function wireTuningImage(existing) {
+  window._tunImgData = null;
+  window._tunImgRemoved = false;
+  const inp = document.getElementById('tImg');
+  inp.addEventListener('change', () => {
+    const f = inp.files[0];
+    if (!f) return;
+    if (f.size > 1_500_000) { toast('Bild zu groß (max 1,5 MB)', 'err'); inp.value = ''; return; }
+    const rd = new FileReader();
+    rd.onload = () => { window._tunImgData = rd.result; window._tunImgRemoved = false; showTuningPreview(rd.result); };
+    rd.readAsDataURL(f);
   });
+  showTuningPreview(existing);
+}
+
+function showTuningPreview(src) {
+  const w = document.getElementById('tImgPrev');
+  if (!w) return;
+  w.style.display = src ? 'flex' : 'none';
+  if (src) document.getElementById('tImgTag').src = src;
+}
+
+window.removeTuningImage = () => {
+  window._tunImgData = null;
+  window._tunImgRemoved = true;
+  const inp = document.getElementById('tImg');
+  if (inp) inp.value = '';
+  showTuningPreview(null);
 };
 
-window.openEditPrice = (id, encoded) => {
-  const item = JSON.parse(decodeURIComponent(encoded));
-  openModal(`
-    <div class="modal-head">
-      <div class="modal-title"><i class="fas fa-pen" style="color:var(--orange);margin-right:.5rem"></i>Preis bearbeiten</div>
-      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
-    </div>
-    <form onsubmit="submitEditPrice(event,${id})">
-      <div class="form-row">
-        <div class="form-group"><label>Kategorie</label><input class="form-control" id="epCat" value="${esc(item.category)}" required></div>
-        <div class="form-group"><label>Bezeichnung</label><input class="form-control" id="epName" value="${esc(item.name)}" required></div>
-      </div>
-      <div class="form-group"><label>Preis</label><input class="form-control" id="epPrice" value="${esc(item.price)}" required></div>
-      <div class="form-group"><label>Hinweis (optional)</label><input class="form-control" id="epNotes" value="${esc(item.notes||'')}"></div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
-        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Speichern</button>
-      </div>
-    </form>`);
+window.openAddTuning = () => {
+  openModal(tuningFormHtml(null));
+  wireTuningImage(null);
 };
 
-window.submitPrice = async e => {
+window.openEditTuning = id => {
+  const i = (window._tuningRows || []).find(x => x.id === id);
+  if (!i) return;
+  openModal(tuningFormHtml(i));
+  wireTuningImage(i.image || null);
+};
+
+window.submitTuning = async (e, id) => {
   e.preventDefault();
-  const catSel = document.getElementById('pCat').value;
-  const category = catSel === '__custom__' ? document.getElementById('pCatCustom').value.trim() : catSel;
-  if (!category) return;
-  const r = await api('/api/prices', { method: 'POST', body: {
-    category,
-    name:  document.getElementById('pName').value,
-    price: document.getElementById('pPrice').value,
-    notes: document.getElementById('pNotes').value,
-  }});
-  if (r) { closeModal(); toast('Preis gespeichert!', 'ok'); prices(); }
-};
-
-window.submitEditPrice = async (e, id) => {
-  e.preventDefault();
-  const r = await api(`/api/prices/${id}`, { method: 'PATCH', body: {
-    category: document.getElementById('epCat').value,
-    name:     document.getElementById('epName').value,
-    price:    document.getElementById('epPrice').value,
-    notes:    document.getElementById('epNotes').value,
-  }});
+  const body = {
+    name:           document.getElementById('tName').value.trim(),
+    category:       document.getElementById('tCat').value.trim() || 'Anbauteile',
+    shop_price:     document.getElementById('tShop').value,
+    customer_price: document.getElementById('tCust').value,
+    icon:           document.getElementById('tIcon').value.trim(),
+    note:           document.getElementById('tNote').value.trim(),
+  };
+  if (window._tunImgData)    body.image_data   = window._tunImgData;
+  if (window._tunImgRemoved) body.remove_image = true;
+  const r = id === null
+    ? await api('/api/tuning-items', { method: 'POST', body })
+    : await api(`/api/tuning-items/${id}`, { method: 'PATCH', body });
   if (r) { closeModal(); toast('Gespeichert!', 'ok'); prices(); }
 };
 
-window.deletePrice = async id => {
-  if (!confirm('Preis löschen?')) return;
-  const r = await api(`/api/prices/${id}`, { method: 'DELETE' });
+window.deleteTuning = async id => {
+  if (!confirm('Teil wirklich löschen?')) return;
+  const r = await api(`/api/tuning-items/${id}`, { method: 'DELETE' });
   if (r) { toast('Gelöscht.', 'ok'); prices(); }
 };
 
@@ -9435,7 +9420,7 @@ const FEATURES_LIST = [
     cat: 'Informationen & Karten', icon: 'fa-map-marked-alt', color: '#22c55e', items: [
       { name: 'Abschlepphöfe-Karte', desc: 'Interaktive Leaflet-Karte mit allen ACLS-Standorten in GTA V inkl. Fahrzeuglisten.' },
       { name: 'Fraktionsfarben', desc: 'Übersicht aller offiziellen Fraktionsfahrzeugfarben mit Hex-Codes und Vorschau.' },
-      { name: 'Preisliste', desc: 'Tabellarische Fahrschul- & Servicepreise, jederzeit von Admins aktualisierbar.' },
+      { name: 'Preisliste', desc: 'Tuning & Anbauteile mit Kostenrechner – Endpreise für Kunden, von Leadern jederzeit anpassbar.' },
       { name: 'Fahrzeugmarkt', desc: 'Private Fahrzeuginserate der Mitarbeiter. Mit Bild-Upload und Direktkontakt-Funktion.' },
       { name: 'Prüfungsvorbereitung', desc: 'Externe Lernseite (/quiz) mit dem gesamten Fragenkatalog — auch ohne Login nutzbar.' },
       { name: 'FAQ', desc: 'Verwaltbare FAQ-Sektion. Admins können Fragen & Antworten direkt im Portal pflegen.' },
