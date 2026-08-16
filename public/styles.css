@@ -711,6 +711,14 @@ input, select, textarea { font-family: inherit; }
 .sidebar.collapsed { width: 58px; }
 .sidebar.collapsed .sidebar-label { display: none; }
 .sidebar.collapsed .nav-item span { display: none; }
+/* Eingeklappt ist nur Platz für einen Button: den zum Wieder-Ausklappen. Der
+   "Sidebar anpassen"-Button verschwindet sonst unsichtbar außerhalb der 58px
+   und macht die Sidebar dauerhaft eingeklappt (nicht mehr erreichbarer Toggle). */
+.sidebar.collapsed .sidebar-header {
+  padding: .9rem .5rem .75rem;
+  justify-content: center;
+}
+.sidebar.collapsed .sidebar-header button.sidebar-toggle:first-of-type { display: none; }
 .sidebar.collapsed .nav-item {
   justify-content: center;
   padding: .65rem;
