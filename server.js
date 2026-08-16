@@ -118,9 +118,13 @@ app.use((req, res, next) => {
   // (DSGVO: keine IP-Übertragung an Dritte). blob: ist für die 3D-Farbvor-
   // schau nötig: model-viewer lädt das prozedural erzeugte Fahrzeug-Modell
   // aus einer im Browser selbst erstellten Blob-URL (kein Server-Roundtrip).
+  // 'wasm-unsafe-eval': model-viewer initialisiert intern WebAssembly-
+  // Decoder (Basis/KTX2-Texturkompression), auch wenn unser eigenes GLB
+  // keine komprimierten Texturen nutzt -- ohne das Token schlägt
+  // WebAssembly.instantiate() mit einer CSP-Verletzung fehl.
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self'",
     "img-src 'self' data: blob: https://cdn.discordapp.com https://i.pravatar.cc https://via.placeholder.com https://i.imgur.com https://imgur.com",

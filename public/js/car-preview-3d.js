@@ -190,9 +190,10 @@
     mv.setAttribute('shadow-softness', '0.85');
     mv.setAttribute('exposure', '1.05');
     mv.setAttribute('environment-image', 'neutral');
-    mv.setAttribute('camera-orbit', '-30deg 78deg 105%');
-    mv.setAttribute('min-camera-orbit', 'auto 15deg auto');
-    mv.setAttribute('max-camera-orbit', 'auto 100deg auto');
+    mv.setAttribute('camera-orbit', '-30deg 78deg 75%');
+    mv.setAttribute('min-camera-orbit', 'auto 15deg 55%');
+    mv.setAttribute('max-camera-orbit', 'auto 100deg 105%');
+    mv.setAttribute('field-of-view', '25deg');
     mv.setAttribute('disable-tap', '');
 
     let materials = null;
