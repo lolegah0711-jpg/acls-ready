@@ -842,23 +842,36 @@ input, select, textarea { font-family: inherit; }
 /* ── Farbvorschau (Preisliste) ──────────────────────────────────────
    Nur ein einzelnes Element -> backdrop-filter der .card ist hier
    unproblematisch (anders als bei vielen Teile-Karten gleichzeitig). */
-.colorpv-body    { display: flex; gap: 1.3rem; flex-wrap: wrap; align-items: center; }
-.colorpv-car     { flex: 1 1 240px; min-width: 200px; max-width: 320px; }
-.colorpv-car svg { width: 100%; height: auto; display: block; }
-.colorpv-controls { flex: 1 1 220px; display: flex; flex-direction: column; gap: .7rem; }
-.colorpv-inputs  { display: flex; gap: .5rem; align-items: center; }
-.colorpv-inputs input[type=color] {
-  width: 42px; height: 36px; flex-shrink: 0;
+.colorpv-body    { display: flex; gap: 1.3rem; flex-wrap: wrap; align-items: flex-start; }
+.colorpv-car     { flex: 1 1 240px; min-width: 200px; max-width: 340px; }
+.cpv-stage       { perspective: 700px; }
+.cpv-stage svg   { width: 100%; height: auto; display: block; transition: transform .15s ease; transform-origin: center; }
+.cpv-rotate-row  { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; font-size: .8rem; color: var(--muted); user-select: none; }
+.cpv-rotate-row input[type=range] { flex: 1; accent-color: var(--orange); }
+.colorpv-controls { flex: 1 1 220px; display: flex; flex-direction: column; gap: .65rem; }
+.colorpv-row     { display: flex; gap: .5rem; align-items: center; }
+.colorpv-label   { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; width: 50px; flex-shrink: 0; }
+.colorpv-row input[type=color] {
+  width: 38px; height: 34px; flex-shrink: 0;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); cursor: pointer; padding: 2px;
 }
-.colorpv-inputs input[type=text] { flex: 1; min-width: 0; text-transform: uppercase; }
-.colorpv-presets { display: flex; gap: .4rem; flex-wrap: wrap; }
+.colorpv-row input[type=text] { flex: 1; min-width: 0; text-transform: uppercase; }
+.colorpv-check   { display: flex; align-items: center; gap: .45rem; font-size: .8rem; color: var(--text); cursor: pointer; margin-left: 50px; }
+.colorpv-check input { accent-color: var(--orange); cursor: pointer; }
+.colorpv-presets { display: flex; gap: .4rem; flex-wrap: wrap; margin-left: 50px; }
 .cpv-swatch {
   width: 24px; height: 24px; border-radius: 50%; padding: 0;
   border: 2px solid var(--border); cursor: pointer; transition: transform .12s, border-color .12s;
 }
 .cpv-swatch:hover   { transform: scale(1.15); }
 .cpv-swatch.active  { border-color: var(--orange); box-shadow: 0 0 0 2px var(--orange-dim); }
+.cpv-pearl-sheen { opacity: 0; }
+.cpv-pearl-sheen.on { animation: cpvShimmer 3.2s ease-in-out infinite; }
+#cpvSvg.pearl-on .cpv-body { filter: saturate(1.3) brightness(1.05); }
+@keyframes cpvShimmer {
+  0%, 100% { opacity: .16; transform: translateX(-24px); }
+  50%      { opacity: .42; transform: translateX(24px); }
+}
 
 /* ── User Widget ─────────────────────────────────────────────────── */
 .user-widget { display: flex; align-items: center; gap: .65rem; }

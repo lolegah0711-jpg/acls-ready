@@ -1471,6 +1471,7 @@ async function loadVoterPrices() {
 
   el.innerHTML = `
   <div style="font-size:.75rem;color:var(--muted);margin-bottom:.75rem">Endpreis inkl. Einbau &amp; Service · in Klammern der Ingame-Teilepreis (Einkauf) · <a href="/preise" target="_blank" style="color:var(--orange)">Zum Kostenrechner →</a></div>
+  <div style="background:var(--surface2);border-radius:10px;padding:.85rem;margin-bottom:.75rem">${colorPreviewCardHtml()}</div>
   ` + Object.entries(cats).map(([cat, items]) => `
     <div style="background:var(--surface2);border-radius:10px;padding:.85rem;margin-bottom:.75rem">
       <div style="font-weight:700;font-size:.9rem;margin-bottom:.65rem;padding-bottom:.55rem;border-bottom:1px solid var(--border)">${esc(cat)}</div>
@@ -1486,6 +1487,7 @@ async function loadVoterPrices() {
       </div>
     </div>`).join('');
   el.dataset.loaded = '1';
+  initColorPreview();
 }
 
 async function loadVoterMarket() {
@@ -4628,38 +4630,7 @@ async function prices() {
         ${canEdit ? `<button class="btn btn-primary" onclick="openAddTuning()"><i class="fas fa-plus"></i> Teil hinzufügen</button>` : ''}
       </div>
     </div>
-    <div class="card" style="margin-bottom:1.5rem">
-      <div style="font-weight:700;font-size:.92rem;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem">🎨 Farbvorschau <span style="font-weight:400;font-size:.75rem;color:var(--muted)">– Hexcode fürs Auto testen (Lackierung, Perlglanz, Felgenfarbe, Xenon …)</span></div>
-      <div class="colorpv-body">
-        <div class="colorpv-car">
-          <svg viewBox="0 0 240 110" role="img" aria-label="Fahrzeug-Farbvorschau">
-            <ellipse cx="120" cy="99" rx="104" ry="6" fill="#000" opacity=".22"/>
-            <circle cx="52" cy="88" r="15" fill="#15181d"/>
-            <circle cx="52" cy="88" r="7" fill="#c7ccd1"/>
-            <circle cx="52" cy="88" r="2.5" fill="#8b9096"/>
-            <circle cx="188" cy="88" r="15" fill="#15181d"/>
-            <circle cx="188" cy="88" r="7" fill="#c7ccd1"/>
-            <circle cx="188" cy="88" r="2.5" fill="#8b9096"/>
-            <rect class="cpv-body" x="8" y="55" width="224" height="32" rx="16" fill="#f97316"/>
-            <path class="cpv-body" d="M58,60 L88,30 Q95,24 108,24 L148,24 Q159,24 165,30 L190,60 Z" fill="#f97316"/>
-            <path d="M67,58 L91,35 Q96,31 106,31 L150,31 Q159,31 164,35 L187,58 Z" fill="#0b1622" fill-opacity=".6" stroke="#000" stroke-opacity=".2" stroke-width="1.5"/>
-            <line x1="128" y1="31" x2="128" y2="58" stroke="#000" stroke-opacity=".22" stroke-width="1.5"/>
-            <line x1="55" y1="55" x2="55" y2="87" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
-            <line x1="150" y1="55" x2="150" y2="87" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
-            <ellipse cx="18" cy="66" rx="5" ry="3.6" fill="#fef9c3"/>
-            <ellipse cx="222" cy="66" rx="5" ry="3.6" fill="#7f1d1d"/>
-            <path d="M14,58 Q60,50 105,54" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="3" stroke-linecap="round"/>
-          </svg>
-        </div>
-        <div class="colorpv-controls">
-          <div class="colorpv-inputs">
-            <input type="color" id="cpvPicker" value="#f97316" title="Farbe wählen">
-            <input type="text" class="form-control" id="cpvHex" value="#F97316" maxlength="7" placeholder="#RRGGBB" title="Hexcode eingeben">
-          </div>
-          <div class="colorpv-presets" id="cpvPresets"></div>
-        </div>
-      </div>
-    </div>
+    <div class="card" style="margin-bottom:1.5rem">${colorPreviewCardHtml()}</div>
     ${Object.entries(cats).map(([cat, items]) => `
       <div style="margin-bottom:1.5rem">
         <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.6rem;display:flex;align-items:center;gap:.6rem">${esc(cat)}<div style="flex:1;height:1px;background:var(--border)"></div></div>
@@ -4685,8 +4656,88 @@ async function prices() {
   initColorPreview();
 }
 
-// ── Preisliste: Farbvorschau ────────────────────────────────────────
+// ── Preisliste: Farbvorschau (Lack, Perlglanz, Felgen, Xenon, drehbar) ──
 const CPV_PRESETS = ['#ffffff', '#0a0a0a', '#9ca3af', '#dc2626', '#1d4ed8', '#16a34a', '#facc15', '#f97316', '#7c3aed', '#ec4899'];
+
+// Wird sowohl im internen Preisliste-Rendering als auch in der Bürger-Ansicht
+// eingebettet (nie gleichzeitig im DOM, daher sind die IDs unkritisch).
+function colorPreviewCardHtml() {
+  return `
+  <div style="font-weight:700;font-size:.92rem;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem">🎨 Farbvorschau <span style="font-weight:400;font-size:.75rem;color:var(--muted)">– Lack, Perlglanz, Felgen &amp; Xenon einzeln testen, drehbar</span></div>
+  <div class="colorpv-body">
+    <div class="colorpv-car">
+      <div class="cpv-stage">
+        <svg id="cpvSvg" viewBox="0 0 280 120" role="img" aria-label="Fahrzeug-Farbvorschau">
+          <defs>
+            <linearGradient id="cpvGloss" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#fff" stop-opacity=".35"/>
+              <stop offset="55%" stop-color="#fff" stop-opacity="0"/>
+            </linearGradient>
+            <clipPath id="cpvBodyClip">
+              <rect x="10" y="62" width="260" height="36" rx="18"/>
+              <path d="M65,68 L100,34 Q108,26 122,26 L168,26 Q182,26 190,34 L215,68 Z"/>
+            </clipPath>
+          </defs>
+          <ellipse cx="140" cy="110" rx="122" ry="6" fill="#000" opacity=".22"/>
+          <g>
+            <circle cx="62" cy="96" r="17" fill="#15181d"/>
+            <circle class="cpv-rim" cx="62" cy="96" r="9" fill="#c7ccd1"/>
+            <g stroke="#3a3f45" stroke-width="1.2" stroke-opacity=".55">
+              <line x1="62" y1="87" x2="62" y2="105"/><line x1="53" y1="96" x2="71" y2="96"/>
+              <line x1="55.5" y1="89.5" x2="68.5" y2="102.5"/><line x1="68.5" y1="89.5" x2="55.5" y2="102.5"/>
+            </g>
+            <circle cx="62" cy="96" r="3" fill="#5b6167"/>
+          </g>
+          <g>
+            <circle cx="218" cy="96" r="17" fill="#15181d"/>
+            <circle class="cpv-rim" cx="218" cy="96" r="9" fill="#c7ccd1"/>
+            <g stroke="#3a3f45" stroke-width="1.2" stroke-opacity=".55">
+              <line x1="218" y1="87" x2="218" y2="105"/><line x1="209" y1="96" x2="227" y2="96"/>
+              <line x1="211.5" y1="89.5" x2="224.5" y2="102.5"/><line x1="224.5" y1="89.5" x2="211.5" y2="102.5"/>
+            </g>
+            <circle cx="218" cy="96" r="3" fill="#5b6167"/>
+          </g>
+          <rect class="cpv-body" x="10" y="62" width="260" height="36" rx="18" fill="#f97316"/>
+          <path class="cpv-body" d="M65,68 L100,34 Q108,26 122,26 L168,26 Q182,26 190,34 L215,68 Z" fill="#f97316"/>
+          <path class="cpv-body" d="M88,60 L100,55 L104,62 L92,66 Z" fill="#f97316"/>
+          <path d="M75,66 L103,39 Q109,33 122,33 L168,33 Q181,33 187,39 L207,66 Z" fill="#0b1622" fill-opacity=".6" stroke="#000" stroke-opacity=".2" stroke-width="1.5"/>
+          <line x1="145" y1="33" x2="145" y2="66" stroke="#000" stroke-opacity=".22" stroke-width="1.5"/>
+          <line x1="72" y1="62" x2="72" y2="98" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
+          <line x1="178" y1="62" x2="178" y2="98" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
+          <ellipse class="cpv-xenon" cx="20" cy="78" rx="7" ry="4.5" fill="#fef9c3"/>
+          <circle cx="18" cy="76" r="1.8" fill="#fff" fill-opacity=".7"/>
+          <ellipse cx="260" cy="78" rx="7" ry="4.5" fill="#7f1d1d"/>
+          <rect x="10" y="20" width="260" height="80" fill="url(#cpvGloss)" clip-path="url(#cpvBodyClip)" pointer-events="none"/>
+          <ellipse id="cpvPearlSheen" class="cpv-pearl-sheen" cx="140" cy="60" rx="90" ry="45" fill="#fff" clip-path="url(#cpvBodyClip)"/>
+          <path d="M18,70 Q80,58 145,63" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="4" stroke-linecap="round" pointer-events="none"/>
+          <path d="M118,30 Q145,26 175,30" fill="none" stroke="#fff" stroke-opacity=".18" stroke-width="2.5" stroke-linecap="round" pointer-events="none"/>
+        </svg>
+      </div>
+      <div class="cpv-rotate-row">
+        <span>↺</span>
+        <input type="range" id="cpvRotate" min="-30" max="30" value="0" step="1" title="Fahrzeug drehen">
+        <span>↻</span>
+      </div>
+    </div>
+    <div class="colorpv-controls">
+      <div class="colorpv-row">
+        <span class="colorpv-label">Lack</span>
+        <input type="color" id="cpvPicker" value="#f97316" title="Lackfarbe wählen">
+        <input type="text" class="form-control" id="cpvHex" value="#F97316" maxlength="7" placeholder="#RRGGBB" title="Hexcode eingeben">
+      </div>
+      <label class="colorpv-check"><input type="checkbox" id="cpvPearl"> ✨ Perlglanz-Effekt</label>
+      <div class="colorpv-row">
+        <span class="colorpv-label">Felgen</span>
+        <input type="color" id="cpvRim" value="#c7ccd1" title="Felgenfarbe wählen">
+      </div>
+      <div class="colorpv-row">
+        <span class="colorpv-label">Xenon</span>
+        <input type="color" id="cpvXenon" value="#fef9c3" title="Xenon-Farbe wählen">
+      </div>
+      <div class="colorpv-presets" id="cpvPresets"></div>
+    </div>
+  </div>`;
+}
 
 function initColorPreview() {
   const presetsEl = $('cpvPresets');
@@ -4699,6 +4750,20 @@ function initColorPreview() {
     if (m) cpvApply('#' + m[1], false);
   });
   $('cpvPicker').addEventListener('input', e => cpvApply(e.target.value));
+  $('cpvRim').addEventListener('input', e => {
+    document.querySelectorAll('.cpv-rim').forEach(el => el.setAttribute('fill', e.target.value));
+  });
+  $('cpvXenon').addEventListener('input', e => {
+    document.querySelectorAll('.cpv-xenon').forEach(el => el.setAttribute('fill', e.target.value));
+  });
+  $('cpvPearl').addEventListener('change', e => {
+    $('cpvPearlSheen')?.classList.toggle('on', e.target.checked);
+    $('cpvSvg')?.classList.toggle('pearl-on', e.target.checked);
+  });
+  $('cpvRotate').addEventListener('input', e => {
+    const svg = $('cpvSvg');
+    if (svg) svg.style.transform = `rotateY(${e.target.value}deg)`;
+  });
   cpvApply('#f97316');
 }
 

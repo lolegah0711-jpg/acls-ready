@@ -91,18 +91,28 @@
     .colorpv{max-width:980px;margin:0 auto 22px;background:#0f1623;border:1px solid #1e2a3a;border-radius:14px;padding:18px 20px;}
     .colorpv-title{font-size:.85rem;font-weight:700;color:#f3f4f6;margin-bottom:14px;display:flex;align-items:center;gap:8px}
     .colorpv-title small{font-weight:400;font-size:.72rem;color:#6b7280}
-    .colorpv-body{display:flex;gap:22px;flex-wrap:wrap;align-items:center}
+    .colorpv-body{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
     .colorpv-car{flex:1 1 260px;min-width:220px;max-width:360px}
-    .colorpv-car svg{width:100%;height:auto;display:block}
-    .colorpv-controls{flex:1 1 220px;display:flex;flex-direction:column;gap:12px}
-    .colorpv-inputs{display:flex;gap:8px;align-items:center}
-    .colorpv-inputs input[type=color]{width:44px;height:38px;border:1px solid #1e2a3a;border-radius:8px;background:#131c2b;cursor:pointer;padding:2px;flex-shrink:0}
-    .colorpv-inputs input[type=text]{flex:1;min-width:0;background:#131c2b;border:1px solid #1e2a3a;border-radius:8px;padding:8px 12px;color:#e5e7eb;font-family:inherit;font-size:.85rem;text-transform:uppercase;outline:none}
-    .colorpv-inputs input[type=text]:focus{border-color:#f97316}
-    .colorpv-presets{display:flex;gap:7px;flex-wrap:wrap}
+    .cpv-stage{perspective:700px}
+    .cpv-stage svg{width:100%;height:auto;display:block;transition:transform .15s ease;transform-origin:center}
+    .cpv-rotate-row{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.78rem;color:#6b7280;user-select:none}
+    .cpv-rotate-row input[type=range]{flex:1;accent-color:#f97316}
+    .colorpv-controls{flex:1 1 220px;display:flex;flex-direction:column;gap:11px}
+    .colorpv-row{display:flex;gap:8px;align-items:center}
+    .colorpv-label{font-size:.68rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;width:48px;flex-shrink:0}
+    .colorpv-row input[type=color]{width:40px;height:36px;border:1px solid #1e2a3a;border-radius:8px;background:#131c2b;cursor:pointer;padding:2px;flex-shrink:0}
+    .colorpv-row input[type=text]{flex:1;min-width:0;background:#131c2b;border:1px solid #1e2a3a;border-radius:8px;padding:8px 12px;color:#e5e7eb;font-family:inherit;font-size:.85rem;text-transform:uppercase;outline:none}
+    .colorpv-row input[type=text]:focus{border-color:#f97316}
+    .colorpv-check{display:flex;align-items:center;gap:7px;font-size:.78rem;color:#e5e7eb;cursor:pointer;margin-left:48px}
+    .colorpv-check input{accent-color:#f97316;cursor:pointer}
+    .colorpv-presets{display:flex;gap:7px;flex-wrap:wrap;margin-left:48px}
     .cpv-swatch{width:24px;height:24px;border-radius:50%;border:2px solid #1e2a3a;cursor:pointer;transition:transform .12s,border-color .12s;padding:0}
     .cpv-swatch:hover{transform:scale(1.15)}
     .cpv-swatch.active{border-color:#f97316;box-shadow:0 0 0 2px rgba(249,115,22,.3)}
+    .cpv-pearl-sheen{opacity:0}
+    .cpv-pearl-sheen.on{animation:cpvShimmer 3.2s ease-in-out infinite}
+    #cpvSvg.pearl-on .cpv-body{filter:saturate(1.3) brightness(1.05)}
+    @keyframes cpvShimmer{0%,100%{opacity:.16;transform:translateX(-24px)}50%{opacity:.42;transform:translateX(24px)}}
   </style>
 </head>
 <body>
@@ -117,32 +127,76 @@
 </div>
 
 <div class="colorpv" id="colorPv">
-  <div class="colorpv-title">🎨 Farbvorschau <small>– teste deinen Hexcode fürs Auto (Lackierung, Perlglanz, Felgenfarbe, Xenon …)</small></div>
+  <div class="colorpv-title">🎨 Farbvorschau <small>– Lack, Perlglanz, Felgen &amp; Xenon einzeln testen, drehbar</small></div>
   <div class="colorpv-body">
     <div class="colorpv-car">
-      <svg viewBox="0 0 240 110" role="img" aria-label="Fahrzeug-Farbvorschau">
-        <ellipse cx="120" cy="99" rx="104" ry="6" fill="#000" opacity=".22"/>
-        <circle cx="52" cy="88" r="15" fill="#15181d"/>
-        <circle cx="52" cy="88" r="7" fill="#c7ccd1"/>
-        <circle cx="52" cy="88" r="2.5" fill="#8b9096"/>
-        <circle cx="188" cy="88" r="15" fill="#15181d"/>
-        <circle cx="188" cy="88" r="7" fill="#c7ccd1"/>
-        <circle cx="188" cy="88" r="2.5" fill="#8b9096"/>
-        <rect class="cpv-body" x="8" y="55" width="224" height="32" rx="16" fill="#f97316"/>
-        <path class="cpv-body" d="M58,60 L88,30 Q95,24 108,24 L148,24 Q159,24 165,30 L190,60 Z" fill="#f97316"/>
-        <path d="M67,58 L91,35 Q96,31 106,31 L150,31 Q159,31 164,35 L187,58 Z" fill="#0b1622" fill-opacity=".6" stroke="#000" stroke-opacity=".2" stroke-width="1.5"/>
-        <line x1="128" y1="31" x2="128" y2="58" stroke="#000" stroke-opacity=".22" stroke-width="1.5"/>
-        <line x1="55" y1="55" x2="55" y2="87" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
-        <line x1="150" y1="55" x2="150" y2="87" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
-        <ellipse cx="18" cy="66" rx="5" ry="3.6" fill="#fef9c3"/>
-        <ellipse cx="222" cy="66" rx="5" ry="3.6" fill="#7f1d1d"/>
-        <path d="M14,58 Q60,50 105,54" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="3" stroke-linecap="round"/>
-      </svg>
+      <div class="cpv-stage">
+        <svg id="cpvSvg" viewBox="0 0 280 120" role="img" aria-label="Fahrzeug-Farbvorschau">
+          <defs>
+            <linearGradient id="cpvGloss" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#fff" stop-opacity=".35"/>
+              <stop offset="55%" stop-color="#fff" stop-opacity="0"/>
+            </linearGradient>
+            <clipPath id="cpvBodyClip">
+              <rect x="10" y="62" width="260" height="36" rx="18"/>
+              <path d="M65,68 L100,34 Q108,26 122,26 L168,26 Q182,26 190,34 L215,68 Z"/>
+            </clipPath>
+          </defs>
+          <ellipse cx="140" cy="110" rx="122" ry="6" fill="#000" opacity=".22"/>
+          <g>
+            <circle cx="62" cy="96" r="17" fill="#15181d"/>
+            <circle class="cpv-rim" cx="62" cy="96" r="9" fill="#c7ccd1"/>
+            <g stroke="#3a3f45" stroke-width="1.2" stroke-opacity=".55">
+              <line x1="62" y1="87" x2="62" y2="105"/><line x1="53" y1="96" x2="71" y2="96"/>
+              <line x1="55.5" y1="89.5" x2="68.5" y2="102.5"/><line x1="68.5" y1="89.5" x2="55.5" y2="102.5"/>
+            </g>
+            <circle cx="62" cy="96" r="3" fill="#5b6167"/>
+          </g>
+          <g>
+            <circle cx="218" cy="96" r="17" fill="#15181d"/>
+            <circle class="cpv-rim" cx="218" cy="96" r="9" fill="#c7ccd1"/>
+            <g stroke="#3a3f45" stroke-width="1.2" stroke-opacity=".55">
+              <line x1="218" y1="87" x2="218" y2="105"/><line x1="209" y1="96" x2="227" y2="96"/>
+              <line x1="211.5" y1="89.5" x2="224.5" y2="102.5"/><line x1="224.5" y1="89.5" x2="211.5" y2="102.5"/>
+            </g>
+            <circle cx="218" cy="96" r="3" fill="#5b6167"/>
+          </g>
+          <rect class="cpv-body" x="10" y="62" width="260" height="36" rx="18" fill="#f97316"/>
+          <path class="cpv-body" d="M65,68 L100,34 Q108,26 122,26 L168,26 Q182,26 190,34 L215,68 Z" fill="#f97316"/>
+          <path class="cpv-body" d="M88,60 L100,55 L104,62 L92,66 Z" fill="#f97316"/>
+          <path d="M75,66 L103,39 Q109,33 122,33 L168,33 Q181,33 187,39 L207,66 Z" fill="#0b1622" fill-opacity=".6" stroke="#000" stroke-opacity=".2" stroke-width="1.5"/>
+          <line x1="145" y1="33" x2="145" y2="66" stroke="#000" stroke-opacity=".22" stroke-width="1.5"/>
+          <line x1="72" y1="62" x2="72" y2="98" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
+          <line x1="178" y1="62" x2="178" y2="98" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
+          <ellipse class="cpv-xenon" cx="20" cy="78" rx="7" ry="4.5" fill="#fef9c3"/>
+          <circle cx="18" cy="76" r="1.8" fill="#fff" fill-opacity=".7"/>
+          <ellipse cx="260" cy="78" rx="7" ry="4.5" fill="#7f1d1d"/>
+          <rect x="10" y="20" width="260" height="80" fill="url(#cpvGloss)" clip-path="url(#cpvBodyClip)" pointer-events="none"/>
+          <ellipse id="cpvPearlSheen" class="cpv-pearl-sheen" cx="140" cy="60" rx="90" ry="45" fill="#fff" clip-path="url(#cpvBodyClip)"/>
+          <path d="M18,70 Q80,58 145,63" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="4" stroke-linecap="round" pointer-events="none"/>
+          <path d="M118,30 Q145,26 175,30" fill="none" stroke="#fff" stroke-opacity=".18" stroke-width="2.5" stroke-linecap="round" pointer-events="none"/>
+        </svg>
+      </div>
+      <div class="cpv-rotate-row">
+        <span>↺</span>
+        <input type="range" id="cpvRotate" min="-30" max="30" value="0" step="1" title="Fahrzeug drehen">
+        <span>↻</span>
+      </div>
     </div>
     <div class="colorpv-controls">
-      <div class="colorpv-inputs">
-        <input type="color" id="cpvPicker" value="#f97316" title="Farbe wählen">
+      <div class="colorpv-row">
+        <span class="colorpv-label">Lack</span>
+        <input type="color" id="cpvPicker" value="#f97316" title="Lackfarbe wählen">
         <input type="text" id="cpvHex" value="#F97316" maxlength="7" placeholder="#RRGGBB" title="Hexcode eingeben">
+      </div>
+      <label class="colorpv-check"><input type="checkbox" id="cpvPearl"> ✨ Perlglanz-Effekt</label>
+      <div class="colorpv-row">
+        <span class="colorpv-label">Felgen</span>
+        <input type="color" id="cpvRim" value="#c7ccd1" title="Felgenfarbe wählen">
+      </div>
+      <div class="colorpv-row">
+        <span class="colorpv-label">Xenon</span>
+        <input type="color" id="cpvXenon" value="#fef9c3" title="Xenon-Farbe wählen">
       </div>
       <div class="colorpv-presets" id="cpvPresets"></div>
     </div>
@@ -430,6 +484,20 @@ document.getElementById('cpvPicker').addEventListener('input', e => cpvApply(e.t
 document.getElementById('cpvHex').addEventListener('input', e => {
   const m = e.target.value.trim().match(/^#?([0-9a-fA-F]{6})$/);
   if (m) cpvApply('#' + m[1], false);
+});
+document.getElementById('cpvRim').addEventListener('input', e => {
+  document.querySelectorAll('.cpv-rim').forEach(el => el.setAttribute('fill', e.target.value));
+});
+document.getElementById('cpvXenon').addEventListener('input', e => {
+  document.querySelectorAll('.cpv-xenon').forEach(el => el.setAttribute('fill', e.target.value));
+});
+document.getElementById('cpvPearl').addEventListener('change', e => {
+  document.getElementById('cpvPearlSheen')?.classList.toggle('on', e.target.checked);
+  document.getElementById('cpvSvg')?.classList.toggle('pearl-on', e.target.checked);
+});
+document.getElementById('cpvRotate').addEventListener('input', e => {
+  const svg = document.getElementById('cpvSvg');
+  if (svg) svg.style.transform = `rotateY(${e.target.value}deg)`;
 });
 cpvApply('#f97316');
 
