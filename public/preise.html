@@ -97,7 +97,7 @@
     .colorpv-body{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
     .colorpv-car{flex:1 1 280px;min-width:240px;max-width:400px}
     .cpv-canvas-wrap{position:relative;width:100%;aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:radial-gradient(ellipse at 50% 70%,rgba(255,255,255,.05),transparent 70%);touch-action:none}
-    .cpv-canvas-wrap canvas{display:block;width:100% !important;height:100% !important}
+    .cpv-canvas-wrap model-viewer,.cpv-canvas-wrap canvas{display:block;width:100% !important;height:100% !important}
     .cpv-canvas-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.78rem;color:#6b7280;text-align:center;padding:0 12px}
     .colorpv-controls{flex:1 1 220px;display:flex;flex-direction:column;gap:11px}
     .colorpv-row{display:flex;gap:8px;align-items:center}
@@ -202,7 +202,7 @@
   </div>
 </div>
 
-<script src="/js/car-preview-3d.js?v=1"></script>
+<script src="/js/car-preview-3d.js?v=2"></script>
 <script>
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const fmt = n => Number(n).toLocaleString('de-DE') + ' $';

@@ -1,30 +1,42 @@
-// Leichtgewichtige 3D-Fahrzeug-Vorschau (Three.js, self-hosted, kein CDN).
-// Prozedural erzeugtes generisches Fahrzeug (kein Markenlogo, kein Modell
-// eines realen Herstellers) -- Karosserie, Felgen & Xenon-Scheinwerfer sind
-// einzeln einfärbbar, Perlglanz nutzt ein echtes Iridescence-Material statt
-// nur einer Deko-Animation. Frei drehbar per Maus/Touch (OrbitControls).
+// 3D-Fahrzeug-Vorschau für die Preisliste (self-hosted, kein CDN).
 //
-// Three.js liefert seit ~r150 nur noch ES-Module aus (kein <script>-Build
-// mehr) -- wir laden es deshalb per dynamischem import() nach, ausgelöst
-// erst wenn initCarPreview3D() wirklich aufgerufen wird. Die Bare-Specifier
-// 'three' innerhalb von OrbitControls.js wird über die Importmap in
-// index.html/preise.html aufgelöst.
+// Technik: ein prozedural erzeugtes, generisches Fahrzeug (kein Markenlogo,
+// keine Nachbildung eines realen Herstellermodells) wird in Three.js
+// zusammengebaut, per GLTFExporter in ein GLB exportiert und dann von
+// Googles <model-viewer> gerendert -- dieselbe Technik, mit der auch
+// professionelle Fahrzeug-Konfiguratoren arbeiten (Environment-Reflexionen,
+// weicher Bodenschatten, physikalisch korrektes Tone-Mapping, Kamera-Orbit
+// per Maus/Touch inkl. sanftem Auto-Rotate). Three.js baut hier nur einmalig
+// die Geometrie; das eigentliche Rendering übernimmt model-viewer komplett
+// selbst -- entsprechend deutlich weniger und robusterer eigener Code als
+// eine handgebaute Three.js-Renderschleife.
+//
+// Materialien tragen feste Namen (body/rim/tire/hub/glass/headlight/
+// taillight), damit sie nach dem Laden über model-viewer.model.materials
+// live umgefärbt werden können, ohne das Modell neu zu exportieren.
 (function () {
   let _modulesPromise = null;
-  function loadThreeModules() {
+  function loadModules() {
     if (!_modulesPromise) {
       _modulesPromise = Promise.all([
         import('/vendor/three/three.module.min.js'),
-        import('/vendor/three/controls/OrbitControls.js'),
-      ]).then(([THREE, controls]) => ({ THREE, OrbitControls: controls.OrbitControls }));
+        import('/vendor/three/exporters/GLTFExporter.js'),
+        import('/vendor/model-viewer/model-viewer.min.js'),
+      ]).then(([THREE, exp]) => ({ THREE, GLTFExporter: exp.GLTFExporter }));
     }
     return _modulesPromise;
   }
 
-  // Seitenprofil der Karosserie (X = Länge, Y = Höhe), wird entlang Z
-  // (Fahrzeugbreite) extrudiert. Monoton fallende X-Werte auf dem oberen
-  // Bogen und monoton steigende X-Werte auf der Bodenlinie -> einfache,
-  // überschneidungsfreie Kontur.
+  function hexToLinear(hex) {
+    const c = String(hex).replace('#', '');
+    const toLin = v => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+    return [0, 2, 4].map(i => toLin(parseInt(c.slice(i, i + 2), 16) / 255));
+  }
+
+  // Seitenprofil der Karosserie (X = Länge, Y = Höhe), entlang Z (Breite)
+  // extrudiert. Monoton fallende X-Werte auf dem oberen Bogen, monoton
+  // steigende X-Werte auf der Bodenlinie -> einfache, überschneidungsfreie
+  // Kontur.
   function buildBodyShape(THREE) {
     const s = new THREE.Shape();
     s.moveTo(2.00, 0.28);
@@ -43,9 +55,6 @@
     return s;
   }
 
-  // Kleinere, nach innen versetzte Teilkontur des Fahrgastzellen-Bereichs
-  // für die Fensterscheiben (flache Platten, seitlich auf die Karosserie
-  // gesetzt statt echter Aussparung -- robust ohne Boolesche Operationen).
   function buildGreenhouseShape(THREE) {
     const s = new THREE.Shape();
     s.moveTo(1.02, 0.76);
@@ -60,31 +69,24 @@
     return s;
   }
 
-  function buildWheel(THREE, rimHex) {
+  function buildWheel(THREE, tireMat, rimMat, hubMat) {
     const g = new THREE.Group();
-    const tireMat = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.92, metalness: 0.05 });
-    const rimMat  = new THREE.MeshStandardMaterial({ color: rimHex, roughness: 0.28, metalness: 0.85 });
-    const hubMat  = new THREE.MeshStandardMaterial({ color: 0x4b4f54, roughness: 0.4, metalness: 0.7 });
-
     // Zylinder-Achse (standardmäßig Y) auf Z drehen, damit die Kreisfläche
     // seitlich zum Fahrzeug zeigt (Rx(90°) bildet Y-Achse auf Z-Achse ab).
-    const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.22, 24), tireMat);
+    const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.22, 28), tireMat);
     tire.rotation.x = Math.PI / 2;
-    tire.castShadow = true;
     g.add(tire);
 
-    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.23, 24), rimMat);
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.23, 28), rimMat);
     rim.rotation.x = Math.PI / 2;
-    rim.userData.isRim = true;
     g.add(rim);
 
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.24, 12), hubMat);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.24, 14), hubMat);
     hub.rotation.x = Math.PI / 2;
     g.add(hub);
 
     for (let i = 0; i < 5; i++) {
       const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.035, 0.03), rimMat);
-      spoke.userData.isRim = true;
       const a = (i / 5) * Math.PI * 2;
       spoke.position.set(0.11 * Math.cos(a), 0.11 * Math.sin(a), 0);
       spoke.rotation.z = a;
@@ -93,149 +95,127 @@
     return g;
   }
 
-  async function initCarPreview3D(container) {
-    const { THREE, OrbitControls } = await loadThreeModules();
-    if (!container.isConnected) return null; // Nutzer hat inzwischen die Seite gewechselt
-
-    const width  = container.clientWidth  || 320;
-    const height = container.clientHeight || 240;
-
+  function buildCarScene(THREE) {
     const scene = new THREE.Scene();
 
-    const camera = new THREE.PerspectiveCamera(32, width / height, 0.1, 100);
-    camera.position.set(4.6, 2.0, 4.6);
+    const bodyMat = new THREE.MeshPhysicalMaterial({
+      name: 'body', color: 0xf97316, roughness: 0.32, metalness: 0.55,
+      clearcoat: 1, clearcoatRoughness: 0.12,
+      iridescence: 0.001, iridescenceIOR: 1.3, iridescenceThicknessRange: [100, 400],
+    });
+    const rimMat  = new THREE.MeshStandardMaterial({ name: 'rim', color: 0xc7ccd1, roughness: 0.28, metalness: 0.85 });
+    const tireMat = new THREE.MeshStandardMaterial({ name: 'tire', color: 0x161616, roughness: 0.92, metalness: 0.05 });
+    const hubMat  = new THREE.MeshStandardMaterial({ name: 'hub', color: 0x4b4f54, roughness: 0.4, metalness: 0.7 });
+    const winMat  = new THREE.MeshPhysicalMaterial({
+      name: 'glass', color: 0x0b1622, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.72,
+    });
+    const headMat = new THREE.MeshStandardMaterial({ name: 'headlight', color: 0xfef9c3, emissive: 0xfef9c3, emissiveIntensity: 0.6, roughness: 0.3 });
+    const tailMat = new THREE.MeshStandardMaterial({ name: 'taillight', color: 0x7f1d1d, emissive: 0x7f1d1d, emissiveIntensity: 0.5, roughness: 0.4 });
 
-    let renderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    } catch (e) {
-      return null; // WebGL nicht verfügbar
-    }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(width, height);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    container.innerHTML = '';
-    container.appendChild(renderer.domElement);
-
-    // ── Licht ──
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x1a1a22, 0.9));
-    const key = new THREE.DirectionalLight(0xffffff, 2.2);
-    key.position.set(4, 6, 3);
-    key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
-    key.shadow.camera.left = -4; key.shadow.camera.right = 4;
-    key.shadow.camera.top = 4;   key.shadow.camera.bottom = -4;
-    scene.add(key);
-    const fill = new THREE.DirectionalLight(0xbcd4ff, 0.5);
-    fill.position.set(-4, 2, -3);
-    scene.add(fill);
-
-    // ── Boden (weicher Schattenwurf) ──
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(4.2, 48), new THREE.ShadowMaterial({ opacity: 0.32 }));
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    scene.add(ground);
-
-    // ── Karosserie ──
+    // Karosserie
     const bodyGeo = new THREE.ExtrudeGeometry(buildBodyShape(THREE), {
-      depth: 1.74, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.045, bevelSegments: 4, curveSegments: 16,
+      depth: 1.74, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.045, bevelSegments: 6, curveSegments: 24,
     });
     bodyGeo.translate(0, 0, -0.87);
-    const bodyMat = new THREE.MeshPhysicalMaterial({
-      color: 0xf97316, roughness: 0.32, metalness: 0.55, clearcoat: 1, clearcoatRoughness: 0.12,
-    });
     const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.castShadow = true; body.receiveShadow = true;
     scene.add(body);
 
-    // ── Fenster (getönte Platten, seitlich aufgesetzt) ──
-    const winGeo = new THREE.ShapeGeometry(buildGreenhouseShape(THREE), 12);
-    const winMat = new THREE.MeshPhysicalMaterial({
-      color: 0x0b1622, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.72, side: THREE.DoubleSide,
-    });
+    // Fenster (getönte Platten, seitlich aufgesetzt statt echter Aussparung)
+    const winGeo = new THREE.ShapeGeometry(buildGreenhouseShape(THREE), 16);
     scene.add(new THREE.Mesh(winGeo, winMat).translateZ(0.885));
     scene.add(new THREE.Mesh(winGeo, winMat).translateZ(-0.885));
 
-    // ── Räder ──
-    const wheelPositions = [[1.28, 0.34, 0.80], [1.28, 0.34, -0.80], [-1.32, 0.34, 0.80], [-1.32, 0.34, -0.80]];
-    const wheels = wheelPositions.map(([x, y, z]) => {
-      const w = buildWheel(THREE, 0xc7ccd1);
+    // Räder
+    [[1.28, 0.34, 0.80], [1.28, 0.34, -0.80], [-1.32, 0.34, 0.80], [-1.32, 0.34, -0.80]].forEach(([x, y, z]) => {
+      const w = buildWheel(THREE, tireMat, rimMat, hubMat);
       w.position.set(x, y, z);
       scene.add(w);
-      return w;
     });
 
-    // ── Scheinwerfer / Rücklichter ──
-    const headMat = new THREE.MeshStandardMaterial({ color: 0xfef9c3, emissive: 0xfef9c3, emissiveIntensity: 0.6, roughness: 0.3 });
-    const tailMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, emissive: 0x7f1d1d, emissiveIntensity: 0.5, roughness: 0.4 });
-    const lightGeo = new THREE.BoxGeometry(0.08, 0.10, 0.22);
+    // Scheinwerfer / Rücklichter / Spiegel
     function addAt(geo, mat, x, y, z) {
       const m = new THREE.Mesh(geo, mat);
       m.position.set(x, y, z);
       scene.add(m);
-      return m;
     }
+    const lightGeo = new THREE.BoxGeometry(0.08, 0.10, 0.22);
     [0.55, -0.55].forEach(z => addAt(lightGeo, headMat, 2.05, 0.50, z));
     [0.55, -0.55].forEach(z => addAt(lightGeo, tailMat, -2.10, 0.50, z));
-
-    // ── Seitenspiegel (karosseriefarben) ──
     const mirrorGeo = new THREE.BoxGeometry(0.10, 0.09, 0.16);
     [0.92, -0.92].forEach(z => addAt(mirrorGeo, bodyMat, 0.85, 0.80, z));
 
-    // ── Kamera-Steuerung ──
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 0.55, 0);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.minDistance = 3.2;
-    controls.maxDistance = 9;
-    controls.maxPolarAngle = Math.PI * 0.52;
-    controls.minPolarAngle = Math.PI * 0.12;
-    controls.enablePan = false;
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 1.6;
-    controls.update();
+    return scene;
+  }
 
-    let disposed = false, raf = null;
-    (function animate() {
-      if (disposed) return;
-      if (!document.hidden) { controls.update(); renderer.render(scene, camera); }
-      raf = requestAnimationFrame(animate);
-    })();
+  async function initCarPreview3D(container) {
+    const { THREE, GLTFExporter } = await loadModules();
+    if (!container.isConnected) return null; // Nutzer hat inzwischen die Seite gewechselt
 
-    function onResize() {
-      const w = container.clientWidth || width, h = container.clientHeight || height;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+    const scene = buildCarScene(THREE);
+    const exporter = new GLTFExporter();
+    const glbBuffer = await new Promise((resolve, reject) => {
+      exporter.parse(scene, resolve, reject, { binary: true });
+    }).catch(() => null);
+    if (!glbBuffer || !container.isConnected) return null;
+
+    const blob = new Blob([glbBuffer], { type: 'model/gltf-binary' });
+    const url = URL.createObjectURL(blob);
+
+    const mv = document.createElement('model-viewer');
+    mv.src = url;
+    mv.style.width = '100%';
+    mv.style.height = '100%';
+    mv.style.setProperty('--poster-color', 'transparent');
+    mv.setAttribute('camera-controls', '');
+    mv.setAttribute('auto-rotate', '');
+    mv.setAttribute('auto-rotate-delay', '0');
+    mv.setAttribute('rotation-per-second', '18deg');
+    mv.setAttribute('interaction-prompt', 'none');
+    mv.setAttribute('shadow-intensity', '1');
+    mv.setAttribute('shadow-softness', '0.85');
+    mv.setAttribute('exposure', '1.05');
+    mv.setAttribute('environment-image', 'neutral');
+    mv.setAttribute('camera-orbit', '-30deg 78deg 105%');
+    mv.setAttribute('min-camera-orbit', 'auto 15deg auto');
+    mv.setAttribute('max-camera-orbit', 'auto 100deg auto');
+    mv.setAttribute('disable-tap', '');
+
+    let materials = null;
+    const ready = new Promise(resolve => {
+      mv.addEventListener('load', () => {
+        materials = {};
+        (mv.model?.materials || []).forEach(m => { materials[m.name] = m; });
+        resolve();
+      }, { once: true });
+      mv.addEventListener('error', () => resolve(), { once: true });
+    });
+
+    container.innerHTML = '';
+    container.appendChild(mv);
+    await ready;
+
+    function setColor(name, hex) {
+      const m = materials?.[name];
+      if (!m) return;
+      const [r, g, b] = hexToLinear(hex);
+      m.pbrMetallicRoughness.setBaseColorFactor([r, g, b, 1]);
     }
-    const ro = new ResizeObserver(onResize);
-    ro.observe(container);
 
     return {
-      setBodyColor(hex)  { bodyMat.color.set(hex); },
-      setRimColor(hex)   { wheels.forEach(w => w.traverse(o => { if (o.userData.isRim) o.material.color.set(hex); })); },
-      setXenonColor(hex) { headMat.color.set(hex); headMat.emissive.set(hex); },
+      setBodyColor(hex)  { setColor('body', hex); },
+      setRimColor(hex)   { setColor('rim', hex); },
+      setXenonColor(hex) {
+        setColor('headlight', hex);
+        const m = materials?.headlight;
+        if (m) m.setEmissiveFactor(hexToLinear(hex));
+      },
       setPearl(on) {
-        bodyMat.iridescence = on ? 0.9 : 0;
-        bodyMat.iridescenceIOR = 1.3;
-        bodyMat.iridescenceThicknessRange = [100, 400];
-        bodyMat.clearcoatRoughness = on ? 0.04 : 0.12;
-        bodyMat.needsUpdate = true;
+        const m = materials?.body;
+        if (m) m.setIridescenceFactor(on ? 0.9 : 0.001);
       },
       dispose() {
-        disposed = true;
-        if (raf) cancelAnimationFrame(raf);
-        ro.disconnect();
-        controls.dispose();
-        scene.traverse(o => {
-          if (o.geometry) o.geometry.dispose();
-          if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose());
-        });
-        renderer.dispose();
-        if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
+        if (mv.parentNode) mv.parentNode.removeChild(mv);
+        URL.revokeObjectURL(url);
       },
     };
   }

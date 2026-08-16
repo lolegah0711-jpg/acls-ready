@@ -112,16 +112,20 @@ app.use((req, res, next) => {
   if (process.env.NODE_ENV === 'production') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
-  // Fonts, Icons (Font Awesome), Hammer.js, Leaflet, Chart.js und jsPDF werden
-  // selbst-gehostet ausgeliefert (public/fonts, public/vendor) — keine externen
-  // Script/Style/Font-Origins mehr nötig (DSGVO: keine IP-Übertragung an Dritte).
+  // Fonts, Icons (Font Awesome), Hammer.js, Leaflet, Chart.js, jsPDF, Three.js
+  // und model-viewer werden selbst-gehostet ausgeliefert (public/fonts,
+  // public/vendor) — keine externen Script/Style/Font-Origins mehr nötig
+  // (DSGVO: keine IP-Übertragung an Dritte). blob: ist für die 3D-Farbvor-
+  // schau nötig: model-viewer lädt das prozedural erzeugte Fahrzeug-Modell
+  // aus einer im Browser selbst erstellten Blob-URL (kein Server-Roundtrip).
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self'",
-    "img-src 'self' data: https://cdn.discordapp.com https://i.pravatar.cc https://via.placeholder.com https://i.imgur.com https://imgur.com",
-    "connect-src 'self'",
+    "img-src 'self' data: blob: https://cdn.discordapp.com https://i.pravatar.cc https://via.placeholder.com https://i.imgur.com https://imgur.com",
+    "connect-src 'self' blob:",
+    "worker-src 'self' blob:",
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'self'",
