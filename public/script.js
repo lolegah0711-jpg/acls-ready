@@ -1790,6 +1790,10 @@ async function navigate(page) {
   _activePage = page;
   trackPageVisit(page);
   if (leafletMap && page !== 'map') { leafletMap.remove(); leafletMap = null; }
+  // Preisliste-Kostenrechner: Leiste beim Seitenwechsel ausblenden, prices() füllt sie bei Bedarf neu
+  const _tcb = $('tuningCalcBar');
+  if (_tcb) { _tcb.classList.remove('show'); _tcb.innerHTML = ''; }
+  $('pageContent')?.classList.remove('has-calc-bar');
 
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   const p = PAGES[page] || PAGES.dashboard;
@@ -4614,10 +4618,11 @@ async function prices() {
   const canEdit = isAdmin();
 
   window._tuningRows = rows;
+  window._tuningCartIds = new Set(); // Auswahl beim Betreten der Seite immer leer starten
 
   $('pageContent').innerHTML = `
     <div class="pg-header">
-      <div class="pg-header-left"><h2>Preisliste – Tuning & Anbauteile</h2><p>${rows.length} Teile · Endpreis für Kunden, in Klammern der Ingame-Einkauf · <a href="/preise" target="_blank" style="color:var(--orange)">Öffentlicher Kostenrechner →</a></p></div>
+      <div class="pg-header-left"><h2>Preisliste – Tuning & Anbauteile</h2><p>${rows.length} Teile · Klicke ein Teil an, um es zur Rechnung hinzuzufügen · Endpreis groß, Ingame-Einkauf klein in Klammern</p></div>
       <div style="display:flex;gap:.5rem">
         <button class="btn btn-ghost" onclick="openRechnungModal()" style="color:#22c55e;border-color:rgba(34,197,94,.3)"><i class="fas fa-file-invoice" style="margin-right:.4rem"></i>Rechnung erstellen</button>
         ${canEdit ? `<button class="btn btn-primary" onclick="openAddTuning()"><i class="fas fa-plus"></i> Teil hinzufügen</button>` : ''}
@@ -4628,11 +4633,12 @@ async function prices() {
         <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.6rem;display:flex;align-items:center;gap:.6rem">${esc(cat)}<div style="flex:1;height:1px;background:var(--border)"></div></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.7rem">
           ${items.map(i => `
-          <div style="padding:.9rem .6rem;text-align:center;position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rl)">
+          <div class="tprice-card" onclick="toggleTuningSelect(${i.id},this)">
+            <div class="tprice-card-check">✓</div>
             ${canEdit ? `
-            <div style="position:absolute;top:.35rem;right:.35rem;display:flex;gap:.2rem">
-              <button class="btn btn-ghost btn-sm" title="Bearbeiten" onclick="openEditTuning(${i.id})"><i class="fas fa-pen" style="font-size:.65rem"></i></button>
-              <button class="btn btn-danger btn-sm" title="Löschen" onclick="deleteTuning(${i.id})"><i class="fas fa-trash" style="font-size:.65rem"></i></button>
+            <div class="tprice-card-edit">
+              <button class="btn btn-ghost btn-sm" title="Bearbeiten" onclick="event.stopPropagation();openEditTuning(${i.id})"><i class="fas fa-pen" style="font-size:.65rem"></i></button>
+              <button class="btn btn-danger btn-sm" title="Löschen" onclick="event.stopPropagation();deleteTuning(${i.id})"><i class="fas fa-trash" style="font-size:.65rem"></i></button>
             </div>` : ''}
             <div style="height:46px;display:flex;align-items:center;justify-content:center;font-size:34px;margin-bottom:.5rem">${i.image ? `<img src="${esc(i.image)}" style="max-height:46px;max-width:72px;object-fit:contain" loading="lazy" alt="">` : esc(i.icon || '🔧')}</div>
             <div style="font-weight:700;font-size:.82rem">${esc(i.name)}</div>
@@ -4642,7 +4648,54 @@ async function prices() {
           </div>`).join('')}
         </div>
       </div>`).join('')}`;
+
+  renderTuningCalcBar();
 }
+
+// ── Preisliste: Kostenrechner (Klick zum Hinzufügen, immer sichtbare Summe) ──
+window.toggleTuningSelect = (id, el) => {
+  const cart = window._tuningCartIds || (window._tuningCartIds = new Set());
+  if (cart.has(id)) cart.delete(id); else cart.add(id);
+  el.classList.toggle('sel', cart.has(id));
+  renderTuningCalcBar();
+};
+
+function renderTuningCalcBar() {
+  const bar = $('tuningCalcBar');
+  if (!bar) return;
+  const cart = window._tuningCartIds || new Set();
+  const chosen = (window._tuningRows || []).filter(r => cart.has(r.id));
+  $('pageContent')?.classList.toggle('has-calc-bar', chosen.length > 0);
+  if (!chosen.length) { bar.classList.remove('show'); bar.innerHTML = ''; return; }
+  const sum = chosen.reduce((s, i) => s + (+i.customer_price), 0);
+  bar.classList.add('show');
+  bar.innerHTML = `
+    <div>
+      <div class="tuning-calc-sum">${sum.toLocaleString('de-DE')} $</div>
+      <div class="tuning-calc-count">${chosen.length} Teil${chosen.length === 1 ? '' : 'e'} gewählt</div>
+    </div>
+    <div style="flex:1"></div>
+    <button class="btn btn-ghost btn-sm" onclick="clearTuningCalc()">Leeren</button>
+    <button class="btn btn-primary btn-sm" onclick="copyTuningCalc()"><i class="fas fa-copy"></i> Anfrage kopieren</button>`;
+}
+
+window.clearTuningCalc = () => {
+  (window._tuningCartIds || new Set()).clear();
+  document.querySelectorAll('.tprice-card.sel').forEach(el => el.classList.remove('sel'));
+  renderTuningCalcBar();
+};
+
+window.copyTuningCalc = async () => {
+  const cart = window._tuningCartIds || new Set();
+  const chosen = (window._tuningRows || []).filter(r => cart.has(r.id));
+  if (!chosen.length) return;
+  const sum = chosen.reduce((s, i) => s + (+i.customer_price), 0);
+  const txt = 'Tuning-Anfrage an den ACLS:\n' +
+    chosen.map(i => `• ${i.name} – ${(+i.customer_price).toLocaleString('de-DE')} $`).join('\n') +
+    `\nGesamt: ${sum.toLocaleString('de-DE')} $`;
+  try { await navigator.clipboard.writeText(txt); toast('Anfrage kopiert!', 'ok'); }
+  catch { prompt('Kopiere deine Anfrage:', txt); }
+};
 
 window.openRechnungModal = () => {
   const rows = window._tuningRows || [];

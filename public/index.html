@@ -78,7 +78,7 @@
   <!-- Icons + Font (selbst-gehostet, DSGVO-konform) -->
   <link href="/fonts/inter.css" rel="stylesheet">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="styles.css?v=10" />
   <link rel="preload" as="image" href="/landingpage.webp" />
 </head>
 <body>
@@ -369,6 +369,7 @@
         </div>
       </header>
       <main id="pageContent" tabindex="-1"><div class="loader-wrap"><div class="loader"></div></div></main>
+      <div id="tuningCalcBar" class="tuning-calc-bar"></div>
     </div>
   </div>
 
@@ -426,7 +427,7 @@
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
   </script>
-  <script src="script.js?v=23"></script>
+  <script src="script.js?v=24"></script>
   <script src="/js/social.js?v=2"></script>
   <script src="/js/acls-plus.js?v=4"></script>
   <script>init();</script>
