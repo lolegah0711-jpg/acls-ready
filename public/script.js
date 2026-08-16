@@ -4628,6 +4628,38 @@ async function prices() {
         ${canEdit ? `<button class="btn btn-primary" onclick="openAddTuning()"><i class="fas fa-plus"></i> Teil hinzufügen</button>` : ''}
       </div>
     </div>
+    <div class="card" style="margin-bottom:1.5rem">
+      <div style="font-weight:700;font-size:.92rem;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem">🎨 Farbvorschau <span style="font-weight:400;font-size:.75rem;color:var(--muted)">– Hexcode fürs Auto testen (Lackierung, Perlglanz, Felgenfarbe, Xenon …)</span></div>
+      <div class="colorpv-body">
+        <div class="colorpv-car">
+          <svg viewBox="0 0 240 110" role="img" aria-label="Fahrzeug-Farbvorschau">
+            <ellipse cx="120" cy="99" rx="104" ry="6" fill="#000" opacity=".22"/>
+            <circle cx="52" cy="88" r="15" fill="#15181d"/>
+            <circle cx="52" cy="88" r="7" fill="#c7ccd1"/>
+            <circle cx="52" cy="88" r="2.5" fill="#8b9096"/>
+            <circle cx="188" cy="88" r="15" fill="#15181d"/>
+            <circle cx="188" cy="88" r="7" fill="#c7ccd1"/>
+            <circle cx="188" cy="88" r="2.5" fill="#8b9096"/>
+            <rect class="cpv-body" x="8" y="55" width="224" height="32" rx="16" fill="#f97316"/>
+            <path class="cpv-body" d="M58,60 L88,30 Q95,24 108,24 L148,24 Q159,24 165,30 L190,60 Z" fill="#f97316"/>
+            <path d="M67,58 L91,35 Q96,31 106,31 L150,31 Q159,31 164,35 L187,58 Z" fill="#0b1622" fill-opacity=".6" stroke="#000" stroke-opacity=".2" stroke-width="1.5"/>
+            <line x1="128" y1="31" x2="128" y2="58" stroke="#000" stroke-opacity=".22" stroke-width="1.5"/>
+            <line x1="55" y1="55" x2="55" y2="87" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
+            <line x1="150" y1="55" x2="150" y2="87" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
+            <ellipse cx="18" cy="66" rx="5" ry="3.6" fill="#fef9c3"/>
+            <ellipse cx="222" cy="66" rx="5" ry="3.6" fill="#7f1d1d"/>
+            <path d="M14,58 Q60,50 105,54" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="colorpv-controls">
+          <div class="colorpv-inputs">
+            <input type="color" id="cpvPicker" value="#f97316" title="Farbe wählen">
+            <input type="text" class="form-control" id="cpvHex" value="#F97316" maxlength="7" placeholder="#RRGGBB" title="Hexcode eingeben">
+          </div>
+          <div class="colorpv-presets" id="cpvPresets"></div>
+        </div>
+      </div>
+    </div>
     ${Object.entries(cats).map(([cat, items]) => `
       <div style="margin-bottom:1.5rem">
         <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.6rem;display:flex;align-items:center;gap:.6rem">${esc(cat)}<div style="flex:1;height:1px;background:var(--border)"></div></div>
@@ -4650,7 +4682,32 @@ async function prices() {
       </div>`).join('')}`;
 
   renderTuningCalcBar();
+  initColorPreview();
 }
+
+// ── Preisliste: Farbvorschau ────────────────────────────────────────
+const CPV_PRESETS = ['#ffffff', '#0a0a0a', '#9ca3af', '#dc2626', '#1d4ed8', '#16a34a', '#facc15', '#f97316', '#7c3aed', '#ec4899'];
+
+function initColorPreview() {
+  const presetsEl = $('cpvPresets');
+  if (!presetsEl) return; // Widget nicht auf der aktuellen Seite gerendert
+  presetsEl.innerHTML = CPV_PRESETS.map(h =>
+    `<button type="button" class="cpv-swatch" style="background:${h}" data-hex="${h}" title="${h}" onclick="cpvApply('${h}')"></button>`
+  ).join('');
+  $('cpvHex').addEventListener('input', e => {
+    const m = e.target.value.trim().match(/^#?([0-9a-fA-F]{6})$/);
+    if (m) cpvApply('#' + m[1], false);
+  });
+  $('cpvPicker').addEventListener('input', e => cpvApply(e.target.value));
+  cpvApply('#f97316');
+}
+
+window.cpvApply = (hex, updateHexField = true) => {
+  document.querySelectorAll('.cpv-body').forEach(el => el.setAttribute('fill', hex));
+  const picker = $('cpvPicker'); if (picker) picker.value = hex;
+  if (updateHexField) { const hf = $('cpvHex'); if (hf) hf.value = hex.toUpperCase(); }
+  document.querySelectorAll('.cpv-swatch').forEach(s => s.classList.toggle('active', s.dataset.hex.toLowerCase() === hex.toLowerCase()));
+};
 
 // ── Preisliste: Kostenrechner (Klick zum Hinzufügen, immer sichtbare Summe) ──
 window.toggleTuningSelect = (id, el) => {

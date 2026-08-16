@@ -86,6 +86,23 @@
     .modal-btns .spacer{flex:1;}
 
     @media(max-width:480px){.grid{grid-template-columns:repeat(2,1fr);}}
+
+    /* ── Farbvorschau ── */
+    .colorpv{max-width:980px;margin:0 auto 22px;background:#0f1623;border:1px solid #1e2a3a;border-radius:14px;padding:18px 20px;}
+    .colorpv-title{font-size:.85rem;font-weight:700;color:#f3f4f6;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+    .colorpv-title small{font-weight:400;font-size:.72rem;color:#6b7280}
+    .colorpv-body{display:flex;gap:22px;flex-wrap:wrap;align-items:center}
+    .colorpv-car{flex:1 1 260px;min-width:220px;max-width:360px}
+    .colorpv-car svg{width:100%;height:auto;display:block}
+    .colorpv-controls{flex:1 1 220px;display:flex;flex-direction:column;gap:12px}
+    .colorpv-inputs{display:flex;gap:8px;align-items:center}
+    .colorpv-inputs input[type=color]{width:44px;height:38px;border:1px solid #1e2a3a;border-radius:8px;background:#131c2b;cursor:pointer;padding:2px;flex-shrink:0}
+    .colorpv-inputs input[type=text]{flex:1;min-width:0;background:#131c2b;border:1px solid #1e2a3a;border-radius:8px;padding:8px 12px;color:#e5e7eb;font-family:inherit;font-size:.85rem;text-transform:uppercase;outline:none}
+    .colorpv-inputs input[type=text]:focus{border-color:#f97316}
+    .colorpv-presets{display:flex;gap:7px;flex-wrap:wrap}
+    .cpv-swatch{width:24px;height:24px;border-radius:50%;border:2px solid #1e2a3a;cursor:pointer;transition:transform .12s,border-color .12s;padding:0}
+    .cpv-swatch:hover{transform:scale(1.15)}
+    .cpv-swatch.active{border-color:#f97316;box-shadow:0 0 0 2px rgba(249,115,22,.3)}
   </style>
 </head>
 <body>
@@ -96,6 +113,39 @@
   <div class="subtitle">Tuning &amp; Anbauteile – tippe Teile an und sieh sofort deinen Endpreis</div>
   <div class="admin-actions" id="adminActions">
     <button class="btn ghost" id="editToggle" onclick="toggleEdit()">🛠️ Bearbeiten: AUS</button>
+  </div>
+</div>
+
+<div class="colorpv" id="colorPv">
+  <div class="colorpv-title">🎨 Farbvorschau <small>– teste deinen Hexcode fürs Auto (Lackierung, Perlglanz, Felgenfarbe, Xenon …)</small></div>
+  <div class="colorpv-body">
+    <div class="colorpv-car">
+      <svg viewBox="0 0 240 110" role="img" aria-label="Fahrzeug-Farbvorschau">
+        <ellipse cx="120" cy="99" rx="104" ry="6" fill="#000" opacity=".22"/>
+        <circle cx="52" cy="88" r="15" fill="#15181d"/>
+        <circle cx="52" cy="88" r="7" fill="#c7ccd1"/>
+        <circle cx="52" cy="88" r="2.5" fill="#8b9096"/>
+        <circle cx="188" cy="88" r="15" fill="#15181d"/>
+        <circle cx="188" cy="88" r="7" fill="#c7ccd1"/>
+        <circle cx="188" cy="88" r="2.5" fill="#8b9096"/>
+        <rect class="cpv-body" x="8" y="55" width="224" height="32" rx="16" fill="#f97316"/>
+        <path class="cpv-body" d="M58,60 L88,30 Q95,24 108,24 L148,24 Q159,24 165,30 L190,60 Z" fill="#f97316"/>
+        <path d="M67,58 L91,35 Q96,31 106,31 L150,31 Q159,31 164,35 L187,58 Z" fill="#0b1622" fill-opacity=".6" stroke="#000" stroke-opacity=".2" stroke-width="1.5"/>
+        <line x1="128" y1="31" x2="128" y2="58" stroke="#000" stroke-opacity=".22" stroke-width="1.5"/>
+        <line x1="55" y1="55" x2="55" y2="87" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
+        <line x1="150" y1="55" x2="150" y2="87" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
+        <ellipse cx="18" cy="66" rx="5" ry="3.6" fill="#fef9c3"/>
+        <ellipse cx="222" cy="66" rx="5" ry="3.6" fill="#7f1d1d"/>
+        <path d="M14,58 Q60,50 105,54" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="colorpv-controls">
+      <div class="colorpv-inputs">
+        <input type="color" id="cpvPicker" value="#f97316" title="Farbe wählen">
+        <input type="text" id="cpvHex" value="#F97316" maxlength="7" placeholder="#RRGGBB" title="Hexcode eingeben">
+      </div>
+      <div class="colorpv-presets" id="cpvPresets"></div>
+    </div>
   </div>
 </div>
 
@@ -362,6 +412,26 @@ async function reloadItems() {
   ITEMS = await fetch('/api/tuning-items').then(r => r.json()).catch(() => ITEMS);
   render();
 }
+
+// ── Farbvorschau ─────────────────────────────────────────────────
+const CPV_PRESETS = ['#ffffff','#0a0a0a','#9ca3af','#dc2626','#1d4ed8','#16a34a','#facc15','#f97316','#7c3aed','#ec4899'];
+
+function cpvApply(hex, updateHexField = true) {
+  document.querySelectorAll('.cpv-body').forEach(el => el.setAttribute('fill', hex));
+  document.getElementById('cpvPicker').value = hex;
+  if (updateHexField) document.getElementById('cpvHex').value = hex.toUpperCase();
+  document.querySelectorAll('.cpv-swatch').forEach(s => s.classList.toggle('active', s.dataset.hex.toLowerCase() === hex.toLowerCase()));
+}
+
+document.getElementById('cpvPresets').innerHTML = CPV_PRESETS.map(h =>
+  `<button type="button" class="cpv-swatch" style="background:${h}" data-hex="${h}" title="${h}" onclick="cpvApply('${h}')"></button>`
+).join('');
+document.getElementById('cpvPicker').addEventListener('input', e => cpvApply(e.target.value));
+document.getElementById('cpvHex').addEventListener('input', e => {
+  const m = e.target.value.trim().match(/^#?([0-9a-fA-F]{6})$/);
+  if (m) cpvApply('#' + m[1], false);
+});
+cpvApply('#f97316');
 
 load();
 </script>

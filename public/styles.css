@@ -839,6 +839,27 @@ input, select, textarea { font-family: inherit; }
 .tuning-calc-sum   { font-size: 1.1rem; font-weight: 800; color: var(--orange); font-variant-numeric: tabular-nums; }
 .tuning-calc-count { font-size: .74rem; color: var(--muted); }
 
+/* ── Farbvorschau (Preisliste) ──────────────────────────────────────
+   Nur ein einzelnes Element -> backdrop-filter der .card ist hier
+   unproblematisch (anders als bei vielen Teile-Karten gleichzeitig). */
+.colorpv-body    { display: flex; gap: 1.3rem; flex-wrap: wrap; align-items: center; }
+.colorpv-car     { flex: 1 1 240px; min-width: 200px; max-width: 320px; }
+.colorpv-car svg { width: 100%; height: auto; display: block; }
+.colorpv-controls { flex: 1 1 220px; display: flex; flex-direction: column; gap: .7rem; }
+.colorpv-inputs  { display: flex; gap: .5rem; align-items: center; }
+.colorpv-inputs input[type=color] {
+  width: 42px; height: 36px; flex-shrink: 0;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); cursor: pointer; padding: 2px;
+}
+.colorpv-inputs input[type=text] { flex: 1; min-width: 0; text-transform: uppercase; }
+.colorpv-presets { display: flex; gap: .4rem; flex-wrap: wrap; }
+.cpv-swatch {
+  width: 24px; height: 24px; border-radius: 50%; padding: 0;
+  border: 2px solid var(--border); cursor: pointer; transition: transform .12s, border-color .12s;
+}
+.cpv-swatch:hover   { transform: scale(1.15); }
+.cpv-swatch.active  { border-color: var(--orange); box-shadow: 0 0 0 2px var(--orange-dim); }
+
 /* ── User Widget ─────────────────────────────────────────────────── */
 .user-widget { display: flex; align-items: center; gap: .65rem; }
 .u-avatar {
