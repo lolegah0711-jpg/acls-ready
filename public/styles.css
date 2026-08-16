@@ -839,15 +839,21 @@ input, select, textarea { font-family: inherit; }
 .tuning-calc-sum   { font-size: 1.1rem; font-weight: 800; color: var(--orange); font-variant-numeric: tabular-nums; }
 .tuning-calc-count { font-size: .74rem; color: var(--muted); }
 
-/* ── Farbvorschau (Preisliste) ──────────────────────────────────────
-   Nur ein einzelnes Element -> backdrop-filter der .card ist hier
-   unproblematisch (anders als bei vielen Teile-Karten gleichzeitig). */
+/* ── Farbvorschau (Preisliste, 3D-Modell) ───────────────────────────
+   Nur ein einzelnes Canvas-Element -> backdrop-filter der .card ist
+   hier unproblematisch (anders als bei vielen Teile-Karten gleichzeitig). */
 .colorpv-body    { display: flex; gap: 1.3rem; flex-wrap: wrap; align-items: flex-start; }
-.colorpv-car     { flex: 1 1 240px; min-width: 200px; max-width: 340px; }
-.cpv-stage       { perspective: 700px; }
-.cpv-stage svg   { width: 100%; height: auto; display: block; transition: transform .15s ease; transform-origin: center; }
-.cpv-rotate-row  { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; font-size: .8rem; color: var(--muted); user-select: none; }
-.cpv-rotate-row input[type=range] { flex: 1; accent-color: var(--orange); }
+.colorpv-car     { flex: 1 1 260px; min-width: 220px; max-width: 380px; }
+.cpv-canvas-wrap {
+  position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 70%, rgba(255,255,255,.05), transparent 70%);
+  touch-action: none; /* OrbitControls: kein Seiten-Scroll beim Ziehen im Canvas auf Touch-Geräten */
+}
+.cpv-canvas-wrap canvas { display: block; width: 100% !important; height: 100% !important; }
+.cpv-canvas-loading {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: .78rem; color: var(--muted); text-align: center; padding: 0 .75rem;
+}
 .colorpv-controls { flex: 1 1 220px; display: flex; flex-direction: column; gap: .65rem; }
 .colorpv-row     { display: flex; gap: .5rem; align-items: center; }
 .colorpv-label   { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; width: 50px; flex-shrink: 0; }
@@ -865,13 +871,6 @@ input, select, textarea { font-family: inherit; }
 }
 .cpv-swatch:hover   { transform: scale(1.15); }
 .cpv-swatch.active  { border-color: var(--orange); box-shadow: 0 0 0 2px var(--orange-dim); }
-.cpv-pearl-sheen { opacity: 0; }
-.cpv-pearl-sheen.on { animation: cpvShimmer 3.2s ease-in-out infinite; }
-#cpvSvg.pearl-on .cpv-body { filter: saturate(1.3) brightness(1.05); }
-@keyframes cpvShimmer {
-  0%, 100% { opacity: .16; transform: translateX(-24px); }
-  50%      { opacity: .42; transform: translateX(24px); }
-}
 
 /* ── User Widget ─────────────────────────────────────────────────── */
 .user-widget { display: flex; align-items: center; gap: .65rem; }

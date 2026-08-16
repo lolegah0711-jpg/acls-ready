@@ -10,6 +10,14 @@
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="__BASE_URL__/" />
 
+  <!-- Importmap für die 3D-Farbvorschau (Three.js, self-hosted): löst den
+       Bare-Specifier 'three' auf, den vendor/three/controls/OrbitControls.js
+       intern importiert. Three.js selbst wird erst per dynamischem import()
+       nachgeladen, wenn die Preisliste tatsächlich geöffnet wird. -->
+  <script type="importmap">
+  { "imports": { "three": "/vendor/three/three.module.min.js" } }
+  </script>
+
   <!-- Open Graph / Discord-Link-Vorschau -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="ACLS Automobil-Club Los Santos" />
@@ -78,7 +86,7 @@
   <!-- Icons + Font (selbst-gehostet, DSGVO-konform) -->
   <link href="/fonts/inter.css" rel="stylesheet">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="styles.css?v=12" />
+  <link rel="stylesheet" href="styles.css?v=13" />
   <link rel="preload" as="image" href="/landingpage.webp" />
 </head>
 <body>
@@ -427,9 +435,10 @@
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
   </script>
-  <script src="script.js?v=26"></script>
+  <script src="script.js?v=27"></script>
   <script src="/js/social.js?v=2"></script>
   <script src="/js/acls-plus.js?v=4"></script>
+  <script src="/js/car-preview-3d.js?v=1"></script>
   <script>init();</script>
 </body>
 </html>

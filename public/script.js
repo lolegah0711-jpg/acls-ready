@@ -1796,6 +1796,9 @@ async function navigate(page) {
   const _tcb = $('tuningCalcBar');
   if (_tcb) { _tcb.classList.remove('show'); _tcb.innerHTML = ''; }
   $('pageContent')?.classList.remove('has-calc-bar');
+  // 3D-Farbvorschau: WebGL-Kontext freigeben (begrenzte Ressource) -- prices()
+  // baut bei Bedarf eine neue Instanz auf, initColorPreview() ruft das eh erneut auf
+  cpvDispose();
 
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   const p = PAGES[page] || PAGES.dashboard;
@@ -4656,68 +4659,24 @@ async function prices() {
   initColorPreview();
 }
 
-// ── Preisliste: Farbvorschau (Lack, Perlglanz, Felgen, Xenon, drehbar) ──
+// ── Preisliste: Farbvorschau (3D-Modell, Lack/Perlglanz/Felgen/Xenon) ──
 const CPV_PRESETS = ['#ffffff', '#0a0a0a', '#9ca3af', '#dc2626', '#1d4ed8', '#16a34a', '#facc15', '#f97316', '#7c3aed', '#ec4899'];
+let _cpvCarInstance = null; // aktive Three.js-Instanz (WebGL-Kontexte sind begrenzt -> sauber aufräumen)
+let _cpvGen = 0;            // Generation-Zähler gegen Race-Conditions bei schnellem Seitenwechsel
+
+function cpvDispose() {
+  if (_cpvCarInstance) { _cpvCarInstance.dispose(); _cpvCarInstance = null; }
+  _cpvGen++;
+}
 
 // Wird sowohl im internen Preisliste-Rendering als auch in der Bürger-Ansicht
 // eingebettet (nie gleichzeitig im DOM, daher sind die IDs unkritisch).
 function colorPreviewCardHtml() {
   return `
-  <div style="font-weight:700;font-size:.92rem;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem">🎨 Farbvorschau <span style="font-weight:400;font-size:.75rem;color:var(--muted)">– Lack, Perlglanz, Felgen &amp; Xenon einzeln testen, drehbar</span></div>
+  <div style="font-weight:700;font-size:.92rem;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem">🎨 Farbvorschau <span style="font-weight:400;font-size:.75rem;color:var(--muted)">– 3D-Modell, frei drehbar per Maus/Touch (Lack, Perlglanz, Felgen &amp; Xenon einzeln)</span></div>
   <div class="colorpv-body">
     <div class="colorpv-car">
-      <div class="cpv-stage">
-        <svg id="cpvSvg" viewBox="0 0 280 120" role="img" aria-label="Fahrzeug-Farbvorschau">
-          <defs>
-            <linearGradient id="cpvGloss" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#fff" stop-opacity=".35"/>
-              <stop offset="55%" stop-color="#fff" stop-opacity="0"/>
-            </linearGradient>
-            <clipPath id="cpvBodyClip">
-              <rect x="10" y="62" width="260" height="36" rx="18"/>
-              <path d="M65,68 L100,34 Q108,26 122,26 L168,26 Q182,26 190,34 L215,68 Z"/>
-            </clipPath>
-          </defs>
-          <ellipse cx="140" cy="110" rx="122" ry="6" fill="#000" opacity=".22"/>
-          <g>
-            <circle cx="62" cy="96" r="17" fill="#15181d"/>
-            <circle class="cpv-rim" cx="62" cy="96" r="9" fill="#c7ccd1"/>
-            <g stroke="#3a3f45" stroke-width="1.2" stroke-opacity=".55">
-              <line x1="62" y1="87" x2="62" y2="105"/><line x1="53" y1="96" x2="71" y2="96"/>
-              <line x1="55.5" y1="89.5" x2="68.5" y2="102.5"/><line x1="68.5" y1="89.5" x2="55.5" y2="102.5"/>
-            </g>
-            <circle cx="62" cy="96" r="3" fill="#5b6167"/>
-          </g>
-          <g>
-            <circle cx="218" cy="96" r="17" fill="#15181d"/>
-            <circle class="cpv-rim" cx="218" cy="96" r="9" fill="#c7ccd1"/>
-            <g stroke="#3a3f45" stroke-width="1.2" stroke-opacity=".55">
-              <line x1="218" y1="87" x2="218" y2="105"/><line x1="209" y1="96" x2="227" y2="96"/>
-              <line x1="211.5" y1="89.5" x2="224.5" y2="102.5"/><line x1="224.5" y1="89.5" x2="211.5" y2="102.5"/>
-            </g>
-            <circle cx="218" cy="96" r="3" fill="#5b6167"/>
-          </g>
-          <rect class="cpv-body" x="10" y="62" width="260" height="36" rx="18" fill="#f97316"/>
-          <path class="cpv-body" d="M65,68 L100,34 Q108,26 122,26 L168,26 Q182,26 190,34 L215,68 Z" fill="#f97316"/>
-          <path class="cpv-body" d="M88,60 L100,55 L104,62 L92,66 Z" fill="#f97316"/>
-          <path d="M75,66 L103,39 Q109,33 122,33 L168,33 Q181,33 187,39 L207,66 Z" fill="#0b1622" fill-opacity=".6" stroke="#000" stroke-opacity=".2" stroke-width="1.5"/>
-          <line x1="145" y1="33" x2="145" y2="66" stroke="#000" stroke-opacity=".22" stroke-width="1.5"/>
-          <line x1="72" y1="62" x2="72" y2="98" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
-          <line x1="178" y1="62" x2="178" y2="98" stroke="#000" stroke-opacity=".15" stroke-width="1.5"/>
-          <ellipse class="cpv-xenon" cx="20" cy="78" rx="7" ry="4.5" fill="#fef9c3"/>
-          <circle cx="18" cy="76" r="1.8" fill="#fff" fill-opacity=".7"/>
-          <ellipse cx="260" cy="78" rx="7" ry="4.5" fill="#7f1d1d"/>
-          <rect x="10" y="20" width="260" height="80" fill="url(#cpvGloss)" clip-path="url(#cpvBodyClip)" pointer-events="none"/>
-          <ellipse id="cpvPearlSheen" class="cpv-pearl-sheen" cx="140" cy="60" rx="90" ry="45" fill="#fff" clip-path="url(#cpvBodyClip)"/>
-          <path d="M18,70 Q80,58 145,63" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="4" stroke-linecap="round" pointer-events="none"/>
-          <path d="M118,30 Q145,26 175,30" fill="none" stroke="#fff" stroke-opacity=".18" stroke-width="2.5" stroke-linecap="round" pointer-events="none"/>
-        </svg>
-      </div>
-      <div class="cpv-rotate-row">
-        <span>↺</span>
-        <input type="range" id="cpvRotate" min="-30" max="30" value="0" step="1" title="Fahrzeug drehen">
-        <span>↻</span>
-      </div>
+      <div class="cpv-canvas-wrap" id="cpvCanvas"><div class="cpv-canvas-loading">Lade 3D-Vorschau…</div></div>
     </div>
     <div class="colorpv-controls">
       <div class="colorpv-row">
@@ -4739,9 +4698,14 @@ function colorPreviewCardHtml() {
   </div>`;
 }
 
-function initColorPreview() {
+async function initColorPreview() {
+  const canvasEl = $('cpvCanvas');
+  if (!canvasEl) return; // Widget nicht auf der aktuellen Seite gerendert
+
+  cpvDispose();
+  const myGen = _cpvGen;
+
   const presetsEl = $('cpvPresets');
-  if (!presetsEl) return; // Widget nicht auf der aktuellen Seite gerendert
   presetsEl.innerHTML = CPV_PRESETS.map(h =>
     `<button type="button" class="cpv-swatch" style="background:${h}" data-hex="${h}" title="${h}" onclick="cpvApply('${h}')"></button>`
   ).join('');
@@ -4750,25 +4714,22 @@ function initColorPreview() {
     if (m) cpvApply('#' + m[1], false);
   });
   $('cpvPicker').addEventListener('input', e => cpvApply(e.target.value));
-  $('cpvRim').addEventListener('input', e => {
-    document.querySelectorAll('.cpv-rim').forEach(el => el.setAttribute('fill', e.target.value));
-  });
-  $('cpvXenon').addEventListener('input', e => {
-    document.querySelectorAll('.cpv-xenon').forEach(el => el.setAttribute('fill', e.target.value));
-  });
-  $('cpvPearl').addEventListener('change', e => {
-    $('cpvPearlSheen')?.classList.toggle('on', e.target.checked);
-    $('cpvSvg')?.classList.toggle('pearl-on', e.target.checked);
-  });
-  $('cpvRotate').addEventListener('input', e => {
-    const svg = $('cpvSvg');
-    if (svg) svg.style.transform = `rotateY(${e.target.value}deg)`;
-  });
+  $('cpvRim').addEventListener('input', e => _cpvCarInstance?.setRimColor(e.target.value));
+  $('cpvXenon').addEventListener('input', e => _cpvCarInstance?.setXenonColor(e.target.value));
+  $('cpvPearl').addEventListener('change', e => _cpvCarInstance?.setPearl(e.target.checked));
+
+  let instance;
+  try { instance = await window.initCarPreview3D(canvasEl); }
+  catch (e) { console.error('[Farbvorschau]', e); instance = null; }
+
+  if (myGen !== _cpvGen) { instance?.dispose(); return; } // Nutzer hat inzwischen die Seite gewechselt
+  if (!instance) { canvasEl.innerHTML = '<div class="cpv-canvas-loading">3D-Vorschau in diesem Browser nicht verfügbar.</div>'; return; }
+  _cpvCarInstance = instance;
   cpvApply('#f97316');
 }
 
 window.cpvApply = (hex, updateHexField = true) => {
-  document.querySelectorAll('.cpv-body').forEach(el => el.setAttribute('fill', hex));
+  _cpvCarInstance?.setBodyColor(hex);
   const picker = $('cpvPicker'); if (picker) picker.value = hex;
   if (updateHexField) { const hf = $('cpvHex'); if (hf) hf.value = hex.toUpperCase(); }
   document.querySelectorAll('.cpv-swatch').forEach(s => s.classList.toggle('active', s.dataset.hex.toLowerCase() === hex.toLowerCase()));
