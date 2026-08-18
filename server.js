@@ -514,14 +514,21 @@ app.post('/api/users', (req, res) => {
         return { error: 'Nur Admins können Nutzer anlegen', status: 403 };
       }
       const assignedRole = totalUsers === 0 ? 'admin' : (role || 'member');
+      // Discord-ID hat evtl. schon einen (ggf. inaktiven/anderen) Eintrag, z.B. durch früheren
+      // OAuth-Login als Bürger — dann reaktivieren + Rolle setzen statt INSERT scheitern zu lassen.
+      const existing = db.prepare('SELECT id FROM users WHERE discord_id = ?').get(discord_id);
+      if (existing) {
+        db.prepare('UPDATE users SET username = ?, role = ?, is_active = 1 WHERE id = ?')
+          .run(username, assignedRole, existing.id);
+        return { id: existing.id, reactivated: true };
+      }
       const r = db.prepare('INSERT INTO users (discord_id, username, role, added_by) VALUES (?, ?, ?, ?)')
         .run(discord_id, username, assignedRole, requester?.id || null);
       return { id: r.lastInsertRowid };
     })();
     if (result.error) return res.status(result.status).json({ error: result.error });
-    res.json({ id: result.id });
+    res.json({ id: result.id, reactivated: result.reactivated || false });
   } catch (e) {
-    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Discord-ID bereits vorhanden' });
     res.status(500).json({ error: 'Datenbankfehler' });
   }
 });

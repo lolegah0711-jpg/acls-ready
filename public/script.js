@@ -6574,7 +6574,7 @@ window.openAddUser = () => openModal(`
 window.submitUser = async e => {
   e.preventDefault();
   const r = await api('/api/users', { method: 'POST', body: { discord_id: $('uDid').value.trim(), username: $('uName').value.trim(), role: $('uRole').value }});
-  if (r) { closeModal(); toast('Nutzer hinzugefügt!', 'ok'); admin(); }
+  if (r) { closeModal(); toast(r.reactivated ? 'Nutzer war bereits vorhanden — Rolle aktualisiert & reaktiviert.' : 'Nutzer hinzugefügt!', 'ok'); admin(); }
 };
 
 window.toggleRole = async (id, role) => {
