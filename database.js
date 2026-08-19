@@ -163,6 +163,18 @@ function initDb() {
       reviewed_at       DATETIME
     );
 
+    CREATE TABLE IF NOT EXISTS tickets (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      type              TEXT NOT NULL,
+      discord_id        TEXT NOT NULL,
+      discord_username  TEXT NOT NULL,
+      channel_id        TEXT,
+      status            TEXT DEFAULT 'open',
+      created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+      closed_at         DATETIME,
+      closed_by         TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS announcements (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       title       TEXT NOT NULL,

@@ -8,7 +8,7 @@
     "server": "node server.js",
     "bot": "node bot.js",
     "dev": "nodemon server.js",
-    "test": "node test/smoke-newfeatures.js && node test/smoke-papierkram.js && node test/smoke-clash-of-acls.js"
+    "test": "node test/smoke-newfeatures.js && node test/smoke-papierkram.js && node test/smoke-clash-of-acls.js && node test/smoke-tickets.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

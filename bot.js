@@ -1,5 +1,6 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Events, EmbedBuilder, SlashCommandBuilder, REST, Routes, Partials, AuditLogEvent } = require('discord.js');
+const { Client, GatewayIntentBits, Events, EmbedBuilder, SlashCommandBuilder, REST, Routes, Partials, AuditLogEvent,
+        ButtonBuilder, ActionRowBuilder, ButtonStyle, ChannelType, PermissionFlagsBits } = require('discord.js');
 const fetch = require('node-fetch');
 const cron  = require('node-cron');
 
@@ -23,6 +24,188 @@ const WELCOME_CHANNEL_ID  = process.env.WELCOME_CHANNEL_ID  || '';
 const BIRTHDAY_CHANNEL_ID = process.env.BIRTHDAY_CHANNEL_ID || process.env.EOW_CHANNEL_ID || '';
 const VIP_ROLE_NAME         = process.env.VIP_ROLE_NAME || 'VIP ⭐';
 const AUTO_ROLE_NAME      = process.env.AUTO_ROLE_NAME       || 'ACLS Member';
+const GATE_CHANNEL_ID     = process.env.GATE_CHANNEL_ID      || '';
+const TICKET_CATEGORY_ID  = process.env.TICKET_CATEGORY_ID   || '';
+const LEADER_ROLE_NAME    = process.env.LEADER_ROLE_NAME     || 'Leader';
+const SUPPORT_ROLE_NAME   = process.env.SUPPORT_ROLE_NAME    || LEADER_ROLE_NAME;
+
+// ── Ticket-System: Bewerbung / Sonstiges Anliegen ────────────────
+const TICKET_TYPES = {
+  bewerbung: {
+    label: 'Bewerbung',
+    prefix: 'bewerbung',
+    roleName: LEADER_ROLE_NAME,
+    color: 0xf97316,
+    introTitle: '📋 Neue Bewerbung',
+    introText: 'Schreib hier deine Bewerbung: Wer bist du (IC-Name & Alter), welche Erfahrung bringst du mit, warum willst du zum ACLS und wann bist du verfügbar?',
+  },
+  sonstiges: {
+    label: 'Sonstiges Anliegen',
+    prefix: 'anliegen',
+    roleName: SUPPORT_ROLE_NAME,
+    color: 0x3b82f6,
+    introTitle: '❓ Sonstiges Anliegen',
+    introText: 'Schildere hier dein Anliegen, ein Teammitglied meldet sich zeitnah bei dir.',
+  },
+};
+
+function buildGatePanel() {
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle('👋 Willkommen beim ACLS')
+    .setDescription('Klicke auf **📋 Bewerben**, um dich als Mitarbeiter zu bewerben, oder auf **❓ Sonstiges Anliegen** für alle anderen Anfragen.\n\nEs öffnet sich automatisch ein privater Kanal nur für dich und das Team.')
+    .setTimestamp();
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('ticket_apply').setLabel('📋 Bewerben').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('ticket_other').setLabel('❓ Sonstiges Anliegen').setStyle(ButtonStyle.Secondary),
+  );
+  return { embeds: [embed], components: [row] };
+}
+
+async function openTicket(interaction, type) {
+  await interaction.deferReply({ ephemeral: true });
+  const cfg   = TICKET_TYPES[type];
+  const guild = interaction.guild;
+
+  const createRes = await fetch(`${SERVER_URL}/api/bot/tickets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
+    body: JSON.stringify({ type, discord_id: interaction.user.id, discord_username: interaction.user.tag }),
+  }).catch(() => null);
+
+  if (createRes?.status === 409) {
+    const data = await createRes.json().catch(() => null);
+    const chId = data?.ticket?.channel_id;
+    return interaction.editReply({ content: chId ? `Du hast bereits ein offenes Ticket: <#${chId}>` : 'Du hast bereits ein offenes Ticket.' });
+  }
+  if (!createRes?.ok) return interaction.editReply({ content: '❌ Ticket konnte nicht erstellt werden. Versuch es später erneut.' });
+  const { id: ticketId } = await createRes.json();
+
+  const role = guild.roles.cache.find(r => r.name === cfg.roleName);
+  if (!role) console.warn(`[Bot] Ticket-Rolle "${cfg.roleName}" nicht gefunden!`);
+
+  const overwrites = [
+    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+    { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] },
+  ];
+  if (role) overwrites.push({ id: role.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
+
+  let channel;
+  try {
+    channel = await guild.channels.create({
+      name: `${cfg.prefix}-${interaction.user.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 90),
+      type: ChannelType.GuildText,
+      parent: TICKET_CATEGORY_ID || undefined,
+      permissionOverwrites: overwrites,
+      topic: `${cfg.label} von ${interaction.user.tag} · Ticket #${ticketId}`,
+    });
+  } catch (e) {
+    console.error('[Bot] Ticket-Channel Fehler:', e.message);
+    await fetch(`${SERVER_URL}/api/bot/tickets/${ticketId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
+      body: JSON.stringify({ status: 'closed', closed_by: 'system:create_failed' }),
+    }).catch(() => {});
+    return interaction.editReply({ content: '❌ Kanal konnte nicht erstellt werden (Bot-Rechte prüfen).' });
+  }
+
+  await fetch(`${SERVER_URL}/api/bot/tickets/${ticketId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
+    body: JSON.stringify({ channel_id: channel.id }),
+  }).catch(() => {});
+
+  const introEmbed = new EmbedBuilder()
+    .setColor(cfg.color)
+    .setTitle(cfg.introTitle)
+    .setDescription(`${cfg.introText}\n\n${role ? `<@&${role.id}>` : ''} kümmert sich um dein Anliegen.`)
+    .setFooter({ text: `Ticket #${ticketId}` })
+    .setTimestamp();
+
+  const buttons = type === 'bewerbung'
+    ? [
+        new ButtonBuilder().setCustomId(`ticket_accept:${ticketId}`).setLabel('✅ Annehmen').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`ticket_decline:${ticketId}`).setLabel('❌ Ablehnen').setStyle(ButtonStyle.Danger),
+      ]
+    : [new ButtonBuilder().setCustomId(`ticket_close:${ticketId}`).setLabel('🔒 Erledigt / Schließen').setStyle(ButtonStyle.Secondary)];
+
+  await channel.send({ content: `<@${interaction.user.id}>${role ? ` <@&${role.id}>` : ''}`, embeds: [introEmbed], components: [new ActionRowBuilder().addComponents(...buttons)] });
+  await interaction.editReply({ content: `✅ Dein Ticket wurde erstellt: <#${channel.id}>` });
+
+  await sendModLog(new EmbedBuilder()
+    .setColor(cfg.color)
+    .setTitle(`🎫 Neues Ticket: ${cfg.label}`)
+    .addFields(
+      { name: 'Von',   value: `<@${interaction.user.id}>`, inline: true },
+      { name: 'Kanal', value: `<#${channel.id}>`, inline: true },
+    ).setTimestamp()).catch(() => {});
+}
+
+async function resolveTicket(interaction, ticketId, action) {
+  await interaction.deferReply();
+  const res    = await fetch(`${SERVER_URL}/api/bot/tickets/${ticketId}`, { headers: { 'x-bot-secret': BOT_SECRET } }).catch(() => null);
+  const ticket = res?.ok ? await res.json() : null;
+  if (!ticket) return interaction.editReply({ content: '❌ Ticket nicht gefunden.' });
+  if (ticket.status !== 'open') return interaction.editReply({ content: `Dieses Ticket wurde bereits als "${ticket.status}" markiert.` });
+
+  const cfg = TICKET_TYPES[ticket.type];
+  const hasRole = interaction.member.roles.cache.some(r => r.name === cfg.roleName);
+  if (!hasRole) return interaction.editReply({ content: `❌ Nur die Rolle \`${cfg.roleName}\` kann dieses Ticket bearbeiten.` });
+
+  const newStatus = { ticket_accept: 'accepted', ticket_decline: 'declined', ticket_close: 'closed' }[action];
+
+  await fetch(`${SERVER_URL}/api/bot/tickets/${ticketId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
+    body: JSON.stringify({ status: newStatus, closed_by: interaction.user.tag }),
+  }).catch(() => {});
+
+  let roleGranted = false;
+  if (newStatus === 'accepted') {
+    try {
+      const member    = await interaction.guild.members.fetch(ticket.discord_id);
+      const memberRole = interaction.guild.roles.cache.find(r => r.name === AUTO_ROLE_NAME);
+      if (memberRole) { await member.roles.add(memberRole); roleGranted = true; }
+      else console.warn(`[Bot] Auto-Rolle "${AUTO_ROLE_NAME}" nicht gefunden!`);
+    } catch (e) { console.error('[Bot] Rollenvergabe Fehler:', e.message); }
+  }
+
+  const resultLabel = { accepted: '✅ Angenommen', declined: '❌ Abgelehnt', closed: '🔒 Geschlossen' }[newStatus];
+  await interaction.editReply({
+    content: `${resultLabel} von ${interaction.user}` + (newStatus === 'accepted'
+      ? (roleGranted ? ` — Rolle \`${AUTO_ROLE_NAME}\` vergeben ✅` : ` — ⚠️ Rolle \`${AUTO_ROLE_NAME}\` konnte nicht vergeben werden`)
+      : ''),
+  });
+
+  await sendModLog(new EmbedBuilder()
+    .setColor(newStatus === 'accepted' ? 0x22c55e : newStatus === 'declined' ? 0xef4444 : 0x6b7280)
+    .setTitle(`🎫 Ticket ${resultLabel} – ${cfg.label}`)
+    .addFields(
+      { name: 'Von',            value: `<@${ticket.discord_id}>`, inline: true },
+      { name: 'Bearbeitet von', value: `${interaction.user}`, inline: true },
+    ).setTimestamp()).catch(() => {});
+
+  // Kanal archivieren: sperren + umbenennen statt löschen, damit der Verlauf erhalten bleibt
+  try {
+    const channel = interaction.channel;
+    await channel.permissionOverwrites.edit(ticket.discord_id, { SendMessages: false });
+    if (!channel.name.startsWith('closed-')) await channel.setName(`closed-${channel.name}`.slice(0, 90));
+  } catch (e) { console.error('[Bot] Ticket-Archivierung Fehler:', e.message); }
+}
+
+async function handleTicketButton(interaction) {
+  try {
+    if (interaction.customId === 'ticket_apply')  return await openTicket(interaction, 'bewerbung');
+    if (interaction.customId === 'ticket_other')  return await openTicket(interaction, 'sonstiges');
+    const [action, idStr] = interaction.customId.split(':');
+    if (['ticket_accept', 'ticket_decline', 'ticket_close'].includes(action)) {
+      return await resolveTicket(interaction, +idStr, action);
+    }
+  } catch (e) {
+    console.error('[Bot] Ticket-Button Fehler:', e.message);
+    const payload = { content: '❌ Es ist ein Fehler aufgetreten.' };
+    if (interaction.deferred || interaction.replied) await interaction.followUp({ ...payload, ephemeral: true }).catch(() => {});
+    else await interaction.reply({ ...payload, ephemeral: true }).catch(() => {});
+  }
+}
 
 const BADGE_LABELS = {
   ic_10: '10h IC-Zeit', ic_50: '50h IC-Zeit', ic_100: '100h IC-Zeit',
@@ -327,6 +510,8 @@ const SLASH_COMMANDS = [
         { name: 'Blackjack',           value: 'blackjack' },
       )),
   new SlashCommandBuilder().setName('coins').setDescription('Dein ACLS-Coins Kontostand'),
+  new SlashCommandBuilder().setName('ticket-panel').setDescription('Bewerbungs-/Ticket-Panel in diesem Kanal posten')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
 ].map(c => c.toJSON());
 
 async function registerSlashCommands() {
@@ -344,6 +529,7 @@ async function registerSlashCommands() {
 
 async function handleInteraction(interaction) {
   console.log(`[Bot] Interaction empfangen: type=${interaction.type} isChatInput=${interaction.isChatInputCommand()} cmd=${interaction.commandName||'?'} user=${interaction.user?.tag||'?'}`);
+  if (interaction.isButton()) return handleTicketButton(interaction);
   if (!interaction.isChatInputCommand()) return;
   const { commandName } = interaction;
   console.log(`[Bot] Slash-Command verarbeite: /${commandName} von ${interaction.user.tag}`);
@@ -512,6 +698,16 @@ async function handleInteraction(interaction) {
     } catch (e) {
       console.error('[Bot] /monatsbericht Fehler:', e.message);
       await interaction.editReply({ content: '❌ Fehler beim Laden des Monatsberichts.' }).catch(() => {});
+    }
+  }
+
+  if (commandName === 'ticket-panel') {
+    try {
+      await interaction.channel.send(buildGatePanel());
+      await interaction.editReply({ content: '✅ Panel gepostet.' });
+    } catch (e) {
+      console.error('[Bot] /ticket-panel Fehler:', e.message);
+      await interaction.editReply({ content: '❌ Fehler: ' + e.message }).catch(() => {});
     }
   }
 }
@@ -919,33 +1115,30 @@ async function sendModLog(embed) {
   } catch (e) { console.error('[Bot] Mod-Log Fehler:', e.message); }
 }
 
-// ── Auto-Rolle: Neues Mitglied bekommt ACLS Member ───────────────
+// ── Neues Mitglied: Mod-Log + Begrüßung zum Ticket-Gate ──────────
+// Die ACLS-Member-Rolle wird NICHT mehr automatisch vergeben — neue
+// User sehen nur den Gate-Channel und bekommen die Rolle erst, wenn
+// ihre Bewerbung im Ticket über "✅ Annehmen" akzeptiert wird (siehe
+// resolveTicket weiter oben).
 client.on(Events.GuildMemberAdd, async (member) => {
   if (GUILD_ID && member.guild.id !== GUILD_ID) return;
-  try {
-    const role = member.guild.roles.cache.find(r => r.name === AUTO_ROLE_NAME)
-              || (await member.guild.roles.fetch()).find(r => r.name === AUTO_ROLE_NAME);
-    if (!role) { console.warn(`[Bot] Auto-Rolle "${AUTO_ROLE_NAME}" nicht gefunden!`); return; }
-    await member.roles.add(role);
-    console.log(`[Bot] Auto-Rolle "${AUTO_ROLE_NAME}" vergeben an ${member.user.tag}`);
-    await sendModLog(new EmbedBuilder()
-      .setColor(0x22c55e)
-      .setTitle('👋 Neues Mitglied')
-      .setDescription(`<@${member.id}> ist dem Server beigetreten`)
-      .addFields({ name: 'Rolle vergeben', value: `\`${AUTO_ROLE_NAME}\``, inline: true })
-      .setThumbnail(member.user.displayAvatarURL())
-      .setTimestamp());
-  } catch (e) { console.error('[Bot] Auto-Rolle Fehler:', e.message); }
+
+  await sendModLog(new EmbedBuilder()
+    .setColor(0x22c55e)
+    .setTitle('👋 Neues Mitglied')
+    .setDescription(`<@${member.id}> ist dem Server beigetreten`)
+    .setThumbnail(member.user.displayAvatarURL())
+    .setTimestamp()).catch(() => {});
 
   // ── Sichtbare Begrüßung im Welcome-Channel + freundliche DM ──
   const memberCount = member.guild.memberCount;
+  const gateHint = GATE_CHANNEL_ID ? `<#${GATE_CHANNEL_ID}>` : 'den Empfangs-Kanal';
   const welcomeEmbed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle('👋 Willkommen bei ACLS!')
-    .setDescription(`Hey <@${member.id}>, schön dass du da bist! 🎉\n\nMelde dich auf der **ACLS-Website** mit Discord an, um Prüfungen zu sehen, Coins zu sammeln und an Turnieren teilzunehmen.`)
-    .addFields({ name: '🔗 Website', value: SERVER_URL })
+    .setDescription(`Hey <@${member.id}>, schön dass du da bist! 🎉\n\nSchau in ${gateHint} vorbei und klicke auf **📋 Bewerben**, um dich als Mitarbeiter zu bewerben.`)
     .setThumbnail(member.user.displayAvatarURL())
-    .setFooter({ text: `Du bist unser ${memberCount}. Mitglied 🚗` })
+    .setFooter({ text: `Du bist unser ${memberCount}. Besucher 🚗` })
     .setTimestamp();
   if (WELCOME_CHANNEL_ID) {
     try {
