@@ -28,6 +28,7 @@ const GATE_CHANNEL_ID     = process.env.GATE_CHANNEL_ID      || '';
 const TICKET_CATEGORY_ID  = process.env.TICKET_CATEGORY_ID   || '';
 const LEADER_ROLE_NAME    = process.env.LEADER_ROLE_NAME     || 'Leader';
 const SUPPORT_ROLE_NAME   = process.env.SUPPORT_ROLE_NAME    || LEADER_ROLE_NAME;
+const ARCHIVE_CATEGORY_ID = process.env.ARCHIVE_CATEGORY_ID  || '';
 
 // ── Ticket-System: Bewerbung / Sonstiges Anliegen ────────────────
 const TICKET_TYPES = {
@@ -187,11 +188,16 @@ async function resolveTicket(interaction, ticketId, action) {
       { name: 'Bearbeitet von', value: `${interaction.user}`, inline: true },
     ).setTimestamp()).catch(() => {});
 
-  // Kanal archivieren: sperren + umbenennen statt löschen, damit der Verlauf erhalten bleibt
+  // Kanal archivieren: sperren, umbenennen und in die Archiv-Kategorie
+  // verschieben statt löschen, damit der Verlauf erhalten bleibt
   try {
     const channel = interaction.channel;
     await channel.permissionOverwrites.edit(ticket.discord_id, { SendMessages: false });
     if (!channel.name.startsWith('closed-')) await channel.setName(`closed-${channel.name}`.slice(0, 90));
+    if (ARCHIVE_CATEGORY_ID && channel.parentId !== ARCHIVE_CATEGORY_ID) {
+      // lockPermissions:false → eigene Overwrites (Bewerber read-only, Leader-Rolle) bleiben erhalten
+      await channel.setParent(ARCHIVE_CATEGORY_ID, { lockPermissions: false });
+    }
   } catch (e) { console.error('[Bot] Ticket-Archivierung Fehler:', e.message); }
 }
 
