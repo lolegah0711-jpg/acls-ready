@@ -71,14 +71,18 @@ async function openTicket(interaction, type) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-bot-secret': BOT_SECRET },
     body: JSON.stringify({ type, discord_id: interaction.user.id, discord_username: interaction.user.tag }),
-  }).catch(() => null);
+  }).catch(e => { console.error(`[Bot] Ticket erstellen – Netzwerkfehler (SERVER_URL=${SERVER_URL}):`, e.message); return null; });
 
   if (createRes?.status === 409) {
     const data = await createRes.json().catch(() => null);
     const chId = data?.ticket?.channel_id;
     return interaction.editReply({ content: chId ? `Du hast bereits ein offenes Ticket: <#${chId}>` : 'Du hast bereits ein offenes Ticket.' });
   }
-  if (!createRes?.ok) return interaction.editReply({ content: '❌ Ticket konnte nicht erstellt werden. Versuch es später erneut.' });
+  if (!createRes?.ok) {
+    const errBody = createRes ? await createRes.text().catch(() => '(kein Body)') : '(keine Antwort erhalten)';
+    console.error(`[Bot] Ticket erstellen fehlgeschlagen: status=${createRes?.status ?? 'n/a'} body=${errBody}`);
+    return interaction.editReply({ content: '❌ Ticket konnte nicht erstellt werden. Versuch es später erneut.' });
+  }
   const { id: ticketId } = await createRes.json();
 
   const role = guild.roles.cache.find(r => r.name === cfg.roleName);
