@@ -2112,30 +2112,30 @@ app.post('/api/bot/tickets', (req, res) => {
   const { type, discord_id, discord_username, channel_id } = req.body;
   if (!['bewerbung', 'sonstiges'].includes(type)) return res.status(400).json({ error: 'Ungültiger Ticket-Typ' });
   if (!discord_id) return res.status(400).json({ error: 'discord_id erforderlich' });
-  const existing = db.prepare("SELECT id, channel_id FROM tickets WHERE discord_id = ? AND type = ? AND status = 'open'").get(discord_id, type);
+  const existing = db.prepare("SELECT id, channel_id FROM discord_tickets WHERE discord_id = ? AND type = ? AND status = 'open'").get(discord_id, type);
   if (existing) return res.status(409).json({ error: 'Bereits ein offenes Ticket', ticket: existing });
-  const r = db.prepare('INSERT INTO tickets (type, discord_id, discord_username, channel_id) VALUES (?,?,?,?)')
+  const r = db.prepare('INSERT INTO discord_tickets (type, discord_id, discord_username, channel_id) VALUES (?,?,?,?)')
     .run(type, discord_id, discord_username || 'Unbekannt', channel_id || null);
   res.json({ ok: true, id: r.lastInsertRowid });
 });
 
 app.get('/api/bot/tickets/:id', (req, res) => {
   if (!secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return res.status(401).end();
-  const row = db.prepare('SELECT * FROM tickets WHERE id = ?').get(+req.params.id);
+  const row = db.prepare('SELECT * FROM discord_tickets WHERE id = ?').get(+req.params.id);
   if (!row) return res.status(404).json({ error: 'Ticket nicht gefunden' });
   res.json(row);
 });
 
 app.patch('/api/bot/tickets/:id', (req, res) => {
   if (!secretEqual(req.headers['x-bot-secret'], BOT_API_SECRET)) return res.status(401).end();
-  const t = db.prepare('SELECT id FROM tickets WHERE id = ?').get(+req.params.id);
+  const t = db.prepare('SELECT id FROM discord_tickets WHERE id = ?').get(+req.params.id);
   if (!t) return res.status(404).json({ error: 'Ticket nicht gefunden' });
   const { status, closed_by, channel_id } = req.body;
-  if (channel_id) db.prepare('UPDATE tickets SET channel_id = ? WHERE id = ?').run(channel_id, t.id);
+  if (channel_id) db.prepare('UPDATE discord_tickets SET channel_id = ? WHERE id = ?').run(channel_id, t.id);
   if (status) {
     if (!['open', 'accepted', 'declined', 'closed'].includes(status)) return res.status(400).json({ error: 'Ungültiger Status' });
-    if (status === 'open') db.prepare('UPDATE tickets SET status = ? WHERE id = ?').run(status, t.id);
-    else db.prepare('UPDATE tickets SET status=?, closed_by=?, closed_at=CURRENT_TIMESTAMP WHERE id=?').run(status, closed_by || null, t.id);
+    if (status === 'open') db.prepare('UPDATE discord_tickets SET status = ? WHERE id = ?').run(status, t.id);
+    else db.prepare('UPDATE discord_tickets SET status=?, closed_by=?, closed_at=CURRENT_TIMESTAMP WHERE id=?').run(status, closed_by || null, t.id);
   }
   res.json({ ok: true });
 });

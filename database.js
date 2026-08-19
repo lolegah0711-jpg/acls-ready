@@ -163,7 +163,7 @@ function initDb() {
       reviewed_at       DATETIME
     );
 
-    CREATE TABLE IF NOT EXISTS tickets (
+    CREATE TABLE IF NOT EXISTS discord_tickets (
       id                INTEGER PRIMARY KEY AUTOINCREMENT,
       type              TEXT NOT NULL,
       discord_id        TEXT NOT NULL,
