@@ -754,7 +754,7 @@ async function sendEowReminder() {
 }
 
 // Jeden Freitag um 18:00 Berliner Zeit
-cron.schedule('0 18 * * 5', sendEowReminder, { timezone: 'Europe/Berlin' });
+// DEAKTIVIERT (2026-08-28): cron.schedule('0 18 * * 5', sendEowReminder, { timezone: 'Europe/Berlin' });
 
 // ── Turnier-Endspurt: Freitag 18:05 (direkt nach der MdW-Erinnerung) ──
 async function sendTournamentSprint() {
@@ -779,7 +779,7 @@ async function sendTournamentSprint() {
     console.log('[Bot] Turnier-Endspurt gesendet');
   } catch (e) { console.error('[Bot] Turnier-Endspurt Fehler:', e.message); }
 }
-cron.schedule('5 18 * * 5', sendTournamentSprint, { timezone: 'Europe/Berlin' });
+// DEAKTIVIERT (2026-08-28): cron.schedule('5 18 * * 5', sendTournamentSprint, { timezone: 'Europe/Berlin' });
 
 // ── Geburtstags-Glückwunsch: täglich 09:00 Berliner Zeit ──
 async function sendBirthdayShoutout() {
